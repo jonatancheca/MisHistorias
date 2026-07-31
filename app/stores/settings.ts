@@ -11,7 +11,7 @@ const DEFAULTS: AppSettings = {
   maxTokens: 800,
   historyBudget: 12000,
   activePresetId: null,
-  theme: 'light',
+  theme: 'system',
   mockMode: false,
   userName: 'Usuario',
   userColor: DEFAULT_USER_COLOR
@@ -20,6 +20,22 @@ const DEFAULTS: AppSettings = {
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>({ ...DEFAULTS })
   const loaded = ref(false)
+  let systemThemeMedia: MediaQueryList | null = null
+
+  function getSystemThemeMedia() {
+    if (systemThemeMedia || typeof window === 'undefined' || !window.matchMedia) return systemThemeMedia
+    systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+    if (systemThemeMedia.addEventListener) {
+      systemThemeMedia.addEventListener('change', onSystemThemeChange)
+    } else {
+      systemThemeMedia.addListener?.(onSystemThemeChange)
+    }
+    return systemThemeMedia
+  }
+
+  function onSystemThemeChange() {
+    if (settings.value.theme === 'system') applyTheme()
+  }
 
   async function load() {
     if (loaded.value) return
@@ -38,7 +54,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function applyTheme() {
     if (typeof document === 'undefined') return
-    const dark = settings.value.theme === 'dark'
+    const systemDark = getSystemThemeMedia()?.matches === true
+    const dark = settings.value.theme === 'dark' || (settings.value.theme === 'system' && systemDark)
     document.documentElement.classList.toggle('dark', dark)
     document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
   }

@@ -32,6 +32,8 @@ export interface Story {
 
 export type MessageRole = 'user' | 'assistant'
 
+export type Theme = 'system' | 'light' | 'dark'
+
 export type SegmentType = 'dialogue' | 'narration'
 
 export interface MessageSegment {
@@ -71,7 +73,7 @@ export interface AppSettings {
   /** Presupuesto de caracteres del historial enviado al modelo */
   historyBudget: number
   activePresetId: string | null
-  theme: 'light' | 'dark'
+  theme: Theme
   /** Modo prueba: responde texto aleatorio sin llamar al LLM */
   mockMode: boolean
   /** Nombre con el que aparece el usuario en la historia */

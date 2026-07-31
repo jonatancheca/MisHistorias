@@ -47,7 +47,7 @@ async function save() {
   })
 }
 
-async function setTheme(theme: 'light' | 'dark') {
+async function setTheme(theme: 'system' | 'light' | 'dark') {
   form.theme = theme
   await settings.save({ theme })
 }
@@ -92,12 +92,27 @@ async function onImportFile(event: Event) {
 
     <section class="mb-8">
       <h2 class="mb-2 text-lg font-semibold">Apariencia</h2>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          :class="settings.settings.theme === 'system' ? 'btn-primary' : 'btn-ghost'"
+          @click="setTheme('system')"
+        >
+          <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="13" rx="2" />
+            <path d="M8 21h8M12 17v4" />
+          </svg>
+          Sistema
+        </button>
         <button
           type="button"
           :class="settings.settings.theme === 'light' ? 'btn-primary' : 'btn-ghost'"
           @click="setTheme('light')"
         >
+          <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42" />
+          </svg>
           Modo claro
         </button>
         <button
@@ -105,6 +120,9 @@ async function onImportFile(event: Event) {
           :class="settings.settings.theme === 'dark' ? 'btn-primary' : 'btn-ghost'"
           @click="setTheme('dark')"
         >
+          <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+          </svg>
           Modo oscuro
         </button>
       </div>
