@@ -82,7 +82,7 @@ function confirmEdit() {
     <template v-else-if="message.role === 'user'">
       <p class="text-[15px] leading-relaxed">
         <span class="font-semibold" :style="{ color: userColor }">{{ userName }}:</span>
-        <span class="whitespace-pre-wrap"> {{ message.raw }}</span>
+        <span class="ml-1 whitespace-pre-wrap">{{ message.raw }}</span>
       </p>
     </template>
 
@@ -100,7 +100,7 @@ function confirmEdit() {
               <span class="font-semibold" :style="{ color: row.color }">{{ row.name }}</span>
               <span v-if="row.tag" class="text-xs text-[var(--color-fg-muted)]"> [{{ row.tag }}]</span>
               <span class="font-semibold" :style="{ color: row.color }">:</span>
-              <span class="whitespace-pre-wrap" :style="{ color: row.color }"> {{ row.text }}</span>
+              <span class="ml-1 whitespace-pre-wrap" :style="{ color: row.color }">{{ row.text }}</span>
             </p>
             <figure v-if="row.imageUrl" class="mt-2 mb-3 w-40">
               <img

@@ -2,6 +2,7 @@
 const route = useRoute()
 const stories = useStoriesStore()
 const characters = useCharactersStore()
+const settings = useSettingsStore()
 
 await Promise.all([characters.load(), stories.openStory(String(route.params.id))])
 
@@ -51,7 +52,15 @@ const isEmpty = computed(() => stories.messages.length === 0 && !stories.streami
         class="flex items-center justify-between border-b border-[var(--color-border-soft)] px-6 py-4"
       >
         <div class="min-w-0">
-          <h1 class="truncate text-lg font-bold">{{ stories.activeStory.title }}</h1>
+          <h1 class="truncate text-lg font-bold">
+            {{ stories.activeStory.title }}
+            <span
+              v-if="settings.settings.mockMode"
+              class="ml-2 rounded-full bg-brand-500/15 px-2 py-0.5 align-middle text-xs font-semibold text-brand-600"
+            >
+              modo prueba
+            </span>
+          </h1>
           <p class="truncate text-xs text-[var(--color-fg-muted)]">
             {{ stories.activeStory.premise }}
           </p>

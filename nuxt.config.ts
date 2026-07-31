@@ -12,7 +12,7 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      title: 'Creador de histórias',
+      title: 'Mis Histórias',
       meta: [{ name: 'viewport', content: 'width=device-width, initial-scale=1' }]
     }
   }

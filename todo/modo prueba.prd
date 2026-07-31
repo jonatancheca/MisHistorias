@@ -1,9 +1,0 @@
-monta una historia de prueba sin LLM, que siempre responda texto aleatorio, para pruebas
-que aleatoriamente decida cuantos personajes respoden, cuantas veces (con un máximo de 3) y cuantas veces hay una linea de narración
-lo que responda sea algo como este ejemplo:
-narración linea 1
-narración linea 2
-Personaje1[emocion1]: linea 1
-narración linea 3
-Personaje1[emocion1]: linea 2
-Personaje2[emocion2]: linea 3

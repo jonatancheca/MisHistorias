@@ -52,6 +52,11 @@ async function setTheme(theme: 'light' | 'dark') {
   await settings.save({ theme })
 }
 
+async function setMockMode(mockMode: boolean) {
+  form.mockMode = mockMode
+  await settings.save({ mockMode })
+}
+
 async function doExport() {
   const { exportBundle, downloadBundle } = await import('~/lib/transfer')
   downloadBundle(await exportBundle())
@@ -106,6 +111,24 @@ async function onImportFile(event: Event) {
     </section>
 
     <form class="grid gap-5" @submit.prevent="save">
+      <div class="card">
+        <label class="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            class="mt-1 h-4 w-4 accent-[var(--color-brand-500)]"
+            :checked="settings.settings.mockMode"
+            @change="setMockMode(($event.target as HTMLInputElement).checked)"
+          />
+          <span>
+            <span class="block text-sm font-semibold">Modo prueba (sin LLM)</span>
+            <span class="block text-xs text-[var(--color-fg-muted)]">
+              Las historias responden texto aleatorio con el formato de siempre. No se llama a
+              LMStudio.
+            </span>
+          </span>
+        </label>
+      </div>
+
       <div>
         <label class="label" for="baseUrl">URL del servidor (LMStudio)</label>
         <div class="flex gap-2">

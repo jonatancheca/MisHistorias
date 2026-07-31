@@ -20,7 +20,7 @@ function isActive(to: string) {
     >
       <NuxtLink to="/" class="mb-6 flex items-center gap-2 text-lg font-bold">
         <span class="inline-block h-3 w-3 rounded-full bg-brand-500" />
-        Creador de histórias
+        Mis histórias
       </NuxtLink>
 
       <nav class="flex flex-1 flex-col gap-1">

@@ -72,6 +72,8 @@ export interface AppSettings {
   historyBudget: number
   activePresetId: string | null
   theme: 'light' | 'dark'
+  /** Modo prueba: responde texto aleatorio sin llamar al LLM */
+  mockMode: boolean
   /** Nombre con el que aparece el usuario en la historia */
   userName: string
   /** Color hex del usuario en la historia */

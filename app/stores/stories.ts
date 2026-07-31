@@ -10,6 +10,7 @@ import {
   putStory
 } from '~/lib/db'
 import { buildChatMessages } from '~/lib/promptBuilder'
+import { mockDeltas } from '~/lib/mockLlm'
 import { parseSegments, readSseDeltas } from '~/lib/streamParser'
 
 export const useStoriesStore = defineStore('stories', () => {
@@ -135,7 +136,8 @@ export const useStoriesStore = defineStore('stories', () => {
     await Promise.all([settingsStore.load(), presetsStore.load(), charactersStore.load()])
 
     const settings = settingsStore.settings
-    if (!settings.model) {
+    const mock = settings.mockMode
+    if (!mock && !settings.model) {
       error.value = 'Configura primero el modelo en Ajustes.'
       return
     }
@@ -144,20 +146,10 @@ export const useStoriesStore = defineStore('stories', () => {
       story.characterIds.includes(character.id)
     )
     const preset = presetsStore.byId(story.presetId ?? settings.activePresetId)
-    if (!preset) {
+    if (!mock && !preset) {
       error.value = 'No hay ningún prompt de preparación disponible.'
       return
     }
-
-    const payload = buildChatMessages({
-      presetContent: preset.content,
-      story,
-      characters: storyCharacters,
-      images: charactersStore.images,
-      messages: messages.value,
-      historyBudget: settings.historyBudget,
-      userName: settings.userName?.trim() || 'Usuario'
-    })
 
     error.value = null
     streaming.value = true
@@ -173,27 +165,45 @@ export const useStoriesStore = defineStore('stories', () => {
     }
 
     try {
-      const response = await fetch('/api/llm/chat', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          baseUrl: settings.baseUrl,
-          apiKey: settings.apiKey,
-          model: settings.model,
-          messages: payload,
-          temperature: settings.temperature,
-          maxTokens: settings.maxTokens
-        }),
-        signal: controller.signal
-      })
+      let stream: AsyncIterable<string>
 
-      if (!response.ok || !response.body) {
-        const detail = await response.text().catch(() => '')
-        throw new Error(detail || `Error ${response.status} al llamar al modelo`)
+      if (mock) {
+        stream = mockDeltas(storyCharacters, charactersStore.images, controller.signal)
+      } else {
+        const payload = buildChatMessages({
+          presetContent: preset!.content,
+          story,
+          characters: storyCharacters,
+          images: charactersStore.images,
+          messages: messages.value,
+          historyBudget: settings.historyBudget,
+          userName: settings.userName?.trim() || 'Usuario'
+        })
+
+        const response = await fetch('/api/llm/chat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            baseUrl: settings.baseUrl,
+            apiKey: settings.apiKey,
+            model: settings.model,
+            messages: payload,
+            temperature: settings.temperature,
+            maxTokens: settings.maxTokens
+          }),
+          signal: controller.signal
+        })
+
+        if (!response.ok || !response.body) {
+          const detail = await response.text().catch(() => '')
+          throw new Error(detail || `Error ${response.status} al llamar al modelo`)
+        }
+
+        stream = readSseDeltas(response.body)
       }
 
       let raw = ''
-      for await (const delta of readSseDeltas(response.body)) {
+      for await (const delta of stream) {
         raw += delta
         draft.value = {
           ...draft.value!,

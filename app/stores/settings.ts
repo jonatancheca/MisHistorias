@@ -12,6 +12,7 @@ const DEFAULTS: AppSettings = {
   historyBudget: 12000,
   activePresetId: null,
   theme: 'light',
+  mockMode: false,
   userName: 'Usuario',
   userColor: DEFAULT_USER_COLOR
 }
