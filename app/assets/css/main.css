@@ -1,0 +1,69 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-brand-50: oklch(0.971 0.014 343.2);
+  --color-brand-100: oklch(0.948 0.028 342.3);
+  --color-brand-200: oklch(0.899 0.061 343.2);
+  --color-brand-300: oklch(0.823 0.108 346.0);
+  --color-brand-400: oklch(0.718 0.166 349.8);
+  --color-brand-500: oklch(0.656 0.209 354.3);
+  --color-brand-600: oklch(0.592 0.216 0.6);
+  --color-brand-700: oklch(0.525 0.199 3.96);
+  --color-brand-800: oklch(0.459 0.174 3.82);
+  --color-brand-900: oklch(0.408 0.148 2.19);
+
+  --color-surface: #ffffff;
+  --color-surface-alt: #fdf2f8;
+  --color-border-soft: #f9d3e5;
+  --color-fg: #181014;
+  --color-fg-muted: #6b5763;
+}
+
+.dark {
+  --color-surface: #000000;
+  --color-surface-alt: #140a10;
+  --color-border-soft: #3a1e2c;
+  --color-fg: #f7eaf1;
+  --color-fg-muted: #b697a7;
+}
+
+html,
+body,
+#__nuxt {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-fg);
+}
+
+@utility btn {
+  @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-brand-500 text-white hover:bg-brand-600;
+}
+
+@utility btn-ghost {
+  @apply btn border border-[var(--color-border-soft)] text-[var(--color-fg)] hover:bg-[var(--color-surface-alt)];
+}
+
+@utility btn-danger {
+  @apply btn border border-red-400/50 text-red-500 hover:bg-red-500/10;
+}
+
+@utility field {
+  @apply w-full rounded-lg border border-[var(--color-border-soft)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] outline-none placeholder:text-[var(--color-fg-muted)] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30;
+}
+
+@utility label {
+  @apply mb-1 block text-xs font-semibold tracking-wide text-[var(--color-fg-muted)] uppercase;
+}
+
+@utility card {
+  @apply rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] p-4;
+}
