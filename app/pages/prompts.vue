@@ -3,7 +3,7 @@ const presets = usePresetsStore()
 const settings = useSettingsStore()
 await Promise.all([presets.load(), settings.load()])
 
-const selectedId = ref<string | null>(settings.settings.activePresetId ?? presets.presets[0]?.id ?? null)
+const selectedId = ref<string | null>(settings.activePresetId ?? presets.presets[0]?.id ?? null)
 const name = ref('')
 const content = ref('')
 const saving = ref(false)
@@ -45,7 +45,7 @@ async function remove() {
 }
 
 async function setActive() {
-  if (selectedId.value) await settings.save({ activePresetId: selectedId.value })
+  if (selectedId.value) await settings.setActivePresetId(selectedId.value)
 }
 </script>
 
@@ -76,7 +76,7 @@ async function setActive() {
           >
             {{ preset.name }}
             <span
-              v-if="preset.id === settings.settings.activePresetId"
+              v-if="preset.id === settings.activePresetId"
               class="ml-1 text-xs opacity-70"
             >
               (activo)
@@ -99,7 +99,7 @@ async function setActive() {
           <button
             type="button"
             class="btn-ghost"
-            :disabled="!selectedId || selectedId === settings.settings.activePresetId"
+            :disabled="!selectedId || selectedId === settings.activePresetId"
             @click="setActive"
           >
             Marcar como activo

@@ -9,7 +9,7 @@ await Promise.all([characters.load(), presets.load(), settings.load()])
 const title = ref('')
 const premise = ref('')
 const selected = ref<string[]>([])
-const presetId = ref<string | null>(settings.settings.activePresetId)
+const presetId = ref<string | null>(settings.activePresetId)
 const saving = ref(false)
 
 function toggle(id: string) {

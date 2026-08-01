@@ -7,6 +7,11 @@ export const usePresetsStore = defineStore('presets', () => {
   const presets = ref<PromptPreset[]>([])
   const loaded = ref(false)
 
+  function resetForScope() {
+    presets.value = []
+    loaded.value = false
+  }
+
   async function load(force = false) {
     if (loaded.value && !force) return
     let all = await listPresets()
@@ -27,9 +32,9 @@ export const usePresetsStore = defineStore('presets', () => {
 
     const settings = useSettingsStore()
     await settings.load()
-    const activeExists = presets.value.some((preset) => preset.id === settings.settings.activePresetId)
+    const activeExists = presets.value.some((preset) => preset.id === settings.activePresetId)
     if (!activeExists && presets.value[0]) {
-      await settings.save({ activePresetId: presets.value[0].id })
+      await settings.setActivePresetId(presets.value[0].id)
     }
   }
 
@@ -59,10 +64,10 @@ export const usePresetsStore = defineStore('presets', () => {
     await deletePreset(id)
     presets.value = presets.value.filter((preset) => preset.id !== id)
     const settings = useSettingsStore()
-    if (settings.settings.activePresetId === id) {
-      await settings.save({ activePresetId: presets.value[0]?.id ?? null })
+    if (settings.activePresetId === id) {
+      await settings.setActivePresetId(presets.value[0]?.id ?? null)
     }
   }
 
-  return { presets, loaded, load, byId, savePreset, removePreset }
+  return { presets, loaded, load, byId, savePreset, removePreset, resetForScope }
 })

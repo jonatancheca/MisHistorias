@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import type { AppSettings } from '#shared/types'
-import { readSettings, writeSettings } from '~/lib/db'
+import { activeDataScope, readSettings, writeSettings } from '~/lib/db'
 import { DEFAULT_USER_COLOR } from '~/lib/colors'
 
 const DEFAULTS: AppSettings = {
@@ -11,6 +11,7 @@ const DEFAULTS: AppSettings = {
   maxTokens: 800,
   historyBudget: 12000,
   activePresetId: null,
+  privateActivePresetId: null,
   theme: 'system',
   mockMode: false,
   userName: 'Usuario',
@@ -19,6 +20,11 @@ const DEFAULTS: AppSettings = {
 
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>({ ...DEFAULTS })
+  const activePresetId = computed(() =>
+    activeDataScope.value === 'private'
+      ? settings.value.privateActivePresetId
+      : settings.value.activePresetId
+  )
   const loaded = ref(false)
   let systemThemeMedia: MediaQueryList | null = null
 
@@ -60,9 +66,15 @@ export const useSettingsStore = defineStore('settings', () => {
     document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
   }
 
+  async function setActivePresetId(id: string | null) {
+    return activeDataScope.value === 'private'
+      ? save({ privateActivePresetId: id })
+      : save({ activePresetId: id })
+  }
+
   async function toggleTheme() {
     await save({ theme: settings.value.theme === 'dark' ? 'light' : 'dark' })
   }
 
-  return { settings, loaded, load, save, toggleTheme, applyTheme }
+  return { settings, activePresetId, loaded, load, save, setActivePresetId, toggleTheme, applyTheme }
 })

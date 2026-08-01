@@ -73,6 +73,8 @@ export interface AppSettings {
   /** Presupuesto de caracteres del historial enviado al modelo */
   historyBudget: number
   activePresetId: string | null
+  /** Prompt activo de la colección privada; el resto de ajustes se comparte. */
+  privateActivePresetId: string | null
   theme: Theme
   /** Modo prueba: responde texto aleatorio sin llamar al LLM */
   mockMode: boolean

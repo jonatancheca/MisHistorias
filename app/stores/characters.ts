@@ -30,6 +30,13 @@ export const useCharactersStore = defineStore('characters', () => {
     urls.value = next
   }
 
+  function resetForScope() {
+    characters.value = []
+    images.value = []
+    loaded.value = false
+    syncUrls()
+  }
+
   async function load(force = false) {
     if (loaded.value && !force) return
     const [chars, imgs] = await Promise.all([listCharacters(), listAllImages()])
@@ -172,6 +179,7 @@ export const useCharactersStore = defineStore('characters', () => {
     addImage,
     updateImage,
     removeImage,
-    syncUrls
+    syncUrls,
+    resetForScope
   }
 })

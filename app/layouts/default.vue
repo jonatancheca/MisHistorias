@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const route = useRoute()
+const privacy = usePrivacyStore()
 
 const links = [
   { to: '/', label: 'Histórias' },
@@ -11,6 +12,10 @@ const links = [
 function isActive(to: string) {
   return to === '/' ? route.path === '/' || route.path.startsWith('/stories') : route.path.startsWith(to)
 }
+
+async function leavePrivateMode() {
+  await privacy.deactivate()
+}
 </script>
 
 <template>
@@ -18,10 +23,33 @@ function isActive(to: string) {
     <aside
       class="flex w-56 shrink-0 flex-col border-r border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] p-4"
     >
-      <NuxtLink to="/" class="mb-6 flex items-center gap-2 text-lg font-bold">
-        <span class="inline-block h-3 w-3 rounded-full bg-brand-500" />
-        Mis historias
-      </NuxtLink>
+      <div class="mb-6 flex items-center gap-2">
+        <NuxtLink to="/" class="flex items-center gap-2 text-lg font-bold">
+          <span class="inline-block h-3 w-3 rounded-full bg-brand-500" />
+          Mis historias
+        </NuxtLink>
+        <button
+          v-if="privacy.isPrivate"
+          type="button"
+          class="rounded p-1 text-[var(--color-fg-muted)] transition hover:text-brand-600"
+          aria-label="Salir del modo privado"
+          title="Salir del modo privado"
+          :disabled="privacy.switching"
+          @click="leavePrivateMode"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect x="5" y="11" width="14" height="10" rx="2" />
+            <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+          </svg>
+        </button>
+      </div>
 
       <nav class="flex flex-1 flex-col gap-1">
         <NuxtLink

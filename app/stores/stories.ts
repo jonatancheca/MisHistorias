@@ -25,6 +25,16 @@ export const useStoriesStore = defineStore('stories', () => {
 
   let controller: AbortController | null = null
 
+  function resetForScope() {
+    stop()
+    stories.value = []
+    loaded.value = false
+    activeStory.value = null
+    messages.value = []
+    draft.value = null
+    error.value = null
+  }
+
   async function load(force = false) {
     if (loaded.value && !force) return
     stories.value = await listStories()
@@ -145,7 +155,7 @@ export const useStoriesStore = defineStore('stories', () => {
     const storyCharacters = charactersStore.characters.filter((character) =>
       story.characterIds.includes(character.id)
     )
-    const preset = presetsStore.byId(story.presetId ?? settings.activePresetId)
+    const preset = presetsStore.byId(story.presetId ?? settingsStore.activePresetId)
     if (!mock && !preset) {
       error.value = 'No hay ningún prompt de preparación disponible.'
       return
@@ -260,6 +270,7 @@ export const useStoriesStore = defineStore('stories', () => {
     send,
     generate,
     regenerateLast,
-    stop
+    stop,
+    resetForScope
   }
 })

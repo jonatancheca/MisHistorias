@@ -3,6 +3,7 @@ const settings = useSettingsStore()
 const characters = useCharactersStore()
 const stories = useStoriesStore()
 const presets = usePresetsStore()
+const privacy = usePrivacyStore()
 await settings.load()
 
 const form = reactive({ ...settings.settings })
@@ -13,6 +14,8 @@ const testError = ref<string | null>(null)
 const importing = ref(false)
 const importMessage = ref<string | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
+let privateClickCount = 0
+let privateClickTimer: ReturnType<typeof setTimeout> | null = null
 
 async function testConnection() {
   testing.value = true
@@ -84,6 +87,29 @@ async function onImportFile(event: Event) {
     input.value = ''
   }
 }
+
+async function onPrivateTrigger() {
+  if (privacy.isPrivate) return
+
+  privateClickCount += 1
+  if (privateClickTimer) clearTimeout(privateClickTimer)
+
+  if (privateClickCount === 3) {
+    privateClickCount = 0
+    privateClickTimer = null
+    await privacy.activate()
+    return
+  }
+
+  privateClickTimer = setTimeout(() => {
+    privateClickCount = 0
+    privateClickTimer = null
+  }, 1000)
+}
+
+onBeforeUnmount(() => {
+  if (privateClickTimer) clearTimeout(privateClickTimer)
+})
 </script>
 
 <template>
@@ -261,6 +287,13 @@ async function onImportFile(event: Event) {
         <button type="button" class="btn-ghost" :disabled="importing" @click="importInput?.click()">
           {{ importing ? 'Importando…' : 'Importar JSON' }}
         </button>
+        <button
+          type="button"
+          class="h-9 w-9 opacity-0"
+          aria-label="Activar modo privado"
+          :disabled="privacy.switching"
+          @click="onPrivateTrigger"
+        />
       </div>
       <p v-if="importMessage" class="mt-2 text-xs text-[var(--color-fg-muted)]">{{ importMessage }}</p>
     </section>

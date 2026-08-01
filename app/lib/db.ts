@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import { isReactive, isRef, toRaw, unref } from 'vue'
+import { isReactive, isRef, ref, toRaw, unref } from 'vue'
 import type {
   AppSettings,
   Character,
@@ -42,14 +42,28 @@ interface LocalChatDB extends DBSchema {
   }
 }
 
-const DB_NAME = 'local-chat'
+export type DataScope = 'normal' | 'private'
+
+const DB_NAMES: Record<DataScope, string> = {
+  normal: 'local-chat',
+  private: 'local-chat-private'
+}
 const DB_VERSION = 1
 
-let dbPromise: Promise<IDBPDatabase<LocalChatDB>> | null = null
+const dbPromises: Partial<Record<DataScope, Promise<IDBPDatabase<LocalChatDB>>>> = {}
+export const activeDataScope = ref<DataScope>('normal')
 
-export function getDb() {
-  if (!dbPromise) {
-    dbPromise = openDB<LocalChatDB>(DB_NAME, DB_VERSION, {
+export function getActiveDataScope() {
+  return activeDataScope.value
+}
+
+export function setActiveDataScope(scope: DataScope) {
+  activeDataScope.value = scope
+}
+
+export function getDb(scope: DataScope = activeDataScope.value) {
+  if (!dbPromises[scope]) {
+    dbPromises[scope] = openDB<LocalChatDB>(DB_NAMES[scope], DB_VERSION, {
       upgrade(db) {
         if (!db.objectStoreNames.contains('characters')) {
           db.createObjectStore('characters', { keyPath: 'id' })
@@ -74,7 +88,7 @@ export function getDb() {
       }
     })
   }
-  return dbPromise
+  return dbPromises[scope]!
 }
 
 export function newId() {
@@ -236,13 +250,13 @@ export async function deletePreset(id: string) {
 const SETTINGS_KEY = 'app'
 
 export async function readSettings() {
-  const db = await getDb()
+  const db = await getDb('normal')
   const row = await db.get('settings', SETTINGS_KEY)
   return row?.value ?? null
 }
 
 export async function writeSettings(value: AppSettings) {
-  const db = await getDb()
+  const db = await getDb('normal')
   await db.put('settings', { key: SETTINGS_KEY, value: unwrap(value) })
   return value
 }
