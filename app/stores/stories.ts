@@ -23,6 +23,7 @@ import {
 } from '~/lib/db'
 import { buildChatMessages, resolveProtagonistPreferences } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
+import { fetchLlmChat, type LlmCallError } from '~/lib/llm'
 import { parseSegments } from '~/lib/streamParser'
 import {
   buildStoryImageCatalog,
@@ -40,11 +41,6 @@ interface GraphemeSegment {
   segment: string
 }
 
-interface LlmCallError extends Error {
-  status?: number
-  detail?: string
-}
-
 type SegmenterConstructor = new (
   locale?: string | string[],
   options?: { granularity: 'grapheme' }
@@ -57,32 +53,6 @@ function splitGraphemes(value: string) {
     new Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
     ({ segment }) => segment
   )
-}
-
-async function createLlmCallError(response: Response): Promise<LlmCallError> {
-  const raw = await response.text().catch(() => '')
-  let message = `Error ${response.status} al llamar al modelo`
-  let detail = raw.slice(0, 500)
-
-  try {
-    const payload = JSON.parse(raw) as {
-      statusMessage?: unknown
-      message?: unknown
-      data?: unknown
-    }
-    if (typeof payload.statusMessage === 'string') message = payload.statusMessage
-    else if (typeof payload.message === 'string') message = payload.message
-    if (typeof payload.data === 'string') detail = payload.data.slice(0, 500)
-    else if (payload.data !== undefined) detail = JSON.stringify(payload.data).slice(0, 500)
-    else detail = ''
-  } catch {
-    // El cuerpo no siempre es JSON; se conserva una muestra limitada.
-  }
-
-  return Object.assign(new Error(message), {
-    status: response.status,
-    detail: detail || undefined
-  })
 }
 
 export const useStoriesStore = defineStore('stories', () => {
@@ -469,30 +439,17 @@ export const useStoriesStore = defineStore('stories', () => {
         }
 
         waitingForResponse = true
-        const response = await fetch('/api/llm/chat', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            baseUrl: settings.baseUrl,
-            apiKey: settings.apiKey,
-            model: settings.model,
-            messages: payload,
-            temperature: settings.temperature,
-            maxTokens: settings.maxTokens
-          }),
+        const result = await fetchLlmChat({
+          baseUrl: settings.baseUrl,
+          apiKey: settings.apiKey,
+          model: settings.model,
+          messages: payload,
+          temperature: settings.temperature,
+          maxTokens: settings.maxTokens,
           signal: requestController.signal
         })
-
-        if (!response.ok) {
-          throw await createLlmCallError(response)
-        }
-
-        const result = (await response.json()) as {
-          content?: unknown
-          finishReason?: unknown
-        }
-        raw = typeof result.content === 'string' ? result.content : ''
-        finishReason = typeof result.finishReason === 'string' ? result.finishReason : null
+        raw = result.content
+        finishReason = result.finishReason
         waitingForResponse = false
 
         const snapshotStored = await persistImageCatalogSnapshot(story, currentImageCatalog)

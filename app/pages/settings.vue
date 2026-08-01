@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { fetchLlmModels } from '~/lib/llm'
+
 const settings = useSettingsStore()
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
@@ -29,13 +31,10 @@ async function testConnection() {
   testError.value = null
   testMessage.value = null
   try {
-    const result = await $fetch<{ models: string[] }>('/api/llm/models', {
-      method: 'POST',
-      body: { baseUrl: form.baseUrl, apiKey: form.apiKey }
-    })
-    models.value = result.models
-    testMessage.value = `${result.models.length} modelos disponibles`
-    if (!form.model && result.models[0]) form.model = result.models[0]
+    const availableModels = await fetchLlmModels(form.baseUrl, form.apiKey)
+    models.value = availableModels
+    testMessage.value = `${availableModels.length} modelos disponibles`
+    if (!form.model && availableModels[0]) form.model = availableModels[0]
   } catch (caught) {
     const detail = caught as { statusMessage?: string; message?: string }
     testError.value = detail.statusMessage || detail.message || 'No se pudo conectar'
@@ -264,7 +263,8 @@ onBeforeRouteLeave(async () => {
           </button>
         </div>
         <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-          Sin `/v1` al final. Solo se permiten direcciones locales o de red privada.
+          Sin `/v1` al final. LM Studio debe tener CORS y autenticación activados. Desde otro
+          equipo, acepta el permiso de red local del navegador.
         </p>
         <p v-if="testMessage" class="mt-1 text-xs text-brand-600">{{ testMessage }}</p>
         <p v-if="testError" class="mt-1 text-xs text-red-500">{{ testError }}</p>
