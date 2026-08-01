@@ -75,6 +75,9 @@ export interface AppSettings {
   activePresetId: string | null
   /** Prompt activo de la colección privada; el resto de ajustes se comparte. */
   privateActivePresetId: string | null
+  /** Versión aplicada del prompt por defecto en cada colección. */
+  defaultPresetVersion: number
+  privateDefaultPresetVersion: number
   theme: Theme
   /** Modo prueba: responde texto aleatorio sin llamar al LLM */
   mockMode: boolean

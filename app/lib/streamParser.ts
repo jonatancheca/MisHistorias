@@ -54,38 +54,3 @@ export function serializeSegments(segments: MessageSegment[], characters: Charac
     })
     .join('\n')
 }
-
-/** Decodifica el stream SSE estilo OpenAI y emite el delta de contenido. */
-export async function* readSseDeltas(body: ReadableStream<Uint8Array>) {
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-
-      let index: number
-      while ((index = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, index).trim()
-        buffer = buffer.slice(index + 1)
-        if (!line.startsWith('data:')) continue
-        const payload = line.slice(5).trim()
-        if (payload === '' || payload === '[DONE]') continue
-        try {
-          const parsed = JSON.parse(payload) as {
-            choices?: Array<{ delta?: { content?: string }; text?: string }>
-          }
-          const delta = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.text ?? ''
-          if (delta) yield delta
-        } catch {
-          // trozo incompleto o keep-alive: se ignora
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock()
-  }
-}

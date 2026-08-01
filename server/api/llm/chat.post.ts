@@ -7,6 +7,20 @@ interface ChatRequestBody {
   maxTokens?: number
 }
 
+interface ChatCompletionResponse {
+  choices?: Array<{
+    message?: { content?: unknown }
+    finish_reason?: unknown
+  }>
+}
+
+export function stripThinkingBlocks(content: string) {
+  return content
+    .replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/gi, '')
+    .replace(/<think\b[^>]*>[\s\S]*$/gi, '')
+    .trim()
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody<ChatRequestBody>(event)
   const baseUrl = assertLocalBaseUrl(body?.baseUrl)
@@ -28,7 +42,7 @@ export default defineEventHandler(async (event) => {
         messages: body.messages,
         temperature: body.temperature ?? 0.8,
         max_tokens: body.maxTokens ?? 800,
-        stream: true
+        stream: false
       })
     })
   } catch {
@@ -38,7 +52,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  if (!response.ok || !response.body) {
+  if (!response.ok) {
     const detail = await response.text().catch(() => '')
     throw createError({
       statusCode: 502,
@@ -50,10 +64,21 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  setResponseHeaders(event, {
-    'content-type': 'text/event-stream',
-    'cache-control': 'no-cache',
-    connection: 'keep-alive'
-  })
-  return sendStream(event, response.body)
+  let completion: ChatCompletionResponse
+  try {
+    completion = (await response.json()) as ChatCompletionResponse
+  } catch {
+    throw createError({
+      statusCode: 502,
+      statusMessage: 'El servidor del modelo devolvió una respuesta no válida'
+    })
+  }
+
+  const choice = completion.choices?.[0]
+  const content =
+    typeof choice?.message?.content === 'string' ? stripThinkingBlocks(choice.message.content) : ''
+  const finishReason =
+    typeof choice?.finish_reason === 'string' ? choice.finish_reason : null
+
+  return { content, finishReason }
 })

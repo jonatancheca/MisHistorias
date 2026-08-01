@@ -9,13 +9,9 @@ await Promise.all([characters.load(), stories.openStory(String(route.params.id))
 const input = ref('')
 const scroller = ref<HTMLElement | null>(null)
 
-const visibleMessages = computed(() =>
-  stories.draft ? [...stories.messages, stories.draft] : stories.messages
-)
-
 const lastDialogue = computed(() => {
-  for (let index = visibleMessages.value.length - 1; index >= 0; index -= 1) {
-    const message = visibleMessages.value[index]!
+  for (let index = stories.messages.length - 1; index >= 0; index -= 1) {
+    const message = stories.messages[index]!
     for (let cursor = message.segments.length - 1; cursor >= 0; cursor -= 1) {
       const segment = message.segments[cursor]!
       if (segment.type === 'dialogue' && segment.characterId) return segment
@@ -29,16 +25,16 @@ async function scrollToBottom() {
   if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight
 }
 
-watch(visibleMessages, scrollToBottom, { deep: true, immediate: true })
+watch(() => stories.messages, scrollToBottom, { deep: true, immediate: true })
 
 async function submit() {
   const text = input.value
-  if (!text.trim() || stories.streaming) return
+  if (!text.trim() || stories.generating) return
   input.value = ''
   await stories.send(text)
 }
 
-const isEmpty = computed(() => stories.messages.length === 0 && !stories.streaming)
+const isEmpty = computed(() => stories.messages.length === 0 && !stories.generating)
 </script>
 
 <template>
@@ -79,10 +75,10 @@ const isEmpty = computed(() => stories.messages.length === 0 && !stories.streami
           </div>
 
           <MessageBubble
-            v-for="message in visibleMessages"
+            v-for="message in stories.messages"
             :key="message.id"
             :message="message"
-            :editable="!stories.streaming"
+            :editable="!stories.generating"
             @edit="stories.updateMessage(message.id, $event)"
             @remove="stories.removeMessage(message.id)"
             @regenerate="stories.regenerateLast()"
@@ -104,9 +100,9 @@ const isEmpty = computed(() => stories.messages.length === 0 && !stories.streami
             @keydown.enter.exact.prevent="submit"
           />
           <div class="flex shrink-0 flex-col gap-2">
-            <button type="submit" class="btn-primary" :disabled="stories.streaming">Enviar</button>
+            <button type="submit" class="btn-primary" :disabled="stories.generating">Enviar</button>
             <button
-              v-if="stories.streaming"
+              v-if="stories.generating"
               type="button"
               class="btn-ghost"
               @click="stories.stop()"

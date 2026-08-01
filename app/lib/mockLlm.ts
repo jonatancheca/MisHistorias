@@ -74,17 +74,3 @@ export function buildMockResponse(characters: Character[], images: StoredImage[]
   const shuffled = shuffle(lines)
   return shuffled.length ? shuffled.join('\n') : pick(NARRATION_LINES)
 }
-
-/** Emite la respuesta falsa por trozos para ejercitar el parser de streaming. */
-export async function* mockDeltas(
-  characters: Character[],
-  images: StoredImage[],
-  signal: AbortSignal
-) {
-  const text = buildMockResponse(characters, images)
-  for (let index = 0; index < text.length; index += 4) {
-    if (signal.aborted) return
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    yield text.slice(index, index + 4)
-  }
-}

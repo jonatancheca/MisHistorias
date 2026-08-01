@@ -10,8 +10,8 @@ import {
   putStory
 } from '~/lib/db'
 import { buildChatMessages } from '~/lib/promptBuilder'
-import { mockDeltas } from '~/lib/mockLlm'
-import { parseSegments, readSseDeltas } from '~/lib/streamParser'
+import { buildMockResponse } from '~/lib/mockLlm'
+import { parseSegments } from '~/lib/streamParser'
 
 export const useStoriesStore = defineStore('stories', () => {
   const stories = ref<Story[]>([])
@@ -19,8 +19,7 @@ export const useStoriesStore = defineStore('stories', () => {
 
   const activeStory = ref<Story | null>(null)
   const messages = ref<Message[]>([])
-  const draft = ref<Message | null>(null)
-  const streaming = ref(false)
+  const generating = ref(false)
   const error = ref<string | null>(null)
 
   let controller: AbortController | null = null
@@ -31,7 +30,6 @@ export const useStoriesStore = defineStore('stories', () => {
     loaded.value = false
     activeStory.value = null
     messages.value = []
-    draft.value = null
     error.value = null
   }
 
@@ -75,7 +73,6 @@ export const useStoriesStore = defineStore('stories', () => {
     await load()
     activeStory.value = stories.value.find((story) => story.id === id) ?? null
     messages.value = activeStory.value ? await listMessages(id) : []
-    draft.value = null
     error.value = null
   }
 
@@ -133,11 +130,11 @@ export const useStoriesStore = defineStore('stories', () => {
   function stop() {
     controller?.abort()
     controller = null
-    streaming.value = false
+    generating.value = false
   }
 
   async function generate() {
-    if (!activeStory.value || streaming.value) return
+    if (!activeStory.value || generating.value) return
     const story = activeStory.value
     const settingsStore = useSettingsStore()
     const presetsStore = usePresetsStore()
@@ -162,10 +159,10 @@ export const useStoriesStore = defineStore('stories', () => {
     }
 
     error.value = null
-    streaming.value = true
-    controller = new AbortController()
-
-    draft.value = {
+    generating.value = true
+    const requestController = new AbortController()
+    controller = requestController
+    const assistantMessage: Message = {
       id: newId(),
       storyId: story.id,
       role: 'assistant',
@@ -175,10 +172,11 @@ export const useStoriesStore = defineStore('stories', () => {
     }
 
     try {
-      let stream: AsyncIterable<string>
+      let raw = ''
+      let finishReason: string | null = null
 
       if (mock) {
-        stream = mockDeltas(storyCharacters, charactersStore.images, controller.signal)
+        raw = buildMockResponse(storyCharacters, charactersStore.images)
       } else {
         const payload = buildChatMessages({
           presetContent: preset!.content,
@@ -201,52 +199,68 @@ export const useStoriesStore = defineStore('stories', () => {
             temperature: settings.temperature,
             maxTokens: settings.maxTokens
           }),
-          signal: controller.signal
+          signal: requestController.signal
         })
 
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
           const detail = await response.text().catch(() => '')
           throw new Error(detail || `Error ${response.status} al llamar al modelo`)
         }
 
-        stream = readSseDeltas(response.body)
-      }
-
-      let raw = ''
-      for await (const delta of stream) {
-        raw += delta
-        draft.value = {
-          ...draft.value!,
-          raw,
-          segments: parseSegments(raw, storyCharacters)
+        const result = (await response.json()) as {
+          content?: unknown
+          finishReason?: unknown
         }
+        raw = typeof result.content === 'string' ? result.content : ''
+        finishReason = typeof result.finishReason === 'string' ? result.finishReason : null
       }
 
       if (raw.trim()) {
-        await persist({ ...draft.value!, raw, segments: parseSegments(raw, storyCharacters) })
+        if (requestController.signal.aborted) return
+        await persist({
+          ...assistantMessage,
+          raw,
+          segments: parseSegments(raw, storyCharacters)
+        })
+        if (requestController.signal.aborted) {
+          await dbDeleteMessage(assistantMessage.id)
+          messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
+          return
+        }
         await touchStory()
+        if (requestController.signal.aborted) {
+          await dbDeleteMessage(assistantMessage.id)
+          messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
+          return
+        }
+      }
+      if (finishReason === 'length') {
+        error.value = raw.trim()
+          ? 'La respuesta alcanzó el máximo de tokens. Se ha conservado el contenido parcial.'
+          : 'El modelo alcanzó el máximo de tokens antes de devolver contenido. Aumenta "Máx. tokens" en Ajustes.'
+      } else if (!raw.trim()) {
+        error.value = 'El modelo no devolvió contenido visible.'
       }
     } catch (caught) {
       if ((caught as Error).name !== 'AbortError') {
         error.value = (caught as Error).message || 'Fallo al generar la respuesta'
-      } else if (draft.value?.raw.trim()) {
-        await persist(draft.value)
       }
     } finally {
-      draft.value = null
-      streaming.value = false
-      controller = null
+      if (controller === requestController) {
+        generating.value = false
+        controller = null
+      }
     }
   }
 
   async function send(text: string) {
-    if (!text.trim() || streaming.value) return
+    if (!text.trim() || generating.value) return
     await addUserMessage(text)
     await generate()
   }
 
   async function regenerateLast() {
-    if (streaming.value) return
+    if (generating.value) return
     const last = messages.value[messages.value.length - 1]
     if (last?.role === 'assistant') await removeMessage(last.id)
     await generate()
@@ -257,8 +271,7 @@ export const useStoriesStore = defineStore('stories', () => {
     loaded,
     activeStory,
     messages,
-    draft,
-    streaming,
+    generating,
     error,
     load,
     createStory,

@@ -8,7 +8,7 @@ export interface ChatMessage {
 }
 
 const FORMAT_REMINDER =
-  'Recuerda el formato: una línea por intervención, `Nombre [etiqueta]: texto` para diálogo y línea sin prefijo para narración. Usa solo los personajes y etiquetas listados.'
+  'Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa `Nombre [etiqueta]: texto` para diálogo y una línea sin prefijo para narración. Usa solo los personajes y etiquetas listados.'
 
 function characterSheet(character: Character, images: StoredImage[]) {
   const own = images.filter((image) => image.characterId === character.id)
