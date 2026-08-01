@@ -24,6 +24,11 @@ import {
 import { buildChatMessages, resolveProtagonistPreferences } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
 import { parseSegments } from '~/lib/streamParser'
+import {
+  buildStoryImageCatalog,
+  compareStoryImageCatalogs,
+  formatStoryImageCatalogChange
+} from '~/lib/imageCatalog'
 
 const RESPONSE_CHARACTERS_PER_SECOND: Record<Exclude<ResponseSpeed, 'instant'>, number> = {
   slow: 20,
@@ -121,6 +126,8 @@ export const useStoriesStore = defineStore('stories', () => {
     initialBackgroundId: string | null
     presetId: string | null
   }) {
+    const charactersStore = useCharactersStore()
+    await charactersStore.load()
     const now = Date.now()
     const story: Story = {
       id: newId(),
@@ -131,6 +138,11 @@ export const useStoriesStore = defineStore('stories', () => {
       characterIds: [...input.characterIds],
       initialBackgroundId: input.initialBackgroundId,
       presetId: input.presetId,
+      imageCatalogSnapshot: buildStoryImageCatalog(
+        input.characterIds,
+        charactersStore.characters,
+        charactersStore.images
+      ),
       createdAt: now,
       updatedAt: now
     }
@@ -230,6 +242,19 @@ export const useStoriesStore = defineStore('stories', () => {
       if (index >= 0) debugTraces.value[index] = trace
       else debugTraces.value.push(trace)
       debugTraces.value.sort((a, b) => a.createdAt - b.createdAt)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function persistImageCatalogSnapshot(story: Story, snapshot: Story['imageCatalogSnapshot']) {
+    if (!snapshot) return false
+    try {
+      const updated = { ...story, imageCatalogSnapshot: snapshot }
+      await putStory(updated)
+      if (activeStory.value?.id === story.id) activeStory.value = updated
+      stories.value = stories.value.map((item) => (item.id === story.id ? updated : item))
       return true
     } catch {
       return false
@@ -370,6 +395,17 @@ export const useStoriesStore = defineStore('stories', () => {
     const storyCharacters = charactersStore.characters.filter((character) =>
       story.characterIds.includes(character.id)
     )
+    const currentImageCatalog = buildStoryImageCatalog(
+      story.characterIds,
+      charactersStore.characters,
+      charactersStore.images
+    )
+    const imageCatalogChange = story.imageCatalogSnapshot
+      ? compareStoryImageCatalogs(story.imageCatalogSnapshot, currentImageCatalog)
+      : null
+    if (!story.imageCatalogSnapshot) {
+      await persistImageCatalogSnapshot(story, currentImageCatalog)
+    }
     const preset = presetsStore.byId(story.presetId ?? settingsStore.activePresetId)
     if (!mock && !preset) {
       error.value = 'No hay ningún prompt de preparación disponible.'
@@ -418,7 +454,10 @@ export const useStoriesStore = defineStore('stories', () => {
             settings.protagonistPreferences ?? '',
             story.protagonistPreferences ?? '',
             story.protagonistPreferencesMode ?? 'append'
-          )
+          ),
+          imageCatalogChange: imageCatalogChange
+            ? formatStoryImageCatalogChange(imageCatalogChange)
+            : null
         })
 
         debugRequest = {
@@ -455,6 +494,11 @@ export const useStoriesStore = defineStore('stories', () => {
         raw = typeof result.content === 'string' ? result.content : ''
         finishReason = typeof result.finishReason === 'string' ? result.finishReason : null
         waitingForResponse = false
+
+        const snapshotStored = await persistImageCatalogSnapshot(story, currentImageCatalog)
+        if (!snapshotStored) {
+          error.value = 'La respuesta llegó, pero no se pudo actualizar el catálogo de imágenes.'
+        }
 
         const stored = await persistDebugTrace({
           id: newId(),

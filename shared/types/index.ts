@@ -20,6 +20,15 @@ export interface Character {
   updatedAt: number
 }
 
+export interface StoryImageCatalogEntry {
+  imageId: string
+  characterId: string
+  characterName: string
+  tags: string[]
+  description: string
+  isDefault: boolean
+}
+
 export interface Background {
   id: string
   /** Etiquetas únicas que el modelo usa en `Fondo [etiqueta]:` */
@@ -41,6 +50,8 @@ export interface Story {
   /** Fondo inicial; null permite que el modelo decida */
   initialBackgroundId: string | null
   presetId: string | null
+  /** Catálogo de imágenes comunicado en la última llamada válida al modelo. */
+  imageCatalogSnapshot?: StoryImageCatalogEntry[]
   createdAt: number
   updatedAt: number
 }

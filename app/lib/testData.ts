@@ -14,6 +14,7 @@ import {
   type StoredBackground,
   type StoredImage
 } from '~/lib/db'
+import { buildStoryImageCatalog } from '~/lib/imageCatalog'
 
 const TEST_TIME = Date.UTC(2026, 0, 15, 12, 0, 0)
 
@@ -189,6 +190,11 @@ async function seedNormalData() {
       characterIds: [TEST_DATA_IDS.characterAlicia, TEST_DATA_IDS.characterBruno],
       initialBackgroundId: TEST_DATA_IDS.backgroundForest,
       presetId: TEST_DATA_IDS.presetNarrative,
+      imageCatalogSnapshot: buildStoryImageCatalog(
+        [TEST_DATA_IDS.characterAlicia, TEST_DATA_IDS.characterBruno],
+        characters,
+        images
+      ),
       createdAt: TEST_TIME + 40,
       updatedAt: TEST_TIME + 50
     },
@@ -201,6 +207,11 @@ async function seedNormalData() {
       characterIds: [TEST_DATA_IDS.characterAlicia],
       initialBackgroundId: null,
       presetId: TEST_DATA_IDS.presetDialogue,
+      imageCatalogSnapshot: buildStoryImageCatalog(
+        [TEST_DATA_IDS.characterAlicia],
+        characters,
+        images
+      ),
       createdAt: TEST_TIME + 41,
       updatedAt: TEST_TIME + 41
     }

@@ -19,6 +19,7 @@ import {
 import { blobToDataUrl, dataUrlToBlob } from '~/lib/images'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
+import { buildStoryImageCatalog } from '~/lib/imageCatalog'
 
 const EXPORT_VERSION = 4
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -170,6 +171,8 @@ export async function importBundle(raw: string) {
   }
 
   const characterIdMap = new Map<string, string>()
+  const importedCharacters: Character[] = []
+  const importedImages: StoredImage[] = []
   for (const item of parsed.characters) {
     const character: Character = {
       id: newId(),
@@ -180,6 +183,7 @@ export async function importBundle(raw: string) {
       updatedAt: now
     }
     characterIdMap.set(String(item.id), character.id)
+    importedCharacters.push(character)
     await putCharacter(character)
 
     for (const image of item.images ?? []) {
@@ -196,6 +200,7 @@ export async function importBundle(raw: string) {
         createdAt: now,
         blob
       }
+      importedImages.push(stored)
       await putImage(stored)
     }
   }
@@ -244,6 +249,13 @@ export async function importBundle(raw: string) {
         ? (backgroundIdMap.get(String(item.initialBackgroundId)) ?? null)
         : null,
       presetId: item.presetId ? (presetIdMap.get(String(item.presetId)) ?? null) : null,
+      imageCatalogSnapshot: buildStoryImageCatalog(
+        (item.characterIds ?? [])
+          .map((id: string) => characterIdMap.get(String(id)))
+          .filter((id): id is string => Boolean(id)),
+        importedCharacters,
+        importedImages
+      ),
       createdAt: now,
       updatedAt: now
     }

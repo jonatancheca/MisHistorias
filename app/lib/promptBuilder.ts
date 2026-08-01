@@ -128,6 +128,7 @@ export function buildChatMessages(options: {
   historyBudget: number
   userName: string
   protagonistPreferences: string
+  imageCatalogChange?: string | null
 }): ChatMessage[] {
   const system = buildSystemPrompt(options)
   const history = buildHistory(
@@ -145,11 +146,15 @@ export function buildChatMessages(options: {
             'Comienza la historia a partir del planteamiento. Presenta la escena y deja que los personajes actúen.'
         }
       ]
+  const imageCatalogChange: ChatMessage[] = options.imageCatalogChange?.trim()
+    ? [{ role: 'system', content: options.imageCatalogChange.trim() }]
+    : []
 
   return [
     { role: 'system', content: system },
     ...history,
     ...opening,
+    ...imageCatalogChange,
     { role: 'system', content: FORMAT_REMINDER }
   ]
 }
