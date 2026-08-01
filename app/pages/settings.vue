@@ -296,18 +296,20 @@ onBeforeUnmount(() => {
         Todo se guarda en el navegador (IndexedDB). Exporta para hacer copia o mover a otro equipo.
       </p>
       <div class="flex flex-wrap gap-2">
-        <button type="button" class="btn-ghost" @click="doExport">Exportar JSON</button>
+        <div class="flex shrink-0 items-center gap-1">
+          <button type="button" class="btn-ghost" @click="doExport">Exportar JSON</button>
+          <button
+            type="button"
+            class="h-9 w-9 opacity-0"
+            aria-label="Activar modo privado"
+            :disabled="privacy.switching"
+            @click="onPrivateTrigger"
+          />
+        </div>
         <input ref="importInput" type="file" accept="application/json" class="hidden" @change="onImportFile" />
         <button type="button" class="btn-ghost" :disabled="importing" @click="importInput?.click()">
           {{ importing ? 'Importando…' : 'Importar JSON' }}
         </button>
-        <button
-          type="button"
-          class="h-9 w-9 opacity-0"
-          aria-label="Activar modo privado"
-          :disabled="privacy.switching"
-          @click="onPrivateTrigger"
-        />
       </div>
 
       <p v-if="importMessage" class="mt-2 text-xs text-[var(--color-fg-muted)]">{{ importMessage }}</p>
