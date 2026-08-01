@@ -15,11 +15,11 @@ export const usePrivacyStore = defineStore('privacy', () => {
     const presets = usePresetsStore()
 
     try {
-      stories.stop()
+      await stories.stop()
       setActiveDataScope(scope)
       isPrivate.value = nextPrivate
 
-      stories.resetForScope()
+      await stories.resetForScope()
       characters.resetForScope()
       presets.resetForScope()
 

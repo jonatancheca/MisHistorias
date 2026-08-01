@@ -33,6 +33,7 @@ export interface Story {
 export type MessageRole = 'user' | 'assistant'
 
 export type Theme = 'system' | 'light' | 'dark'
+export type ResponseSpeed = 'slow' | 'medium' | 'high' | 'instant'
 
 export type SegmentType = 'dialogue' | 'narration'
 
@@ -79,6 +80,8 @@ export interface AppSettings {
   defaultPresetVersion: number
   privateDefaultPresetVersion: number
   theme: Theme
+  /** Velocidad de revelado visual de las respuestas del asistente */
+  responseSpeed: ResponseSpeed
   /** Modo prueba: responde texto aleatorio sin llamar al LLM */
   mockMode: boolean
   /** Nombre con el que aparece el usuario en la historia */

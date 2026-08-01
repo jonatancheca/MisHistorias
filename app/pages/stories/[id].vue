@@ -45,7 +45,7 @@ const isEmpty = computed(() => stories.messages.length === 0 && !stories.generat
   <div v-else class="flex h-full min-h-0">
     <section class="flex min-w-0 flex-1 flex-col">
       <header
-        class="flex items-center justify-between border-b border-[var(--color-border-soft)] px-6 py-4"
+        class="flex items-center justify-between border-b border-[var(--color-border-soft)] px-4 py-3 sm:px-6 sm:py-4"
       >
         <div class="min-w-0">
           <h1 class="truncate text-lg font-bold">
@@ -64,7 +64,7 @@ const isEmpty = computed(() => stories.messages.length === 0 && !stories.generat
         <NuxtLink to="/" class="btn-ghost shrink-0">Historias</NuxtLink>
       </header>
 
-      <div ref="scroller" class="flex-1 overflow-y-auto px-6 py-6">
+      <div ref="scroller" class="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
         <div class="mx-auto max-w-3xl space-y-3">
           <div v-if="isEmpty" class="card text-sm text-[var(--color-fg-muted)]">
             La historia aún no ha empezado.
@@ -90,21 +90,23 @@ const isEmpty = computed(() => stories.messages.length === 0 && !stories.generat
         </div>
       </div>
 
-      <footer class="border-t border-[var(--color-border-soft)] p-4">
-        <form class="flex gap-2" @submit.prevent="submit">
+      <footer
+        class="border-t border-[var(--color-border-soft)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4"
+      >
+        <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="submit">
           <textarea
             v-model="input"
-            class="field min-h-12 resize-none"
+            class="field min-h-12 min-w-0 resize-none"
             rows="2"
             placeholder="Escribe lo que haces o dices…"
             @keydown.enter.exact.prevent="submit"
           />
-          <div class="flex shrink-0 flex-col gap-2">
-            <button type="submit" class="btn-primary" :disabled="stories.generating">Enviar</button>
+          <div class="flex shrink-0 flex-row gap-2 sm:flex-col">
+            <button type="submit" class="btn-primary flex-1 sm:flex-none" :disabled="stories.generating">Enviar</button>
             <button
               v-if="stories.generating"
               type="button"
-              class="btn-ghost"
+              class="btn-ghost flex-1 sm:flex-none"
               @click="stories.stop()"
             >
               Parar
@@ -112,7 +114,7 @@ const isEmpty = computed(() => stories.messages.length === 0 && !stories.generat
             <button
               v-else
               type="button"
-              class="btn-ghost"
+              class="btn-ghost flex-1 sm:flex-none"
               :disabled="stories.messages.length === 0"
               @click="stories.regenerateLast()"
             >

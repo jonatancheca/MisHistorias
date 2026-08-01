@@ -45,6 +45,7 @@ async function save() {
     temperature: Number(form.temperature),
     maxTokens: Number(form.maxTokens),
     historyBudget: Number(form.historyBudget),
+    responseSpeed: form.responseSpeed,
     userName: form.userName.trim() || 'Usuario',
     userColor: form.userColor
   })
@@ -242,6 +243,19 @@ onBeforeUnmount(() => {
       </div>
 
       <div>
+        <label class="label" for="responseSpeed">Velocidad de escritura</label>
+        <select id="responseSpeed" v-model="form.responseSpeed" class="field">
+          <option value="slow">Lenta</option>
+          <option value="medium">Media</option>
+          <option value="high">Alta</option>
+          <option value="instant">Inmediata</option>
+        </select>
+        <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+          Controla cómo aparece la respuesta una vez recibida del modelo.
+        </p>
+      </div>
+
+      <div>
         <button type="submit" class="btn-primary">Guardar ajustes</button>
       </div>
     </form>
@@ -295,6 +309,7 @@ onBeforeUnmount(() => {
           @click="onPrivateTrigger"
         />
       </div>
+
       <p v-if="importMessage" class="mt-2 text-xs text-[var(--color-fg-muted)]">{{ importMessage }}</p>
     </section>
   </div>

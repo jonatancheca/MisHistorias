@@ -15,6 +15,7 @@ const DEFAULTS: AppSettings = {
   defaultPresetVersion: 0,
   privateDefaultPresetVersion: 0,
   theme: 'system',
+  responseSpeed: 'high',
   mockMode: false,
   userName: 'Usuario',
   userColor: DEFAULT_USER_COLOR

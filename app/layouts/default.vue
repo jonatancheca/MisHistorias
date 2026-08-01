@@ -19,11 +19,11 @@ async function leavePrivateMode() {
 </script>
 
 <template>
-  <div class="flex h-screen bg-[var(--color-surface)] text-[var(--color-fg)]">
+  <div class="flex h-dvh min-h-0 flex-col bg-[var(--color-surface)] text-[var(--color-fg)] sm:flex-row">
     <aside
-      class="flex w-56 shrink-0 flex-col border-r border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] p-4"
+      class="flex w-full shrink-0 flex-col border-b border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] px-3 py-3 sm:w-56 sm:border-r sm:border-b-0 sm:p-4"
     >
-      <div class="mb-6 flex items-center gap-2">
+      <div class="mb-3 flex items-center gap-2 sm:mb-6">
         <NuxtLink to="/" class="flex items-center gap-2 text-lg font-bold">
           <span class="inline-block h-3 w-3 rounded-full bg-brand-500" />
           Mis historias
@@ -51,12 +51,12 @@ async function leavePrivateMode() {
         </button>
       </div>
 
-      <nav class="flex flex-1 flex-col gap-1">
+      <nav class="grid grid-cols-4 gap-1 sm:flex sm:flex-1 sm:flex-col">
         <NuxtLink
           v-for="link in links"
           :key="link.to"
           :to="link.to"
-          class="rounded-lg px-3 py-2 text-sm font-medium transition"
+          class="min-w-0 truncate rounded-lg px-1 py-2 text-center text-xs font-medium transition sm:px-3 sm:text-left sm:text-sm"
           :class="
             isActive(link.to)
               ? 'bg-brand-500 text-white'
@@ -68,7 +68,7 @@ async function leavePrivateMode() {
       </nav>
     </aside>
 
-    <main class="min-w-0 flex-1 overflow-y-auto">
+    <main class="min-h-0 min-w-0 flex-1 overflow-y-auto">
       <slot />
     </main>
   </div>

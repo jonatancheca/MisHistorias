@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { Message, Story } from '#shared/types'
+import type { Character, Message, ResponseSpeed, Story } from '#shared/types'
 import {
   deleteMessage as dbDeleteMessage,
   deleteStory,
@@ -13,6 +13,30 @@ import { buildChatMessages } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
 import { parseSegments } from '~/lib/streamParser'
 
+const RESPONSE_CHARACTERS_PER_SECOND: Record<Exclude<ResponseSpeed, 'instant'>, number> = {
+  slow: 20,
+  medium: 50,
+  high: 100
+}
+
+interface GraphemeSegment {
+  segment: string
+}
+
+type SegmenterConstructor = new (
+  locale?: string | string[],
+  options?: { granularity: 'grapheme' }
+) => { segment: (value: string) => Iterable<GraphemeSegment> }
+
+function splitGraphemes(value: string) {
+  const Segmenter = (Intl as unknown as { Segmenter?: SegmenterConstructor }).Segmenter
+  if (!Segmenter) return Array.from(value)
+  return Array.from(
+    new Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
+    ({ segment }) => segment
+  )
+}
+
 export const useStoriesStore = defineStore('stories', () => {
   const stories = ref<Story[]>([])
   const loaded = ref(false)
@@ -23,9 +47,13 @@ export const useStoriesStore = defineStore('stories', () => {
   const error = ref<string | null>(null)
 
   let controller: AbortController | null = null
+  let waitingForResponse = false
+  let animationFrame: number | null = null
+  let finishAnimation: ((completed: boolean) => void) | null = null
+  let animationDraft: Message | null = null
 
-  function resetForScope() {
-    stop()
+  async function resetForScope() {
+    await stop()
     stories.value = []
     loaded.value = false
     activeStory.value = null
@@ -127,10 +155,90 @@ export const useStoriesStore = defineStore('stories', () => {
     messages.value = messages.value.filter((message) => message.id !== id)
   }
 
-  function stop() {
-    controller?.abort()
+  function replaceDraft(message: Message) {
+    animationDraft = message
+    const index = messages.value.findIndex((item) => item.id === message.id)
+    if (index >= 0) messages.value[index] = message
+    else messages.value.push(message)
+  }
+
+  function cancelAnimation() {
+    if (animationFrame !== null) cancelAnimationFrame(animationFrame)
+    animationFrame = null
+    const finish = finishAnimation
+    finishAnimation = null
+    finish?.(false)
+  }
+
+  async function stop() {
+    const wasWaiting = waitingForResponse
+    const draft = animationDraft
+    const wasAnimating = finishAnimation !== null
+    if (!wasWaiting && !wasAnimating) return
+
+    if (wasWaiting) controller?.abort()
     controller = null
-    generating.value = false
+    waitingForResponse = false
+    cancelAnimation()
+    animationDraft = null
+
+    try {
+      if (draft?.raw.trim()) {
+        await persist(draft)
+        await touchStory()
+      } else if (draft) {
+        messages.value = messages.value.filter((message) => message.id !== draft.id)
+      }
+    } finally {
+      generating.value = false
+    }
+  }
+
+  function revealAssistantResponse(
+    raw: string,
+    assistantMessage: Message,
+    storyCharacters: Character[],
+    speed: Exclude<ResponseSpeed, 'instant'>
+  ) {
+    const graphemes = splitGraphemes(raw)
+    const charactersPerSecond = RESPONSE_CHARACTERS_PER_SECOND[speed]
+    const startedAt = performance.now()
+    let visibleCount = 0
+
+    replaceDraft(assistantMessage)
+
+    return new Promise<boolean>((resolve) => {
+      finishAnimation = resolve
+
+      const revealFrame = (now: number) => {
+        const targetCount = Math.min(
+          graphemes.length,
+          Math.max(1, Math.floor(((now - startedAt) * charactersPerSecond) / 1000) + 1)
+        )
+
+        if (targetCount > visibleCount) {
+          visibleCount = targetCount
+          const visibleRaw = graphemes.slice(0, visibleCount).join('')
+          replaceDraft({
+            ...assistantMessage,
+            raw: visibleRaw,
+            segments: parseSegments(visibleRaw, storyCharacters)
+          })
+        }
+
+        if (visibleCount >= graphemes.length) {
+          animationFrame = null
+          finishAnimation = null
+          animationDraft = null
+          resolve(true)
+          return
+        }
+
+        animationFrame = requestAnimationFrame(revealFrame)
+      }
+
+      animationFrame = requestAnimationFrame(revealFrame)
+    })
   }
 
   async function generate() {
@@ -188,6 +296,7 @@ export const useStoriesStore = defineStore('stories', () => {
           userName: settings.userName?.trim() || 'Usuario'
         })
 
+        waitingForResponse = true
         const response = await fetch('/api/llm/chat', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -213,10 +322,20 @@ export const useStoriesStore = defineStore('stories', () => {
         }
         raw = typeof result.content === 'string' ? result.content : ''
         finishReason = typeof result.finishReason === 'string' ? result.finishReason : null
+        waitingForResponse = false
       }
 
       if (raw.trim()) {
         if (requestController.signal.aborted) return
+        if (settings.responseSpeed !== 'instant') {
+          const completed = await revealAssistantResponse(
+            raw,
+            assistantMessage,
+            storyCharacters,
+            settings.responseSpeed
+          )
+          if (!completed) return
+        }
         await persist({
           ...assistantMessage,
           raw,
@@ -246,6 +365,7 @@ export const useStoriesStore = defineStore('stories', () => {
         error.value = (caught as Error).message || 'Fallo al generar la respuesta'
       }
     } finally {
+      waitingForResponse = false
       if (controller === requestController) {
         generating.value = false
         controller = null
