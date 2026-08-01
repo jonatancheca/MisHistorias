@@ -37,17 +37,21 @@ export function buildSystemPrompt(options: {
   characters: Character[]
   images: StoredImage[]
   userName: string
+  protagonistPreferences: string
 }): string {
-  const { presetContent, story, characters, images, userName } = options
+  const { presetContent, story, characters, images, userName, protagonistPreferences } = options
   return [
     presetContent.trim(),
     '',
     '## PLANTEAMIENTO DE LA HISTORIA',
     story.premise.trim() || '(sin planteamiento)',
     '',
-    '## EL USUARIO',
-    `El usuario juega como "${userName}". Sus mensajes llegan con el prefijo \`${userName}:\`.`,
-    'No hables ni decidas por él; reacciona a lo que hace.',
+    '## EL PROTAGONISTA',
+    `El protagonista se llama "${userName}". Sus mensajes llegan con el prefijo \`${userName}:\`.`,
+    protagonistPreferences.trim()
+      ? `Preferencias del protagonista:\n${protagonistPreferences.trim()}`
+      : 'Preferencias del protagonista: (sin preferencias adicionales)',
+    'No hables ni decidas por el protagonista; reacciona a lo que hace.',
     '',
     '## PERSONAJES',
     characters.map((character) => characterSheet(character, images)).join('\n\n')
@@ -89,6 +93,7 @@ export function buildChatMessages(options: {
   messages: Message[]
   historyBudget: number
   userName: string
+  protagonistPreferences: string
 }): ChatMessage[] {
   const system = buildSystemPrompt(options)
   const history = buildHistory(
@@ -113,4 +118,15 @@ export function buildChatMessages(options: {
     ...opening,
     { role: 'system', content: FORMAT_REMINDER }
   ]
+}
+
+export function resolveProtagonistPreferences(
+  globalPreferences: string,
+  storyPreferences: string,
+  mode: Story['protagonistPreferencesMode']
+) {
+  const globalValue = globalPreferences.trim()
+  const storyValue = storyPreferences.trim()
+  if (mode === 'replace') return storyValue
+  return [globalValue, storyValue].filter(Boolean).join('\n')
 }

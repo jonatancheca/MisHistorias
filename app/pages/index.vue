@@ -1,10 +1,15 @@
 <script setup lang="ts">
 const stories = useStoriesStore()
+const confirmDialog = useConfirmStore()
 
 await stories.load()
 
 async function remove(id: string) {
-  if (!confirm('¿Borrar la historia y todos sus mensajes?')) return
+  const accepted = await confirmDialog.ask({
+    title: 'Borrar historia',
+    message: 'Se borrarán la historia y todos sus mensajes. Esta acción no se puede deshacer.'
+  })
+  if (!accepted) return
   await stories.removeStory(id)
 }
 </script>

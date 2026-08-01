@@ -1,7 +1,14 @@
 import { defineStore } from 'pinia'
-import type { Character, Message, ResponseSpeed, Story } from '#shared/types'
+import type {
+  Character,
+  Message,
+  ProtagonistPreferencesMode,
+  ResponseSpeed,
+  Story
+} from '#shared/types'
 import {
   deleteMessage as dbDeleteMessage,
+  deleteMessages as dbDeleteMessages,
   deleteStory,
   listMessages,
   listStories,
@@ -9,7 +16,7 @@ import {
   putMessage,
   putStory
 } from '~/lib/db'
-import { buildChatMessages } from '~/lib/promptBuilder'
+import { buildChatMessages, resolveProtagonistPreferences } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
 import { parseSegments } from '~/lib/streamParser'
 
@@ -70,6 +77,8 @@ export const useStoriesStore = defineStore('stories', () => {
   async function createStory(input: {
     title: string
     premise: string
+    protagonistPreferences: string
+    protagonistPreferencesMode: ProtagonistPreferencesMode
     characterIds: string[]
     presetId: string | null
   }) {
@@ -78,6 +87,8 @@ export const useStoriesStore = defineStore('stories', () => {
       id: newId(),
       title: input.title.trim() || 'Historia sin título',
       premise: input.premise.trim(),
+      protagonistPreferences: input.protagonistPreferences.trim(),
+      protagonistPreferencesMode: input.protagonistPreferencesMode,
       characterIds: [...input.characterIds],
       presetId: input.presetId,
       createdAt: now,
@@ -160,6 +171,22 @@ export const useStoriesStore = defineStore('stories', () => {
     const index = messages.value.findIndex((item) => item.id === message.id)
     if (index >= 0) messages.value[index] = message
     else messages.value.push(message)
+  }
+
+  async function updateStoryPreferences(
+    protagonistPreferences: string,
+    protagonistPreferencesMode: ProtagonistPreferencesMode
+  ) {
+    if (!activeStory.value) return
+    const updated: Story = {
+      ...activeStory.value,
+      protagonistPreferences: protagonistPreferences.trim(),
+      protagonistPreferencesMode,
+      updatedAt: Date.now()
+    }
+    await putStory(updated)
+    activeStory.value = updated
+    stories.value = stories.value.map((story) => (story.id === updated.id ? updated : story))
   }
 
   function cancelAnimation() {
@@ -293,7 +320,12 @@ export const useStoriesStore = defineStore('stories', () => {
           images: charactersStore.images,
           messages: messages.value,
           historyBudget: settings.historyBudget,
-          userName: settings.userName?.trim() || 'Usuario'
+          userName: settings.userName?.trim() || 'Protagonista',
+          protagonistPreferences: resolveProtagonistPreferences(
+            settings.protagonistPreferences ?? '',
+            story.protagonistPreferences ?? '',
+            story.protagonistPreferencesMode ?? 'append'
+          )
         })
 
         waitingForResponse = true
@@ -379,10 +411,14 @@ export const useStoriesStore = defineStore('stories', () => {
     await generate()
   }
 
-  async function regenerateLast() {
+  async function regenerateFrom(id: string) {
     if (generating.value) return
-    const last = messages.value[messages.value.length - 1]
-    if (last?.role === 'assistant') await removeMessage(last.id)
+    const index = messages.value.findIndex((message) => message.id === id)
+    if (index < 0 || messages.value[index]?.role !== 'assistant') return
+    const ids = messages.value.slice(index).map((message) => message.id)
+    await dbDeleteMessages(ids)
+    messages.value = messages.value.slice(0, index)
+    await touchStory()
     await generate()
   }
 
@@ -395,6 +431,7 @@ export const useStoriesStore = defineStore('stories', () => {
     error,
     load,
     createStory,
+    updateStoryPreferences,
     removeStory,
     openStory,
     addUserMessage,
@@ -402,7 +439,7 @@ export const useStoriesStore = defineStore('stories', () => {
     removeMessage,
     send,
     generate,
-    regenerateLast,
+    regenerateFrom,
     stop,
     resetForScope
   }

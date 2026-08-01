@@ -46,8 +46,9 @@ async function save() {
     maxTokens: Number(form.maxTokens),
     historyBudget: Number(form.historyBudget),
     responseSpeed: form.responseSpeed,
-    userName: form.userName.trim() || 'Usuario',
-    userColor: form.userColor
+    userName: form.userName.trim() || 'Protagonista',
+    userColor: form.userColor,
+    protagonistPreferences: form.protagonistPreferences.trim()
   })
 }
 
@@ -261,14 +262,14 @@ onBeforeUnmount(() => {
     </form>
 
     <section class="mt-10">
-      <h2 class="mb-2 text-lg font-semibold">Tu personaje</h2>
+      <h2 class="mb-2 text-lg font-semibold">Protagonista</h2>
       <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
-        Nombre y color con los que apareces tú en la historia.
+        Nombre, color y preferencias con los que apareces en todas las historias.
       </p>
       <form class="grid gap-4 sm:grid-cols-2" @submit.prevent="save">
         <div>
           <label class="label" for="userName">Nombre</label>
-          <input id="userName" v-model="form.userName" class="field" placeholder="Usuario" />
+          <input id="userName" v-model="form.userName" class="field" placeholder="Protagonista" />
         </div>
         <div>
           <label class="label" for="userColor">Color</label>
@@ -280,9 +281,18 @@ onBeforeUnmount(() => {
               class="h-9 w-14 cursor-pointer rounded border border-[var(--color-border-soft)] bg-transparent"
             />
             <span class="text-sm font-semibold" :style="{ color: form.userColor }">
-              {{ form.userName || 'Usuario' }}
+              {{ form.userName || 'Protagonista' }}
             </span>
           </div>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="label" for="protagonistPreferences">Preferencias globales</label>
+          <textarea
+            id="protagonistPreferences"
+            v-model="form.protagonistPreferences"
+            class="field min-h-28"
+            placeholder="Personalidad, límites, objetivos o forma de actuar del protagonista."
+          />
         </div>
         <div class="sm:col-span-2">
           <button type="submit" class="btn-primary">Guardar</button>

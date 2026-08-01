@@ -1,5 +1,5 @@
 export const DEFAULT_PRESET_NAME = 'Por defecto'
-export const DEFAULT_PRESET_VERSION = 2
+export const DEFAULT_PRESET_VERSION = 3
 
 export const DEFAULT_PRESET_CONTENT = `Eres el motor narrativo de una historia interactiva. Interpretas a todos los personajes y narras lo que ocurre.
 
@@ -19,6 +19,6 @@ Ana [enfadada]: ¿Se puede saber dónde estabas?
 Ana [neutral]: Da igual. Entra y cierra.
 
 ESTILO:
-- Responde en el idioma del usuario.
+- Responde en el idioma del protagonista.
 - Avanza la escena: acción concreta, no resúmenes.
-- No decidas por el usuario ni narres sus acciones; él es el narrador/jugador.`
+- No decidas por el protagonista ni narres sus acciones; el protagonista es el narrador/jugador.`

@@ -8,6 +8,8 @@ await Promise.all([characters.load(), presets.load(), settings.load()])
 
 const title = ref('')
 const premise = ref('')
+const protagonistPreferences = ref('')
+const protagonistPreferencesMode = ref<'append' | 'replace'>('append')
 const selected = ref<string[]>([])
 const presetId = ref<string | null>(settings.activePresetId)
 const saving = ref(false)
@@ -29,6 +31,8 @@ async function submit() {
     const story = await stories.createStory({
       title: title.value,
       premise: premise.value,
+      protagonistPreferences: protagonistPreferences.value,
+      protagonistPreferencesMode: protagonistPreferencesMode.value,
       characterIds: selected.value,
       presetId: presetId.value
     })
@@ -57,6 +61,29 @@ async function submit() {
           class="field min-h-40"
           placeholder="Dónde ocurre, cuándo, qué está pasando y qué tono tiene la historia."
         />
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-[1fr_12rem]">
+        <div>
+          <label class="label" for="protagonistPreferences">Preferencias del protagonista</label>
+          <textarea
+            id="protagonistPreferences"
+            v-model="protagonistPreferences"
+            class="field min-h-28"
+            placeholder="Preferencias específicas para esta historia."
+          />
+        </div>
+        <div>
+          <label class="label" for="protagonistPreferencesMode">Combinar con globales</label>
+          <select
+            id="protagonistPreferencesMode"
+            v-model="protagonistPreferencesMode"
+            class="field"
+          >
+            <option value="append">Añadir</option>
+            <option value="replace">Reemplazar</option>
+          </select>
+        </div>
       </div>
 
       <div>

@@ -1,9 +1,14 @@
 <script setup lang="ts">
 const characters = useCharactersStore()
+const confirmDialog = useConfirmStore()
 await characters.load()
 
 async function remove(id: string) {
-  if (!confirm('¿Borrar el personaje y sus imágenes?')) return
+  const accepted = await confirmDialog.ask({
+    title: 'Borrar personaje',
+    message: 'Se borrarán el personaje y todas sus imágenes. Esta acción no se puede deshacer.'
+  })
+  if (!accepted) return
   await characters.removeCharacter(id)
 }
 </script>

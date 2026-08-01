@@ -2,6 +2,7 @@
 const props = defineProps<{ characterId: string }>()
 
 const characters = useCharactersStore()
+const confirmDialog = useConfirmStore()
 const fileInput = ref<HTMLInputElement | null>(null)
 const pendingTag = ref('')
 const pendingDescription = ref('')
@@ -25,6 +26,11 @@ async function onFile(event: Event) {
 }
 
 async function remove(id: string) {
+  const accepted = await confirmDialog.ask({
+    title: 'Borrar imagen',
+    message: 'Esta imagen se borrará definitivamente.'
+  })
+  if (!accepted) return
   await characters.removeImage(id)
 }
 </script>

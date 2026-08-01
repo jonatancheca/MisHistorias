@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const presets = usePresetsStore()
 const settings = useSettingsStore()
+const confirmDialog = useConfirmStore()
 await Promise.all([presets.load(), settings.load()])
 
 const selectedId = ref<string | null>(settings.activePresetId ?? presets.presets[0]?.id ?? null)
@@ -38,7 +39,11 @@ async function save() {
 
 async function remove() {
   if (!selectedId.value) return
-  if (!confirm('¿Borrar este prompt?')) return
+  const accepted = await confirmDialog.ask({
+    title: 'Borrar prompt',
+    message: 'Este prompt se borrará definitivamente.'
+  })
+  if (!accepted) return
   await presets.removePreset(selectedId.value)
   selectedId.value = presets.presets[0]?.id ?? null
   loadSelected()

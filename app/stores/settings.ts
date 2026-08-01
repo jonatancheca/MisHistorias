@@ -17,8 +17,9 @@ const DEFAULTS: AppSettings = {
   theme: 'system',
   responseSpeed: 'high',
   mockMode: false,
-  userName: 'Usuario',
-  userColor: DEFAULT_USER_COLOR
+  userName: 'Protagonista',
+  userColor: DEFAULT_USER_COLOR,
+  protagonistPreferences: ''
 }
 
 export const useSettingsStore = defineStore('settings', () => {

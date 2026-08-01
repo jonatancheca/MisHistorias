@@ -226,6 +226,14 @@ export async function deleteMessage(id: string) {
   await db.delete('messages', id)
 }
 
+export async function deleteMessages(ids: string[]) {
+  if (ids.length === 0) return
+  const db = await getDb()
+  const tx = db.transaction('messages', 'readwrite')
+  await Promise.all(ids.map((id) => tx.store.delete(id)))
+  await tx.done
+}
+
 /* presets */
 
 export async function listPresets() {

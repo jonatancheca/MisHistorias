@@ -24,6 +24,10 @@ export interface Story {
   id: string
   title: string
   premise: string
+  /** Preferencias del protagonista especificas de esta historia */
+  protagonistPreferences: string
+  /** Anade las preferencias globales o las reemplaza para esta historia */
+  protagonistPreferencesMode: ProtagonistPreferencesMode
   characterIds: string[]
   presetId: string | null
   createdAt: number
@@ -34,6 +38,7 @@ export type MessageRole = 'user' | 'assistant'
 
 export type Theme = 'system' | 'light' | 'dark'
 export type ResponseSpeed = 'slow' | 'medium' | 'high' | 'instant'
+export type ProtagonistPreferencesMode = 'append' | 'replace'
 
 export type SegmentType = 'dialogue' | 'narration'
 
@@ -84,10 +89,12 @@ export interface AppSettings {
   responseSpeed: ResponseSpeed
   /** Modo prueba: responde texto aleatorio sin llamar al LLM */
   mockMode: boolean
-  /** Nombre con el que aparece el usuario en la historia */
+  /** Nombre con el que aparece el protagonista en la historia */
   userName: string
-  /** Color hex del usuario en la historia */
+  /** Color hex del protagonista en la historia */
   userColor: string
+  /** Preferencias globales del protagonista inyectadas en el prompt */
+  protagonistPreferences: string
 }
 
 export interface LlmModel {

@@ -16,7 +16,7 @@ import {
 import { blobToDataUrl, dataUrlToBlob } from '~/lib/images'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 
-const EXPORT_VERSION = 1
+const EXPORT_VERSION = 2
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -37,6 +37,8 @@ interface ExportedCharacter {
 interface ExportedStory {
   title: string
   premise: string
+  protagonistPreferences?: string
+  protagonistPreferencesMode?: 'append' | 'replace'
   characterIds: string[]
   presetId: string | null
   messages: Array<Pick<Message, 'role' | 'raw' | 'segments' | 'createdAt'>>
@@ -81,6 +83,8 @@ export async function exportBundle(): Promise<ExportBundle> {
     stories.map(async (story) => ({
       title: story.title,
       premise: story.premise,
+      protagonistPreferences: story.protagonistPreferences ?? '',
+      protagonistPreferencesMode: story.protagonistPreferencesMode ?? 'append',
       characterIds: story.characterIds,
       presetId: story.presetId,
       messages: (await listMessages(story.id)).map((message) => ({
@@ -114,7 +118,9 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (bundle.version !== EXPORT_VERSION) throw new Error('Versión de exportación no compatible')
+  if (bundle.version !== 1 && bundle.version !== EXPORT_VERSION) {
+    throw new Error('Versión de exportación no compatible')
+  }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
     throw new Error('Fichero incompleto')
   }
@@ -174,6 +180,9 @@ export async function importBundle(raw: string) {
       id: newId(),
       title: String(item.title ?? 'Historia importada'),
       premise: String(item.premise ?? ''),
+      protagonistPreferences: String(item.protagonistPreferences ?? ''),
+      protagonistPreferencesMode:
+        item.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
       characterIds: (item.characterIds ?? [])
         .map((id: string) => characterIdMap.get(String(id)))
         .filter((id): id is string => Boolean(id)),

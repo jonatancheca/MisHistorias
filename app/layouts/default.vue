@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const route = useRoute()
 const privacy = usePrivacyStore()
+const { hidden: mobileChromeHidden } = useMobileChrome()
 
 const links = [
   { to: '/', label: 'Histórias' },
@@ -21,7 +22,12 @@ async function leavePrivateMode() {
 <template>
   <div class="flex h-dvh min-h-0 flex-col bg-[var(--color-surface)] text-[var(--color-fg)] sm:flex-row">
     <aside
-      class="flex w-full shrink-0 flex-col border-b border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] px-3 py-3 sm:w-56 sm:border-r sm:border-b-0 sm:p-4"
+      class="flex w-full shrink-0 flex-col border-b border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] px-3 transition-[max-height,opacity,padding,transform] duration-200 sm:max-h-none sm:w-56 sm:translate-y-0 sm:border-r sm:border-b-0 sm:p-4 sm:opacity-100"
+      :class="
+        mobileChromeHidden
+          ? 'max-h-0 -translate-y-2 overflow-hidden border-b-0 py-0 opacity-0'
+          : 'max-h-32 translate-y-0 py-3 opacity-100'
+      "
     >
       <div class="mb-3 flex items-center gap-2 sm:mb-6">
         <NuxtLink to="/" class="flex items-center gap-2 text-lg font-bold">
