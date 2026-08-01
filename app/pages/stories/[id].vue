@@ -262,7 +262,7 @@ onBeforeUnmount(() => {
               :src="backgrounds.urlFor(initialBackground.id)!"
               :alt="`Fondo inicial ${primaryTag(initialBackground) ?? ''}`"
               class="max-h-[32rem] w-full rounded-2xl bg-black/5 object-contain"
-            />
+            >
             <div
               v-else
               class="rounded-xl border border-dashed border-[var(--color-border-soft)] p-4 text-sm text-[var(--color-fg-muted)]"

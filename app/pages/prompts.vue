@@ -93,7 +93,7 @@ async function setActive() {
       <form class="grid gap-4" @submit.prevent="save">
         <div>
           <label class="label" for="preset-name">Nombre</label>
-          <input id="preset-name" v-model="name" class="field" />
+          <input id="preset-name" v-model="name" class="field" >
         </div>
         <div>
           <label class="label" for="preset-content">Contenido</label>

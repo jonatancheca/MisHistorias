@@ -32,8 +32,8 @@ async function remove(id: string) {
             :src="characters.urlFor(characters.defaultImage(character.id)?.id)!"
             alt=""
             class="h-16 w-16 rounded-xl object-cover"
-          />
-          <div class="h-16 w-16 shrink-0 rounded-xl bg-brand-500/20" v-else />
+          >
+          <div v-else class="h-16 w-16 shrink-0 rounded-xl bg-brand-500/20" />
           <div class="min-w-0 flex-1">
             <NuxtLink
               :to="`/characters/${character.id}`"

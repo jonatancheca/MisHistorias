@@ -39,7 +39,7 @@ function currentTag(characterId: string) {
         :src="backgrounds.urlFor(currentBackground.id)!"
         :alt="`Fondo ${primaryTag(currentBackground) ?? ''}`"
         class="max-h-48 w-full rounded-lg bg-black/5 object-contain"
-      />
+      >
       <div v-else class="flex aspect-video items-center justify-center rounded-lg bg-brand-500/10 px-2 text-center text-xs text-[var(--color-fg-muted)]">
         {{ backgroundId || backgroundTag ? 'Fondo no disponible' : 'Sin fondo' }}
       </div>
@@ -64,7 +64,7 @@ function currentTag(characterId: string) {
         :src="imageUrl(character.id)!"
         :alt="character.name"
         class="aspect-square w-full rounded-lg object-cover"
-      />
+      >
       <div v-else class="aspect-square w-full rounded-lg bg-brand-500/20" />
       <p class="mt-2 truncate text-sm font-semibold" :style="{ color: characters.colorOf(character.id) }">
         {{ character.name }}

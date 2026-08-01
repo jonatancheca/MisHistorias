@@ -55,7 +55,7 @@ async function submit() {
     <form class="grid gap-5" @submit.prevent="submit">
       <div>
         <label class="label" for="title">Título</label>
-        <input id="title" v-model="title" class="field" placeholder="La taberna del puerto" />
+        <input id="title" v-model="title" class="field" placeholder="La taberna del puerto" >
       </div>
 
       <div>
@@ -115,7 +115,7 @@ async function submit() {
               :src="characters.urlFor(characters.defaultImage(character.id)?.id)!"
               alt=""
               class="h-10 w-10 rounded-full object-cover"
-            />
+            >
             <span v-else class="h-10 w-10 rounded-full bg-brand-500/20" />
             <span class="min-w-0">
               <span class="block truncate font-medium">{{ character.name }}</span>
@@ -162,7 +162,7 @@ async function submit() {
               :src="backgrounds.urlFor(background.id)!"
               alt=""
               class="h-12 w-16 shrink-0 rounded-lg object-contain"
-            />
+            >
             <span class="min-w-0">
               <span class="block truncate font-medium">{{ primaryTag(background) }}</span>
               <span class="block truncate text-xs text-[var(--color-fg-muted)]">

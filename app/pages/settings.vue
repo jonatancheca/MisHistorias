@@ -243,7 +243,7 @@ onBeforeRouteLeave(async () => {
             class="mt-1 h-4 w-4 accent-[var(--color-brand-500)]"
             :checked="settings.settings.mockMode"
             @change="setMockMode(($event.target as HTMLInputElement).checked)"
-          />
+          >
           <span>
             <span class="block text-sm font-semibold">Modo prueba (sin LLM)</span>
             <span class="block text-xs text-[var(--color-fg-muted)]">
@@ -257,7 +257,7 @@ onBeforeRouteLeave(async () => {
       <div>
         <label class="label" for="baseUrl">URL del servidor (LMStudio)</label>
         <div class="flex gap-2">
-          <input id="baseUrl" v-model="form.baseUrl" class="field" placeholder="http://localhost:1234" />
+          <input id="baseUrl" v-model="form.baseUrl" class="field" placeholder="http://localhost:1234" >
           <button type="button" class="btn-ghost shrink-0" :disabled="testing" @click="testConnection">
             {{ testing ? 'Probando…' : 'Probar conexión' }}
           </button>
@@ -279,7 +279,7 @@ onBeforeRouteLeave(async () => {
           autocomplete="off"
           class="field"
           placeholder="Solo si LMStudio pide API key"
-        />
+        >
         <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
           Se envía como <code>Authorization: Bearer</code>. Se guarda en este navegador sin cifrar.
         </p>
@@ -290,7 +290,7 @@ onBeforeRouteLeave(async () => {
         <select v-if="models.length" id="model" v-model="form.model" class="field">
           <option v-for="model in models" :key="model" :value="model">{{ model }}</option>
         </select>
-        <input v-else id="model" v-model="form.model" class="field" placeholder="nombre-del-modelo" />
+        <input v-else id="model" v-model="form.model" class="field" placeholder="nombre-del-modelo" >
       </div>
 
       <div class="grid gap-4 sm:grid-cols-3">
@@ -304,11 +304,11 @@ onBeforeRouteLeave(async () => {
             min="0"
             max="2"
             class="field"
-          />
+          >
         </div>
         <div>
           <label class="label" for="maxTokens">Máx. tokens</label>
-          <input id="maxTokens" v-model.number="form.maxTokens" type="number" min="64" class="field" />
+          <input id="maxTokens" v-model.number="form.maxTokens" type="number" min="64" class="field" >
         </div>
         <div>
           <label class="label" for="historyBudget">Historial (caracteres)</label>
@@ -319,7 +319,7 @@ onBeforeRouteLeave(async () => {
             min="1000"
             step="1000"
             class="field"
-          />
+          >
         </div>
       </div>
 
@@ -346,7 +346,7 @@ onBeforeRouteLeave(async () => {
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label class="label" for="userName">Nombre</label>
-          <input id="userName" v-model="form.userName" class="field" placeholder="Protagonista" />
+          <input id="userName" v-model="form.userName" class="field" placeholder="Protagonista" >
         </div>
         <div>
           <label class="label" for="userColor">Color</label>
@@ -356,7 +356,7 @@ onBeforeRouteLeave(async () => {
               v-model="form.userColor"
               type="color"
               class="h-9 w-14 cursor-pointer rounded border border-[var(--color-border-soft)] bg-transparent"
-            />
+            >
             <span class="text-sm font-semibold" :style="{ color: form.userColor }">
               {{ form.userName || 'Protagonista' }}
             </span>
@@ -382,18 +382,18 @@ onBeforeRouteLeave(async () => {
       <div class="flex flex-wrap gap-2">
         <div class="flex shrink-0 items-center gap-1">
           <button type="button" class="btn-ghost" @click="doExport">Exportar JSON</button>
-          <button
-            type="button"
-            class="h-9 w-9 opacity-0"
-            aria-label="Activar modo privado"
-            :disabled="privacy.switching"
-            @click="onPrivateTrigger"
-          />
         </div>
-        <input ref="importInput" type="file" accept="application/json" class="hidden" @change="onImportFile" />
+        <input ref="importInput" type="file" accept="application/json" class="hidden" @change="onImportFile" >
         <button type="button" class="btn-ghost" :disabled="importing" @click="importInput?.click()">
           {{ importing ? 'Importando…' : 'Importar JSON' }}
         </button>
+        <button
+          type="button"
+          class="h-10 w-12 opacity-0"
+          aria-label="Activar modo privado"
+          :disabled="privacy.switching"
+          @click="onPrivateTrigger"
+        />
       </div>
 
       <p v-if="importMessage" class="mt-2 text-xs text-[var(--color-fg-muted)]">{{ importMessage }}</p>

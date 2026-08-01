@@ -182,7 +182,7 @@ function confirmEdit() {
                 :src="row.imageUrl"
                 :alt="`Fondo ${row.tag ?? ''}`"
                 class="max-h-[28rem] w-full rounded-2xl bg-black/5 object-contain"
-              />
+              >
               <div
                 v-else
                 class="rounded-xl border border-dashed border-[var(--color-border-soft)] p-4 text-sm text-[var(--color-fg-muted)]"
@@ -213,7 +213,7 @@ function confirmEdit() {
                   :alt="`${row.name} ${row.tag ?? ''}`"
                   class="aspect-square w-40 rounded-xl object-cover"
                   :style="{ border: `2px solid ${row.color}` }"
-                />
+                >
                 <figcaption class="mt-1 text-xs text-[var(--color-fg-muted)]">
                   {{ row.name }}<span v-if="row.tag"> · {{ row.tag }}</span>
                 </figcaption>
