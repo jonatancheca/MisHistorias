@@ -1,6 +1,7 @@
 import type { Character, Message, Story } from '#shared/types'
 import type { StoredBackground, StoredImage } from '~/lib/db'
 import { serializeSegments } from '~/lib/streamParser'
+import { primaryTag } from '~/lib/tags'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -17,7 +18,7 @@ function characterSheet(character: Character, images: StoredImage[]) {
     ? own
         .map(
           (image) =>
-            `  - [${image.tag}]${image.isDefault ? ' (por defecto)' : ''}: ${image.description || 'sin descripción'}`
+            `  - ${image.tags.map((tag) => `[${tag}]`).join(' / ')}${image.isDefault ? ' (por defecto)' : ''}: ${image.description || 'sin descripción'}`
         )
         .join('\n')
     : '  - (sin imágenes; usa [neutral])'
@@ -27,7 +28,7 @@ function characterSheet(character: Character, images: StoredImage[]) {
     character.prompt.trim() || '(sin descripción)',
     'Etiquetas de imagen disponibles:',
     tags,
-    fallback ? `Etiqueta por defecto: [${fallback.tag}]` : 'Etiqueta por defecto: [neutral]'
+    fallback ? `Etiqueta por defecto: [${primaryTag(fallback)}]` : 'Etiqueta por defecto: [neutral]'
   ].join('\n')
 }
 
@@ -37,11 +38,11 @@ function backgroundSheet(story: Story, backgrounds: StoredBackground[]) {
   const catalog = backgrounds
     .map(
       (background) =>
-        `- [${background.tag}]: ${background.description || 'sin descripción'}`
+        `- ${background.tags.map((tag) => `[${tag}]`).join(' / ')}: ${background.description || 'sin descripción'}`
     )
     .join('\n')
   const initialRule = initial
-    ? `Fondo inicial: [${initial.tag}]. No lo anuncies al comenzar; usa una directiva solo cuando cambie.`
+    ? `Fondo inicial: [${primaryTag(initial)}]. No lo anuncies al comenzar; usa una directiva solo cuando cambie.`
     : 'No hay fondo inicial. Elige uno y comienza la primera respuesta con su directiva.'
   return [
     catalog,

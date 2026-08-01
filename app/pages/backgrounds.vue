@@ -1,22 +1,31 @@
 <script setup lang="ts">
+import type { StoredBackground } from '~/lib/db'
+import { primaryTag } from '~/lib/tags'
+
 const backgrounds = useBackgroundsStore()
 const confirmDialog = useConfirmStore()
 
 await backgrounds.load()
 
-const tag = ref('')
+const tags = ref<string[]>([])
 const description = ref('')
-const fileInput = ref<HTMLInputElement | null>(null)
+const pendingFile = ref<File | null>(null)
 const busy = ref(false)
 const error = ref<string | null>(null)
 
-async function processFile(file: File) {
+function selectFile(file: File) {
+  error.value = null
+  pendingFile.value = file
+}
+
+async function processFile(file: Blob) {
   if (busy.value) return
+  pendingFile.value = null
   busy.value = true
   error.value = null
   try {
-    await backgrounds.addBackground(file, tag.value, description.value)
-    tag.value = ''
+    await backgrounds.addBackground(file, tags.value, description.value)
+    tags.value = []
     description.value = ''
   } catch (caught) {
     error.value = (caught as Error).message || 'No se pudo procesar el fondo.'
@@ -25,27 +34,9 @@ async function processFile(file: File) {
   }
 }
 
-async function onFile(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  try {
-    await processFile(file)
-  } finally {
-    input.value = ''
-  }
-}
-
-async function onPaste(event: ClipboardEvent) {
-  const file = Array.from(event.clipboardData?.items ?? [])
-    .find((item) => item.type.startsWith('image/'))
-    ?.getAsFile()
-  if (file) await processFile(file)
-}
-
 async function update(
   id: string,
-  patch: { tag?: string; description?: string }
+  patch: Partial<Pick<StoredBackground, 'tags' | 'description'>>
 ) {
   error.value = null
   try {
@@ -69,13 +60,13 @@ async function remove(id: string) {
   <div class="mx-auto max-w-5xl p-4 sm:p-8">
     <h1 class="mb-2 text-2xl font-bold">Fondos</h1>
     <p class="mb-6 text-sm text-[var(--color-fg-muted)]">
-      El modelo usa la etiqueta para elegir escenario. Debe ser única.
+      Modelo puede elegir fondo usando cualquiera de sus etiquetas. Cada etiqueta debe ser única.
     </p>
 
     <section class="card mb-6 grid gap-3 sm:grid-cols-[1fr_2fr_14rem] sm:items-end">
       <div>
-        <label class="label" for="background-tag">Etiqueta</label>
-        <input id="background-tag" v-model="tag" class="field" placeholder="taberna" />
+        <label class="label" for="background-tags">Etiquetas</label>
+        <TagInput id="background-tags" v-model="tags" placeholder="taberna" />
       </div>
       <div>
         <label class="label" for="background-description">Descripción</label>
@@ -84,22 +75,16 @@ async function remove(id: string) {
           v-model="description"
           class="field"
           placeholder="Taberna medieval cálida, de noche"
-        />
+        >
       </div>
-      <div
-        tabindex="0"
-        class="rounded-xl border border-dashed border-[var(--color-border-soft)] p-3 outline-none transition hover:border-brand-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-        aria-label="Pegar o seleccionar fondo"
-        @paste.prevent="onPaste"
-        @keydown.enter.prevent="fileInput?.click()"
-        @keydown.space.prevent="fileInput?.click()"
-      >
-        <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
-        <button type="button" class="btn-primary w-full" :disabled="busy" @click="fileInput?.click()">
-          {{ busy ? 'Procesando…' : 'Añadir fondo' }}
-        </button>
-        <p class="mt-2 text-center text-xs text-[var(--color-fg-muted)]">O enfoca y pulsa Ctrl+V</p>
-      </div>
+      <ImageUploadDropZone
+        :busy="busy"
+        label="Añadir fondo"
+        busy-label="Procesando…"
+        zone-label="Arrastrar, pegar o seleccionar fondo"
+        @select="selectFile"
+        @error="error = $event"
+      />
       <p v-if="error" class="text-sm text-red-500 sm:col-span-3" role="alert">{{ error }}</p>
     </section>
 
@@ -108,18 +93,18 @@ async function remove(id: string) {
     </p>
 
     <ul class="grid gap-4 md:grid-cols-2">
-      <li v-for="background in backgrounds.backgrounds" :key="background.id" class="card">
+      <li v-for="background in backgrounds.backgrounds" :key="background.id" class="card min-w-0">
         <img
           :src="backgrounds.urlFor(background.id)!"
-          :alt="background.tag"
+          :alt="`Fondo ${primaryTag(background) ?? ''}`"
           class="mb-3 max-h-80 w-full rounded-xl bg-black/5 object-contain"
-        />
+        >
         <div class="grid gap-2">
-          <input
-            class="field"
-            :value="background.tag"
-            aria-label="Etiqueta del fondo"
-            @change="update(background.id, { tag: ($event.target as HTMLInputElement).value })"
+          <TagInput
+            :model-value="background.tags"
+            aria-label="Etiquetas del fondo"
+            placeholder="neutral"
+            @update:model-value="update(background.id, { tags: $event })"
           />
           <input
             class="field"
@@ -127,12 +112,19 @@ async function remove(id: string) {
             aria-label="Descripción del fondo"
             placeholder="Descripción"
             @change="update(background.id, { description: ($event.target as HTMLInputElement).value })"
-          />
+          >
           <div class="flex justify-end">
             <button type="button" class="btn-danger" @click="remove(background.id)">Borrar</button>
           </div>
         </div>
       </li>
     </ul>
+
+    <ImageCropDialog
+      v-if="pendingFile"
+      :file="pendingFile"
+      @cancel="pendingFile = null"
+      @confirm="processFile"
+    />
   </div>
 </template>

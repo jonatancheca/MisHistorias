@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { primaryTag } from '~/lib/tags'
+
 const props = defineProps<{
   characterIds: string[]
   activeCharacterId: string | null
@@ -25,7 +27,7 @@ function imageUrl(characterId: string) {
 
 function currentTag(characterId: string) {
   const tag = characterId === props.activeCharacterId ? props.activeTag : null
-  return characters.resolveImage(characterId, tag)?.tag ?? null
+  return primaryTag(characters.resolveImage(characterId, tag))
 }
 </script>
 
@@ -35,7 +37,7 @@ function currentTag(characterId: string) {
       <img
         v-if="currentBackground && backgrounds.urlFor(currentBackground.id)"
         :src="backgrounds.urlFor(currentBackground.id)!"
-        :alt="`Fondo ${currentBackground.tag}`"
+        :alt="`Fondo ${primaryTag(currentBackground) ?? ''}`"
         class="max-h-48 w-full rounded-lg bg-black/5 object-contain"
       />
       <div v-else class="flex aspect-video items-center justify-center rounded-lg bg-brand-500/10 px-2 text-center text-xs text-[var(--color-fg-muted)]">
@@ -43,7 +45,7 @@ function currentTag(characterId: string) {
       </div>
       <p class="mt-2 truncate text-sm font-semibold">Fondo</p>
       <p class="truncate text-xs text-[var(--color-fg-muted)]">
-        {{ currentBackground ? `[${currentBackground.tag}]` : backgroundId || backgroundTag ? `[${backgroundTag ?? 'desconocido'}] · no disponible` : 'sin seleccionar' }}
+        {{ currentBackground ? `[${primaryTag(currentBackground)}]` : backgroundId || backgroundTag ? `[${backgroundTag ?? 'desconocido'}] · no disponible` : 'sin seleccionar' }}
       </p>
     </div>
     <div

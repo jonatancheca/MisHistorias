@@ -1,8 +1,8 @@
 export interface CharacterImage {
   id: string
   characterId: string
-  /** Etiqueta corta que el modelo usa en el prefijo, ej. `feliz` */
-  tag: string
+  /** Etiquetas cortas que el modelo usa en el prefijo, ej. `feliz` */
+  tags: string[]
   description: string
   isDefault: boolean
   mimeType: string
@@ -22,8 +22,8 @@ export interface Character {
 
 export interface Background {
   id: string
-  /** Etiqueta única que el modelo usa en `Fondo [etiqueta]:` */
-  tag: string
+  /** Etiquetas únicas que el modelo usa en `Fondo [etiqueta]:` */
+  tags: string[]
   description: string
   mimeType: string
   createdAt: number

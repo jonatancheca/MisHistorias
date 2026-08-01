@@ -47,7 +47,9 @@ function shuffle<T>(items: T[]): T[] {
 }
 
 function tagsOf(characterId: string, images: StoredImage[]) {
-  const own = images.filter((image) => image.characterId === characterId).map((image) => image.tag)
+  const own = images
+    .filter((image) => image.characterId === characterId)
+    .flatMap((image) => image.tags)
   return own.length ? own : ['neutral']
 }
 
@@ -67,7 +69,7 @@ export function buildMockResponse(
   if (backgrounds.length && (!initialBackgroundId || Math.random() < 0.5)) {
     const available = backgrounds.filter((background) => background.id !== initialBackgroundId)
     const background = pick(available.length ? available : backgrounds)
-    lines.push(`Fondo [${background.tag}]:`)
+    lines.push(`Fondo [${pick(background.tags)}]:`)
   }
 
   const speakers = shuffle(characters).slice(0, randomInt(1, Math.min(3, characters.length || 1)))

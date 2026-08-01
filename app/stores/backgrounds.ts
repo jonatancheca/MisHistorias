@@ -7,10 +7,7 @@ import {
   type StoredBackground
 } from '~/lib/db'
 import { normalizeImage } from '~/lib/images'
-
-function normalizeTag(value: string) {
-  return value.trim().toLocaleLowerCase()
-}
+import { hasTag, nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 
 export const useBackgroundsStore = defineStore('backgrounds', () => {
   const backgrounds = ref<StoredBackground[]>([])
@@ -48,8 +45,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
 
   function byTag(tag: string | null | undefined) {
     if (!tag) return null
-    const normalized = normalizeTag(tag)
-    return backgrounds.value.find((background) => normalizeTag(background.tag) === normalized) ?? null
+    return backgrounds.value.find((background) => hasTag(background, tag)) ?? null
   }
 
   function urlFor(id: string | null | undefined) {
@@ -57,22 +53,26 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     return urls.value[id] ?? null
   }
 
-  function assertUniqueTag(tag: string, exceptId?: string) {
-    const trimmed = tag.trim()
-    if (!trimmed) throw new Error('La etiqueta es obligatoria.')
-    const duplicate = backgrounds.value.some(
-      (background) => background.id !== exceptId && normalizeTag(background.tag) === normalizeTag(trimmed)
+  function prepareTags(tags: string[], exceptId?: string) {
+    const used = new Set(
+      backgrounds.value
+        .filter((background) => background.id !== exceptId)
+        .flatMap((background) => background.tags)
+        .map(tagKey)
     )
-    if (duplicate) throw new Error('Ya existe un fondo con esa etiqueta.')
-    return trimmed
+    const prepared = sanitizeTags(tags)
+    if (prepared.length === 0) prepared.push(nextAvailableTag('neutral', used))
+    const duplicate = prepared.find((tag) => used.has(tagKey(tag)))
+    if (duplicate) throw new Error(`Ya existe un fondo con la etiqueta “${duplicate}”.`)
+    return prepared
   }
 
-  async function addBackground(file: File, tag: string, description: string) {
-    const normalizedTag = assertUniqueTag(tag)
+  async function addBackground(file: Blob, tags: string[], description: string) {
+    const preparedTags = prepareTags(tags)
     const { blob, mimeType } = await normalizeImage(file)
     const background: StoredBackground = {
       id: newId(),
-      tag: normalizedTag,
+      tags: preparedTags,
       description: description.trim(),
       mimeType,
       createdAt: Date.now(),
@@ -86,15 +86,15 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
 
   async function updateBackground(
     id: string,
-    patch: Partial<Pick<StoredBackground, 'tag' | 'description'>>
+    patch: Partial<Pick<StoredBackground, 'tags' | 'description'>>
   ) {
     const current = byId(id)
     if (!current) return null
-    const tag = patch.tag === undefined ? current.tag : assertUniqueTag(patch.tag, id)
+    const tags = patch.tags === undefined ? current.tags : prepareTags(patch.tags, id)
     const updated: StoredBackground = {
       ...current,
       ...patch,
-      tag,
+      tags,
       description: (patch.description ?? current.description).trim()
     }
     await putBackground(updated)

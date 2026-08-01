@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { LlmDebugTrace, Message } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
+import { primaryTag } from '~/lib/tags'
 
 const props = defineProps<{
   message: Message
@@ -52,7 +53,7 @@ const rows = computed<FlowRow[]>(() => {
         text: segment.text,
         name: 'Fondo',
         color: '',
-        tag: background?.tag ?? segment.tag,
+        tag: primaryTag(background) ?? segment.tag,
         imageUrl: backgrounds.urlFor(background?.id)
       }
     }
@@ -80,7 +81,7 @@ const rows = computed<FlowRow[]>(() => {
       text: segment.text,
       name: characters.byId(segment.characterId)?.name ?? 'Personaje',
       color: characters.colorOf(segment.characterId),
-      tag: image?.tag ?? segment.tag,
+      tag: primaryTag(image) ?? segment.tag,
       imageUrl: isNewImage ? characters.urlFor(image!.id) : null
     }
   })

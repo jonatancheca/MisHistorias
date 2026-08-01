@@ -11,6 +11,7 @@ import {
   type StoredImage
 } from '~/lib/db'
 import { normalizeImage } from '~/lib/images'
+import { hasTag, sanitizeTags } from '~/lib/tags'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor, pickColor } from '~/lib/colors'
 
 export const useCharactersStore = defineStore('characters', () => {
@@ -68,9 +69,8 @@ export const useCharactersStore = defineStore('characters', () => {
   /** Resuelve la imagen a mostrar para una etiqueta emitida por el modelo. */
   function resolveImage(characterId: string, tag: string | null) {
     if (tag) {
-      const normalized = tag.trim().toLowerCase()
       const match = imagesFor(characterId).find(
-        (image) => image.tag.trim().toLowerCase() === normalized
+        (image) => hasTag(image, tag)
       )
       if (match) return match
     }
@@ -111,13 +111,13 @@ export const useCharactersStore = defineStore('characters', () => {
     syncUrls()
   }
 
-  async function addImage(characterId: string, file: File, tag: string, description: string) {
+  async function addImage(characterId: string, file: Blob, tags: string[], description: string) {
     const { blob, mimeType } = await normalizeImage(file)
     const isFirst = imagesFor(characterId).length === 0
     const image: StoredImage = {
       id: newId(),
       characterId,
-      tag: tag.trim() || 'neutral',
+      tags: sanitizeTags(tags, undefined, 'neutral'),
       description: description.trim(),
       isDefault: isFirst,
       mimeType,
@@ -139,13 +139,19 @@ export const useCharactersStore = defineStore('characters', () => {
     )
   }
 
-  async function updateImage(id: string, patch: Partial<Pick<StoredImage, 'tag' | 'description' | 'isDefault'>>) {
+  async function updateImage(
+    id: string,
+    patch: Partial<Pick<StoredImage, 'tags' | 'description' | 'isDefault'>>
+  ) {
     const current = images.value.find((image) => image.id === id)
     if (!current) return
     const updated: StoredImage = {
       ...current,
       ...patch,
-      tag: (patch.tag ?? current.tag).trim() || current.tag
+      tags:
+        patch.tags === undefined
+          ? current.tags
+          : sanitizeTags(patch.tags, undefined, 'neutral')
     }
     await putImage(updated)
     images.value = images.value.map((image) => (image.id === id ? updated : image))

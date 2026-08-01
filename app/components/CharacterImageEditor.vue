@@ -1,23 +1,36 @@
 <script setup lang="ts">
+import type { StoredImage } from '~/lib/db'
+
 const props = defineProps<{ characterId: string }>()
 
 const characters = useCharactersStore()
 const confirmDialog = useConfirmStore()
-const fileInput = ref<HTMLInputElement | null>(null)
-const pendingTag = ref('')
+const pendingTags = ref<string[]>([])
 const pendingDescription = ref('')
+const pendingFile = ref<File | null>(null)
 const busy = ref(false)
 const error = ref<string | null>(null)
 
 const images = computed(() => characters.imagesFor(props.characterId))
 
-async function processFile(file: File) {
+function selectFile(file: File) {
+  error.value = null
+  pendingFile.value = file
+}
+
+async function processFile(file: Blob) {
   if (busy.value) return
+  pendingFile.value = null
   busy.value = true
   error.value = null
   try {
-    await characters.addImage(props.characterId, file, pendingTag.value, pendingDescription.value)
-    pendingTag.value = ''
+    await characters.addImage(
+      props.characterId,
+      file,
+      pendingTags.value,
+      pendingDescription.value
+    )
+    pendingTags.value = []
     pendingDescription.value = ''
   } catch (caught) {
     error.value = (caught as Error).message || 'No se pudo procesar la imagen.'
@@ -26,22 +39,17 @@ async function processFile(file: File) {
   }
 }
 
-async function onFile(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
+async function updateImage(
+  id: string,
+  patch: Partial<Pick<StoredImage, 'tags' | 'description' | 'isDefault'>>
+) {
+  error.value = null
   try {
-    await processFile(file)
-  } finally {
-    input.value = ''
+    await characters.updateImage(id, patch)
+  } catch (caught) {
+    error.value = (caught as Error).message || 'No se pudo guardar la imagen.'
+    await characters.load(true)
   }
-}
-
-async function onPaste(event: ClipboardEvent) {
-  const file = Array.from(event.clipboardData?.items ?? [])
-    .find((item) => item.type.startsWith('image/'))
-    ?.getAsFile()
-  if (file) await processFile(file)
 }
 
 async function remove(id: string) {
@@ -58,14 +66,14 @@ async function remove(id: string) {
   <section>
     <h2 class="mb-1 text-lg font-semibold">Imágenes</h2>
     <p class="mb-4 text-sm text-[var(--color-fg-muted)]">
-      La etiqueta es lo que el modelo escribe entre corchetes. La descripción le ayuda a elegir.
-      Las imágenes mantienen su proporción, se limitan a 1920px y se guardan en WebP.
+      Etiquetas indican al modelo qué imagen usar. Pulsa Enter o coma para añadir varias.
+      Imágenes se limitan a 1920px y se guardan en WebP.
     </p>
 
     <div class="card mb-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
       <div>
-        <label class="label" for="new-tag">Etiqueta</label>
-        <input id="new-tag" v-model="pendingTag" class="field" placeholder="feliz" />
+        <label class="label" for="new-tags">Etiquetas</label>
+        <TagInput id="new-tags" v-model="pendingTags" placeholder="feliz" />
       </div>
       <div>
         <label class="label" for="new-desc">Descripción</label>
@@ -74,25 +82,16 @@ async function remove(id: string) {
           v-model="pendingDescription"
           class="field"
           placeholder="Sonríe, relajada, mirando de frente"
-        />
+        >
       </div>
-      <div
-        role="group"
-        tabindex="0"
-        class="rounded-xl border border-dashed border-[var(--color-border-soft)] p-3 outline-none transition hover:border-brand-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-        aria-label="Pegar o seleccionar imagen"
-        @paste.prevent="onPaste"
-        @keydown.enter.prevent="fileInput?.click()"
-        @keydown.space.prevent="fileInput?.click()"
-      >
-        <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
-        <button type="button" class="btn-primary w-full" :disabled="busy" @click="fileInput?.click()">
-          {{ busy ? 'Procesando…' : 'Añadir imagen' }}
-        </button>
-        <p class="mt-2 text-center text-xs text-[var(--color-fg-muted)]">
-          También puedes enfocar esta zona y pulsar Ctrl+V.
-        </p>
-      </div>
+      <ImageUploadDropZone
+        :busy="busy"
+        label="Añadir imagen"
+        busy-label="Procesando…"
+        zone-label="Arrastrar, pegar o seleccionar imagen"
+        @select="selectFile"
+        @error="error = $event"
+      />
       <p v-if="error" class="text-sm text-red-500 sm:col-span-3" role="alert">{{ error }}</p>
     </div>
 
@@ -101,38 +100,34 @@ async function remove(id: string) {
     </p>
 
     <ul class="grid gap-3 sm:grid-cols-2">
-      <li v-for="image in images" :key="image.id" class="card flex gap-3">
+      <li v-for="image in images" :key="image.id" class="card flex min-w-0 flex-col gap-3 sm:flex-row">
         <img
           :src="characters.urlFor(image.id)!"
           alt=""
-          class="h-24 w-24 shrink-0 rounded-lg object-contain"
-        />
+          class="max-h-56 w-full shrink-0 rounded-lg object-contain sm:h-24 sm:w-24"
+        >
         <div class="min-w-0 flex-1 space-y-2">
-          <input
-            class="field"
-            :value="image.tag"
-            placeholder="etiqueta"
-            @change="characters.updateImage(image.id, { tag: ($event.target as HTMLInputElement).value })"
+          <TagInput
+            :model-value="image.tags"
+            aria-label="Etiquetas de imagen"
+            placeholder="neutral"
+            @update:model-value="updateImage(image.id, { tags: $event })"
           />
           <input
             class="field"
             :value="image.description"
             placeholder="descripción"
-            @change="
-              characters.updateImage(image.id, {
-                description: ($event.target as HTMLInputElement).value
-              })
-            "
-          />
-          <div class="flex items-center justify-between gap-2">
+            @change="updateImage(image.id, { description: ($event.target as HTMLInputElement).value })"
+          >
+          <div class="flex flex-wrap items-center justify-between gap-2">
             <label class="flex items-center gap-2 text-xs text-[var(--color-fg-muted)]">
               <input
                 type="radio"
                 :name="`default-${characterId}`"
                 :checked="image.isDefault"
                 class="accent-brand-500"
-                @change="characters.updateImage(image.id, { isDefault: true })"
-              />
+                @change="updateImage(image.id, { isDefault: true })"
+              >
               Por defecto
             </label>
             <button type="button" class="btn-danger" @click="remove(image.id)">Borrar</button>
@@ -140,5 +135,12 @@ async function remove(id: string) {
         </div>
       </li>
     </ul>
+
+    <ImageCropDialog
+      v-if="pendingFile"
+      :file="pendingFile"
+      @cancel="pendingFile = null"
+      @confirm="processFile"
+    />
   </section>
 </template>

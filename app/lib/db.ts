@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import { isReactive, isRef, ref, toRaw, unref } from 'vue'
+import { sanitizeTags } from '~/lib/tags'
 import type {
   AppSettings,
   Background,
@@ -67,7 +68,7 @@ const DB_NAMES: Record<DataScope, string> = {
   normal: 'local-chat',
   private: 'local-chat-private'
 }
-const DB_VERSION = 3
+const DB_VERSION = 4
 
 const dbPromises: Partial<Record<DataScope, Promise<IDBPDatabase<LocalChatDB>>>> = {}
 export const activeDataScope = ref<DataScope>('normal')
@@ -83,7 +84,7 @@ export function setActiveDataScope(scope: DataScope) {
 export function getDb(scope: DataScope = activeDataScope.value) {
   if (!dbPromises[scope]) {
     dbPromises[scope] = openDB<LocalChatDB>(DB_NAMES[scope], DB_VERSION, {
-      upgrade(db) {
+      async upgrade(db, oldVersion, _newVersion, transaction) {
         if (!db.objectStoreNames.contains('characters')) {
           db.createObjectStore('characters', { keyPath: 'id' })
         }
@@ -112,6 +113,34 @@ export function getDb(scope: DataScope = activeDataScope.value) {
         }
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings', { keyPath: 'key' })
+        }
+        if (oldVersion < 4) {
+          let imageCursor = await transaction.objectStore('images').openCursor()
+          while (imageCursor) {
+            const value = imageCursor.value as StoredImage & { tag?: unknown; tags?: unknown }
+            const migrated = {
+              ...value,
+              tags: sanitizeTags(value.tags, value.tag, 'neutral')
+            }
+            delete migrated.tag
+            await imageCursor.update(migrated)
+            imageCursor = await imageCursor.continue()
+          }
+
+          let backgroundCursor = await transaction.objectStore('backgrounds').openCursor()
+          while (backgroundCursor) {
+            const value = backgroundCursor.value as StoredBackground & {
+              tag?: unknown
+              tags?: unknown
+            }
+            const migrated = {
+              ...value,
+              tags: sanitizeTags(value.tags, value.tag, 'neutral')
+            }
+            delete migrated.tag
+            await backgroundCursor.update(migrated)
+            backgroundCursor = await backgroundCursor.continue()
+          }
         }
       }
     })
@@ -354,8 +383,8 @@ export async function writeSettings(value: AppSettings) {
   return value
 }
 
-export async function clearAll() {
-  const db = await getDb()
+export async function clearAll(scope: DataScope = activeDataScope.value) {
+  const db = await getDb(scope)
   const stores = [
     'characters',
     'images',

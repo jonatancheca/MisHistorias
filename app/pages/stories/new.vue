@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { primaryTag } from '~/lib/tags'
+
 const stories = useStoriesStore()
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
@@ -162,7 +164,7 @@ async function submit() {
               class="h-12 w-16 shrink-0 rounded-lg object-contain"
             />
             <span class="min-w-0">
-              <span class="block truncate font-medium">{{ background.tag }}</span>
+              <span class="block truncate font-medium">{{ primaryTag(background) }}</span>
               <span class="block truncate text-xs text-[var(--color-fg-muted)]">
                 {{ background.description || 'Sin descripción' }}
               </span>

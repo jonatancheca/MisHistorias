@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { LlmDebugTrace, Message } from '#shared/types'
+import { primaryTag } from '~/lib/tags'
 
 const route = useRoute()
 const stories = useStoriesStore()
@@ -182,7 +183,7 @@ const initialBackground = computed(() =>
 
 const currentBackground = computed(() => {
   let id = stories.activeStory?.initialBackgroundId ?? null
-  let tag = backgrounds.byId(id)?.tag ?? null
+  let tag = primaryTag(backgrounds.byId(id))
   for (const message of stories.messages) {
     for (const segment of message.segments) {
       if (segment.type !== 'background') continue
@@ -259,7 +260,7 @@ onBeforeUnmount(() => {
             <img
               v-if="initialBackground && backgrounds.urlFor(initialBackground.id)"
               :src="backgrounds.urlFor(initialBackground.id)!"
-              :alt="`Fondo inicial ${initialBackground.tag}`"
+              :alt="`Fondo inicial ${primaryTag(initialBackground) ?? ''}`"
               class="max-h-[32rem] w-full rounded-2xl bg-black/5 object-contain"
             />
             <div
@@ -269,7 +270,7 @@ onBeforeUnmount(() => {
               Fondo inicial · fondo no disponible
             </div>
             <figcaption v-if="initialBackground" class="mt-1 text-xs text-[var(--color-fg-muted)]">
-              Fondo inicial · {{ initialBackground.tag }}
+              Fondo inicial · {{ primaryTag(initialBackground) }}
             </figcaption>
           </figure>
 

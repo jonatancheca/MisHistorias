@@ -18,12 +18,14 @@ import {
 } from '~/lib/db'
 import { blobToDataUrl, dataUrlToBlob } from '~/lib/images'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
+import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 
-const EXPORT_VERSION = 3
+const EXPORT_VERSION = 4
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
-  tag: string
+  tags?: string[]
+  tag?: string
   description: string
   isDefault: boolean
   dataUrl: string
@@ -39,7 +41,8 @@ interface ExportedCharacter {
 
 interface ExportedBackground {
   id: string
-  tag: string
+  tags?: string[]
+  tag?: string
   description: string
   dataUrl: string
 }
@@ -83,7 +86,7 @@ export async function exportBundle(): Promise<ExportBundle> {
         images
           .filter((image) => image.characterId === character.id)
           .map(async (image) => ({
-            tag: image.tag,
+            tags: image.tags,
             description: image.description,
             isDefault: image.isDefault,
             dataUrl: await blobToDataUrl(image.blob)
@@ -117,7 +120,7 @@ export async function exportBundle(): Promise<ExportBundle> {
     backgrounds: await Promise.all(
       backgrounds.map(async (background) => ({
         id: background.id,
-        tag: background.tag,
+        tags: background.tags,
         description: background.description,
         dataUrl: await blobToDataUrl(background.blob)
       }))
@@ -140,7 +143,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -186,7 +189,7 @@ export async function importBundle(raw: string) {
       const stored: StoredImage = {
         id: newId(),
         characterId: character.id,
-        tag: String(image.tag ?? 'neutral'),
+        tags: sanitizeTags(image.tags, image.tag, 'neutral'),
         description: String(image.description ?? ''),
         isDefault: Boolean(image.isDefault),
         mimeType: blob.type || 'image/webp',
@@ -200,30 +203,29 @@ export async function importBundle(raw: string) {
   const backgroundIdMap = new Map<string, string>()
   const backgroundTagMap = new Map<string, string>()
   const usedBackgroundTags = new Set(
-    (await listBackgrounds()).map((background) => background.tag.trim().toLocaleLowerCase())
+    (await listBackgrounds()).flatMap((background) => background.tags).map(tagKey)
   )
   for (const item of parsed.backgrounds ?? []) {
     if (typeof item.dataUrl !== 'string' || item.dataUrl.length > MAX_IMAGE_BYTES * 1.4) continue
     const blob = await dataUrlToBlob(item.dataUrl)
     if (blob.size > MAX_IMAGE_BYTES) continue
-    const baseTag = String(item.tag ?? 'fondo').trim() || 'fondo'
-    let uniqueTag = baseTag
-    let suffix = 2
-    while (usedBackgroundTags.has(uniqueTag.toLocaleLowerCase())) {
-      uniqueTag = `${baseTag}-${suffix}`
-      suffix += 1
-    }
-    usedBackgroundTags.add(uniqueTag.toLocaleLowerCase())
+    const requestedTags = sanitizeTags(item.tags, item.tag)
+    if (requestedTags.length === 0) requestedTags.push('neutral')
+    const uniqueTags = requestedTags.map((baseTag) => {
+      const uniqueTag = nextAvailableTag(baseTag, usedBackgroundTags)
+      usedBackgroundTags.add(tagKey(uniqueTag))
+      return uniqueTag
+    })
     const background: StoredBackground = {
       id: newId(),
-      tag: uniqueTag,
+      tags: uniqueTags,
       description: String(item.description ?? ''),
       mimeType: blob.type || 'image/webp',
       createdAt: now,
       blob
     }
     backgroundIdMap.set(String(item.id), background.id)
-    backgroundTagMap.set(String(item.id), background.tag)
+    backgroundTagMap.set(String(item.id), background.tags[0]!)
     await putBackground(background)
   }
 

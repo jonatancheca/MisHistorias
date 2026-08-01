@@ -1,10 +1,11 @@
 import type { Background, Character, MessageSegment } from '#shared/types'
+import { tagKey } from '~/lib/tags'
 
 const LINE_RE = /^\s*([^:[\]\n]{1,60}?)\s*(?:\[([^\]\n]{1,40})\])?\s*:\s*([\s\S]*)$/
 const BACKGROUND_RE = /^\s*Fondo\s*\[([^\]\n]{1,80})\]\s*:\s*([\s\S]*)$/i
 
 function normalize(value: string) {
-  return value.trim().toLowerCase()
+  return tagKey(value)
 }
 
 /**
@@ -18,7 +19,9 @@ export function parseSegments(
 ): MessageSegment[] {
   const byName = new Map(characters.map((character) => [normalize(character.name), character]))
   const backgroundsByTag = new Map(
-    backgrounds.map((background) => [normalize(background.tag), background])
+    backgrounds.flatMap((background) =>
+      background.tags.map((tag) => [normalize(tag), background] as const)
+    )
   )
   const segments: MessageSegment[] = []
 
