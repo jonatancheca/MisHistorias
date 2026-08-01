@@ -5,6 +5,7 @@ import type {
   Background,
   Character,
   CharacterImage,
+  LlmDebugTrace,
   Message,
   PromptPreset,
   Story
@@ -41,6 +42,15 @@ interface LocalChatDB extends DBSchema {
     value: Message
     indexes: { byStory: string }
   }
+  llmDebugTraces: {
+    key: string
+    value: LlmDebugTrace
+    indexes: {
+      byStory: string
+      byRequestMessage: string
+      byResponseMessage: string
+    }
+  }
   presets: {
     key: string
     value: PromptPreset
@@ -57,7 +67,7 @@ const DB_NAMES: Record<DataScope, string> = {
   normal: 'local-chat',
   private: 'local-chat-private'
 }
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 const dbPromises: Partial<Record<DataScope, Promise<IDBPDatabase<LocalChatDB>>>> = {}
 export const activeDataScope = ref<DataScope>('normal')
@@ -90,6 +100,12 @@ export function getDb(scope: DataScope = activeDataScope.value) {
         if (!db.objectStoreNames.contains('messages')) {
           const store = db.createObjectStore('messages', { keyPath: 'id' })
           store.createIndex('byStory', 'storyId')
+        }
+        if (!db.objectStoreNames.contains('llmDebugTraces')) {
+          const store = db.createObjectStore('llmDebugTraces', { keyPath: 'id' })
+          store.createIndex('byStory', 'storyId')
+          store.createIndex('byRequestMessage', 'requestMessageId')
+          store.createIndex('byResponseMessage', 'responseMessageId')
         }
         if (!db.objectStoreNames.contains('presets')) {
           db.createObjectStore('presets', { keyPath: 'id' })
@@ -230,11 +246,14 @@ export async function putStory(story: Story) {
 
 export async function deleteStory(id: string) {
   const db = await getDb()
-  const tx = db.transaction(['stories', 'messages'], 'readwrite')
+  const tx = db.transaction(['stories', 'messages', 'llmDebugTraces'], 'readwrite')
   await tx.objectStore('stories').delete(id)
   const messageStore = tx.objectStore('messages')
   const keys = await messageStore.index('byStory').getAllKeys(id)
   await Promise.all(keys.map((key) => messageStore.delete(key)))
+  const traceStore = tx.objectStore('llmDebugTraces')
+  const traceKeys = await traceStore.index('byStory').getAllKeys(id)
+  await Promise.all(traceKeys.map((key) => traceStore.delete(key)))
   await tx.done
 }
 
@@ -254,15 +273,50 @@ export async function putMessage(message: Message) {
 
 export async function deleteMessage(id: string) {
   const db = await getDb()
-  await db.delete('messages', id)
+  const tx = db.transaction(['messages', 'llmDebugTraces'], 'readwrite')
+  await tx.objectStore('messages').delete(id)
+  const traceStore = tx.objectStore('llmDebugTraces')
+  const [requestTraces, responseTraces] = await Promise.all([
+    traceStore.index('byRequestMessage').getAll(id),
+    traceStore.index('byResponseMessage').getAll(id)
+  ])
+  const traces = [...requestTraces.filter((trace) => trace.status === 'error'), ...responseTraces]
+  await Promise.all(traces.map((trace) => traceStore.delete(trace.id)))
+  await tx.done
 }
 
 export async function deleteMessages(ids: string[]) {
   if (ids.length === 0) return
   const db = await getDb()
-  const tx = db.transaction('messages', 'readwrite')
-  await Promise.all(ids.map((id) => tx.store.delete(id)))
+  const tx = db.transaction(['messages', 'llmDebugTraces'], 'readwrite')
+  const messageStore = tx.objectStore('messages')
+  await Promise.all(ids.map((id) => messageStore.delete(id)))
+  const idSet = new Set(ids)
+  const traceStore = tx.objectStore('llmDebugTraces')
+  const traces = await traceStore.getAll()
+  const traceIds = traces
+    .filter(
+      (trace) =>
+        (trace.responseMessageId && idSet.has(trace.responseMessageId)) ||
+        (trace.status === 'error' && trace.requestMessageId && idSet.has(trace.requestMessageId))
+    )
+    .map((trace) => trace.id)
+  await Promise.all(traceIds.map((id) => traceStore.delete(id)))
   await tx.done
+}
+
+/* LLM debug traces */
+
+export async function listLlmDebugTraces(storyId: string) {
+  const db = await getDb()
+  const traces = await db.getAllFromIndex('llmDebugTraces', 'byStory', storyId)
+  return traces.sort((a, b) => a.createdAt - b.createdAt)
+}
+
+export async function putLlmDebugTrace(trace: LlmDebugTrace) {
+  const db = await getDb()
+  await db.put('llmDebugTraces', unwrap(trace))
+  return trace
 }
 
 /* presets */
@@ -302,7 +356,15 @@ export async function writeSettings(value: AppSettings) {
 
 export async function clearAll() {
   const db = await getDb()
-  const stores = ['characters', 'images', 'backgrounds', 'stories', 'messages', 'presets'] as const
+  const stores = [
+    'characters',
+    'images',
+    'backgrounds',
+    'stories',
+    'messages',
+    'llmDebugTraces',
+    'presets'
+  ] as const
   const tx = db.transaction(stores, 'readwrite')
   await Promise.all(stores.map((name) => tx.objectStore(name).clear()))
   await tx.done

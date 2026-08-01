@@ -1,9 +1,18 @@
 <script setup lang="ts">
-import type { Message } from '#shared/types'
+import type { LlmDebugTrace, Message } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
 
-const props = defineProps<{ message: Message; editable?: boolean }>()
-const emit = defineEmits<{ edit: [string]; remove: []; regenerate: [] }>()
+const props = defineProps<{
+  message: Message
+  editable?: boolean
+  debugTrace?: LlmDebugTrace | null
+}>()
+const emit = defineEmits<{
+  edit: [string]
+  remove: []
+  regenerate: []
+  debug: [LlmDebugTrace]
+}>()
 
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
@@ -91,10 +100,25 @@ function confirmEdit() {
 <template>
   <div class="group flex min-w-0 items-start gap-2">
     <div
-      v-if="editable && !editing"
+      v-if="!editing && (editable || debugTrace)"
       class="flex w-8 shrink-0 flex-col gap-1 text-[var(--color-fg-muted)] opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
     >
       <button
+        v-if="debugTrace"
+        type="button"
+        class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-amber-500/10 hover:text-amber-600"
+        aria-label="Ver datos de debug de la llamada LLM"
+        title="Debug LLM"
+        @click="emit('debug', debugTrace)"
+      >
+        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 2h8M9 2v3m6-3v3M4 13h3m10 0h3M5 7l3 2m11-2-3 2M5 19l3-2m11 2-3-2" />
+          <rect x="7" y="5" width="10" height="16" rx="5" />
+          <path d="M9 11h6m-6 4h6" />
+        </svg>
+      </button>
+      <button
+        v-if="editable"
         type="button"
         class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-brand-500/10 hover:text-brand-600"
         aria-label="Editar mensaje"
@@ -107,6 +131,7 @@ function confirmEdit() {
         </svg>
       </button>
       <button
+        v-if="editable"
         type="button"
         class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-red-500/10 hover:text-red-500"
         aria-label="Borrar mensaje"
@@ -118,7 +143,7 @@ function confirmEdit() {
         </svg>
       </button>
       <button
-        v-if="message.role === 'assistant'"
+        v-if="editable && message.role === 'assistant'"
         type="button"
         class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-brand-500/10 hover:text-brand-600"
         aria-label="Regenerar desde este mensaje"

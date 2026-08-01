@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import type {
   Background,
   Character,
+  LlmDebugRequest,
+  LlmDebugTrace,
   Message,
   ProtagonistPreferencesMode,
   ResponseSpeed,
@@ -11,9 +13,11 @@ import {
   deleteMessage as dbDeleteMessage,
   deleteMessages as dbDeleteMessages,
   deleteStory,
+  listLlmDebugTraces,
   listMessages,
   listStories,
   newId,
+  putLlmDebugTrace,
   putMessage,
   putStory
 } from '~/lib/db'
@@ -31,6 +35,11 @@ interface GraphemeSegment {
   segment: string
 }
 
+interface LlmCallError extends Error {
+  status?: number
+  detail?: string
+}
+
 type SegmenterConstructor = new (
   locale?: string | string[],
   options?: { granularity: 'grapheme' }
@@ -45,12 +54,39 @@ function splitGraphemes(value: string) {
   )
 }
 
+async function createLlmCallError(response: Response): Promise<LlmCallError> {
+  const raw = await response.text().catch(() => '')
+  let message = `Error ${response.status} al llamar al modelo`
+  let detail = raw.slice(0, 500)
+
+  try {
+    const payload = JSON.parse(raw) as {
+      statusMessage?: unknown
+      message?: unknown
+      data?: unknown
+    }
+    if (typeof payload.statusMessage === 'string') message = payload.statusMessage
+    else if (typeof payload.message === 'string') message = payload.message
+    if (typeof payload.data === 'string') detail = payload.data.slice(0, 500)
+    else if (payload.data !== undefined) detail = JSON.stringify(payload.data).slice(0, 500)
+    else detail = ''
+  } catch {
+    // El cuerpo no siempre es JSON; se conserva una muestra limitada.
+  }
+
+  return Object.assign(new Error(message), {
+    status: response.status,
+    detail: detail || undefined
+  })
+}
+
 export const useStoriesStore = defineStore('stories', () => {
   const stories = ref<Story[]>([])
   const loaded = ref(false)
 
   const activeStory = ref<Story | null>(null)
   const messages = ref<Message[]>([])
+  const debugTraces = ref<LlmDebugTrace[]>([])
   const generating = ref(false)
   const error = ref<string | null>(null)
 
@@ -66,6 +102,7 @@ export const useStoriesStore = defineStore('stories', () => {
     loaded.value = false
     activeStory.value = null
     messages.value = []
+    debugTraces.value = []
     error.value = null
   }
 
@@ -108,13 +145,18 @@ export const useStoriesStore = defineStore('stories', () => {
     if (activeStory.value?.id === id) {
       activeStory.value = null
       messages.value = []
+      debugTraces.value = []
     }
   }
 
   async function openStory(id: string) {
     await load()
     activeStory.value = stories.value.find((story) => story.id === id) ?? null
-    messages.value = activeStory.value ? await listMessages(id) : []
+    const [storedMessages, storedTraces] = activeStory.value
+      ? await Promise.all([listMessages(id), listLlmDebugTraces(id)])
+      : [[], []]
+    messages.value = storedMessages
+    debugTraces.value = storedTraces
     error.value = null
   }
 
@@ -171,6 +213,7 @@ export const useStoriesStore = defineStore('stories', () => {
   async function removeMessage(id: string) {
     await dbDeleteMessage(id)
     messages.value = messages.value.filter((message) => message.id !== id)
+    removeLocalTracesForMessages([id])
   }
 
   function replaceDraft(message: Message) {
@@ -178,6 +221,32 @@ export const useStoriesStore = defineStore('stories', () => {
     const index = messages.value.findIndex((item) => item.id === message.id)
     if (index >= 0) messages.value[index] = message
     else messages.value.push(message)
+  }
+
+  async function persistDebugTrace(trace: LlmDebugTrace) {
+    try {
+      await putLlmDebugTrace(trace)
+      const index = debugTraces.value.findIndex((item) => item.id === trace.id)
+      if (index >= 0) debugTraces.value[index] = trace
+      else debugTraces.value.push(trace)
+      debugTraces.value.sort((a, b) => a.createdAt - b.createdAt)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  function removeLocalTracesForMessages(ids: string[]) {
+    const idSet = new Set(ids)
+    debugTraces.value = debugTraces.value.filter(
+      (trace) =>
+        !(trace.responseMessageId && idSet.has(trace.responseMessageId)) &&
+        !(
+          trace.status === 'error' &&
+          trace.requestMessageId &&
+          idSet.has(trace.requestMessageId)
+        )
+    )
   }
 
   async function updateStoryPreferences(
@@ -319,6 +388,10 @@ export const useStoriesStore = defineStore('stories', () => {
       segments: [],
       createdAt: Date.now()
     }
+    const requestMessageId = [...messages.value]
+      .reverse()
+      .find((message) => message.role === 'user')?.id
+    let debugRequest: LlmDebugRequest | null = null
 
     try {
       let raw = ''
@@ -348,6 +421,14 @@ export const useStoriesStore = defineStore('stories', () => {
           )
         })
 
+        debugRequest = {
+          model: settings.model,
+          messages: payload,
+          temperature: settings.temperature,
+          max_tokens: settings.maxTokens,
+          stream: false
+        }
+
         waitingForResponse = true
         const response = await fetch('/api/llm/chat', {
           method: 'POST',
@@ -364,8 +445,7 @@ export const useStoriesStore = defineStore('stories', () => {
         })
 
         if (!response.ok) {
-          const detail = await response.text().catch(() => '')
-          throw new Error(detail || `Error ${response.status} al llamar al modelo`)
+          throw await createLlmCallError(response)
         }
 
         const result = (await response.json()) as {
@@ -375,6 +455,18 @@ export const useStoriesStore = defineStore('stories', () => {
         raw = typeof result.content === 'string' ? result.content : ''
         finishReason = typeof result.finishReason === 'string' ? result.finishReason : null
         waitingForResponse = false
+
+        const stored = await persistDebugTrace({
+          id: newId(),
+          storyId: story.id,
+          requestMessageId,
+          responseMessageId: raw.trim() ? assistantMessage.id : undefined,
+          status: 'success',
+          request: debugRequest,
+          response: { content: raw, finishReason },
+          createdAt: Date.now()
+        })
+        if (!stored) error.value = 'La respuesta llegó, pero no se pudo guardar su traza de debug.'
       }
 
       if (raw.trim()) {
@@ -406,16 +498,33 @@ export const useStoriesStore = defineStore('stories', () => {
           return
         }
       }
-      if (finishReason === 'length') {
-        error.value = raw.trim()
-          ? 'La respuesta alcanzó el máximo de tokens. Se ha conservado el contenido parcial.'
-          : 'El modelo alcanzó el máximo de tokens antes de devolver contenido. Aumenta "Máx. tokens" en Ajustes.'
-      } else if (!raw.trim()) {
+      if (finishReason === 'length' && raw.trim()) {
+        error.value = 'La respuesta alcanzó el máximo de tokens. Se ha conservado el contenido parcial.'
+      } else if (!raw.trim() && !debugRequest) {
         error.value = 'El modelo no devolvió contenido visible.'
       }
     } catch (caught) {
       if ((caught as Error).name !== 'AbortError') {
-        error.value = (caught as Error).message || 'Fallo al generar la respuesta'
+        const callError = caught as LlmCallError
+        const message = callError.message || 'Fallo al generar la respuesta'
+        if (debugRequest) {
+          const stored = await persistDebugTrace({
+            id: newId(),
+            storyId: story.id,
+            requestMessageId,
+            status: 'error',
+            request: debugRequest,
+            response: {
+              error: message,
+              status: callError.status,
+              detail: callError.detail
+            },
+            createdAt: Date.now()
+          })
+          if (!stored) error.value = message
+        } else {
+          error.value = message
+        }
       }
     } finally {
       waitingForResponse = false
@@ -439,6 +548,7 @@ export const useStoriesStore = defineStore('stories', () => {
     const ids = messages.value.slice(index).map((message) => message.id)
     await dbDeleteMessages(ids)
     messages.value = messages.value.slice(0, index)
+    removeLocalTracesForMessages(ids)
     await touchStory()
     await generate()
   }
@@ -448,6 +558,7 @@ export const useStoriesStore = defineStore('stories', () => {
     loaded,
     activeStory,
     messages,
+    debugTraces,
     generating,
     error,
     load,

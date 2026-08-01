@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { LlmDebugTrace, Message } from '#shared/types'
+
 const route = useRoute()
 const stories = useStoriesStore()
 const characters = useCharactersStore()
@@ -20,6 +22,7 @@ await Promise.all([
 
 const input = ref('')
 const scroller = ref<HTMLElement | null>(null)
+const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
 const storyPreferencesOpen = ref(false)
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
@@ -27,6 +30,41 @@ let lastScrollTop = 0
 let autoScrollTarget: number | null = null
 let accumulatedScroll = 0
 let desktopMedia: MediaQueryList | null = null
+
+type TimelineItem =
+  | { kind: 'message'; id: string; createdAt: number; message: Message }
+  | { kind: 'trace'; id: string; createdAt: number; trace: LlmDebugTrace }
+
+const timeline = computed<TimelineItem[]>(() => {
+  return [
+    ...stories.messages.map((message) => ({
+      kind: 'message' as const,
+      id: message.id,
+      createdAt: message.createdAt,
+      message
+    })),
+    ...stories.debugTraces
+      .filter((trace) => trace.status === 'error' || !trace.responseMessageId)
+      .map((trace) => ({
+        kind: 'trace' as const,
+        id: trace.id,
+        createdAt: trace.createdAt,
+        trace
+      }))
+  ].sort((a, b) => a.createdAt - b.createdAt)
+})
+
+function debugForMessage(id: string) {
+  return stories.debugTraces.find((trace) => trace.responseMessageId === id) ?? null
+}
+
+function traceErrorMessage(trace: LlmDebugTrace) {
+  if ('error' in trace.response) return trace.response.error
+  if (trace.response.finishReason === 'length') {
+    return 'El modelo alcanzó el máximo de tokens antes de devolver contenido visible.'
+  }
+  return 'El modelo no devolvió contenido visible.'
+}
 
 const lastDialogue = computed(() => {
   for (let index = stories.messages.length - 1; index >= 0; index -= 1) {
@@ -47,7 +85,13 @@ async function scrollToBottom() {
   lastScrollTop = scroller.value.scrollTop
 }
 
-watch(() => stories.messages, scrollToBottom, { deep: true, immediate: true })
+watch(timeline, scrollToBottom, { deep: true, immediate: true })
+watch(
+  () => stories.error,
+  (value) => {
+    if (value) void scrollToBottom()
+  }
+)
 
 async function submit() {
   const text = input.value
@@ -56,7 +100,7 @@ async function submit() {
   await stories.send(text)
 }
 
-const isEmpty = computed(() => stories.messages.length === 0 && !stories.generating)
+const isEmpty = computed(() => timeline.value.length === 0 && !stories.generating)
 
 function onStoryScroll() {
   if (window.innerWidth >= 640) {
@@ -237,17 +281,50 @@ onBeforeUnmount(() => {
             o escribe tú el primer movimiento.
           </div>
 
-          <MessageBubble
-            v-for="message in stories.messages"
-            :key="message.id"
-            :message="message"
-            :editable="!stories.generating"
-            @edit="stories.updateMessage(message.id, $event)"
-            @remove="removeMessage(message.id)"
-            @regenerate="regenerateFrom(message.id)"
-          />
+          <template v-for="item in timeline" :key="`${item.kind}-${item.id}`">
+            <MessageBubble
+              v-if="item.kind === 'message'"
+              :message="item.message"
+              :debug-trace="debugForMessage(item.message.id)"
+              :editable="!stories.generating"
+              @debug="selectedDebugTrace = $event"
+              @edit="stories.updateMessage(item.message.id, $event)"
+              @remove="removeMessage(item.message.id)"
+              @regenerate="regenerateFrom(item.message.id)"
+            />
 
-          <p v-if="stories.error" class="rounded-lg bg-red-500/10 px-4 py-2 text-sm text-red-500">
+            <div v-else class="group flex min-w-0 items-start gap-2">
+              <div
+                class="flex w-8 shrink-0 text-red-500 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+              >
+                <button
+                  type="button"
+                  class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-red-500/10"
+                  aria-label="Ver datos de debug del error LLM"
+                  title="Debug LLM"
+                  @click="selectedDebugTrace = item.trace"
+                >
+                  <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M8 2h8M9 2v3m6-3v3M4 13h3m10 0h3M5 7l3 2m11-2-3 2M5 19l3-2m11 2-3-2" />
+                    <rect x="7" y="5" width="10" height="16" rx="5" />
+                    <path d="M9 11h6m-6 4h6" />
+                  </svg>
+                </button>
+              </div>
+              <p
+                class="min-w-0 flex-1 rounded-lg bg-red-500/10 px-4 py-2 text-sm break-words text-red-500"
+                role="alert"
+              >
+                {{ traceErrorMessage(item.trace) }}
+              </p>
+            </div>
+          </template>
+
+          <p
+            v-if="stories.error"
+            class="rounded-lg bg-red-500/10 px-4 py-2 text-sm text-red-500"
+            role="alert"
+          >
             {{ stories.error }}
           </p>
         </div>
@@ -332,5 +409,7 @@ onBeforeUnmount(() => {
         </form>
       </div>
     </Teleport>
+
+    <LlmDebugDialog :trace="selectedDebugTrace" @close="selectedDebugTrace = null" />
   </div>
 </template>

@@ -7,6 +7,8 @@
     "dev": "nuxt dev --host 0.0.0.0",
     "dev2": "nuxt dev --host 0.0.0.0 --port 3010 --envName dev2",
     "generate": "nuxt generate",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare"
   },
@@ -19,7 +21,9 @@
     "vue-router": "^5.2.0"
   },
   "devDependencies": {
+    "@nuxt/eslint": "^1.16.0",
     "@tailwindcss/vite": "^4.3.3",
+    "eslint": "^10.8.0",
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3",
     "vue-tsc": "^3.3.9"

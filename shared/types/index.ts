@@ -74,6 +74,36 @@ export interface Message {
   createdAt: number
 }
 
+export interface LlmDebugRequest {
+  model: string
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+  temperature: number
+  max_tokens: number
+  stream: false
+}
+
+export type LlmDebugResponse =
+  | {
+      content: string
+      finishReason: string | null
+    }
+  | {
+      error: string
+      status?: number
+      detail?: string
+    }
+
+export interface LlmDebugTrace {
+  id: string
+  storyId: string
+  requestMessageId?: string
+  responseMessageId?: string
+  status: 'success' | 'error'
+  request: LlmDebugRequest
+  response: LlmDebugResponse
+  createdAt: number
+}
+
 export interface PromptPreset {
   id: string
   name: string
