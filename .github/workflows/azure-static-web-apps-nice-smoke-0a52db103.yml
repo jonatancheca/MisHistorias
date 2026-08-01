@@ -15,10 +15,25 @@ jobs:
     runs-on: ubuntu-latest
     name: Build and Deploy Job
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
         with:
-          submodules: true
-          lfs: false
+          submodules: false
+          lfs: false      
+      # --- Activar Corepack y preparar pnpm ---
+      - run: corepack enable && corepack prepare pnpm@latest --activate
+        name: Enable Corepack (pnpm)
+        
+      # --- Instalar dependencias ---
+      - run: pnpm install
+        name: Install dependencies
+       
+      # --- Build estático (SPA) ---
+      - run: pnpm generate
+        name: Build static site         
+
+      - name: Copy staticwebapp.config.json to output
+        run: cp staticwebapp.config.json .output/public/staticwebapp.config.json
+
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
@@ -26,13 +41,16 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_SMOKE_0A52DB103 }}
           repo_token: ${{ secrets.GITHUB_TOKEN }} # Used for Github integrations (i.e. PR comments)
           action: "upload"
+          # 🚫 No construyas con Oryx (evita npm install interno)
+          skip_app_build: true          
+          app_location: ".output/public"
+          output_location: ""                # vacío cuando saltas el build
           ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
-          app_location: "/" # App source code path
-          api_location: "" # Api source code path - optional
-          app_build_command: "pnpm build"
-          output_location: ".output/public" # Static Nuxt output only
-          ###### End of Repository/Build Configurations ######
+          #app_location: "/" # App source code path
+          api_location: ".output/server" # Api source code path - optional
+          #output_location: ".output/public" # Built app content directory - optional
+          ###### End of Repository/Build Configurations ######        
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
