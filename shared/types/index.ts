@@ -14,6 +14,8 @@ export interface Character {
   name: string
   /** Descripción / persona que se inyecta en el system prompt */
   prompt: string
+  /** Etiquetas descriptivas, independientes de las etiquetas de imagen */
+  tags: string[]
   /** Color hex usado para su nombre y diálogo en la historia */
   color: string
   createdAt: number

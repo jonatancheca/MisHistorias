@@ -11,8 +11,12 @@ const existing = computed(() => (isNew.value ? null : characters.byId(characterI
 
 const name = ref(existing.value?.name ?? '')
 const prompt = ref(existing.value?.prompt ?? '')
+const tags = ref([...(existing.value?.tags ?? [])])
 const color = ref(
   normalizeColor(existing.value?.color, pickColor(characters.characters.length))
+)
+const characterTagSuggestions = computed(() =>
+  characters.characters.flatMap((character) => character.tags ?? [])
 )
 const saving = ref(false)
 const savedAt = ref<number | null>(null)
@@ -25,6 +29,7 @@ async function save() {
       id: isNew.value ? undefined : characterId.value,
       name: name.value,
       prompt: prompt.value,
+      tags: tags.value,
       color: color.value
     })
     savedAt.value = Date.now()
@@ -79,6 +84,18 @@ async function save() {
             class="field min-h-40"
             placeholder="Quién es, cómo habla, qué quiere, qué no haría nunca."
           />
+        </div>
+        <div>
+          <label class="label" for="character-tags">Etiquetas del personaje</label>
+          <TagInput
+            id="character-tags"
+            v-model="tags"
+            :suggestions="characterTagSuggestions"
+            placeholder="aventurera"
+          />
+          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+            Describen al personaje y no se mezclan con etiquetas de imagen. Pulsa Enter o coma para añadir.
+          </p>
         </div>
         <div class="flex items-center gap-3">
           <button type="submit" class="btn-primary" :disabled="!name.trim() || saving">

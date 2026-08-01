@@ -82,13 +82,20 @@ export const useCharactersStore = defineStore('characters', () => {
     return urls.value[imageId] ?? null
   }
 
-  async function saveCharacter(input: { id?: string; name: string; prompt: string; color?: string }) {
+  async function saveCharacter(input: {
+    id?: string
+    name: string
+    prompt: string
+    tags: string[]
+    color?: string
+  }) {
     const now = Date.now()
     const existing = input.id ? byId(input.id) : null
     const character: Character = {
       id: existing?.id ?? input.id ?? newId(),
       name: input.name.trim(),
       prompt: input.prompt,
+      tags: sanitizeTags(input.tags),
       color: normalizeColor(
         input.color ?? existing?.color,
         existing?.color ?? pickColor(characters.value.length)

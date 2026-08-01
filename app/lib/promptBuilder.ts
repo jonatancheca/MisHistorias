@@ -9,7 +9,7 @@ export interface ChatMessage {
 }
 
 const FORMAT_REMINDER =
-  'Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa `Nombre [etiqueta]: texto` para diálogo, `Fondo [etiqueta]:` solo cuando cambie el fondo y una línea sin prefijo para narración. Usa solo personajes, fondos y etiquetas listados.'
+  'Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa `Nombre [etiqueta]: texto` para diálogo, `Fondo [etiqueta]:` solo cuando cambie el fondo y una línea sin prefijo para narración. Usa solo personajes, fondos y etiquetas visuales listados.'
 
 function characterSheet(character: Character, images: StoredImage[]) {
   const own = images.filter((image) => image.characterId === character.id)
@@ -26,6 +26,7 @@ function characterSheet(character: Character, images: StoredImage[]) {
   return [
     `### ${character.name}`,
     character.prompt.trim() || '(sin descripción)',
+    `Etiquetas descriptivas del personaje (no son etiquetas de imagen): ${(character.tags ?? []).join(', ') || '(ninguna)'}`,
     'Etiquetas de imagen disponibles:',
     tags,
     fallback ? `Etiqueta por defecto: [${primaryTag(fallback)}]` : 'Etiqueta por defecto: [neutral]'

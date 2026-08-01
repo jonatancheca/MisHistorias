@@ -21,7 +21,7 @@ import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
 
-const EXPORT_VERSION = 4
+const EXPORT_VERSION = 5
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -36,6 +36,7 @@ interface ExportedCharacter {
   id: string
   name: string
   prompt: string
+  tags?: string[]
   color: string
   images: ExportedImage[]
 }
@@ -82,6 +83,7 @@ export async function exportBundle(): Promise<ExportBundle> {
       id: character.id,
       name: character.name,
       prompt: character.prompt,
+      tags: character.tags,
       color: character.color,
       images: await Promise.all(
         images
@@ -144,7 +146,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -178,6 +180,7 @@ export async function importBundle(raw: string) {
       id: newId(),
       name: String(item.name ?? 'Sin nombre'),
       prompt: String(item.prompt ?? ''),
+      tags: sanitizeTags(item.tags),
       color: normalizeColor(item.color, DEFAULT_CHARACTER_COLOR),
       createdAt: now,
       updatedAt: now

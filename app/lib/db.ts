@@ -68,7 +68,7 @@ const DB_NAMES: Record<DataScope, string> = {
   normal: 'local-chat',
   private: 'local-chat-private'
 }
-const DB_VERSION = 4
+const DB_VERSION = 5
 
 const dbPromises: Partial<Record<DataScope, Promise<IDBPDatabase<LocalChatDB>>>> = {}
 export const activeDataScope = ref<DataScope>('normal')
@@ -142,6 +142,17 @@ export function getDb(scope: DataScope = activeDataScope.value) {
             backgroundCursor = await backgroundCursor.continue()
           }
         }
+        if (oldVersion < 5) {
+          let characterCursor = await transaction.objectStore('characters').openCursor()
+          while (characterCursor) {
+            const value = characterCursor.value as Character & { tags?: unknown }
+            await characterCursor.update({
+              ...value,
+              tags: sanitizeTags(value.tags)
+            })
+            characterCursor = await characterCursor.continue()
+          }
+        }
       }
     })
   }
@@ -171,15 +182,20 @@ export function unwrap<T>(value: T): T {
 
 /* characters */
 
+function normalizeCharacter(character: Character & { tags?: unknown }): Character {
+  return { ...character, tags: sanitizeTags(character.tags) }
+}
+
 export async function listCharacters() {
   const db = await getDb()
   const all = await db.getAll('characters')
-  return all.sort((a, b) => a.name.localeCompare(b.name))
+  return all.map(normalizeCharacter).sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function getCharacter(id: string) {
   const db = await getDb()
-  return db.get('characters', id)
+  const character = await db.get('characters', id)
+  return character ? normalizeCharacter(character) : undefined
 }
 
 export async function putCharacter(character: Character) {

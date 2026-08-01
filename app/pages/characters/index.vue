@@ -48,6 +48,15 @@ async function remove(id: string) {
             <p class="mt-1 line-clamp-3 text-sm text-[var(--color-fg-muted)]">
               {{ character.prompt }}
             </p>
+            <div v-if="character.tags?.length" class="mt-2 flex flex-wrap gap-1">
+              <span
+                v-for="tag in character.tags"
+                :key="tag"
+                class="inline-flex max-w-full truncate rounded-full bg-brand-500/15 px-2 py-0.5 text-xs"
+              >
+                {{ tag }}
+              </span>
+            </div>
             <p class="mt-2 text-xs text-[var(--color-fg-muted)]">
               {{ characters.imagesFor(character.id).length }} imágenes
             </p>

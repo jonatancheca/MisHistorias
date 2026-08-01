@@ -104,6 +104,7 @@ async function seedNormalData() {
       id: TEST_DATA_IDS.characterAlicia,
       name: 'TEST Alicia',
       prompt: 'Exploradora curiosa, optimista y observadora.',
+      tags: ['exploradora', 'optimista'],
       color: '#db2777',
       createdAt: TEST_TIME + 10,
       updatedAt: TEST_TIME + 10
@@ -112,6 +113,7 @@ async function seedNormalData() {
       id: TEST_DATA_IDS.characterBruno,
       name: 'TEST Bruno',
       prompt: 'Guardián prudente, directo y leal.',
+      tags: ['guardián', 'prudente'],
       color: '#2563eb',
       createdAt: TEST_TIME + 11,
       updatedAt: TEST_TIME + 11
