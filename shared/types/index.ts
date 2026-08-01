@@ -20,6 +20,15 @@ export interface Character {
   updatedAt: number
 }
 
+export interface Background {
+  id: string
+  /** Etiqueta única que el modelo usa en `Fondo [etiqueta]:` */
+  tag: string
+  description: string
+  mimeType: string
+  createdAt: number
+}
+
 export interface Story {
   id: string
   title: string
@@ -29,6 +38,8 @@ export interface Story {
   /** Anade las preferencias globales o las reemplaza para esta historia */
   protagonistPreferencesMode: ProtagonistPreferencesMode
   characterIds: string[]
+  /** Fondo inicial; null permite que el modelo decida */
+  initialBackgroundId: string | null
   presetId: string | null
   createdAt: number
   updatedAt: number
@@ -40,12 +51,14 @@ export type Theme = 'system' | 'light' | 'dark'
 export type ResponseSpeed = 'slow' | 'medium' | 'high' | 'instant'
 export type ProtagonistPreferencesMode = 'append' | 'replace'
 
-export type SegmentType = 'dialogue' | 'narration'
+export type SegmentType = 'dialogue' | 'narration' | 'background'
 
 export interface MessageSegment {
   type: SegmentType
   /** id del personaje que habla, null si es narración */
   characterId: string | null
+  /** Fondo resuelto al parsear; null si la etiqueta no existe */
+  backgroundId?: string | null
   /** etiqueta emitida por el modelo (puede no existir entre las imágenes) */
   tag: string | null
   text: string

@@ -1,5 +1,5 @@
 import type { Character } from '#shared/types'
-import type { StoredImage } from '~/lib/db'
+import type { StoredBackground, StoredImage } from '~/lib/db'
 
 const NARRATION_LINES = [
   'La sala huele a polvo y a papel viejo.',
@@ -56,8 +56,19 @@ function tagsOf(characterId: string, images: StoredImage[]) {
  * número aleatorio de personajes, hasta 3 intervenciones cada uno y varias
  * líneas de narración intercaladas.
  */
-export function buildMockResponse(characters: Character[], images: StoredImage[]): string {
+export function buildMockResponse(
+  characters: Character[],
+  images: StoredImage[],
+  backgrounds: StoredBackground[],
+  initialBackgroundId: string | null
+): string {
   const lines: string[] = []
+
+  if (backgrounds.length && (!initialBackgroundId || Math.random() < 0.5)) {
+    const available = backgrounds.filter((background) => background.id !== initialBackgroundId)
+    const background = pick(available.length ? available : backgrounds)
+    lines.push(`Fondo [${background.tag}]:`)
+  }
 
   const speakers = shuffle(characters).slice(0, randomInt(1, Math.min(3, characters.length || 1)))
   for (const speaker of speakers) {

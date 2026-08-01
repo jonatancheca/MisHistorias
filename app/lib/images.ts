@@ -1,7 +1,7 @@
-const MAX_SIDE = 1024
+const MAX_SIDE = 1920
 const QUALITY = 0.9
 
-/** Redimensiona a máx. 1024px de lado y convierte a WebP para no inflar IndexedDB. */
+/** Mantiene proporción, limita lado mayor a 1920px y convierte a WebP. */
 export async function normalizeImage(file: File | Blob): Promise<{ blob: Blob; mimeType: string }> {
   const bitmap = await createImageBitmap(file)
   const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height))

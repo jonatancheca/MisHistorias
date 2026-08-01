@@ -1,16 +1,18 @@
 <script setup lang="ts">
 const stories = useStoriesStore()
 const characters = useCharactersStore()
+const backgrounds = useBackgroundsStore()
 const presets = usePresetsStore()
 const settings = useSettingsStore()
 
-await Promise.all([characters.load(), presets.load(), settings.load()])
+await Promise.all([characters.load(), backgrounds.load(), presets.load(), settings.load()])
 
 const title = ref('')
 const premise = ref('')
 const protagonistPreferences = ref('')
 const protagonistPreferencesMode = ref<'append' | 'replace'>('append')
 const selected = ref<string[]>([])
+const initialBackgroundId = ref<string | null>(null)
 const presetId = ref<string | null>(settings.activePresetId)
 const saving = ref(false)
 
@@ -34,6 +36,7 @@ async function submit() {
       protagonistPreferences: protagonistPreferences.value,
       protagonistPreferencesMode: protagonistPreferencesMode.value,
       characterIds: selected.value,
+      initialBackgroundId: initialBackgroundId.value,
       presetId: presetId.value
     })
     await navigateTo(`/stories/${story.id}`)
@@ -120,6 +123,56 @@ async function submit() {
             </span>
           </button>
         </div>
+      </div>
+
+      <div>
+        <span class="label">Fondo inicial</span>
+        <p class="mb-2 text-xs text-[var(--color-fg-muted)]">
+          Opcional. El modelo podrá cambiarlo después por cualquier fondo del catálogo.
+        </p>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            class="rounded-xl border p-3 text-left transition"
+            :class="
+              initialBackgroundId === null
+                ? 'border-brand-500 bg-brand-500/10'
+                : 'border-[var(--color-border-soft)] hover:border-brand-400'
+            "
+            @click="initialBackgroundId = null"
+          >
+            <span class="block font-medium">Que decida el LLM</span>
+            <span class="block text-xs text-[var(--color-fg-muted)]">Elegirá al abrir la escena</span>
+          </button>
+          <button
+            v-for="background in backgrounds.backgrounds"
+            :key="background.id"
+            type="button"
+            class="flex items-center gap-3 rounded-xl border p-3 text-left transition"
+            :class="
+              initialBackgroundId === background.id
+                ? 'border-brand-500 bg-brand-500/10'
+                : 'border-[var(--color-border-soft)] hover:border-brand-400'
+            "
+            @click="initialBackgroundId = background.id"
+          >
+            <img
+              :src="backgrounds.urlFor(background.id)!"
+              alt=""
+              class="h-12 w-16 shrink-0 rounded-lg object-contain"
+            />
+            <span class="min-w-0">
+              <span class="block truncate font-medium">{{ background.tag }}</span>
+              <span class="block truncate text-xs text-[var(--color-fg-muted)]">
+                {{ background.description || 'Sin descripción' }}
+              </span>
+            </span>
+          </button>
+        </div>
+        <p v-if="backgrounds.backgrounds.length === 0" class="mt-2 text-sm text-[var(--color-fg-muted)]">
+          <NuxtLink to="/backgrounds" class="text-brand-600 underline">Añade fondos</NuxtLink>
+          para poder elegir uno.
+        </p>
       </div>
 
       <div>

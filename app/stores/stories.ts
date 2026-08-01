@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type {
+  Background,
   Character,
   Message,
   ProtagonistPreferencesMode,
@@ -80,6 +81,7 @@ export const useStoriesStore = defineStore('stories', () => {
     protagonistPreferences: string
     protagonistPreferencesMode: ProtagonistPreferencesMode
     characterIds: string[]
+    initialBackgroundId: string | null
     presetId: string | null
   }) {
     const now = Date.now()
@@ -90,6 +92,7 @@ export const useStoriesStore = defineStore('stories', () => {
       protagonistPreferences: input.protagonistPreferences.trim(),
       protagonistPreferencesMode: input.protagonistPreferencesMode,
       characterIds: [...input.characterIds],
+      initialBackgroundId: input.initialBackgroundId,
       presetId: input.presetId,
       createdAt: now,
       updatedAt: now
@@ -150,13 +153,17 @@ export const useStoriesStore = defineStore('stories', () => {
     const current = messages.value.find((message) => message.id === id)
     if (!current) return
     const characters = useCharactersStore()
+    const backgrounds = useBackgroundsStore()
     const storyCharacters = characters.characters.filter((character) =>
       activeStory.value?.characterIds.includes(character.id)
     )
     const updated: Message = {
       ...current,
       raw,
-      segments: current.role === 'assistant' ? parseSegments(raw, storyCharacters) : []
+      segments:
+        current.role === 'assistant'
+          ? parseSegments(raw, storyCharacters, backgrounds.backgrounds)
+          : []
     }
     await persist(updated)
   }
@@ -225,6 +232,7 @@ export const useStoriesStore = defineStore('stories', () => {
     raw: string,
     assistantMessage: Message,
     storyCharacters: Character[],
+    storyBackgrounds: Background[],
     speed: Exclude<ResponseSpeed, 'instant'>
   ) {
     const graphemes = splitGraphemes(raw)
@@ -249,7 +257,7 @@ export const useStoriesStore = defineStore('stories', () => {
           replaceDraft({
             ...assistantMessage,
             raw: visibleRaw,
-            segments: parseSegments(visibleRaw, storyCharacters)
+            segments: parseSegments(visibleRaw, storyCharacters, storyBackgrounds)
           })
         }
 
@@ -274,8 +282,14 @@ export const useStoriesStore = defineStore('stories', () => {
     const settingsStore = useSettingsStore()
     const presetsStore = usePresetsStore()
     const charactersStore = useCharactersStore()
+    const backgroundsStore = useBackgroundsStore()
 
-    await Promise.all([settingsStore.load(), presetsStore.load(), charactersStore.load()])
+    await Promise.all([
+      settingsStore.load(),
+      presetsStore.load(),
+      charactersStore.load(),
+      backgroundsStore.load()
+    ])
 
     const settings = settingsStore.settings
     const mock = settings.mockMode
@@ -311,13 +325,19 @@ export const useStoriesStore = defineStore('stories', () => {
       let finishReason: string | null = null
 
       if (mock) {
-        raw = buildMockResponse(storyCharacters, charactersStore.images)
+        raw = buildMockResponse(
+          storyCharacters,
+          charactersStore.images,
+          backgroundsStore.backgrounds,
+          story.initialBackgroundId ?? null
+        )
       } else {
         const payload = buildChatMessages({
           presetContent: preset!.content,
           story,
           characters: storyCharacters,
           images: charactersStore.images,
+          backgrounds: backgroundsStore.backgrounds,
           messages: messages.value,
           historyBudget: settings.historyBudget,
           userName: settings.userName?.trim() || 'Protagonista',
@@ -364,6 +384,7 @@ export const useStoriesStore = defineStore('stories', () => {
             raw,
             assistantMessage,
             storyCharacters,
+            backgroundsStore.backgrounds,
             settings.responseSpeed
           )
           if (!completed) return
@@ -371,7 +392,7 @@ export const useStoriesStore = defineStore('stories', () => {
         await persist({
           ...assistantMessage,
           raw,
-          segments: parseSegments(raw, storyCharacters)
+          segments: parseSegments(raw, storyCharacters, backgroundsStore.backgrounds)
         })
         if (requestController.signal.aborted) {
           await dbDeleteMessage(assistantMessage.id)

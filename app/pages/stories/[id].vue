@@ -2,6 +2,7 @@
 const route = useRoute()
 const stories = useStoriesStore()
 const characters = useCharactersStore()
+const backgrounds = useBackgroundsStore()
 const settings = useSettingsStore()
 const confirmDialog = useConfirmStore()
 const {
@@ -10,7 +11,12 @@ const {
   show: showMobileChrome
 } = useMobileChrome()
 
-await Promise.all([characters.load(), settings.load(), stories.openStory(String(route.params.id))])
+await Promise.all([
+  characters.load(),
+  backgrounds.load(),
+  settings.load(),
+  stories.openStory(String(route.params.id))
+])
 
 const input = ref('')
 const scroller = ref<HTMLElement | null>(null)
@@ -126,6 +132,25 @@ onMounted(() => {
   desktopMedia.addEventListener('change', onBreakpointChange)
 })
 
+const initialBackground = computed(() =>
+  backgrounds.byId(stories.activeStory?.initialBackgroundId)
+)
+
+const currentBackground = computed(() => {
+  let id = stories.activeStory?.initialBackgroundId ?? null
+  let tag = backgrounds.byId(id)?.tag ?? null
+  for (const message of stories.messages) {
+    for (const segment of message.segments) {
+      if (segment.type !== 'background') continue
+      id = Object.prototype.hasOwnProperty.call(segment, 'backgroundId')
+        ? (segment.backgroundId ?? null)
+        : backgrounds.byTag(segment.tag)?.id ?? null
+      tag = segment.tag
+    }
+  }
+  return { id, tag }
+})
+
 onBeforeUnmount(() => {
   desktopMedia?.removeEventListener('change', onBreakpointChange)
   showMobileChrome()
@@ -186,6 +211,24 @@ onBeforeUnmount(() => {
         @scroll.passive="onStoryScroll"
       >
         <div class="mx-auto max-w-3xl space-y-3">
+          <figure v-if="stories.activeStory.initialBackgroundId" class="mb-5">
+            <img
+              v-if="initialBackground && backgrounds.urlFor(initialBackground.id)"
+              :src="backgrounds.urlFor(initialBackground.id)!"
+              :alt="`Fondo inicial ${initialBackground.tag}`"
+              class="max-h-[32rem] w-full rounded-2xl bg-black/5 object-contain"
+            />
+            <div
+              v-else
+              class="rounded-xl border border-dashed border-[var(--color-border-soft)] p-4 text-sm text-[var(--color-fg-muted)]"
+            >
+              Fondo inicial · fondo no disponible
+            </div>
+            <figcaption v-if="initialBackground" class="mt-1 text-xs text-[var(--color-fg-muted)]">
+              Fondo inicial · {{ initialBackground.tag }}
+            </figcaption>
+          </figure>
+
           <div v-if="isEmpty" class="card text-sm text-[var(--color-fg-muted)]">
             La historia aún no ha empezado.
             <button type="button" class="text-brand-600 underline" @click="stories.generate()">
@@ -243,6 +286,8 @@ onBeforeUnmount(() => {
         :character-ids="stories.activeStory.characterIds"
         :active-character-id="lastDialogue?.characterId ?? null"
         :active-tag="lastDialogue?.tag ?? null"
+        :background-id="currentBackground.id"
+        :background-tag="currentBackground.tag"
       />
     </div>
 

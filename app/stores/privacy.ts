@@ -12,6 +12,7 @@ export const usePrivacyStore = defineStore('privacy', () => {
     switching.value = true
     const stories = useStoriesStore()
     const characters = useCharactersStore()
+    const backgrounds = useBackgroundsStore()
     const presets = usePresetsStore()
 
     try {
@@ -21,9 +22,10 @@ export const usePrivacyStore = defineStore('privacy', () => {
 
       await stories.resetForScope()
       characters.resetForScope()
+      backgrounds.resetForScope()
       presets.resetForScope()
 
-      await Promise.all([stories.load(), characters.load(), presets.load()])
+      await Promise.all([stories.load(), characters.load(), backgrounds.load(), presets.load()])
       await navigateTo('/')
     } finally {
       switching.value = false

@@ -3,9 +3,13 @@ const props = defineProps<{
   characterIds: string[]
   activeCharacterId: string | null
   activeTag: string | null
+  backgroundId: string | null
+  backgroundTag: string | null
 }>()
 
 const characters = useCharactersStore()
+const backgrounds = useBackgroundsStore()
+const currentBackground = computed(() => backgrounds.byId(props.backgroundId))
 
 const cast = computed(() =>
   props.characterIds
@@ -27,6 +31,21 @@ function currentTag(characterId: string) {
 
 <template>
   <aside class="flex flex-col gap-4">
+    <div class="rounded-xl border border-[var(--color-border-soft)] p-2">
+      <img
+        v-if="currentBackground && backgrounds.urlFor(currentBackground.id)"
+        :src="backgrounds.urlFor(currentBackground.id)!"
+        :alt="`Fondo ${currentBackground.tag}`"
+        class="max-h-48 w-full rounded-lg bg-black/5 object-contain"
+      />
+      <div v-else class="flex aspect-video items-center justify-center rounded-lg bg-brand-500/10 px-2 text-center text-xs text-[var(--color-fg-muted)]">
+        {{ backgroundId || backgroundTag ? 'Fondo no disponible' : 'Sin fondo' }}
+      </div>
+      <p class="mt-2 truncate text-sm font-semibold">Fondo</p>
+      <p class="truncate text-xs text-[var(--color-fg-muted)]">
+        {{ currentBackground ? `[${currentBackground.tag}]` : backgroundId || backgroundTag ? `[${backgroundTag ?? 'desconocido'}] · no disponible` : 'sin seleccionar' }}
+      </p>
+    </div>
     <div
       v-for="character in cast"
       :key="character.id"

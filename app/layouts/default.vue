@@ -6,6 +6,7 @@ const { hidden: mobileChromeHidden } = useMobileChrome()
 const links = [
   { to: '/', label: 'Histórias' },
   { to: '/characters', label: 'Personajes' },
+  { to: '/backgrounds', label: 'Fondos' },
   { to: '/prompts', label: 'Prompts' },
   { to: '/settings', label: 'Ajustes' }
 ]
@@ -57,7 +58,7 @@ async function leavePrivateMode() {
         </button>
       </div>
 
-      <nav class="grid grid-cols-4 gap-1 sm:flex sm:flex-1 sm:flex-col">
+      <nav class="grid grid-cols-5 gap-1 sm:flex sm:flex-1 sm:flex-col">
         <NuxtLink
           v-for="link in links"
           :key="link.to"

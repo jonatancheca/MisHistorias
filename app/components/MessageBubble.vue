@@ -6,6 +6,7 @@ const props = defineProps<{ message: Message; editable?: boolean }>()
 const emit = defineEmits<{ edit: [string]; remove: []; regenerate: [] }>()
 
 const characters = useCharactersStore()
+const backgrounds = useBackgroundsStore()
 const settings = useSettingsStore()
 const editing = ref(false)
 const buffer = ref('')
@@ -15,6 +16,7 @@ const userColor = computed(() => normalizeColor(settings.settings.userColor, DEF
 
 interface FlowRow {
   key: string
+  background: boolean
   narration: boolean
   text: string
   name: string
@@ -30,9 +32,25 @@ interface FlowRow {
 const rows = computed<FlowRow[]>(() => {
   let lastImageId = ''
   return props.message.segments.map((segment, index) => {
+    if (segment.type === 'background') {
+      const background = Object.prototype.hasOwnProperty.call(segment, 'backgroundId')
+        ? backgrounds.byId(segment.backgroundId)
+        : backgrounds.byTag(segment.tag)
+      return {
+        key: String(index),
+        background: true,
+        narration: false,
+        text: segment.text,
+        name: 'Fondo',
+        color: '',
+        tag: background?.tag ?? segment.tag,
+        imageUrl: backgrounds.urlFor(background?.id)
+      }
+    }
     if (segment.type !== 'dialogue' || !segment.characterId) {
       return {
         key: String(index),
+        background: false,
         narration: true,
         text: segment.text,
         name: '',
@@ -48,6 +66,7 @@ const rows = computed<FlowRow[]>(() => {
 
     return {
       key: String(index),
+      background: false,
       narration: false,
       text: segment.text,
       name: characters.byId(segment.characterId)?.name ?? 'Personaje',
@@ -131,8 +150,26 @@ function confirmEdit() {
       <template v-else>
         <div class="space-y-2">
           <div v-for="row in rows" :key="row.key">
+            <figure v-if="row.background" class="my-4 max-w-2xl">
+              <img
+                v-if="row.imageUrl"
+                :src="row.imageUrl"
+                :alt="`Fondo ${row.tag ?? ''}`"
+                class="max-h-[28rem] w-full rounded-2xl bg-black/5 object-contain"
+              />
+              <div
+                v-else
+                class="rounded-xl border border-dashed border-[var(--color-border-soft)] p-4 text-sm text-[var(--color-fg-muted)]"
+              >
+                Fondo [{{ row.tag || 'sin etiqueta' }}] · fondo no disponible
+              </div>
+              <figcaption v-if="row.imageUrl" class="mt-1 text-xs text-[var(--color-fg-muted)]">
+                Fondo<span v-if="row.tag"> · {{ row.tag }}</span>
+                <span v-if="row.text"> · {{ row.text }}</span>
+              </figcaption>
+            </figure>
             <p
-              v-if="row.narration"
+              v-else-if="row.narration"
               class="text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--color-fg-muted)] italic"
             >
               {{ row.text }}

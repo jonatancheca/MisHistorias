@@ -2,6 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import { isReactive, isRef, ref, toRaw, unref } from 'vue'
 import type {
   AppSettings,
+  Background,
   Character,
   CharacterImage,
   Message,
@@ -10,6 +11,10 @@ import type {
 } from '#shared/types'
 
 export interface StoredImage extends CharacterImage {
+  blob: Blob
+}
+
+export interface StoredBackground extends Background {
   blob: Blob
 }
 
@@ -22,6 +27,10 @@ interface LocalChatDB extends DBSchema {
     key: string
     value: StoredImage
     indexes: { byCharacter: string }
+  }
+  backgrounds: {
+    key: string
+    value: StoredBackground
   }
   stories: {
     key: string
@@ -48,7 +57,7 @@ const DB_NAMES: Record<DataScope, string> = {
   normal: 'local-chat',
   private: 'local-chat-private'
 }
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 const dbPromises: Partial<Record<DataScope, Promise<IDBPDatabase<LocalChatDB>>>> = {}
 export const activeDataScope = ref<DataScope>('normal')
@@ -71,6 +80,9 @@ export function getDb(scope: DataScope = activeDataScope.value) {
         if (!db.objectStoreNames.contains('images')) {
           const store = db.createObjectStore('images', { keyPath: 'id' })
           store.createIndex('byCharacter', 'characterId')
+        }
+        if (!db.objectStoreNames.contains('backgrounds')) {
+          db.createObjectStore('backgrounds', { keyPath: 'id' })
         }
         if (!db.objectStoreNames.contains('stories')) {
           db.createObjectStore('stories', { keyPath: 'id' })
@@ -178,6 +190,25 @@ export async function deleteImage(id: string) {
   await db.delete('images', id)
 }
 
+/* backgrounds */
+
+export async function listBackgrounds() {
+  const db = await getDb()
+  const all = await db.getAll('backgrounds')
+  return all.sort((a, b) => a.createdAt - b.createdAt)
+}
+
+export async function putBackground(background: StoredBackground) {
+  const db = await getDb()
+  await db.put('backgrounds', unwrap(background))
+  return background
+}
+
+export async function deleteBackground(id: string) {
+  const db = await getDb()
+  await db.delete('backgrounds', id)
+}
+
 /* stories */
 
 export async function listStories() {
@@ -271,7 +302,7 @@ export async function writeSettings(value: AppSettings) {
 
 export async function clearAll() {
   const db = await getDb()
-  const stores = ['characters', 'images', 'stories', 'messages', 'presets'] as const
+  const stores = ['characters', 'images', 'backgrounds', 'stories', 'messages', 'presets'] as const
   const tx = db.transaction(stores, 'readwrite')
   await Promise.all(stores.map((name) => tx.objectStore(name).clear()))
   await tx.done

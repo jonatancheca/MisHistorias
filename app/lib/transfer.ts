@@ -1,22 +1,25 @@
 import type { Character, Message, PromptPreset, Story } from '#shared/types'
 import {
+  listBackgrounds,
   listAllImages,
   listCharacters,
   listMessages,
   listPresets,
   listStories,
   newId,
+  putBackground,
   putCharacter,
   putImage,
   putMessage,
   putPreset,
   putStory,
+  type StoredBackground,
   type StoredImage
 } from '~/lib/db'
 import { blobToDataUrl, dataUrlToBlob } from '~/lib/images'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 
-const EXPORT_VERSION = 2
+const EXPORT_VERSION = 3
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -34,12 +37,20 @@ interface ExportedCharacter {
   images: ExportedImage[]
 }
 
+interface ExportedBackground {
+  id: string
+  tag: string
+  description: string
+  dataUrl: string
+}
+
 interface ExportedStory {
   title: string
   premise: string
   protagonistPreferences?: string
   protagonistPreferencesMode?: 'append' | 'replace'
   characterIds: string[]
+  initialBackgroundId?: string | null
   presetId: string | null
   messages: Array<Pick<Message, 'role' | 'raw' | 'segments' | 'createdAt'>>
 }
@@ -48,14 +59,16 @@ interface ExportBundle {
   version: number
   exportedAt: number
   characters: ExportedCharacter[]
+  backgrounds?: ExportedBackground[]
   stories: ExportedStory[]
   presets: Array<Pick<PromptPreset, 'id' | 'name' | 'content'>>
 }
 
 export async function exportBundle(): Promise<ExportBundle> {
-  const [characters, images, stories, presets] = await Promise.all([
+  const [characters, images, backgrounds, stories, presets] = await Promise.all([
     listCharacters(),
     listAllImages(),
+    listBackgrounds(),
     listStories(),
     listPresets()
   ])
@@ -86,6 +99,7 @@ export async function exportBundle(): Promise<ExportBundle> {
       protagonistPreferences: story.protagonistPreferences ?? '',
       protagonistPreferencesMode: story.protagonistPreferencesMode ?? 'append',
       characterIds: story.characterIds,
+      initialBackgroundId: story.initialBackgroundId ?? null,
       presetId: story.presetId,
       messages: (await listMessages(story.id)).map((message) => ({
         role: message.role,
@@ -100,6 +114,14 @@ export async function exportBundle(): Promise<ExportBundle> {
     version: EXPORT_VERSION,
     exportedAt: Date.now(),
     characters: exportedCharacters,
+    backgrounds: await Promise.all(
+      backgrounds.map(async (background) => ({
+        id: background.id,
+        tag: background.tag,
+        description: background.description,
+        dataUrl: await blobToDataUrl(background.blob)
+      }))
+    ),
     stories: exportedStories,
     presets: presets.map((preset) => ({ id: preset.id, name: preset.name, content: preset.content }))
   }
@@ -118,7 +140,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (bundle.version !== 1 && bundle.version !== EXPORT_VERSION) {
+  if (![1, 2, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -175,6 +197,36 @@ export async function importBundle(raw: string) {
     }
   }
 
+  const backgroundIdMap = new Map<string, string>()
+  const backgroundTagMap = new Map<string, string>()
+  const usedBackgroundTags = new Set(
+    (await listBackgrounds()).map((background) => background.tag.trim().toLocaleLowerCase())
+  )
+  for (const item of parsed.backgrounds ?? []) {
+    if (typeof item.dataUrl !== 'string' || item.dataUrl.length > MAX_IMAGE_BYTES * 1.4) continue
+    const blob = await dataUrlToBlob(item.dataUrl)
+    if (blob.size > MAX_IMAGE_BYTES) continue
+    const baseTag = String(item.tag ?? 'fondo').trim() || 'fondo'
+    let uniqueTag = baseTag
+    let suffix = 2
+    while (usedBackgroundTags.has(uniqueTag.toLocaleLowerCase())) {
+      uniqueTag = `${baseTag}-${suffix}`
+      suffix += 1
+    }
+    usedBackgroundTags.add(uniqueTag.toLocaleLowerCase())
+    const background: StoredBackground = {
+      id: newId(),
+      tag: uniqueTag,
+      description: String(item.description ?? ''),
+      mimeType: blob.type || 'image/webp',
+      createdAt: now,
+      blob
+    }
+    backgroundIdMap.set(String(item.id), background.id)
+    backgroundTagMap.set(String(item.id), background.tag)
+    await putBackground(background)
+  }
+
   for (const item of parsed.stories) {
     const story: Story = {
       id: newId(),
@@ -186,6 +238,9 @@ export async function importBundle(raw: string) {
       characterIds: (item.characterIds ?? [])
         .map((id: string) => characterIdMap.get(String(id)))
         .filter((id): id is string => Boolean(id)),
+      initialBackgroundId: item.initialBackgroundId
+        ? (backgroundIdMap.get(String(item.initialBackgroundId)) ?? null)
+        : null,
       presetId: item.presetId ? (presetIdMap.get(String(item.presetId)) ?? null) : null,
       createdAt: now,
       updatedAt: now
@@ -200,9 +255,18 @@ export async function importBundle(raw: string) {
         raw: String(message.raw ?? ''),
         segments: (message.segments ?? []).map((segment) => ({
           ...segment,
+          tag:
+            segment.type === 'background' && segment.backgroundId
+              ? (backgroundTagMap.get(String(segment.backgroundId)) ?? segment.tag)
+              : segment.tag,
           characterId: segment.characterId
             ? (characterIdMap.get(String(segment.characterId)) ?? null)
-            : null
+            : null,
+          backgroundId: segment.backgroundId
+            ? (backgroundIdMap.get(String(segment.backgroundId)) ?? null)
+            : segment.type === 'background'
+              ? null
+              : undefined
         })),
         createdAt: Number(message.createdAt) || now
       }

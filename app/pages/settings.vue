@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const settings = useSettingsStore()
 const characters = useCharactersStore()
+const backgrounds = useBackgroundsStore()
 const stories = useStoriesStore()
 const presets = usePresetsStore()
 const privacy = usePrivacyStore()
@@ -14,6 +15,12 @@ const testError = ref<string | null>(null)
 const importing = ref(false)
 const importMessage = ref<string | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
+const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+const saveError = ref<string | null>(null)
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+let savePending = false
+let saveRevision = 0
+let saveQueue: Promise<void> = Promise.resolve()
 let privateClickCount = 0
 let privateClickTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -37,8 +44,8 @@ async function testConnection() {
   }
 }
 
-async function save() {
-  await settings.save({
+function settingsPatch() {
+  return {
     baseUrl: form.baseUrl.trim(),
     apiKey: form.apiKey.trim(),
     model: form.model,
@@ -49,8 +56,68 @@ async function save() {
     userName: form.userName.trim() || 'Protagonista',
     userColor: form.userColor,
     protagonistPreferences: form.protagonistPreferences.trim()
-  })
+  }
 }
+
+function enqueueSave(revision: number) {
+  const patch = settingsPatch()
+  const run = async () => {
+    saveStatus.value = 'saving'
+    saveError.value = null
+    try {
+      await settings.save(patch)
+      if (revision === saveRevision) saveStatus.value = 'saved'
+    } catch (caught) {
+      if (revision === saveRevision) {
+        saveStatus.value = 'error'
+        saveError.value = (caught as Error).message || 'No se pudieron guardar los ajustes.'
+      }
+    }
+  }
+  saveQueue = saveQueue.then(run, run)
+  return saveQueue
+}
+
+function scheduleSave() {
+  saveRevision += 1
+  savePending = true
+  if (saveTimer) clearTimeout(saveTimer)
+  const revision = saveRevision
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    savePending = false
+    void enqueueSave(revision)
+  }, 500)
+}
+
+async function flushSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  if (savePending) {
+    savePending = false
+    await enqueueSave(saveRevision)
+  } else {
+    await saveQueue
+  }
+}
+
+watch(
+  () => [
+    form.baseUrl,
+    form.apiKey,
+    form.model,
+    form.temperature,
+    form.maxTokens,
+    form.historyBudget,
+    form.responseSpeed,
+    form.userName,
+    form.userColor,
+    form.protagonistPreferences
+  ],
+  scheduleSave
+)
 
 async function setTheme(theme: 'system' | 'light' | 'dark') {
   form.theme = theme
@@ -78,6 +145,7 @@ async function onImportFile(event: Event) {
     await importBundle(await file.text())
     await Promise.all([
       characters.load(true),
+      backgrounds.load(true),
       stories.load(true),
       presets.load(true)
     ])
@@ -111,12 +179,24 @@ async function onPrivateTrigger() {
 
 onBeforeUnmount(() => {
   if (privateClickTimer) clearTimeout(privateClickTimer)
+  void flushSave()
+})
+
+onBeforeRouteLeave(async () => {
+  await flushSave()
 })
 </script>
 
 <template>
   <div class="mx-auto max-w-3xl p-8">
     <h1 class="mb-6 text-2xl font-bold">Ajustes</h1>
+    <p class="-mt-4 mb-6 min-h-5 text-xs text-[var(--color-fg-muted)]" aria-live="polite">
+      <span v-if="saveStatus === 'saving'">Guardando…</span>
+      <span v-else-if="saveStatus === 'saved'">Guardado</span>
+      <span v-else-if="saveStatus === 'error'" class="text-red-500">
+        {{ saveError || 'Error al guardar' }}
+      </span>
+    </p>
 
     <section class="mb-8">
       <h2 class="mb-2 text-lg font-semibold">Apariencia</h2>
@@ -156,7 +236,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <form class="grid gap-5" @submit.prevent="save">
+    <section class="grid gap-5">
       <div class="card">
         <label class="flex cursor-pointer items-start gap-3">
           <input
@@ -256,17 +336,14 @@ onBeforeUnmount(() => {
         </p>
       </div>
 
-      <div>
-        <button type="submit" class="btn-primary">Guardar ajustes</button>
-      </div>
-    </form>
+    </section>
 
     <section class="mt-10">
       <h2 class="mb-2 text-lg font-semibold">Protagonista</h2>
       <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
         Nombre, color y preferencias con los que apareces en todas las historias.
       </p>
-      <form class="grid gap-4 sm:grid-cols-2" @submit.prevent="save">
+      <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label class="label" for="userName">Nombre</label>
           <input id="userName" v-model="form.userName" class="field" placeholder="Protagonista" />
@@ -294,10 +371,7 @@ onBeforeUnmount(() => {
             placeholder="Personalidad, límites, objetivos o forma de actuar del protagonista."
           />
         </div>
-        <div class="sm:col-span-2">
-          <button type="submit" class="btn-primary">Guardar</button>
-        </div>
-      </form>
+      </div>
     </section>
 
     <section class="mt-10">
