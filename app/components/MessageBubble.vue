@@ -231,7 +231,7 @@ function confirmEdit() {
                   :src="row.imageUrl"
                   :alt="`${row.name} ${row.tag ?? ''}`"
                   container-class="w-40"
-                  image-class="aspect-square w-40 rounded-xl object-cover"
+                  image-class="h-auto w-40 rounded-xl object-contain object-top"
                   :image-style="{ border: `2px solid ${row.color}` }"
                 />
                 <figcaption class="mt-1 text-xs text-[var(--color-fg-muted)]">

@@ -65,7 +65,7 @@ function currentTag(characterId: string) {
         :src="imageUrl(character.id)!"
         :alt="character.name"
         container-class="w-full"
-        image-class="aspect-square w-full rounded-lg object-cover"
+        image-class="h-auto w-full rounded-lg object-contain object-top"
       />
       <div v-else class="aspect-square w-full rounded-lg bg-brand-500/20" />
       <p class="mt-2 truncate text-sm font-semibold" :style="{ color: characters.colorOf(character.id) }">

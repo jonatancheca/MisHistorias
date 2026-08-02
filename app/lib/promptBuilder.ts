@@ -9,7 +9,7 @@ export interface ChatMessage {
 }
 
 const FORMAT_REMINDER =
-  'Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa `Nombre [etiqueta]: texto` para diálogo, `Fondo [etiqueta]:` solo cuando cambie el fondo y una línea sin prefijo para narración. Usa solo personajes, fondos y etiquetas visuales listados.'
+  'Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa `Nombre [etiqueta]: texto` para diálogo, `Fondo [etiqueta]:` solo cuando cambie el fondo y una línea sin prefijo para narración. Usa solo personajes, fondos y etiquetas visuales listados. La etiqueta visual representa el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje la última etiqueta usada mientras su aspecto no cambie; no vuelvas a `[neutral]` por defecto en intervenciones posteriores. Usa otra etiqueta solo cuando la historia cambie realmente su aspecto o ropa.'
 
 function characterSheet(character: Character, images: StoredImage[]) {
   const own = images.filter((image) => image.characterId === character.id)

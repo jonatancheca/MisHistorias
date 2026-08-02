@@ -23,6 +23,8 @@ await Promise.all([
 
 const input = ref('')
 const scroller = ref<HTMLElement | null>(null)
+const canScrollToTop = ref(false)
+const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
 const storyPreferencesOpen = ref(false)
 const storyPreferences = ref('')
@@ -78,15 +80,60 @@ const lastDialogue = computed(() => {
   return null
 })
 
-async function scrollToBottom() {
+function updateScrollControls() {
+  if (!scroller.value) {
+    canScrollToTop.value = false
+    canScrollToBottom.value = false
+    return
+  }
+  const maximum = Math.max(0, scroller.value.scrollHeight - scroller.value.clientHeight)
+  canScrollToTop.value = scroller.value.scrollTop > 1
+  canScrollToBottom.value = scroller.value.scrollTop < maximum - 1
+}
+
+function scrollToTop() {
+  if (!scroller.value) return
+  autoScrollTarget = 0
+  scroller.value.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+async function scrollToBottom(behavior: ScrollBehavior = 'auto') {
   await nextTick()
   if (!scroller.value) return
   autoScrollTarget = Math.max(0, scroller.value.scrollHeight - scroller.value.clientHeight)
-  scroller.value.scrollTop = scroller.value.scrollHeight
-  lastScrollTop = scroller.value.scrollTop
+  scroller.value.scrollTo({ top: scroller.value.scrollHeight, behavior })
+  if (behavior === 'auto') {
+    lastScrollTop = scroller.value.scrollTop
+    updateScrollControls()
+  }
 }
 
-watch(timeline, scrollToBottom, { deep: true, immediate: true })
+function waitForImage(image: HTMLImageElement) {
+  if (image.complete) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    const finish = () => {
+      image.removeEventListener('load', finish)
+      image.removeEventListener('error', finish)
+      resolve()
+    }
+    image.addEventListener('load', finish, { once: true })
+    image.addEventListener('error', finish, { once: true })
+    if (image.complete) finish()
+  })
+}
+
+async function scrollToBottomAfterImages() {
+  await nextTick()
+  if (!scroller.value) return
+  const images = Array.from(scroller.value.querySelectorAll('img'))
+  await Promise.all(images.map(waitForImage))
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  })
+  await scrollToBottom()
+}
+
+watch(timeline, () => scrollToBottomAfterImages(), { deep: true, immediate: true })
 watch(
   () => stories.error,
   (value) => {
@@ -104,6 +151,7 @@ async function submit() {
 const isEmpty = computed(() => timeline.value.length === 0 && !stories.generating)
 
 function onStoryScroll() {
+  updateScrollControls()
   if (window.innerWidth >= 640) {
     showMobileChrome()
     return
@@ -114,8 +162,10 @@ function onStoryScroll() {
 
   if (autoScrollTarget !== null) {
     const reachedTarget = Math.abs(current - autoScrollTarget) <= 1
+    const movingTowardTarget = autoScrollTarget === 0 ? delta <= 0 : delta >= 0
+    if (reachedTarget) autoScrollTarget = null
+    if (reachedTarget || movingTowardTarget) return
     autoScrollTarget = null
-    if (reachedTarget) return
   }
 
   if (current <= 8) {
@@ -190,6 +240,7 @@ function onBreakpointChange(event: MediaQueryListEvent) {
 onMounted(() => {
   desktopMedia = window.matchMedia('(min-width: 640px)')
   desktopMedia.addEventListener('change', onBreakpointChange)
+  void scrollToBottomAfterImages()
 })
 
 const initialBackground = computed(() =>
@@ -246,7 +297,31 @@ onBeforeUnmount(() => {
             {{ stories.activeStory.premise }}
           </p>
         </div>
-        <div class="flex shrink-0 gap-2">
+        <div class="flex shrink-0 gap-1 sm:gap-2">
+          <button
+            type="button"
+            class="btn-ghost h-10 w-10 shrink-0 px-0 py-0"
+            aria-label="Volver al principio"
+            title="Volver al principio"
+            :disabled="!canScrollToTop"
+            @click="scrollToTop"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 4h14M12 20V7m-5 5 5-5 5 5" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="btn-ghost h-10 w-10 shrink-0 px-0 py-0"
+            aria-label="Volver al final"
+            title="Volver al final"
+            :disabled="!canScrollToBottom"
+            @click="scrollToBottom('smooth')"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 20h14M12 4v13m-5-5 5 5 5-5" />
+            </svg>
+          </button>
           <button
             type="button"
             class="btn-ghost"
@@ -267,6 +342,7 @@ onBeforeUnmount(() => {
 
       <div
         ref="scroller"
+        data-testid="story-scroller"
         class="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6"
         @scroll.passive="onStoryScroll"
       >
