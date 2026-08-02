@@ -9,11 +9,8 @@ export default defineNuxtConfig({
       devtools: { enabled: false }
     }
   },
-  devServer: {
-    host: '0.0.0.0'
-  },
   nitro: {
-    externals: { external: ['node:sqlite'] }
+    rollupConfig: { external: ['node:sqlite'] }
   },
   ssr: false,
   modules: ['@pinia/nuxt', '@nuxt/eslint'],

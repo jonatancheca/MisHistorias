@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "nuxt build",
-    "dev": "nuxt dev --host 0.0.0.0",
+    "dev": "nuxt dev --host localhost",
     "dev2": "nuxt dev --host 0.0.0.0 --port 3010 --envName dev2",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
