@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { LlmDebugTrace, Message } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
-import { primaryTag } from '~/lib/tags'
+import { hasTag, primaryTag } from '~/lib/tags'
 
 const props = defineProps<{
   message: Message
@@ -12,6 +12,7 @@ const emit = defineEmits<{
   edit: [string]
   remove: []
   regenerate: []
+  resend: []
   debug: [LlmDebugTrace]
 }>()
 
@@ -32,6 +33,7 @@ interface FlowRow {
   name: string
   color: string
   tag: string | null
+  inlineTag: string | null
   imageUrl: string | null
 }
 
@@ -54,6 +56,7 @@ const rows = computed<FlowRow[]>(() => {
         name: 'Fondo',
         color: '',
         tag: primaryTag(background) ?? segment.tag,
+        inlineTag: null,
         imageUrl: backgrounds.urlFor(background?.id)
       }
     }
@@ -66,6 +69,7 @@ const rows = computed<FlowRow[]>(() => {
         name: '',
         color: '',
         tag: null,
+        inlineTag: null,
         imageUrl: null
       }
     }
@@ -82,6 +86,7 @@ const rows = computed<FlowRow[]>(() => {
       name: characters.byId(segment.characterId)?.name ?? 'Personaje',
       color: characters.colorOf(segment.characterId),
       tag: primaryTag(image) ?? segment.tag,
+      inlineTag: image && segment.tag && hasTag(image, segment.tag) ? null : segment.tag,
       imageUrl: isNewImage ? characters.urlFor(image!.id) : null
     }
   })
@@ -155,6 +160,18 @@ function confirmEdit() {
           <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5" />
         </svg>
       </button>
+      <button
+        v-if="editable && message.role === 'user'"
+        type="button"
+        class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-brand-500/10 hover:text-brand-600"
+        aria-label="Reenviar este mensaje"
+        title="Reenviar desde aquí"
+        @click="emit('resend')"
+      >
+        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5" />
+        </svg>
+      </button>
     </div>
 
     <div class="min-w-0 flex-1">
@@ -205,7 +222,7 @@ function confirmEdit() {
             <template v-else>
               <p class="text-[15px] leading-relaxed">
                 <span class="font-semibold" :style="{ color: row.color }">{{ row.name }}</span>
-                <span v-if="row.tag" class="text-xs text-[var(--color-fg-muted)]"> [{{ row.tag }}]</span>
+                <span v-if="row.inlineTag" class="text-xs text-[var(--color-fg-muted)]"> [{{ row.inlineTag }}]</span>
                 <span class="font-semibold" :style="{ color: row.color }">:</span>
                 <span class="ml-1 whitespace-pre-wrap" :style="{ color: row.color }">{{ row.text }}</span>
               </p>

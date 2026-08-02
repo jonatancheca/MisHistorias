@@ -12,6 +12,7 @@ import type {
 import {
   deleteMessage as dbDeleteMessage,
   deleteMessages as dbDeleteMessages,
+  deleteLlmDebugTrace as dbDeleteLlmDebugTrace,
   deleteStory,
   listLlmDebugTraces,
   listMessages,
@@ -552,6 +553,24 @@ export const useStoriesStore = defineStore('stories', () => {
     await generate()
   }
 
+  async function resendFrom(id: string) {
+    if (generating.value) return
+    const index = messages.value.findIndex((message) => message.id === id)
+    if (index < 0 || messages.value[index]?.role !== 'user') return
+    const ids = messages.value.slice(index + 1).map((message) => message.id)
+    const traceIds = debugTraces.value
+      .filter((trace) => trace.requestMessageId === id)
+      .map((trace) => trace.id)
+    await dbDeleteMessages(ids)
+    await Promise.all(traceIds.map((traceId) => dbDeleteLlmDebugTrace(traceId)))
+    messages.value = messages.value.slice(0, index + 1)
+    const traceIdSet = new Set(traceIds)
+    debugTraces.value = debugTraces.value.filter((trace) => !traceIdSet.has(trace.id))
+    removeLocalTracesForMessages(ids)
+    await touchStory()
+    await generate()
+  }
+
   return {
     stories,
     loaded,
@@ -571,6 +590,7 @@ export const useStoriesStore = defineStore('stories', () => {
     send,
     generate,
     regenerateFrom,
+    resendFrom,
     stop,
     resetForScope
   }

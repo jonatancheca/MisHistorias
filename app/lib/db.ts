@@ -195,6 +195,10 @@ export async function putLlmDebugTrace(trace: LlmDebugTrace) {
   return putJson('llmDebugTraces', trace)
 }
 
+export async function deleteLlmDebugTrace(id: string) {
+  await deleteJson('llmDebugTraces', id)
+}
+
 export async function listPresets() {
   return $fetch<PromptPreset[]>(dataUrl('presets'))
 }

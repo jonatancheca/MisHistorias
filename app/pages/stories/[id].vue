@@ -168,6 +168,21 @@ async function regenerateFrom(id: string) {
   if (accepted) await stories.regenerateFrom(id)
 }
 
+async function resendFrom(id: string) {
+  const index = stories.messages.findIndex((message) => message.id === id)
+  if (index < 0) return
+  const following = stories.messages.length - index - 1
+  const deleted = following === 1 ? '1 mensaje posterior' : `${following} mensajes posteriores`
+  const accepted = await confirmDialog.ask({
+    title: 'Reenviar desde aquí',
+    message: following
+      ? `Se borrarán ${deleted} antes de generar otra respuesta.`
+      : 'Se reenviará este mensaje para generar otra respuesta.',
+    confirmLabel: 'Reenviar'
+  })
+  if (accepted) await stories.resendFrom(id)
+}
+
 function onBreakpointChange(event: MediaQueryListEvent) {
   if (event.matches) showMobileChrome()
 }
@@ -293,6 +308,7 @@ onBeforeUnmount(() => {
               @edit="stories.updateMessage(item.message.id, $event)"
               @remove="removeMessage(item.message.id)"
               @regenerate="regenerateFrom(item.message.id)"
+              @resend="resendFrom(item.message.id)"
             />
 
             <div v-else class="group flex min-w-0 items-start gap-2">
