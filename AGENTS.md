@@ -15,9 +15,13 @@
 
 - No ejecutes `pnpm build` salvo petición explícita del usuario.
 - Tras cambios de código, ejecuta `pnpm lint`.
+- Ejecuta `pnpm lint` y, cuando se pida explícitamente, `pnpm build` en una sesión controlada con timeout amplio (mínimo 15 minutos). Nunca les apliques el límite de 60 segundos del arranque web ni los canceles por falta temporal de salida.
+- Si `pnpm lint` supera 60 segundos, déjalo continuar y revisa después si existen directorios raíz inesperados o artefactos generados que ESLint esté recorriendo.
 - Para validar la aplicación, usa `pnpm dev` y comprobaciones reales en navegador.
 - Antes de arrancar, comprueba si `http://localhost:3000` ya responde y reutiliza ese servidor.
-- Si no responde, arranca `pnpm dev` como proceso no bloqueante y espera HTTP 200 durante un máximo de 60 segundos.
+- Si no responde, ejecuta siempre `pnpm dev` directamente en una sesión persistente controlada. No uses `Start-Process` ni otro lanzador en segundo plano: puede quedar bloqueado por política.
+- Ejecuta exactamente `pnpm dev`; no añadas `-- --port 3000`, porque el script ya configura el servidor y esos argumentos pueden interpretarse como un directorio raíz.
+- Espera HTTP 200 durante un máximo de 60 segundos. Este límite solo corresponde a la comprobación de arranque web.
 - No esperes a que `pnpm dev` termine: es un servidor persistente, no un comando de validación finito.
 - No permitas que Nuxt cambie silenciosamente al puerto 3001.
 - Detén únicamente procesos iniciados durante la tarea.
