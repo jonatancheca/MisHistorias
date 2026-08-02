@@ -53,7 +53,7 @@ async function save() {
       <form class="mb-8 grid gap-4" @submit.prevent="save">
         <div>
           <label class="label" for="name">Nombre</label>
-          <input id="name" v-model="name" class="field" placeholder="Ana" >
+          <input id="name" v-model="name" autocomplete="off" class="field" placeholder="Ana" >
           <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
             El modelo usará este nombre exacto como prefijo al hablar.
           </p>
@@ -61,7 +61,7 @@ async function save() {
         <div>
           <label class="label" for="color">Color</label>
           <div class="flex flex-wrap items-center gap-2">
-            <input id="color" v-model="color" type="color" class="h-9 w-14 cursor-pointer rounded border border-[var(--color-border-soft)] bg-transparent" >
+            <input id="color" v-model="color" type="color" autocomplete="off" class="h-9 w-14 cursor-pointer rounded border border-[var(--color-border-soft)] bg-transparent" >
             <button
               v-for="swatch in CHARACTER_COLORS"
               :key="swatch"
@@ -81,6 +81,7 @@ async function save() {
           <textarea
             id="prompt"
             v-model="prompt"
+            autocomplete="off"
             class="field min-h-40"
             placeholder="Quién es, cómo habla, qué quiere, qué no haría nunca."
           />

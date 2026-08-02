@@ -258,6 +258,7 @@ onBeforeRouteLeave(async () => {
         <label class="flex cursor-pointer items-start gap-3">
           <input
             type="checkbox"
+            autocomplete="off"
             class="mt-1 h-4 w-4 accent-[var(--color-brand-500)]"
             :checked="settings.settings.mockMode"
             @change="setMockMode(($event.target as HTMLInputElement).checked)"
@@ -275,9 +276,33 @@ onBeforeRouteLeave(async () => {
       <div>
         <label class="label" for="baseUrl">URL del servidor (LMStudio)</label>
         <div class="flex gap-2">
-          <input id="baseUrl" v-model="form.baseUrl" class="field" placeholder="http://localhost:1234" >
-          <button type="button" class="btn-ghost shrink-0" :disabled="testing" @click="testConnection">
-            {{ testing ? 'Probando…' : 'Probar conexión' }}
+          <input
+            id="baseUrl"
+            v-model="form.baseUrl"
+            autocomplete="off"
+            class="field min-w-0 flex-1"
+            placeholder="http://localhost:1234"
+          >
+          <button
+            type="button"
+            class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center gap-2 px-0 sm:w-auto sm:px-3"
+            :aria-label="testing ? 'Probando conexión' : 'Probar conexión'"
+            :title="testing ? 'Probando conexión' : 'Probar conexión'"
+            :disabled="testing"
+            @click="testConnection"
+          >
+            <svg
+              aria-hidden="true"
+              class="h-4 w-4"
+              :class="{ 'animate-pulse': testing }"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M8 4v5M16 4v5M7 9h10v1a5 5 0 0 1-10 0V9Zm5 6v5" />
+            </svg>
+            <span class="hidden sm:inline">{{ testing ? 'Probando…' : 'Probar conexión' }}</span>
           </button>
         </div>
         <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
@@ -318,7 +343,14 @@ onBeforeRouteLeave(async () => {
         <select v-if="models.length" id="model" v-model="form.model" class="field">
           <option v-for="model in models" :key="model" :value="model">{{ model }}</option>
         </select>
-        <input v-else id="model" v-model="form.model" class="field" placeholder="nombre-del-modelo" >
+        <input
+          v-else
+          id="model"
+          v-model="form.model"
+          autocomplete="off"
+          class="field"
+          placeholder="nombre-del-modelo"
+        >
       </div>
 
       <div class="grid gap-4 sm:grid-cols-3">
@@ -328,6 +360,7 @@ onBeforeRouteLeave(async () => {
             id="temperature"
             v-model.number="form.temperature"
             type="number"
+            autocomplete="off"
             step="0.1"
             min="0"
             max="2"
@@ -336,7 +369,14 @@ onBeforeRouteLeave(async () => {
         </div>
         <div>
           <label class="label" for="maxTokens">Máx. tokens</label>
-          <input id="maxTokens" v-model.number="form.maxTokens" type="number" min="64" class="field" >
+          <input
+            id="maxTokens"
+            v-model.number="form.maxTokens"
+            type="number"
+            autocomplete="off"
+            min="64"
+            class="field"
+          >
         </div>
         <div>
           <label class="label" for="historyBudget">Historial (caracteres)</label>
@@ -344,6 +384,7 @@ onBeforeRouteLeave(async () => {
             id="historyBudget"
             v-model.number="form.historyBudget"
             type="number"
+            autocomplete="off"
             min="1000"
             step="1000"
             class="field"
@@ -374,16 +415,23 @@ onBeforeRouteLeave(async () => {
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label class="label" for="userName">Nombre</label>
-          <input id="userName" v-model="form.userName" class="field" placeholder="Protagonista" >
+          <input
+            id="userName"
+            v-model="form.userName"
+            autocomplete="off"
+            class="field"
+            placeholder="Protagonista"
+          >
         </div>
         <div>
           <label class="label" for="userColor">Color</label>
           <div class="flex items-center gap-3">
             <input
-              id="userColor"
-              v-model="form.userColor"
-              type="color"
-              class="h-9 w-14 cursor-pointer rounded border border-[var(--color-border-soft)] bg-transparent"
+            id="userColor"
+            v-model="form.userColor"
+            type="color"
+            autocomplete="off"
+            class="h-9 w-14 cursor-pointer rounded border border-[var(--color-border-soft)] bg-transparent"
             >
             <span class="text-sm font-semibold" :style="{ color: form.userColor }">
               {{ form.userName || 'Protagonista' }}
@@ -395,6 +443,7 @@ onBeforeRouteLeave(async () => {
           <textarea
             id="protagonistPreferences"
             v-model="form.protagonistPreferences"
+            autocomplete="off"
             class="field min-h-28"
             placeholder="Personalidad, límites, objetivos o forma de actuar del protagonista."
           />
@@ -411,10 +460,11 @@ onBeforeRouteLeave(async () => {
         <div class="flex shrink-0 items-center gap-1">
           <button type="button" class="btn-ghost" @click="doExport">Exportar JSON</button>
         </div>
-        <input ref="importInput" type="file" accept="application/json" class="hidden" @change="onImportFile" >
+        <input ref="importInput" type="file" accept="application/json" autocomplete="off" class="hidden" @change="onImportFile" >
         <button type="button" class="btn-ghost" :disabled="importing" @click="importInput?.click()">
           {{ importing ? 'Importando…' : 'Importar JSON' }}
         </button>
+        <NuxtLink to="/dev/test-data" class="btn-ghost">Datos de prueba</NuxtLink>
         <button
           type="button"
           class="h-10 w-12 opacity-0"

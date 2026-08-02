@@ -93,11 +93,11 @@ async function setActive() {
       <form class="grid gap-4" @submit.prevent="save">
         <div>
           <label class="label" for="preset-name">Nombre</label>
-          <input id="preset-name" v-model="name" class="field" >
+          <input id="preset-name" v-model="name" autocomplete="off" class="field" >
         </div>
         <div>
           <label class="label" for="preset-content">Contenido</label>
-          <textarea id="preset-content" v-model="content" class="field min-h-96 font-mono text-xs" />
+          <textarea id="preset-content" v-model="content" autocomplete="off" class="field min-h-96 font-mono text-xs" />
         </div>
         <div class="flex flex-wrap gap-2">
           <button type="submit" class="btn-primary" :disabled="saving">Guardar</button>

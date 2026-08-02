@@ -80,6 +80,7 @@ async function remove(id: string) {
         <input
           id="new-desc"
           v-model="pendingDescription"
+          autocomplete="off"
           class="field"
           placeholder="Sonríe, relajada, mirando de frente"
         >
@@ -101,11 +102,12 @@ async function remove(id: string) {
 
     <ul class="grid gap-3 sm:grid-cols-2">
       <li v-for="image in images" :key="image.id" class="card flex min-w-0 flex-col gap-3 sm:flex-row">
-        <img
+        <ImageLightbox
           :src="characters.urlFor(image.id)!"
           alt=""
-          class="max-h-56 w-full shrink-0 rounded-lg object-contain sm:h-24 sm:w-24"
-        >
+          container-class="w-full shrink-0 sm:h-24 sm:w-24"
+          image-class="max-h-56 w-full rounded-lg object-contain sm:h-24 sm:w-24"
+        />
         <div class="min-w-0 flex-1 space-y-2">
           <TagInput
             :model-value="image.tags"
@@ -116,6 +118,7 @@ async function remove(id: string) {
           <input
             class="field"
             :value="image.description"
+            autocomplete="off"
             placeholder="descripción"
             @change="updateImage(image.id, { description: ($event.target as HTMLInputElement).value })"
           >
@@ -123,6 +126,7 @@ async function remove(id: string) {
             <label class="flex items-center gap-2 text-xs text-[var(--color-fg-muted)]">
               <input
                 type="radio"
+                autocomplete="off"
                 :name="`default-${characterId}`"
                 :checked="image.isDefault"
                 class="accent-brand-500"

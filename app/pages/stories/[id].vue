@@ -257,12 +257,13 @@ onBeforeUnmount(() => {
       >
         <div class="mx-auto max-w-3xl space-y-3">
           <figure v-if="stories.activeStory.initialBackgroundId" class="mb-5">
-            <img
+            <ImageLightbox
               v-if="initialBackground && backgrounds.urlFor(initialBackground.id)"
               :src="backgrounds.urlFor(initialBackground.id)!"
               :alt="`Fondo inicial ${primaryTag(initialBackground) ?? ''}`"
-              class="max-h-[32rem] w-full rounded-2xl bg-black/5 object-contain"
-            >
+              container-class="w-full"
+              image-class="max-h-[32rem] w-full rounded-2xl bg-black/5 object-contain"
+            />
             <div
               v-else
               class="rounded-xl border border-dashed border-[var(--color-border-soft)] p-4 text-sm text-[var(--color-fg-muted)]"
@@ -337,6 +338,7 @@ onBeforeUnmount(() => {
         <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="submit">
           <textarea
             v-model="input"
+            autocomplete="off"
             class="field min-h-12 min-w-0 resize-none"
             rows="2"
             placeholder="Escribe lo que haces o dices…"
@@ -387,6 +389,7 @@ onBeforeUnmount(() => {
               <textarea
                 id="storyProtagonistPreferences"
                 v-model="storyPreferences"
+                autocomplete="off"
                 class="field min-h-32"
                 autofocus
               />

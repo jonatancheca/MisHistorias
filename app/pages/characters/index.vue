@@ -27,12 +27,13 @@ async function remove(id: string) {
     <ul class="grid gap-3 sm:grid-cols-2">
       <li v-for="character in characters.characters" :key="character.id" class="card">
         <div class="flex items-start gap-3">
-          <img
+          <ImageLightbox
             v-if="characters.urlFor(characters.defaultImage(character.id)?.id)"
             :src="characters.urlFor(characters.defaultImage(character.id)?.id)!"
             alt=""
-            class="h-16 w-16 rounded-xl object-cover"
-          >
+            container-class="h-16 w-16 shrink-0"
+            image-class="h-16 w-16 rounded-xl object-cover"
+          />
           <div v-else class="h-16 w-16 shrink-0 rounded-xl bg-brand-500/20" />
           <div class="min-w-0 flex-1">
             <NuxtLink

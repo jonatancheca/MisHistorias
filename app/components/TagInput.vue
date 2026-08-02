@@ -119,6 +119,7 @@ function remove(tag: string) {
       :id="id"
       v-model="draft"
       type="text"
+      autocomplete="off"
       class="min-w-24 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-[var(--color-fg-muted)]"
       :placeholder="modelValue.length ? '' : placeholder"
       :aria-label="ariaLabel"

@@ -159,11 +159,13 @@ function confirmEdit() {
 
     <div class="min-w-0 flex-1">
       <template v-if="editing">
-        <textarea v-model="buffer" class="field min-h-28" />
-        <div class="mt-2 flex gap-2">
-          <button type="button" class="btn-primary" @click="confirmEdit">Guardar</button>
-          <button type="button" class="btn-ghost" @click="editing = false">Cancelar</button>
-        </div>
+        <form @submit.prevent="confirmEdit">
+          <textarea v-model="buffer" autocomplete="off" class="field min-h-28" />
+          <div class="mt-2 flex gap-2">
+            <button type="submit" class="btn-primary">Guardar</button>
+            <button type="button" class="btn-ghost" @click="editing = false">Cancelar</button>
+          </div>
+        </form>
       </template>
 
       <template v-else-if="message.role === 'user'">
@@ -177,12 +179,12 @@ function confirmEdit() {
         <div class="space-y-2">
           <div v-for="row in rows" :key="row.key">
             <figure v-if="row.background" class="my-4 max-w-2xl">
-              <img
+              <ImageLightbox
                 v-if="row.imageUrl"
                 :src="row.imageUrl"
                 :alt="`Fondo ${row.tag ?? ''}`"
-                class="max-h-[28rem] w-full rounded-2xl bg-black/5 object-contain"
-              >
+                image-class="max-h-[28rem] w-full rounded-2xl bg-black/5 object-contain"
+              />
               <div
                 v-else
                 class="rounded-xl border border-dashed border-[var(--color-border-soft)] p-4 text-sm text-[var(--color-fg-muted)]"
@@ -208,12 +210,13 @@ function confirmEdit() {
                 <span class="ml-1 whitespace-pre-wrap" :style="{ color: row.color }">{{ row.text }}</span>
               </p>
               <figure v-if="row.imageUrl" class="mt-2 mb-3 w-40">
-                <img
+                <ImageLightbox
                   :src="row.imageUrl"
                   :alt="`${row.name} ${row.tag ?? ''}`"
-                  class="aspect-square w-40 rounded-xl object-cover"
-                  :style="{ border: `2px solid ${row.color}` }"
-                >
+                  container-class="w-40"
+                  image-class="aspect-square w-40 rounded-xl object-cover"
+                  :image-style="{ border: `2px solid ${row.color}` }"
+                />
                 <figcaption class="mt-1 text-xs text-[var(--color-fg-muted)]">
                   {{ row.name }}<span v-if="row.tag"> · {{ row.tag }}</span>
                 </figcaption>

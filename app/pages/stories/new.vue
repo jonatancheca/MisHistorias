@@ -55,7 +55,7 @@ async function submit() {
     <form class="grid gap-5" @submit.prevent="submit">
       <div>
         <label class="label" for="title">Título</label>
-        <input id="title" v-model="title" class="field" placeholder="La taberna del puerto" >
+        <input id="title" v-model="title" autocomplete="off" class="field" placeholder="La taberna del puerto" >
       </div>
 
       <div>
@@ -63,6 +63,7 @@ async function submit() {
         <textarea
           id="premise"
           v-model="premise"
+          autocomplete="off"
           class="field min-h-40"
           placeholder="Dónde ocurre, cuándo, qué está pasando y qué tono tiene la historia."
         />
@@ -74,6 +75,7 @@ async function submit() {
           <textarea
             id="protagonistPreferences"
             v-model="protagonistPreferences"
+            autocomplete="off"
             class="field min-h-28"
             placeholder="Preferencias específicas para esta historia."
           />

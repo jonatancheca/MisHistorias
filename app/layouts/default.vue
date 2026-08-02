@@ -15,6 +15,14 @@ function isActive(to: string) {
   return to === '/' ? route.path === '/' || route.path.startsWith('/stories') : route.path.startsWith(to)
 }
 
+function iconFor(to: string) {
+  if (to === '/') return 'book'
+  if (to === '/characters') return 'users'
+  if (to === '/backgrounds') return 'image'
+  if (to === '/prompts') return 'document'
+  return 'settings'
+}
+
 async function leavePrivateMode() {
   await privacy.deactivate()
 }
@@ -63,14 +71,78 @@ async function leavePrivateMode() {
           v-for="link in links"
           :key="link.to"
           :to="link.to"
-          class="min-w-0 truncate rounded-lg px-1 py-2 text-center text-xs font-medium transition sm:px-3 sm:text-left sm:text-sm"
+          class="flex min-w-0 items-center justify-center gap-2 rounded-lg px-1 py-2 text-xs font-medium transition sm:justify-start sm:px-3 sm:text-sm"
+          :aria-label="link.label"
+          :title="link.label"
           :class="
             isActive(link.to)
               ? 'bg-brand-500 text-white'
               : 'text-[var(--color-fg-muted)] hover:bg-brand-500/10 hover:text-brand-600'
           "
         >
-          {{ link.label }}
+          <svg
+            v-if="iconFor(link.to) === 'book'"
+            aria-hidden="true"
+            class="h-5 w-5 shrink-0 sm:h-4 sm:w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M4 5a3 3 0 0 1 3-3h13v18H7a3 3 0 0 0-3 3V5Z" />
+            <path d="M7 20a3 3 0 0 0-3 3h16M8 6h8m-8 4h8" />
+          </svg>
+          <svg
+            v-else-if="iconFor(link.to) === 'users'"
+            aria-hidden="true"
+            class="h-5 w-5 shrink-0 sm:h-4 sm:w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+          <svg
+            v-else-if="iconFor(link.to) === 'image'"
+            aria-hidden="true"
+            class="h-5 w-5 shrink-0 sm:h-4 sm:w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="m21 15-5-5L5 21" />
+          </svg>
+          <svg
+            v-else-if="iconFor(link.to) === 'document'"
+            aria-hidden="true"
+            class="h-5 w-5 shrink-0 sm:h-4 sm:w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+            <path d="M14 2v6h6M8 13h8m-8 4h8" />
+          </svg>
+          <svg
+            v-else
+            aria-hidden="true"
+            class="h-5 w-5 shrink-0 sm:h-4 sm:w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 3v2m0 14v2M3 12h2m14 0h2m-3.36-6.36-1.42 1.42M8.78 16.64l-1.42 1.42m0-12.84 1.42 1.42m7.86 7.86 1.42 1.42" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          <span class="hidden min-w-0 truncate sm:inline">{{ link.label }}</span>
         </NuxtLink>
       </nav>
     </aside>

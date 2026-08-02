@@ -73,6 +73,7 @@ async function remove(id: string) {
         <input
           id="background-description"
           v-model="description"
+          autocomplete="off"
           class="field"
           placeholder="Taberna medieval cálida, de noche"
         >
@@ -94,11 +95,12 @@ async function remove(id: string) {
 
     <ul class="grid gap-4 md:grid-cols-2">
       <li v-for="background in backgrounds.backgrounds" :key="background.id" class="card min-w-0">
-        <img
+        <ImageLightbox
           :src="backgrounds.urlFor(background.id)!"
           :alt="`Fondo ${primaryTag(background) ?? ''}`"
-          class="mb-3 max-h-80 w-full rounded-xl bg-black/5 object-contain"
-        >
+          container-class="mb-3 w-full"
+          image-class="max-h-80 w-full rounded-xl bg-black/5 object-contain"
+        />
         <div class="grid gap-2">
           <TagInput
             :model-value="background.tags"
@@ -109,6 +111,7 @@ async function remove(id: string) {
           <input
             class="field"
             :value="background.description"
+            autocomplete="off"
             aria-label="Descripción del fondo"
             placeholder="Descripción"
             @change="update(background.id, { description: ($event.target as HTMLInputElement).value })"

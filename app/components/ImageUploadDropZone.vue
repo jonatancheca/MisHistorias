@@ -72,7 +72,7 @@ function onPaste(event: ClipboardEvent) {
     @keydown.enter.prevent="chooseFile"
     @keydown.space.prevent="chooseFile"
   >
-    <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile">
+    <input ref="fileInput" type="file" accept="image/*" autocomplete="off" class="hidden" @change="onFile">
     <button type="button" class="btn-primary w-full" :disabled="busy" @click="chooseFile">
       {{ busy ? busyLabel : label }}
     </button>
