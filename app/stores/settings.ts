@@ -6,6 +6,7 @@ import { DEFAULT_USER_COLOR } from '~/lib/colors'
 const DEFAULTS: AppSettings = {
   baseUrl: 'http://localhost:1234',
   apiKey: '',
+  apiKeyConfigured: false,
   model: '',
   temperature: 0.8,
   maxTokens: 10000,
@@ -56,8 +57,8 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function save(patch: Partial<AppSettings>) {
-    settings.value = { ...settings.value, ...patch }
-    await writeSettings(settings.value)
+    const saved = await writeSettings(patch)
+    settings.value = { ...DEFAULTS, ...settings.value, ...saved, apiKey: '' }
     if ('theme' in patch) applyTheme()
     return settings.value
   }

@@ -127,8 +127,10 @@ export interface PromptPreset {
 
 export interface AppSettings {
   baseUrl: string
-  /** Token opcional del servidor (LMStudio "API key"). Se guarda en el navegador. */
+  /** Token opcional de LM Studio. Solo se mantiene en memoria mientras se edita. */
   apiKey: string
+  /** El servidor tiene un token guardado; nunca devuelve su valor. */
+  apiKeyConfigured: boolean
   model: string
   temperature: number
   maxTokens: number

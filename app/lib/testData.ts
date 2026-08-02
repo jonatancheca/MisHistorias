@@ -8,8 +8,20 @@ import type {
 import {
   clearAll,
   getActiveDataScope,
-  getDb,
-  readSettings,
+  listAllImages,
+  listBackgrounds,
+  listCharacters,
+  listLlmDebugTraces,
+  listMessages,
+  listPresets,
+  listStories,
+  putBackground,
+  putCharacter,
+  putImage,
+  putLlmDebugTrace,
+  putMessage,
+  putPreset,
+  putStory,
   writeSettings,
   type StoredBackground,
   type StoredImage
@@ -66,19 +78,26 @@ function svgBlob(label: string, background: string, foreground = '#ffffff') {
 }
 
 async function counts(): Promise<TestDataCounts> {
-  const db = await getDb('normal')
-  const [characters, images, backgrounds, stories, messages, llmDebugTraces, presets] =
-    await Promise.all([
-      db.count('characters'),
-      db.count('images'),
-      db.count('backgrounds'),
-      db.count('stories'),
-      db.count('messages'),
-      db.count('llmDebugTraces'),
-      db.count('presets')
-    ])
-
-  return { characters, images, backgrounds, stories, messages, llmDebugTraces, presets }
+  const [characters, images, backgrounds, stories, presets] = await Promise.all([
+    listCharacters(),
+    listAllImages(),
+    listBackgrounds(),
+    listStories(),
+    listPresets()
+  ])
+  const [messageGroups, traceGroups] = await Promise.all([
+    Promise.all(stories.map((story) => listMessages(story.id))),
+    Promise.all(stories.map((story) => listLlmDebugTraces(story.id)))
+  ])
+  return {
+    characters: characters.length,
+    images: images.length,
+    backgrounds: backgrounds.length,
+    stories: stories.length,
+    messages: messageGroups.reduce((total, group) => total + group.length, 0),
+    llmDebugTraces: traceGroups.reduce((total, group) => total + group.length, 0),
+    presets: presets.length
+  }
 }
 
 async function seedNormalData() {
@@ -282,21 +301,15 @@ async function seedNormalData() {
     }
   ]
 
-  const db = await getDb('normal')
-  const tx = db.transaction(
-    ['characters', 'images', 'backgrounds', 'stories', 'messages', 'llmDebugTraces', 'presets'],
-    'readwrite'
-  )
   await Promise.all([
-    ...characters.map((value) => tx.objectStore('characters').put(value)),
-    ...images.map((value) => tx.objectStore('images').put(value)),
-    ...backgrounds.map((value) => tx.objectStore('backgrounds').put(value)),
-    ...stories.map((value) => tx.objectStore('stories').put(value)),
-    ...messages.map((value) => tx.objectStore('messages').put(value)),
-    ...traces.map((value) => tx.objectStore('llmDebugTraces').put(value)),
-    ...presets.map((value) => tx.objectStore('presets').put(value))
+    ...characters.map(putCharacter),
+    ...backgrounds.map(putBackground),
+    ...presets.map(putPreset)
   ])
-  await tx.done
+  await Promise.all(images.map(putImage))
+  await Promise.all(stories.map(putStory))
+  await Promise.all(messages.map(putMessage))
+  await Promise.all(traces.map(putLlmDebugTrace))
 }
 
 export async function resetNormalTestData(seed: boolean): Promise<TestDataResetResult> {
@@ -305,8 +318,7 @@ export async function resetNormalTestData(seed: boolean): Promise<TestDataResetR
   if (seed) await seedNormalData()
 
   const activePresetId = seed ? TEST_DATA_IDS.presetNarrative : null
-  const settings = await readSettings()
-  if (settings) await writeSettings({ ...settings, activePresetId })
+  await writeSettings({ activePresetId })
 
   return { counts: await counts(), activePresetId, seeded: seed }
 }

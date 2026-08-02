@@ -3,19 +3,22 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "nuxt generate",
+    "build": "nuxt build",
     "dev": "nuxt dev --host 0.0.0.0",
     "dev2": "nuxt dev --host 0.0.0.0 --port 3010 --envName dev2",
-    "generate": "nuxt generate",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "preview": "nuxt preview",
+    "start": "node scripts/start-server.mjs",
+    "serve": "pnpm build && pnpm start",
+    "test:storage": "node --test server/utils/storage.test.ts server/utils/llm.test.ts",
     "postinstall": "nuxt prepare"
+  },
+  "engines": {
+    "node": ">=24.15.0"
   },
   "dependencies": {
     "@pinia/nuxt": "^1.0.1",
     "cropperjs": "2.1.1",
-    "idb": "^8.0.3",
     "nuxt": "^4.5.1",
     "pinia": "^4.0.2",
     "vue": "^3.5.40",

@@ -1,75 +1,45 @@
-# Nuxt Minimal Starter
+# Mis Historias
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Aplicación Nuxt para crear historias con un servidor LM Studio local. Los datos se guardan en
+SQLite y se comparten con los navegadores que acceden al mismo servidor.
 
-## Setup
+## Requisitos
 
-Make sure to install dependencies:
+- Node.js 24.15 o posterior.
+- pnpm.
+- LM Studio accesible desde el equipo que ejecuta Mis Historias.
 
-```bash
-# npm
-npm install
+## Desarrollo
 
-# pnpm
+```powershell
 pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
-```
-
-## Development Server
-
-Start the development server on `http://localhost:3000`:
-
-```bash
-# npm
-npm run dev
-
-# pnpm
 pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
 ```
 
-## Production
+La aplicación escucha en `http://localhost:3000` y en las interfaces de red local.
 
-Build the application for production:
+## Uso normal
 
-```bash
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
+```powershell
+pnpm install
+pnpm serve
 ```
 
-Locally preview production build:
+`pnpm serve` compila y arranca frontend y API. Mantén la terminal abierta mientras uses la app.
 
-```bash
-# npm
-npm run preview
+SQLite se crea por defecto en `.data/mishistorias.sqlite`. Para usar otra ruta:
 
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
+```powershell
+$env:NUXT_SQLITE_PATH = 'D:\MisHistorias\mishistorias.sqlite'
+pnpm serve
 ```
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+No hay autenticación ni HTTPS. Cualquier equipo con acceso a la dirección LAN puede leer,
+modificar o borrar los datos, incluida la colección privada.
+
+## Comprobaciones
+
+```powershell
+pnpm test:storage
+pnpm lint
+```

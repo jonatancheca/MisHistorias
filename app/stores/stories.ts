@@ -440,8 +440,6 @@ export const useStoriesStore = defineStore('stories', () => {
 
         waitingForResponse = true
         const result = await fetchLlmChat({
-          baseUrl: settings.baseUrl,
-          apiKey: settings.apiKey,
           model: settings.model,
           messages: payload,
           temperature: settings.temperature,

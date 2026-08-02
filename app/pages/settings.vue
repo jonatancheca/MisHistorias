@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { AppSettings } from '#shared/types'
 import { fetchLlmModels } from '~/lib/llm'
 
 const settings = useSettingsStore()
@@ -23,6 +24,7 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 let savePending = false
 let saveRevision = 0
 let saveQueue: Promise<void> = Promise.resolve()
+let apiKeyDirty = false
 let privateClickCount = 0
 let privateClickTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -31,7 +33,8 @@ async function testConnection() {
   testError.value = null
   testMessage.value = null
   try {
-    const availableModels = await fetchLlmModels(form.baseUrl, form.apiKey)
+    await flushSave()
+    const availableModels = await fetchLlmModels()
     models.value = availableModels
     testMessage.value = `${availableModels.length} modelos disponibles`
     if (!form.model && availableModels[0]) form.model = availableModels[0]
@@ -44,9 +47,8 @@ async function testConnection() {
 }
 
 function settingsPatch() {
-  return {
+  const patch: Partial<AppSettings> = {
     baseUrl: form.baseUrl.trim(),
-    apiKey: form.apiKey.trim(),
     model: form.model,
     temperature: Number(form.temperature),
     maxTokens: Number(form.maxTokens),
@@ -56,6 +58,8 @@ function settingsPatch() {
     userColor: form.userColor,
     protagonistPreferences: form.protagonistPreferences.trim()
   }
+  if (apiKeyDirty) patch.apiKey = form.apiKey.trim()
+  return patch
 }
 
 function enqueueSave(revision: number) {
@@ -65,7 +69,11 @@ function enqueueSave(revision: number) {
     saveError.value = null
     try {
       await settings.save(patch)
-      if (revision === saveRevision) saveStatus.value = 'saved'
+      if (revision === saveRevision) {
+        if ('apiKey' in patch) apiKeyDirty = false
+        form.apiKeyConfigured = settings.settings.apiKeyConfigured
+        saveStatus.value = 'saved'
+      }
     } catch (caught) {
       if (revision === saveRevision) {
         saveStatus.value = 'error'
@@ -75,6 +83,16 @@ function enqueueSave(revision: number) {
   }
   saveQueue = saveQueue.then(run, run)
   return saveQueue
+}
+
+function onApiKeyInput() {
+  apiKeyDirty = true
+}
+
+function clearApiKey() {
+  form.apiKey = ''
+  apiKeyDirty = true
+  scheduleSave()
 }
 
 function scheduleSave() {
@@ -263,8 +281,7 @@ onBeforeRouteLeave(async () => {
           </button>
         </div>
         <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-          Sin `/v1` al final. LM Studio debe tener CORS y autenticación activados. Desde otro
-          equipo, acepta el permiso de red local del navegador.
+          Sin `/v1` al final. El servidor de Mis Historias conecta con LM Studio.
         </p>
         <p v-if="testMessage" class="mt-1 text-xs text-brand-600">{{ testMessage }}</p>
         <p v-if="testError" class="mt-1 text-xs text-red-500">{{ testError }}</p>
@@ -272,16 +289,27 @@ onBeforeRouteLeave(async () => {
 
       <div>
         <label class="label" for="apiKey">Token de acceso (opcional)</label>
-        <input
-          id="apiKey"
-          v-model="form.apiKey"
-          type="password"
-          autocomplete="off"
-          class="field"
-          placeholder="Solo si LMStudio pide API key"
-        >
+        <div class="flex gap-2">
+          <input
+            id="apiKey"
+            v-model="form.apiKey"
+            type="password"
+            autocomplete="off"
+            class="field"
+            :placeholder="form.apiKeyConfigured ? 'Token configurado; escribe para cambiarlo' : 'Solo si LMStudio pide API key'"
+            @input="onApiKeyInput"
+          >
+          <button
+            v-if="form.apiKeyConfigured"
+            type="button"
+            class="btn-ghost shrink-0"
+            @click="clearApiKey"
+          >
+            Quitar token
+          </button>
+        </div>
         <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-          Se envía como <code>Authorization: Bearer</code>. Se guarda en este navegador sin cifrar.
+          Se guarda en SQLite sin cifrar y nunca se devuelve al navegador.
         </p>
       </div>
 
@@ -377,7 +405,7 @@ onBeforeRouteLeave(async () => {
     <section class="mt-10">
       <h2 class="mb-2 text-lg font-semibold">Datos</h2>
       <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
-        Todo se guarda en el navegador (IndexedDB). Exporta para hacer copia o mover a otro equipo.
+        Todo se guarda en SQLite y se comparte con los equipos que usan este servidor.
       </p>
       <div class="flex flex-wrap gap-2">
         <div class="flex shrink-0 items-center gap-1">

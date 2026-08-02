@@ -12,6 +12,9 @@ export default defineNuxtConfig({
   devServer: {
     host: '0.0.0.0'
   },
+  nitro: {
+    externals: { external: ['node:sqlite'] }
+  },
   ssr: false,
   modules: ['@pinia/nuxt', '@nuxt/eslint'],
   css: ['~/assets/css/main.css'],
