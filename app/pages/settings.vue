@@ -11,6 +11,11 @@ const privacy = usePrivacyStore()
 await settings.load()
 
 const form = reactive({ ...settings.settings })
+if (privacy.isPrivate) {
+  form.userName = settings.settings.privateUserName ?? settings.settings.userName
+  form.protagonistPreferences =
+    settings.settings.privateProtagonistPreferences ?? settings.settings.protagonistPreferences
+}
 const models = ref<string[]>([])
 const testing = ref(false)
 const testMessage = ref<string | null>(null)
@@ -25,6 +30,8 @@ let savePending = false
 let saveRevision = 0
 let saveQueue: Promise<void> = Promise.resolve()
 let apiKeyDirty = false
+let privateUserNameDirty: boolean = false
+let privateProtagonistPreferencesDirty: boolean = false
 let privateClickCount = 0
 let privateClickTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -54,9 +61,16 @@ function settingsPatch() {
     maxTokens: Number(form.maxTokens),
     historyBudget: Number(form.historyBudget),
     responseSpeed: form.responseSpeed,
-    userName: form.userName.trim() || 'Protagonista',
-    userColor: form.userColor,
-    protagonistPreferences: form.protagonistPreferences.trim()
+    userColor: form.userColor
+  }
+  if (privacy.isPrivate) {
+    if (privateUserNameDirty) patch.privateUserName = form.userName.trim() || 'Protagonista'
+    if (privateProtagonistPreferencesDirty) {
+      patch.privateProtagonistPreferences = form.protagonistPreferences.trim()
+    }
+  } else {
+    patch.userName = form.userName.trim() || 'Protagonista'
+    patch.protagonistPreferences = form.protagonistPreferences.trim()
   }
   if (apiKeyDirty) patch.apiKey = form.apiKey.trim()
   return patch
@@ -71,6 +85,8 @@ function enqueueSave(revision: number) {
       await settings.save(patch)
       if (revision === saveRevision) {
         if ('apiKey' in patch) apiKeyDirty = false
+        if ('privateUserName' in patch) privateUserNameDirty = false
+        if ('privateProtagonistPreferences' in patch) privateProtagonistPreferencesDirty = false
         form.apiKeyConfigured = settings.settings.apiKeyConfigured
         saveStatus.value = 'saved'
       }
@@ -87,6 +103,14 @@ function enqueueSave(revision: number) {
 
 function onApiKeyInput() {
   apiKeyDirty = true
+}
+
+function markPrivateUserNameDirty() {
+  privateUserNameDirty = true
+}
+
+function markPrivateProtagonistPreferencesDirty() {
+  privateProtagonistPreferencesDirty = true
 }
 
 function clearApiKey() {
@@ -410,17 +434,21 @@ onBeforeRouteLeave(async () => {
     <section class="mt-10">
       <h2 class="mb-2 text-lg font-semibold">Protagonista</h2>
       <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
-        Nombre, color y preferencias con los que apareces en todas las historias.
+        <template v-if="privacy.isPrivate">
+          Nombre y preferencias exclusivos del modo privado. El color sigue compartido.
+        </template>
+        <template v-else>Nombre, color y preferencias con los que apareces en todas las historias.</template>
       </p>
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
-          <label class="label" for="userName">Nombre</label>
+          <label class="label" for="userName">{{ privacy.isPrivate ? 'Nombre privado' : 'Nombre' }}</label>
           <input
             id="userName"
             v-model="form.userName"
             autocomplete="off"
             class="field"
             placeholder="Protagonista"
+            @input="markPrivateUserNameDirty"
           >
         </div>
         <div>
@@ -439,13 +467,16 @@ onBeforeRouteLeave(async () => {
           </div>
         </div>
         <div class="sm:col-span-2">
-          <label class="label" for="protagonistPreferences">Preferencias globales</label>
+          <label class="label" for="protagonistPreferences">
+            {{ privacy.isPrivate ? 'Preferencias globales privadas' : 'Preferencias globales' }}
+          </label>
           <textarea
             id="protagonistPreferences"
             v-model="form.protagonistPreferences"
             autocomplete="off"
             class="field min-h-28"
             placeholder="Personalidad, límites, objetivos o forma de actuar del protagonista."
+            @input="markPrivateProtagonistPreferencesDirty"
           />
         </div>
       </div>

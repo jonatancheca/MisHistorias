@@ -22,7 +22,7 @@ const settings = useSettingsStore()
 const editing = ref(false)
 const buffer = ref('')
 
-const userName = computed(() => settings.settings.userName?.trim() || 'Protagonista')
+const userName = computed(() => settings.activeUserName)
 const userColor = computed(() => normalizeColor(settings.settings.userColor, DEFAULT_USER_COLOR))
 
 interface FlowRow {

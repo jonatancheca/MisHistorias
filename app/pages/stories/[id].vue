@@ -23,16 +23,21 @@ await Promise.all([
 
 const input = ref('')
 const scroller = ref<HTMLElement | null>(null)
+const timelineContent = ref<HTMLElement | null>(null)
 const canScrollToTop = ref(false)
 const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
 const storyPreferencesOpen = ref(false)
+const storyPremise = ref('')
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
+const followingBottom = ref(true)
 let lastScrollTop = 0
 let autoScrollTarget: number | null = null
 let accumulatedScroll = 0
 let desktopMedia: MediaQueryList | null = null
+let timelineResizeObserver: ResizeObserver | null = null
+let followScrollFrame: number | null = null
 
 type TimelineItem =
   | { kind: 'message'; id: string; createdAt: number; message: Message }
@@ -88,74 +93,62 @@ function updateScrollControls() {
   }
   const maximum = Math.max(0, scroller.value.scrollHeight - scroller.value.clientHeight)
   canScrollToTop.value = scroller.value.scrollTop > 1
-  canScrollToBottom.value = scroller.value.scrollTop < maximum - 1
+  canScrollToBottom.value = !followingBottom.value || scroller.value.scrollTop < maximum - 1
+}
+
+function scheduleFollowBottom() {
+  if (!followingBottom.value || followScrollFrame !== null) return
+  followScrollFrame = requestAnimationFrame(() => {
+    followScrollFrame = null
+    if (!followingBottom.value || !scroller.value) return
+    const maximum = Math.max(0, scroller.value.scrollHeight - scroller.value.clientHeight)
+    autoScrollTarget = maximum
+    scroller.value.scrollTo({ top: maximum, behavior: 'auto' })
+    lastScrollTop = scroller.value.scrollTop
+    updateScrollControls()
+  })
 }
 
 function scrollToTop() {
   if (!scroller.value) return
+  followingBottom.value = false
   autoScrollTarget = 0
+  showMobileChrome()
   scroller.value.scrollTo({ top: 0, behavior: 'smooth' })
+  updateScrollControls()
 }
 
-async function scrollToBottom(behavior: ScrollBehavior = 'auto') {
+async function scrollToBottom(behavior: ScrollBehavior = 'auto', resume = true) {
+  if (resume) followingBottom.value = true
   await nextTick()
   if (!scroller.value) return
-  autoScrollTarget = Math.max(0, scroller.value.scrollHeight - scroller.value.clientHeight)
-  scroller.value.scrollTo({ top: scroller.value.scrollHeight, behavior })
+  const maximum = Math.max(0, scroller.value.scrollHeight - scroller.value.clientHeight)
+  autoScrollTarget = maximum
+  scroller.value.scrollTo({ top: maximum, behavior })
   if (behavior === 'auto') {
     lastScrollTop = scroller.value.scrollTop
-    updateScrollControls()
   }
+  updateScrollControls()
 }
-
-function waitForImage(image: HTMLImageElement) {
-  if (image.complete) return Promise.resolve()
-  return new Promise<void>((resolve) => {
-    const finish = () => {
-      image.removeEventListener('load', finish)
-      image.removeEventListener('error', finish)
-      resolve()
-    }
-    image.addEventListener('load', finish, { once: true })
-    image.addEventListener('error', finish, { once: true })
-    if (image.complete) finish()
-  })
-}
-
-async function scrollToBottomAfterImages() {
-  await nextTick()
-  if (!scroller.value) return
-  const images = Array.from(scroller.value.querySelectorAll('img'))
-  await Promise.all(images.map(waitForImage))
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-  })
-  await scrollToBottom()
-}
-
-watch(timeline, () => scrollToBottomAfterImages(), { deep: true, immediate: true })
-watch(
-  () => stories.error,
-  (value) => {
-    if (value) void scrollToBottom()
-  }
-)
 
 async function submit() {
   const text = input.value
   if (!text.trim() || stories.generating) return
+  followingBottom.value = true
+  scheduleFollowBottom()
   input.value = ''
   await stories.send(text)
+}
+
+async function generateOpening() {
+  followingBottom.value = true
+  scheduleFollowBottom()
+  await stories.generate()
 }
 
 const isEmpty = computed(() => timeline.value.length === 0 && !stories.generating)
 
 function onStoryScroll() {
-  updateScrollControls()
-  if (window.innerWidth >= 640) {
-    showMobileChrome()
-    return
-  }
   const current = scroller.value?.scrollTop ?? 0
   const delta = current - lastScrollTop
   lastScrollTop = current
@@ -164,8 +157,24 @@ function onStoryScroll() {
     const reachedTarget = Math.abs(current - autoScrollTarget) <= 1
     const movingTowardTarget = autoScrollTarget === 0 ? delta <= 0 : delta >= 0
     if (reachedTarget) autoScrollTarget = null
-    if (reachedTarget || movingTowardTarget) return
+    if (reachedTarget || movingTowardTarget) {
+      updateScrollControls()
+      return
+    }
     autoScrollTarget = null
+  }
+
+  if (delta < -1) {
+    followingBottom.value = false
+    accumulatedScroll = 0
+    showMobileChrome()
+    updateScrollControls()
+    return
+  }
+  updateScrollControls()
+  if (window.innerWidth >= 640) {
+    showMobileChrome()
+    return
   }
 
   if (current <= 8) {
@@ -186,13 +195,19 @@ function onStoryScroll() {
 
 function openStoryPreferences() {
   if (!stories.activeStory) return
+  storyPremise.value = stories.activeStory.premise
   storyPreferences.value = stories.activeStory.protagonistPreferences ?? ''
   storyPreferencesMode.value = stories.activeStory.protagonistPreferencesMode ?? 'append'
   storyPreferencesOpen.value = true
 }
 
 async function saveStoryPreferences() {
-  await stories.updateStoryPreferences(storyPreferences.value, storyPreferencesMode.value)
+  if (!storyPremise.value.trim()) return
+  await stories.updateStorySettings(
+    storyPremise.value,
+    storyPreferences.value,
+    storyPreferencesMode.value
+  )
   storyPreferencesOpen.value = false
 }
 
@@ -215,7 +230,11 @@ async function regenerateFrom(id: string) {
       : 'Se borrará esta respuesta antes de generar otra.',
     confirmLabel: 'Regenerar'
   })
-  if (accepted) await stories.regenerateFrom(id)
+  if (accepted) {
+    followingBottom.value = true
+    scheduleFollowBottom()
+    await stories.regenerateFrom(id)
+  }
 }
 
 async function resendFrom(id: string) {
@@ -230,7 +249,11 @@ async function resendFrom(id: string) {
       : 'Se reenviará este mensaje para generar otra respuesta.',
     confirmLabel: 'Reenviar'
   })
-  if (accepted) await stories.resendFrom(id)
+  if (accepted) {
+    followingBottom.value = true
+    scheduleFollowBottom()
+    await stories.resendFrom(id)
+  }
 }
 
 function onBreakpointChange(event: MediaQueryListEvent) {
@@ -240,7 +263,10 @@ function onBreakpointChange(event: MediaQueryListEvent) {
 onMounted(() => {
   desktopMedia = window.matchMedia('(min-width: 640px)')
   desktopMedia.addEventListener('change', onBreakpointChange)
-  void scrollToBottomAfterImages()
+  timelineResizeObserver = new ResizeObserver(scheduleFollowBottom)
+  if (timelineContent.value) timelineResizeObserver.observe(timelineContent.value)
+  if (scroller.value) timelineResizeObserver.observe(scroller.value)
+  void scrollToBottom()
 })
 
 const initialBackground = computed(() =>
@@ -264,6 +290,8 @@ const currentBackground = computed(() => {
 
 onBeforeUnmount(() => {
   desktopMedia?.removeEventListener('change', onBreakpointChange)
+  timelineResizeObserver?.disconnect()
+  if (followScrollFrame !== null) cancelAnimationFrame(followScrollFrame)
   showMobileChrome()
 })
 </script>
@@ -316,7 +344,7 @@ onBeforeUnmount(() => {
             aria-label="Volver al final"
             title="Volver al final"
             :disabled="!canScrollToBottom"
-            @click="scrollToBottom('smooth')"
+            @click="scrollToBottom()"
           >
             <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 20h14M12 4v13m-5-5 5 5 5-5" />
@@ -325,8 +353,8 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="btn-ghost"
-            aria-label="Preferencias de la historia"
-            title="Preferencias del protagonista"
+            aria-label="Ajustes de la historia"
+            title="Ajustes de la historia"
             :disabled="stories.generating"
             @click="openStoryPreferences"
           >
@@ -334,7 +362,7 @@ onBeforeUnmount(() => {
               <circle cx="12" cy="12" r="3" />
               <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
             </svg>
-            <span class="hidden sm:inline">Preferencias</span>
+            <span class="hidden sm:inline">Ajustes</span>
           </button>
           <NuxtLink to="/" class="btn-ghost">Historias</NuxtLink>
         </div>
@@ -346,7 +374,7 @@ onBeforeUnmount(() => {
         class="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6"
         @scroll.passive="onStoryScroll"
       >
-        <div class="mx-auto max-w-3xl space-y-3">
+        <div ref="timelineContent" class="mx-auto max-w-3xl space-y-3">
           <figure v-if="stories.activeStory.initialBackgroundId" class="mb-5">
             <ImageLightbox
               v-if="initialBackground && backgrounds.urlFor(initialBackground.id)"
@@ -368,7 +396,7 @@ onBeforeUnmount(() => {
 
           <div v-if="isEmpty" class="card text-sm text-[var(--color-fg-muted)]">
             La historia aún no ha empezado.
-            <button type="button" class="text-brand-600 underline" @click="stories.generate()">
+            <button type="button" class="text-brand-600 underline" @click="generateOpening">
               Deja que el narrador abra la escena
             </button>
             o escribe tú el primer movimiento.
@@ -471,11 +499,22 @@ onBeforeUnmount(() => {
         @keydown.esc.stop.prevent="storyPreferencesOpen = false"
       >
         <form
-          class="w-full max-w-lg rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-5 shadow-2xl"
+          class="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-5 shadow-2xl"
           @submit.prevent="saveStoryPreferences"
         >
-          <h2 class="text-lg font-bold">Preferencias del protagonista</h2>
+          <h2 class="text-lg font-bold">Ajustes de la historia</h2>
           <div class="mt-4 grid gap-4">
+            <div>
+              <label class="label" for="storyPremise">Planteamiento</label>
+              <textarea
+                id="storyPremise"
+                v-model="storyPremise"
+                autocomplete="off"
+                class="field min-h-32"
+                autofocus
+                required
+              />
+            </div>
             <div>
               <label class="label" for="storyProtagonistPreferences">Preferencias de esta historia</label>
               <textarea
@@ -483,7 +522,6 @@ onBeforeUnmount(() => {
                 v-model="storyPreferences"
                 autocomplete="off"
                 class="field min-h-32"
-                autofocus
               />
             </div>
             <div>
@@ -500,7 +538,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="mt-5 flex justify-end gap-2">
             <button type="button" class="btn-ghost" @click="storyPreferencesOpen = false">Cancelar</button>
-            <button type="submit" class="btn-primary">Guardar</button>
+            <button type="submit" class="btn-primary" :disabled="!storyPremise.trim()">Guardar</button>
           </div>
         </form>
       </div>

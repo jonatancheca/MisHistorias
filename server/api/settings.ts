@@ -15,8 +15,10 @@ const ALLOWED_SETTINGS = new Set([
   'responseSpeed',
   'mockMode',
   'userName',
+  'privateUserName',
   'userColor',
-  'protagonistPreferences'
+  'protagonistPreferences',
+  'privateProtagonistPreferences'
 ])
 
 function validSetting(key: string, value: unknown) {
@@ -47,10 +49,14 @@ function validSetting(key: string, value: unknown) {
       return typeof value === 'boolean'
     case 'userName':
       return typeof value === 'string' && value.length <= 200
+    case 'privateUserName':
+      return value === null || (typeof value === 'string' && value.length <= 200)
     case 'userColor':
       return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)
     case 'protagonistPreferences':
       return typeof value === 'string' && value.length <= 100000
+    case 'privateProtagonistPreferences':
+      return value === null || (typeof value === 'string' && value.length <= 100000)
     default:
       return false
   }

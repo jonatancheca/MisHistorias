@@ -5,6 +5,16 @@ export const usePrivacyStore = defineStore('privacy', () => {
   const isPrivate = ref(false)
   const switching = ref(false)
 
+  watch(
+    isPrivate,
+    (active) => {
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.toggle('private-scope', active)
+      }
+    },
+    { immediate: true }
+  )
+
   async function switchScope(scope: DataScope) {
     const nextPrivate = scope === 'private'
     if (isPrivate.value === nextPrivate || switching.value) return

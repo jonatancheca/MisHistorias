@@ -245,13 +245,15 @@ export const useStoriesStore = defineStore('stories', () => {
     )
   }
 
-  async function updateStoryPreferences(
+  async function updateStorySettings(
+    premise: string,
     protagonistPreferences: string,
     protagonistPreferencesMode: ProtagonistPreferencesMode
   ) {
-    if (!activeStory.value) return
+    if (!activeStory.value || !premise.trim()) return
     const updated: Story = {
       ...activeStory.value,
+      premise: premise.trim(),
       protagonistPreferences: protagonistPreferences.trim(),
       protagonistPreferencesMode,
       updatedAt: Date.now()
@@ -420,9 +422,9 @@ export const useStoriesStore = defineStore('stories', () => {
           backgrounds: backgroundsStore.backgrounds,
           messages: messages.value,
           historyBudget: settings.historyBudget,
-          userName: settings.userName?.trim() || 'Protagonista',
+          userName: settingsStore.activeUserName,
           protagonistPreferences: resolveProtagonistPreferences(
-            settings.protagonistPreferences ?? '',
+            settingsStore.activeProtagonistPreferences,
             story.protagonistPreferences ?? '',
             story.protagonistPreferencesMode ?? 'append'
           ),
@@ -581,7 +583,7 @@ export const useStoriesStore = defineStore('stories', () => {
     error,
     load,
     createStory,
-    updateStoryPreferences,
+    updateStorySettings,
     removeStory,
     openStory,
     addUserMessage,

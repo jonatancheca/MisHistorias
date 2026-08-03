@@ -149,10 +149,14 @@ export interface AppSettings {
   mockMode: boolean
   /** Nombre con el que aparece el protagonista en la historia */
   userName: string
+  /** Nombre exclusivo del ámbito privado; null hereda userName */
+  privateUserName: string | null
   /** Color hex del protagonista en la historia */
   userColor: string
   /** Preferencias globales del protagonista inyectadas en el prompt */
   protagonistPreferences: string
+  /** Preferencias exclusivas del ámbito privado; null hereda las globales normales */
+  privateProtagonistPreferences: string | null
 }
 
 export interface LlmModel {

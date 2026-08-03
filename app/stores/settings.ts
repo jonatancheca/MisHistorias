@@ -19,8 +19,10 @@ const DEFAULTS: AppSettings = {
   responseSpeed: 'high',
   mockMode: false,
   userName: 'Protagonista',
+  privateUserName: null,
   userColor: DEFAULT_USER_COLOR,
-  protagonistPreferences: ''
+  protagonistPreferences: '',
+  privateProtagonistPreferences: null
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -29,6 +31,18 @@ export const useSettingsStore = defineStore('settings', () => {
     activeDataScope.value === 'private'
       ? settings.value.privateActivePresetId
       : settings.value.activePresetId
+  )
+  const activeUserName = computed(() => {
+    const value =
+      activeDataScope.value === 'private'
+        ? (settings.value.privateUserName ?? settings.value.userName)
+        : settings.value.userName
+    return value.trim() || 'Protagonista'
+  })
+  const activeProtagonistPreferences = computed(() =>
+    activeDataScope.value === 'private'
+      ? (settings.value.privateProtagonistPreferences ?? settings.value.protagonistPreferences)
+      : settings.value.protagonistPreferences
   )
   const loaded = ref(false)
   let systemThemeMedia: MediaQueryList | null = null
@@ -81,5 +95,16 @@ export const useSettingsStore = defineStore('settings', () => {
     await save({ theme: settings.value.theme === 'dark' ? 'light' : 'dark' })
   }
 
-  return { settings, activePresetId, loaded, load, save, setActivePresetId, toggleTheme, applyTheme }
+  return {
+    settings,
+    activePresetId,
+    activeUserName,
+    activeProtagonistPreferences,
+    loaded,
+    load,
+    save,
+    setActivePresetId,
+    toggleTheme,
+    applyTheme
+  }
 })
