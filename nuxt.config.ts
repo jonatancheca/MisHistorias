@@ -5,6 +5,9 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
   $env: {
+    production: {
+      devtools: { enabled: false }
+    },
     dev2: {
       devtools: { enabled: false }
     }

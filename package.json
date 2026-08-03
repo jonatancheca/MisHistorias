@@ -4,11 +4,13 @@
   "private": true,
   "scripts": {
     "build": "nuxt build",
+    "postbuild": "node scripts/copy-start-server.mjs",
+    "deploy": "pnpm build && node scripts/deploy-output.mjs",
     "dev": "nuxt dev --host localhost",
     "dev2": "nuxt dev --host 0.0.0.0 --port 3010 --envName dev2",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "start": "node scripts/start-server.mjs",
+    "start": "node .output/start-server.mjs",
     "serve": "pnpm build && pnpm start",
     "test:storage": "node --test server/utils/storage.test.ts server/utils/llm.test.ts",
     "postinstall": "nuxt prepare"

@@ -488,21 +488,21 @@ onBeforeRouteLeave(async () => {
         Todo se guarda en SQLite y se comparte con los equipos que usan este servidor.
       </p>
       <div class="flex flex-wrap gap-2">
-        <div class="flex shrink-0 items-center gap-1">
+        <div class="flex shrink-0 flex-col items-center gap-1">
           <button type="button" class="btn-ghost" @click="doExport">Exportar JSON</button>
+          <button
+            type="button"
+            class="h-10 w-12 opacity-0"
+            aria-label="Activar modo privado"
+            :disabled="privacy.switching"
+            @click="onPrivateTrigger"
+          />
         </div>
         <input ref="importInput" type="file" accept="application/json" autocomplete="off" class="hidden" @change="onImportFile" >
         <button type="button" class="btn-ghost" :disabled="importing" @click="importInput?.click()">
           {{ importing ? 'Importando…' : 'Importar JSON' }}
         </button>
         <NuxtLink to="/dev/test-data" class="btn-ghost">Datos de prueba</NuxtLink>
-        <button
-          type="button"
-          class="h-10 w-12 opacity-0"
-          aria-label="Activar modo privado"
-          :disabled="privacy.switching"
-          @click="onPrivateTrigger"
-        />
       </div>
 
       <p v-if="importMessage" class="mt-2 text-xs text-[var(--color-fg-muted)]">{{ importMessage }}</p>

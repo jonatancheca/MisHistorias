@@ -37,6 +37,27 @@ pnpm serve
 No hay autenticación ni HTTPS. Cualquier equipo con acceso a la dirección LAN puede leer,
 modificar o borrar los datos, incluida la colección privada.
 
+## Actualizar instalación local
+
+Detén primero el servidor abierto mediante `go.bat`. Desde la carpeta del proyecto ejecuta:
+
+```powershell
+pnpm run deploy
+```
+
+El comando compila la aplicación y copia el contenido completo de `.output` a
+`C:\local\MisHistoriasInstall\install1`. Elimina artefactos antiguos de la aplicación, pero
+conserva `install1\.data`. Tampoco modifica `C:\local\MisHistoriasInstall\.data` ni `go.bat`.
+
+Cuando termine, reinicia la aplicación con:
+
+```powershell
+C:\local\MisHistoriasInstall\go.bat
+```
+
+Usa `pnpm run deploy` con `run`: `pnpm upgrade` actualiza dependencias y `pnpm deploy` es otro
+comando propio de pnpm 11.
+
 ## Comprobaciones
 
 ```powershell
