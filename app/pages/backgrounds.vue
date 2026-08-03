@@ -13,7 +13,9 @@ const pendingFile = ref<File | null>(null)
 const busy = ref(false)
 const error = ref<string | null>(null)
 
-function selectFile(file: File) {
+function selectFile(files: File[]) {
+  const file = files[0]
+  if (!file) return
   error.value = null
   pendingFile.value = file
 }

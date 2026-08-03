@@ -1,13 +1,17 @@
 <script setup lang="ts">
-const props = defineProps<{
-  busy: boolean
-  label: string
-  busyLabel: string
-  zoneLabel: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    busy: boolean
+    label: string
+    busyLabel: string
+    zoneLabel: string
+    multiple?: boolean
+  }>(),
+  { multiple: false }
+)
 
 const emit = defineEmits<{
-  select: [file: File]
+  select: [files: File[]]
   error: [message: string]
 }>()
 
@@ -18,31 +22,25 @@ function chooseFile() {
   if (!props.busy) fileInput.value?.click()
 }
 
-function acceptFile(file: File | null | undefined) {
-  if (!file) return
-  if (!file.type.startsWith('image/')) {
-    emit('error', 'El archivo debe ser una imagen.')
+function acceptFiles(files: File[]) {
+  if (props.busy || files.length === 0) return
+  const images = files.filter((file) => file.type.startsWith('image/'))
+  if (images.length === 0) {
+    emit('error', props.multiple ? 'Suelta uno o varios archivos de imagen.' : 'El archivo debe ser una imagen.')
     return
   }
-  emit('select', file)
+  emit('select', props.multiple ? images : images.slice(0, 1))
 }
 
 function onFile(event: Event) {
   const input = event.target as HTMLInputElement
-  acceptFile(input.files?.[0])
+  acceptFiles(Array.from(input.files ?? []))
   input.value = ''
 }
 
 function onDrop(event: DragEvent) {
   dragging.value = false
-  const file = Array.from(event.dataTransfer?.files ?? []).find((item) =>
-    item.type.startsWith('image/')
-  )
-  if (!file) {
-    emit('error', 'Suelta un archivo de imagen.')
-    return
-  }
-  acceptFile(file)
+  acceptFiles(Array.from(event.dataTransfer?.files ?? []))
 }
 
 function onPaste(event: ClipboardEvent) {
@@ -53,7 +51,7 @@ function onPaste(event: ClipboardEvent) {
     emit('error', 'El portapapeles no contiene una imagen.')
     return
   }
-  acceptFile(file)
+  acceptFiles([file])
 }
 </script>
 
@@ -72,12 +70,20 @@ function onPaste(event: ClipboardEvent) {
     @keydown.enter.prevent="chooseFile"
     @keydown.space.prevent="chooseFile"
   >
-    <input ref="fileInput" type="file" accept="image/*" autocomplete="off" class="hidden" @change="onFile">
+    <input
+      ref="fileInput"
+      type="file"
+      accept="image/*"
+      autocomplete="off"
+      class="hidden"
+      :multiple="multiple"
+      @change="onFile"
+    >
     <button type="button" class="btn-primary w-full" :disabled="busy" @click="chooseFile">
       {{ busy ? busyLabel : label }}
     </button>
     <p class="mt-2 text-center text-xs text-[var(--color-fg-muted)]">
-      Arrastra, pega con Ctrl+V o selecciona.
+      {{ multiple ? 'Arrastra varias, pega una con Ctrl+V o selecciona.' : 'Arrastra, pega con Ctrl+V o selecciona.' }}
     </p>
   </div>
 </template>

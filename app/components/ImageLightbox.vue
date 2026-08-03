@@ -6,11 +6,13 @@ const props = withDefaults(
     imageClass?: string
     containerClass?: string
     imageStyle?: Record<string, string>
+    downloadName?: string
   }>(),
   {
     imageClass: '',
     containerClass: '',
-    imageStyle: undefined
+    imageStyle: undefined,
+    downloadName: undefined
   }
 )
 
@@ -47,15 +49,25 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       :aria-label="alt || 'Imagen ampliada'"
       @click.self="close"
     >
-      <button
-        type="button"
-        class="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-2xl text-white hover:bg-black/80"
-        aria-label="Cerrar imagen"
-        title="Cerrar"
-        @click="close"
-      >
-        <span aria-hidden="true">×</span>
-      </button>
+      <div class="absolute top-4 right-4 flex items-center gap-2">
+        <a
+          v-if="downloadName"
+          :href="props.src"
+          :download="downloadName"
+          class="rounded-full bg-black/60 px-4 py-2 text-sm font-semibold text-white hover:bg-black/80"
+        >
+          Descargar
+        </a>
+        <button
+          type="button"
+          class="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-2xl text-white hover:bg-black/80"
+          aria-label="Cerrar imagen"
+          title="Cerrar"
+          @click="close"
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
       <img
         :src="props.src"
         :alt="props.alt"
