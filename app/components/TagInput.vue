@@ -8,6 +8,7 @@ const props = defineProps<{
   placeholder?: string
   ariaLabel?: string
   suggestions?: string[]
+  showAllSuggestions?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -19,6 +20,12 @@ const suggestionsOpen = ref(false)
 const activeSuggestion = ref(-1)
 const listboxId = `tag-suggestions-${useId()}`
 
+const suggestionBadges = computed(() =>
+  sanitizeTags([...(props.suggestions ?? []), ...props.modelValue]).sort((left, right) =>
+    left.localeCompare(right, 'es', { sensitivity: 'base' })
+  )
+)
+
 const filteredSuggestions = computed(() => {
   const query = tagKey(draft.value)
   const selected = new Set(props.modelValue.map(tagKey))
@@ -28,7 +35,10 @@ const filteredSuggestions = computed(() => {
 })
 
 const showSuggestions = computed(
-  () => suggestionsOpen.value && filteredSuggestions.value.length > 0
+  () =>
+    !props.showAllSuggestions &&
+    suggestionsOpen.value &&
+    filteredSuggestions.value.length > 0
 )
 
 watch(filteredSuggestions, (suggestions) => {
@@ -52,14 +62,27 @@ function selectSuggestion(tag: string) {
   if (next.length !== props.modelValue.length) emit('update:modelValue', next)
 }
 
+function isSelected(tag: string) {
+  const key = tagKey(tag)
+  return props.modelValue.some((item) => tagKey(item) === key)
+}
+
+function toggleSuggestion(tag: string) {
+  if (isSelected(tag)) {
+    remove(tag)
+    return
+  }
+  selectSuggestion(tag)
+}
+
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'ArrowDown' && filteredSuggestions.value.length) {
+  if (!props.showAllSuggestions && event.key === 'ArrowDown' && filteredSuggestions.value.length) {
     event.preventDefault()
     suggestionsOpen.value = true
     activeSuggestion.value = (activeSuggestion.value + 1) % filteredSuggestions.value.length
     return
   }
-  if (event.key === 'ArrowUp' && filteredSuggestions.value.length) {
+  if (!props.showAllSuggestions && event.key === 'ArrowUp' && filteredSuggestions.value.length) {
     event.preventDefault()
     suggestionsOpen.value = true
     activeSuggestion.value =
@@ -123,11 +146,11 @@ function remove(tag: string) {
       class="min-w-24 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-[var(--color-fg-muted)]"
       :placeholder="modelValue.length ? '' : placeholder"
       :aria-label="ariaLabel"
-      role="combobox"
-      aria-autocomplete="list"
-      :aria-expanded="showSuggestions"
-      :aria-controls="listboxId"
-      :aria-activedescendant="activeSuggestion >= 0 ? `${listboxId}-${activeSuggestion}` : undefined"
+      :role="showAllSuggestions ? undefined : 'combobox'"
+      :aria-autocomplete="showAllSuggestions ? undefined : 'list'"
+      :aria-expanded="showAllSuggestions ? undefined : showSuggestions"
+      :aria-controls="showAllSuggestions ? undefined : listboxId"
+      :aria-activedescendant="!showAllSuggestions && activeSuggestion >= 0 ? `${listboxId}-${activeSuggestion}` : undefined"
       @input="suggestionsOpen = true; activeSuggestion = -1"
       @focus="suggestionsOpen = true"
       @keydown="onKeydown"
@@ -154,5 +177,25 @@ function remove(tag: string) {
         </button>
       </li>
     </ul>
+  </div>
+  <div
+    v-if="showAllSuggestions && suggestionBadges.length"
+    class="mt-2 flex min-w-0 flex-wrap gap-1.5"
+    role="group"
+    aria-label="Etiquetas disponibles"
+  >
+    <button
+      v-for="suggestion in suggestionBadges"
+      :key="tagKey(suggestion)"
+      type="button"
+      :aria-pressed="isSelected(suggestion)"
+      class="inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface)]"
+      :class="isSelected(suggestion)
+        ? 'border-brand-500 bg-brand-500 text-white'
+        : 'border-[var(--color-border-soft)] bg-[var(--color-surface)] text-[var(--color-fg)] hover:bg-brand-500/10'"
+      @click="toggleSuggestion(suggestion)"
+    >
+      <span class="truncate">{{ suggestion }}</span>
+    </button>
   </div>
 </template>

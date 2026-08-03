@@ -21,6 +21,9 @@ let failedCount = 0
 let skippedCount = 0
 
 const images = computed(() => characters.imagesFor(props.characterId))
+const imageTagSuggestions = computed(() =>
+  characters.images.flatMap((image) => image.tags)
+)
 const pendingFile = computed(() => pendingFiles.value[0] ?? null)
 
 function selectFiles(files: File[]) {
@@ -173,7 +176,13 @@ async function remove(id: string) {
     <div class="card mb-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
       <div>
         <label class="label" for="new-tags">Etiquetas</label>
-        <TagInput id="new-tags" v-model="pendingTags" placeholder="feliz" />
+        <TagInput
+          id="new-tags"
+          v-model="pendingTags"
+          :suggestions="imageTagSuggestions"
+          show-all-suggestions
+          placeholder="feliz"
+        />
       </div>
       <div>
         <label class="label" for="new-desc">Descripción</label>
@@ -214,6 +223,8 @@ async function remove(id: string) {
         <div class="min-w-0 flex-1 space-y-2">
           <TagInput
             :model-value="image.tags"
+            :suggestions="imageTagSuggestions"
+            show-all-suggestions
             aria-label="Etiquetas de imagen"
             placeholder="neutral"
             @update:model-value="updateImage(image.id, { tags: $event })"

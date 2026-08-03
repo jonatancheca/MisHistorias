@@ -92,6 +92,7 @@ async function save() {
             id="character-tags"
             v-model="tags"
             :suggestions="characterTagSuggestions"
+            show-all-suggestions
             placeholder="aventurera"
           />
           <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
