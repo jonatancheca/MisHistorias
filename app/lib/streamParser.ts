@@ -15,9 +15,11 @@ function normalize(value: string) {
 export function parseSegments(
   raw: string,
   characters: Character[],
-  backgrounds: Background[] = []
+  backgrounds: Background[] = [],
+  protagonistName = ''
 ): MessageSegment[] {
   const byName = new Map(characters.map((character) => [normalize(character.name), character]))
+  const normalizedProtagonistName = normalize(protagonistName)
   const backgroundsByTag = new Map(
     backgrounds.flatMap((background) =>
       background.tags.map((tag) => [normalize(tag), background] as const)
@@ -56,6 +58,15 @@ export function parseSegments(
         })
         continue
       }
+      if (normalizedProtagonistName && normalize(rawName ?? '') === normalizedProtagonistName) {
+        segments.push({
+          type: 'protagonist-dialogue',
+          characterId: null,
+          tag: null,
+          text: (rest ?? '').trim()
+        })
+        continue
+      }
     }
 
     const last = segments[segments.length - 1]
@@ -69,12 +80,19 @@ export function parseSegments(
   return segments
 }
 
-export function serializeSegments(segments: MessageSegment[], characters: Character[]): string {
+export function serializeSegments(
+  segments: MessageSegment[],
+  characters: Character[],
+  protagonistName = 'Usuario'
+): string {
   const byId = new Map(characters.map((character) => [character.id, character]))
   return segments
     .map((segment) => {
       if (segment.type === 'background') {
         return `Fondo [${segment.tag ?? ''}]:${segment.text ? ` ${segment.text}` : ''}`
+      }
+      if (segment.type === 'protagonist-dialogue') {
+        return `${protagonistName}: ${segment.text}`
       }
       if (segment.type !== 'dialogue' || !segment.characterId) return segment.text
       const name = byId.get(segment.characterId)?.name ?? 'Personaje'

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { LlmDebugTrace, Message } from '#shared/types'
+import type { GenerationMode, LlmDebugTrace, Message } from '#shared/types'
 import { primaryTag } from '~/lib/tags'
 
 const route = useRoute()
@@ -144,6 +144,13 @@ async function generateOpening() {
   followingBottom.value = true
   scheduleFollowBottom()
   await stories.generate()
+}
+
+async function generateContinuation(mode: Exclude<GenerationMode, 'normal'>) {
+  if (stories.generating) return
+  followingBottom.value = true
+  scheduleFollowBottom()
+  await stories.generate(mode)
 }
 
 const isEmpty = computed(() => timeline.value.length === 0 && !stories.generating)
@@ -442,6 +449,27 @@ onBeforeUnmount(() => {
             </div>
           </template>
 
+          <div
+            v-if="stories.waitingForResponse"
+            data-testid="thinking-indicator"
+            class="flex min-w-0 items-center gap-3 rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] px-4 py-3 text-sm text-[var(--color-fg-muted)]"
+            role="status"
+            aria-live="polite"
+          >
+            <span>La IA está pensando…</span>
+            <span class="flex items-center gap-1" aria-hidden="true">
+              <span class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none" />
+              <span
+                class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
+                style="animation-delay: 120ms"
+              />
+              <span
+                class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
+                style="animation-delay: 240ms"
+              />
+            </span>
+          </div>
+
           <p
             v-if="stories.error"
             class="rounded-lg bg-red-500/10 px-4 py-2 text-sm text-red-500"
@@ -464,12 +492,34 @@ onBeforeUnmount(() => {
             placeholder="Escribe lo que haces o dices…"
             @keydown.enter.exact.prevent="submit"
           />
-          <div class="flex shrink-0 flex-row gap-2 sm:flex-col">
-            <button type="submit" class="btn-primary flex-1 sm:flex-none" :disabled="stories.generating">Enviar</button>
+          <div class="grid shrink-0 grid-cols-3 gap-2 sm:w-56">
+            <button type="submit" class="btn-primary" :disabled="stories.generating">Enviar</button>
+            <button
+              type="button"
+              class="btn-ghost"
+              data-testid="continue-button"
+              title="Continuar sin decidir por el protagonista"
+              aria-label="Continuar sin decidir por el protagonista"
+              :disabled="stories.generating"
+              @click="generateContinuation('continue')"
+            >
+              Sigue
+            </button>
+            <button
+              type="button"
+              class="btn-ghost"
+              data-testid="auto-button"
+              title="Continuar permitiendo que la IA decida por el protagonista"
+              aria-label="Continuar permitiendo que la IA decida por el protagonista"
+              :disabled="stories.generating"
+              @click="generateContinuation('auto')"
+            >
+              Auto
+            </button>
             <button
               v-if="stories.generating"
               type="button"
-              class="btn-ghost flex-1 sm:flex-none"
+              class="btn-ghost col-span-3"
               @click="stories.stop()"
             >
               Parar

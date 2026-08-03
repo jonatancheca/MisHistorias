@@ -1,4 +1,4 @@
-import type { Character } from '#shared/types'
+import type { Character, GenerationMode } from '#shared/types'
 import type { StoredBackground, StoredImage } from '~/lib/db'
 
 const NARRATION_LINES = [
@@ -62,7 +62,9 @@ export function buildMockResponse(
   characters: Character[],
   images: StoredImage[],
   backgrounds: StoredBackground[],
-  initialBackgroundId: string | null
+  initialBackgroundId: string | null,
+  generationMode: GenerationMode,
+  userName: string
 ): string {
   const lines: string[] = []
 
@@ -78,6 +80,11 @@ export function buildMockResponse(
     for (let turn = 0; turn < randomInt(1, 3); turn += 1) {
       lines.push(`${speaker.name} [${pick(tags)}]: ${pick(DIALOGUE_LINES)}`)
     }
+  }
+
+  if (generationMode === 'auto') {
+    lines.push(`${userName}: Decido seguir adelante.`)
+    lines.push(`${userName} avanza con cautela.`)
   }
 
   for (let index = 0; index < randomInt(1, 3); index += 1) {

@@ -21,7 +21,7 @@ import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
 
-const EXPORT_VERSION = 5
+const EXPORT_VERSION = 6
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -57,7 +57,7 @@ interface ExportedStory {
   characterIds: string[]
   initialBackgroundId?: string | null
   presetId: string | null
-  messages: Array<Pick<Message, 'role' | 'raw' | 'segments' | 'createdAt'>>
+  messages: Array<Pick<Message, 'role' | 'raw' | 'segments' | 'generationMode' | 'createdAt'>>
 }
 
 interface ExportBundle {
@@ -111,6 +111,7 @@ export async function exportBundle(): Promise<ExportBundle> {
         role: message.role,
         raw: message.raw,
         segments: message.segments,
+        generationMode: message.generationMode,
         createdAt: message.createdAt
       }))
     }))
@@ -146,7 +147,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -270,6 +271,10 @@ export async function importBundle(raw: string) {
         storyId: story.id,
         role: message.role === 'assistant' ? 'assistant' : 'user',
         raw: String(message.raw ?? ''),
+        generationMode:
+          message.generationMode === 'continue' || message.generationMode === 'auto'
+            ? message.generationMode
+            : 'normal',
         segments: (message.segments ?? []).map((segment) => ({
           ...segment,
           tag:

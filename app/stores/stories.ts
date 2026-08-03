@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import type {
   Background,
   Character,
+  GenerationMode,
   LlmDebugRequest,
   LlmDebugTrace,
   Message,
@@ -64,10 +65,10 @@ export const useStoriesStore = defineStore('stories', () => {
   const messages = ref<Message[]>([])
   const debugTraces = ref<LlmDebugTrace[]>([])
   const generating = ref(false)
+  const waitingForResponse = ref(false)
   const error = ref<string | null>(null)
 
   let controller: AbortController | null = null
-  let waitingForResponse = false
   let animationFrame: number | null = null
   let finishAnimation: ((completed: boolean) => void) | null = null
   let animationDraft: Message | null = null
@@ -179,6 +180,7 @@ export const useStoriesStore = defineStore('stories', () => {
     if (!current) return
     const characters = useCharactersStore()
     const backgrounds = useBackgroundsStore()
+    const settings = useSettingsStore()
     const storyCharacters = characters.characters.filter((character) =>
       activeStory.value?.characterIds.includes(character.id)
     )
@@ -187,7 +189,12 @@ export const useStoriesStore = defineStore('stories', () => {
       raw,
       segments:
         current.role === 'assistant'
-          ? parseSegments(raw, storyCharacters, backgrounds.backgrounds)
+          ? parseSegments(
+              raw,
+              storyCharacters,
+              backgrounds.backgrounds,
+              settings.activeUserName
+            )
           : []
     }
     await persist(updated)
@@ -272,14 +279,14 @@ export const useStoriesStore = defineStore('stories', () => {
   }
 
   async function stop() {
-    const wasWaiting = waitingForResponse
+    const wasWaiting = waitingForResponse.value
     const draft = animationDraft
     const wasAnimating = finishAnimation !== null
     if (!wasWaiting && !wasAnimating) return
 
     if (wasWaiting) controller?.abort()
     controller = null
-    waitingForResponse = false
+    waitingForResponse.value = false
     cancelAnimation()
     animationDraft = null
 
@@ -300,6 +307,7 @@ export const useStoriesStore = defineStore('stories', () => {
     assistantMessage: Message,
     storyCharacters: Character[],
     storyBackgrounds: Background[],
+    userName: string,
     speed: Exclude<ResponseSpeed, 'instant'>
   ) {
     const graphemes = splitGraphemes(raw)
@@ -324,7 +332,7 @@ export const useStoriesStore = defineStore('stories', () => {
           replaceDraft({
             ...assistantMessage,
             raw: visibleRaw,
-            segments: parseSegments(visibleRaw, storyCharacters, storyBackgrounds)
+            segments: parseSegments(visibleRaw, storyCharacters, storyBackgrounds, userName)
           })
         }
 
@@ -343,7 +351,7 @@ export const useStoriesStore = defineStore('stories', () => {
     })
   }
 
-  async function generate() {
+  async function generate(generationMode: GenerationMode = 'normal') {
     if (!activeStory.value || generating.value) return
     const story = activeStory.value
     const settingsStore = useSettingsStore()
@@ -395,6 +403,7 @@ export const useStoriesStore = defineStore('stories', () => {
       role: 'assistant',
       raw: '',
       segments: [],
+      generationMode,
       createdAt: Date.now()
     }
     const requestMessageId = [...messages.value]
@@ -411,7 +420,9 @@ export const useStoriesStore = defineStore('stories', () => {
           storyCharacters,
           charactersStore.images,
           backgroundsStore.backgrounds,
-          story.initialBackgroundId ?? null
+          story.initialBackgroundId ?? null,
+          generationMode,
+          settingsStore.activeUserName
         )
       } else {
         const payload = buildChatMessages({
@@ -428,6 +439,7 @@ export const useStoriesStore = defineStore('stories', () => {
             story.protagonistPreferences ?? '',
             story.protagonistPreferencesMode ?? 'append'
           ),
+          generationMode,
           imageCatalogChange: imageCatalogChange
             ? formatStoryImageCatalogChange(imageCatalogChange)
             : null
@@ -441,7 +453,7 @@ export const useStoriesStore = defineStore('stories', () => {
           stream: false
         }
 
-        waitingForResponse = true
+        waitingForResponse.value = true
         const result = await fetchLlmChat({
           model: settings.model,
           messages: payload,
@@ -451,7 +463,7 @@ export const useStoriesStore = defineStore('stories', () => {
         })
         raw = result.content
         finishReason = result.finishReason
-        waitingForResponse = false
+        waitingForResponse.value = false
 
         const snapshotStored = await persistImageCatalogSnapshot(story, currentImageCatalog)
         if (!snapshotStored) {
@@ -479,6 +491,7 @@ export const useStoriesStore = defineStore('stories', () => {
             assistantMessage,
             storyCharacters,
             backgroundsStore.backgrounds,
+            settingsStore.activeUserName,
             settings.responseSpeed
           )
           if (!completed) return
@@ -486,7 +499,12 @@ export const useStoriesStore = defineStore('stories', () => {
         await persist({
           ...assistantMessage,
           raw,
-          segments: parseSegments(raw, storyCharacters, backgroundsStore.backgrounds)
+          segments: parseSegments(
+            raw,
+            storyCharacters,
+            backgroundsStore.backgrounds,
+            settingsStore.activeUserName
+          )
         })
         if (requestController.signal.aborted) {
           await dbDeleteMessage(assistantMessage.id)
@@ -529,7 +547,7 @@ export const useStoriesStore = defineStore('stories', () => {
         }
       }
     } finally {
-      waitingForResponse = false
+      waitingForResponse.value = false
       if (controller === requestController) {
         generating.value = false
         controller = null
@@ -540,19 +558,20 @@ export const useStoriesStore = defineStore('stories', () => {
   async function send(text: string) {
     if (!text.trim() || generating.value) return
     await addUserMessage(text)
-    await generate()
+    await generate('normal')
   }
 
   async function regenerateFrom(id: string) {
     if (generating.value) return
     const index = messages.value.findIndex((message) => message.id === id)
     if (index < 0 || messages.value[index]?.role !== 'assistant') return
+    const generationMode = messages.value[index]?.generationMode ?? 'normal'
     const ids = messages.value.slice(index).map((message) => message.id)
     await dbDeleteMessages(ids)
     messages.value = messages.value.slice(0, index)
     removeLocalTracesForMessages(ids)
     await touchStory()
-    await generate()
+    await generate(generationMode)
   }
 
   async function resendFrom(id: string) {
@@ -570,7 +589,7 @@ export const useStoriesStore = defineStore('stories', () => {
     debugTraces.value = debugTraces.value.filter((trace) => !traceIdSet.has(trace.id))
     removeLocalTracesForMessages(ids)
     await touchStory()
-    await generate()
+    await generate('normal')
   }
 
   return {
@@ -580,6 +599,7 @@ export const useStoriesStore = defineStore('stories', () => {
     messages,
     debugTraces,
     generating,
+    waitingForResponse,
     error,
     load,
     createStory,

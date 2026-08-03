@@ -60,6 +60,19 @@ const rows = computed<FlowRow[]>(() => {
         imageUrl: backgrounds.urlFor(background?.id)
       }
     }
+    if (segment.type === 'protagonist-dialogue') {
+      return {
+        key: String(index),
+        background: false,
+        narration: false,
+        text: segment.text,
+        name: userName.value,
+        color: userColor.value,
+        tag: null,
+        inlineTag: null,
+        imageUrl: null
+      }
+    }
     if (segment.type !== 'dialogue' || !segment.characterId) {
       return {
         key: String(index),

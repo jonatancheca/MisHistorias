@@ -1,4 +1,4 @@
-import type { Character, Message, Story } from '#shared/types'
+import type { Character, GenerationMode, Message, Story } from '#shared/types'
 import type { StoredBackground, StoredImage } from '~/lib/db'
 import { serializeSegments } from '~/lib/streamParser'
 import { primaryTag } from '~/lib/tags'
@@ -8,8 +8,23 @@ export interface ChatMessage {
   content: string
 }
 
-const FORMAT_REMINDER =
-  'Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa `Nombre [etiqueta]: texto` para diálogo, `Fondo [etiqueta]:` solo cuando cambie el fondo y una línea sin prefijo para narración. Usa solo personajes, fondos y etiquetas visuales listados. La etiqueta visual representa el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje la última etiqueta usada mientras su aspecto no cambie; no vuelvas a `[neutral]` por defecto en intervenciones posteriores. Usa otra etiqueta solo cuando la historia cambie realmente su aspecto o ropa.'
+function formatReminder(generationMode: GenerationMode, userName: string) {
+  const protagonistFormat =
+    generationMode === 'auto'
+      ? ` El protagonista es la única excepción al catálogo: escribe su diálogo como \`${userName}: texto\`, sin etiqueta visual.`
+      : ''
+  return `Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa \`Nombre [etiqueta]: texto\` para diálogo, \`Fondo [etiqueta]:\` solo cuando cambie el fondo y una línea sin prefijo para narración. Usa solo personajes, fondos y etiquetas visuales listados.${protagonistFormat} La etiqueta visual representa el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje la última etiqueta usada mientras su aspecto no cambie; no vuelvas a \`[neutral]\` por defecto en intervenciones posteriores. Usa otra etiqueta solo cuando la historia cambie realmente su aspecto o ropa.`
+}
+
+function continuationInstruction(generationMode: GenerationMode, userName: string) {
+  if (generationMode === 'continue') {
+    return `Continúa la historia con el siguiente turno. Haz avanzar la escena mediante narración y acciones o diálogo de los otros personajes. No inventes acciones, decisiones ni diálogo para el protagonista "${userName}".`
+  }
+  if (generationMode === 'auto') {
+    return `Continúa la historia con el siguiente turno. Puedes inventar acciones, decisiones y diálogo para el protagonista "${userName}", además de hacer avanzar a los otros personajes.`
+  }
+  return null
+}
 
 function characterSheet(character: Character, images: StoredImage[]) {
   const own = images.filter((image) => image.characterId === character.id)
@@ -61,6 +76,7 @@ export function buildSystemPrompt(options: {
   backgrounds: StoredBackground[]
   userName: string
   protagonistPreferences: string
+  generationMode: GenerationMode
 }): string {
   const {
     presetContent,
@@ -69,7 +85,8 @@ export function buildSystemPrompt(options: {
     images,
     backgrounds,
     userName,
-    protagonistPreferences
+    protagonistPreferences,
+    generationMode
   } = options
   return [
     presetContent.trim(),
@@ -82,7 +99,9 @@ export function buildSystemPrompt(options: {
     protagonistPreferences.trim()
       ? `Preferencias del protagonista:\n${protagonistPreferences.trim()}`
       : 'Preferencias del protagonista: (sin preferencias adicionales)',
-    'No hables ni decidas por el protagonista; reacciona a lo que hace.',
+    generationMode === 'auto'
+      ? `Puedes hablar y decidir por el protagonista. Escribe su diálogo como \`${userName}: texto\`, sin etiqueta visual, y sus acciones como narración.`
+      : 'No hables ni decidas por el protagonista; reacciona a lo que hace.',
     '',
     '## PERSONAJES',
     characters.map((character) => characterSheet(character, images)).join('\n\n'),
@@ -107,7 +126,7 @@ export function buildHistory(
     const content =
       message.role === 'assistant'
         ? message.segments.length
-          ? serializeSegments(message.segments, characters)
+          ? serializeSegments(message.segments, characters, userName)
           : message.raw
         : `${userName}: ${message.raw}`
     if (!content.trim()) continue
@@ -129,6 +148,7 @@ export function buildChatMessages(options: {
   historyBudget: number
   userName: string
   protagonistPreferences: string
+  generationMode: GenerationMode
   imageCatalogChange?: string | null
 }): ChatMessage[] {
   const system = buildSystemPrompt(options)
@@ -150,13 +170,18 @@ export function buildChatMessages(options: {
   const imageCatalogChange: ChatMessage[] = options.imageCatalogChange?.trim()
     ? [{ role: 'system', content: options.imageCatalogChange.trim() }]
     : []
+  const continuation = continuationInstruction(options.generationMode, options.userName)
+  const continuationMessages: ChatMessage[] = continuation
+    ? [{ role: 'system', content: continuation }]
+    : []
 
   return [
     { role: 'system', content: system },
     ...history,
     ...opening,
     ...imageCatalogChange,
-    { role: 'system', content: FORMAT_REMINDER }
+    ...continuationMessages,
+    { role: 'system', content: formatReminder(options.generationMode, options.userName) }
   ]
 }
 

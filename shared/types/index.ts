@@ -63,8 +63,9 @@ export type MessageRole = 'user' | 'assistant'
 export type Theme = 'system' | 'light' | 'dark'
 export type ResponseSpeed = 'slow' | 'medium' | 'high' | 'instant'
 export type ProtagonistPreferencesMode = 'append' | 'replace'
+export type GenerationMode = 'normal' | 'continue' | 'auto'
 
-export type SegmentType = 'dialogue' | 'narration' | 'background'
+export type SegmentType = 'dialogue' | 'protagonist-dialogue' | 'narration' | 'background'
 
 export interface MessageSegment {
   type: SegmentType
@@ -84,6 +85,8 @@ export interface Message {
   /** Texto crudo tal cual lo escribió el usuario o devolvió el modelo */
   raw: string
   segments: MessageSegment[]
+  /** Modo que originó una respuesta del asistente; permite regenerarla con las mismas reglas. */
+  generationMode?: GenerationMode
   createdAt: number
 }
 
