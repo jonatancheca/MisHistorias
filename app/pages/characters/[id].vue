@@ -19,25 +19,110 @@ const characterTagSuggestions = computed(() =>
   characters.characters.flatMap((character) => character.tags ?? [])
 )
 const saving = ref(false)
-const savedAt = ref<number | null>(null)
+const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+const saveError = ref<string | null>(null)
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+let savedTimer: ReturnType<typeof setTimeout> | null = null
+let savePending = false
+let saveRevision = 0
+let saveQueue: Promise<void> = Promise.resolve()
+
+function enqueueSave(revision: number, navigateAfterCreate = false) {
+  const input = {
+    id: isNew.value ? undefined : characterId.value,
+    name: name.value,
+    prompt: prompt.value,
+    tags: [...tags.value],
+    color: color.value
+  }
+  const run = async () => {
+    if (!input.name.trim()) return
+    if (savedTimer) {
+      clearTimeout(savedTimer)
+      savedTimer = null
+    }
+    saving.value = true
+    saveStatus.value = 'saving'
+    saveError.value = null
+    try {
+      const character = await characters.saveCharacter(input)
+      if (revision === saveRevision) {
+        saveStatus.value = 'saved'
+        savedTimer = setTimeout(() => {
+          savedTimer = null
+          if (saveStatus.value === 'saved') saveStatus.value = 'idle'
+        }, 2000)
+      }
+      if (navigateAfterCreate) await navigateTo(`/characters/${character.id}`)
+    } catch (caught) {
+      if (revision === saveRevision) {
+        saveStatus.value = 'error'
+        saveError.value = (caught as Error).message || 'No se pudo guardar el personaje.'
+      }
+    } finally {
+      saving.value = false
+    }
+  }
+  saveQueue = saveQueue.then(run, run)
+  return saveQueue
+}
+
+function scheduleSave() {
+  if (isNew.value) return
+  saveRevision += 1
+  savePending = true
+  if (saveTimer) clearTimeout(saveTimer)
+  const revision = saveRevision
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    savePending = false
+    void enqueueSave(revision)
+  }, 500)
+}
+
+async function flushSave() {
+  if (isNew.value) return
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  if (savePending) {
+    savePending = false
+    await enqueueSave(saveRevision)
+  } else {
+    await saveQueue
+  }
+}
 
 async function save() {
   if (!name.value.trim() || saving.value) return
-  saving.value = true
-  try {
-    const character = await characters.saveCharacter({
-      id: isNew.value ? undefined : characterId.value,
-      name: name.value,
-      prompt: prompt.value,
-      tags: tags.value,
-      color: color.value
-    })
-    savedAt.value = Date.now()
-    if (isNew.value) await navigateTo(`/characters/${character.id}`)
-  } finally {
-    saving.value = false
+  if (!isNew.value) {
+    await flushSave()
+    return
   }
+  saveRevision += 1
+  await enqueueSave(saveRevision, true)
 }
+
+function onSaveShortcut(event: KeyboardEvent) {
+  if (isNew.value || (!event.ctrlKey && !event.metaKey) || event.key.toLowerCase() !== 's') return
+  event.preventDefault()
+  void flushSave()
+}
+
+watch(
+  () => [name.value, prompt.value, JSON.stringify(tags.value), color.value],
+  scheduleSave
+)
+
+onMounted(() => window.addEventListener('keydown', onSaveShortcut))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onSaveShortcut)
+  if (saveTimer) clearTimeout(saveTimer)
+  if (savedTimer) clearTimeout(savedTimer)
+  void flushSave()
+})
+onBeforeRouteLeave(flushSave)
 </script>
 
 <template>
@@ -99,11 +184,15 @@ async function save() {
             Describen al personaje y no se mezclan con etiquetas de imagen. Pulsa badges o escribe una nueva.
           </p>
         </div>
-        <div class="flex items-center gap-3">
-          <button type="submit" class="btn-primary" :disabled="!name.trim() || saving">
+        <div class="flex min-h-10 items-center gap-3">
+          <button v-if="isNew" type="submit" class="btn-primary" :disabled="!name.trim() || saving">
             Guardar
           </button>
-          <span v-if="savedAt" class="text-xs text-[var(--color-fg-muted)]">Guardado</span>
+          <span v-if="saveStatus === 'saving'" class="text-xs text-[var(--color-fg-muted)]">Guardando…</span>
+          <span v-else-if="saveStatus === 'saved'" class="text-xs text-[var(--color-fg-muted)]">Guardado</span>
+          <span v-else-if="saveStatus === 'error'" class="text-xs text-red-500" role="alert">
+            {{ saveError || 'Error al guardar' }}
+          </span>
         </div>
       </form>
 

@@ -219,6 +219,10 @@ export async function writeSettings(patch: Partial<AppSettings>) {
   return $fetch<AppSettings>('/api/settings', { method: 'PATCH', body: unwrap(patch) })
 }
 
+export async function readApiKey() {
+  return $fetch<{ apiKey: string }>('/api/settings/api-key', { method: 'POST' })
+}
+
 export async function clearAll(scope: DataScope = activeDataScope.value) {
   await $fetch(dataUrl('clear', scope), { method: 'POST' })
 }

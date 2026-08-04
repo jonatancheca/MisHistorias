@@ -11,6 +11,14 @@ async function remove(id: string) {
   if (!accepted) return
   await characters.removeCharacter(id)
 }
+
+function galleryItems(characterId: string) {
+  const characterName = characters.byId(characterId)?.name ?? 'Personaje'
+  return characters.imagesFor(characterId).map((image) => ({
+    src: characters.urlFor(image.id)!,
+    alt: characterName
+  }))
+}
 </script>
 
 <template>
@@ -32,7 +40,8 @@ async function remove(id: string) {
             :src="characters.urlFor(characters.defaultImage(character.id)?.id)!"
             alt=""
             container-class="h-16 w-16 shrink-0"
-            image-class="h-16 w-16 rounded-xl object-cover"
+            image-class="h-16 w-16 rounded-xl bg-black/5 object-contain"
+            :gallery-items="galleryItems(character.id)"
           />
           <div v-else class="h-16 w-16 shrink-0 rounded-xl bg-brand-500/20" />
           <div class="min-w-0 flex-1">

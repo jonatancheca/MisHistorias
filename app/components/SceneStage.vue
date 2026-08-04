@@ -5,6 +5,7 @@ const props = defineProps<{
   characterIds: string[]
   activeCharacterId: string | null
   activeTag: string | null
+  activeImageId: string | null
   backgroundId: string | null
   backgroundTag: string | null
 }>()
@@ -21,13 +22,23 @@ const cast = computed(() =>
 
 function imageUrl(characterId: string) {
   const tag = characterId === props.activeCharacterId ? props.activeTag : null
-  const image = characters.resolveImage(characterId, tag)
+  const imageId = characterId === props.activeCharacterId ? props.activeImageId : null
+  const image = characters.resolveImage(characterId, tag, imageId)
   return characters.urlFor(image?.id)
 }
 
 function currentTag(characterId: string) {
   const tag = characterId === props.activeCharacterId ? props.activeTag : null
-  return primaryTag(characters.resolveImage(characterId, tag))
+  const imageId = characterId === props.activeCharacterId ? props.activeImageId : null
+  return primaryTag(characters.resolveImage(characterId, tag, imageId))
+}
+
+function galleryItems(characterId: string) {
+  const characterName = characters.byId(characterId)?.name ?? 'Personaje'
+  return characters.imagesFor(characterId).map((image) => ({
+    src: characters.urlFor(image.id)!,
+    alt: `${characterName} ${primaryTag(image) ?? ''}`.trim()
+  }))
 }
 </script>
 
@@ -66,6 +77,7 @@ function currentTag(characterId: string) {
         :alt="character.name"
         container-class="w-full"
         image-class="h-auto w-full rounded-lg object-contain object-top"
+        :gallery-items="galleryItems(character.id)"
       />
       <div v-else class="aspect-square w-full rounded-lg bg-brand-500/20" />
       <p class="mt-2 truncate text-sm font-semibold" :style="{ color: characters.colorOf(character.id) }">

@@ -1,5 +1,6 @@
-import type { Background, Character, MessageSegment } from '#shared/types'
+import type { Background, Character, CharacterImage, MessageSegment } from '#shared/types'
 import { tagKey } from '~/lib/tags'
+import { selectCharacterImage } from '~/lib/imageSelection'
 
 const LINE_RE = /^\s*([^:[\]\n]{1,60}?)\s*(?:\[([^\]\n]{1,40})\])?\s*:\s*([\s\S]*)$/
 const BACKGROUND_RE = /^\s*Fondo\s*\[([^\]\n]{1,80})\]\s*:\s*([\s\S]*)$/i
@@ -16,7 +17,9 @@ export function parseSegments(
   raw: string,
   characters: Character[],
   backgrounds: Background[] = [],
-  protagonistName = ''
+  protagonistName = '',
+  images: CharacterImage[] = [],
+  selectionSeed = ''
 ): MessageSegment[] {
   const byName = new Map(characters.map((character) => [normalize(character.name), character]))
   const normalizedProtagonistName = normalize(protagonistName)
@@ -50,10 +53,17 @@ export function parseSegments(
       const [, rawName, rawTag, rest] = match
       const character = byName.get(normalize(rawName ?? ''))
       if (character) {
+        const tag = rawTag?.trim() ? rawTag.trim() : null
         segments.push({
           type: 'dialogue',
           characterId: character.id,
-          tag: rawTag?.trim() ? rawTag.trim() : null,
+          tag,
+          imageId: selectCharacterImage(
+            images,
+            character.id,
+            tag,
+            `${selectionSeed}:${segments.length}`
+          )?.id ?? null,
           text: (rest ?? '').trim()
         })
         continue

@@ -75,6 +75,8 @@ export interface MessageSegment {
   backgroundId?: string | null
   /** etiqueta emitida por el modelo (puede no existir entre las imágenes) */
   tag: string | null
+  /** Imagen de personaje elegida para este segmento; queda estable al recargar. */
+  imageId?: string | null
   text: string
 }
 

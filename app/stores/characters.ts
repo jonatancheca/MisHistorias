@@ -11,8 +11,9 @@ import {
   type StoredImage
 } from '~/lib/db'
 import { normalizeImage } from '~/lib/images'
-import { hasTag, sanitizeTags } from '~/lib/tags'
+import { sanitizeTags } from '~/lib/tags'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor, pickColor } from '~/lib/colors'
+import { selectCharacterImage } from '~/lib/imageSelection'
 
 export const useCharactersStore = defineStore('characters', () => {
   const characters = ref<Character[]>([])
@@ -67,14 +68,18 @@ export const useCharactersStore = defineStore('characters', () => {
   }
 
   /** Resuelve la imagen a mostrar para una etiqueta emitida por el modelo. */
-  function resolveImage(characterId: string, tag: string | null) {
-    if (tag) {
-      const match = imagesFor(characterId).find(
-        (image) => hasTag(image, tag)
-      )
-      if (match) return match
-    }
-    return defaultImage(characterId)
+  function resolveImage(
+    characterId: string,
+    tag: string | null,
+    preferredImageId?: string | null,
+    selectionSeed = ''
+  ) {
+    const own = imagesFor(characterId)
+    const preferred = preferredImageId
+      ? own.find((image) => image.id === preferredImageId)
+      : null
+    if (preferred) return preferred
+    return selectCharacterImage(own, characterId, tag, selectionSeed)
   }
 
   function urlFor(imageId: string | null | undefined) {

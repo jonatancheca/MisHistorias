@@ -21,10 +21,11 @@ import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
 
-const EXPORT_VERSION = 6
+const EXPORT_VERSION = 7
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
+  id?: string
   tags?: string[]
   tag?: string
   description: string
@@ -89,6 +90,7 @@ export async function exportBundle(): Promise<ExportBundle> {
         images
           .filter((image) => image.characterId === character.id)
           .map(async (image) => ({
+            id: image.id,
             tags: image.tags,
             description: image.description,
             isDefault: image.isDefault,
@@ -147,7 +149,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -174,6 +176,7 @@ export async function importBundle(raw: string) {
   }
 
   const characterIdMap = new Map<string, string>()
+  const imageIdMap = new Map<string, string>()
   const importedCharacters: Character[] = []
   const importedImages: StoredImage[] = []
   for (const item of parsed.characters) {
@@ -205,6 +208,7 @@ export async function importBundle(raw: string) {
         blob
       }
       importedImages.push(stored)
+      if (image.id) imageIdMap.set(String(image.id), stored.id)
       await putImage(stored)
     }
   }
@@ -287,6 +291,11 @@ export async function importBundle(raw: string) {
           backgroundId: segment.backgroundId
             ? (backgroundIdMap.get(String(segment.backgroundId)) ?? null)
             : segment.type === 'background'
+              ? null
+              : undefined,
+          imageId: segment.imageId
+            ? (imageIdMap.get(String(segment.imageId)) ?? null)
+            : segment.imageId === null
               ? null
               : undefined
         })),

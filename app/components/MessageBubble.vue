@@ -35,6 +35,16 @@ interface FlowRow {
   tag: string | null
   inlineTag: string | null
   imageUrl: string | null
+  characterId: string | null
+}
+
+function galleryItems(characterId: string | null) {
+  if (!characterId) return undefined
+  const characterName = characters.byId(characterId)?.name ?? 'Personaje'
+  return characters.imagesFor(characterId).map((image) => ({
+    src: characters.urlFor(image.id)!,
+    alt: `${characterName} ${primaryTag(image) ?? ''}`.trim()
+  }))
 }
 
 /**
@@ -57,7 +67,8 @@ const rows = computed<FlowRow[]>(() => {
         color: '',
         tag: primaryTag(background) ?? segment.tag,
         inlineTag: null,
-        imageUrl: backgrounds.urlFor(background?.id)
+        imageUrl: backgrounds.urlFor(background?.id),
+        characterId: null
       }
     }
     if (segment.type === 'protagonist-dialogue') {
@@ -70,7 +81,8 @@ const rows = computed<FlowRow[]>(() => {
         color: userColor.value,
         tag: null,
         inlineTag: null,
-        imageUrl: null
+        imageUrl: null,
+        characterId: null
       }
     }
     if (segment.type !== 'dialogue' || !segment.characterId) {
@@ -83,11 +95,12 @@ const rows = computed<FlowRow[]>(() => {
         color: '',
         tag: null,
         inlineTag: null,
-        imageUrl: null
+        imageUrl: null,
+        characterId: null
       }
     }
 
-    const image = characters.resolveImage(segment.characterId, segment.tag)
+    const image = characters.resolveImage(segment.characterId, segment.tag, segment.imageId)
     const isNewImage = Boolean(image) && image!.id !== lastImageId
     if (image) lastImageId = image.id
 
@@ -100,7 +113,8 @@ const rows = computed<FlowRow[]>(() => {
       color: characters.colorOf(segment.characterId),
       tag: primaryTag(image) ?? segment.tag,
       inlineTag: image && segment.tag && hasTag(image, segment.tag) ? null : segment.tag,
-      imageUrl: isNewImage ? characters.urlFor(image!.id) : null
+      imageUrl: isNewImage ? characters.urlFor(image!.id) : null,
+      characterId: segment.characterId
     }
   })
 })
@@ -246,6 +260,7 @@ function confirmEdit() {
                   container-class="w-40"
                   image-class="h-auto w-40 rounded-xl object-contain object-top"
                   :image-style="{ border: `2px solid ${row.color}` }"
+                  :gallery-items="galleryItems(row.characterId)"
                 />
                 <figcaption class="mt-1 text-xs text-[var(--color-fg-muted)]">
                   {{ row.name }}<span v-if="row.tag"> · {{ row.tag }}</span>

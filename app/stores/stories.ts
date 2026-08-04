@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import type {
   Background,
   Character,
+  CharacterImage,
   GenerationMode,
   LlmDebugRequest,
   LlmDebugTrace,
@@ -27,6 +28,7 @@ import { buildChatMessages, resolveProtagonistPreferences } from '~/lib/promptBu
 import { buildMockResponse } from '~/lib/mockLlm'
 import { fetchLlmChat, type LlmCallError } from '~/lib/llm'
 import { parseSegments } from '~/lib/streamParser'
+import { selectCharacterImage } from '~/lib/imageSelection'
 import {
   buildStoryImageCatalog,
   compareStoryImageCatalogs,
@@ -139,7 +141,34 @@ export const useStoriesStore = defineStore('stories', () => {
     const [storedMessages, storedTraces] = activeStory.value
       ? await Promise.all([listMessages(id), listLlmDebugTraces(id)])
       : [[], []]
-    messages.value = storedMessages
+    const charactersStore = useCharactersStore()
+    await charactersStore.load()
+    const changed: Message[] = []
+    const normalizedMessages = storedMessages.map((message) => {
+      if (message.role !== 'assistant') return message
+      let didChange = false
+      const segments = message.segments.map((segment, index) => {
+        if (segment.type !== 'dialogue' || !segment.characterId || segment.imageId !== undefined) {
+          return segment
+        }
+        didChange = true
+        return {
+          ...segment,
+          imageId: selectCharacterImage(
+            charactersStore.images,
+            segment.characterId,
+            segment.tag,
+            `${message.id}:${index}`
+          )?.id ?? null
+        }
+      })
+      if (!didChange) return message
+      const normalized = { ...message, segments }
+      changed.push(normalized)
+      return normalized
+    })
+    if (changed.length) await Promise.all(changed.map((message) => putMessage(message)))
+    messages.value = normalizedMessages
     debugTraces.value = storedTraces
     error.value = null
   }
@@ -193,7 +222,9 @@ export const useStoriesStore = defineStore('stories', () => {
               raw,
               storyCharacters,
               backgrounds.backgrounds,
-              settings.activeUserName
+              settings.activeUserName,
+              characters.images,
+              current.id
             )
           : []
     }
@@ -307,6 +338,7 @@ export const useStoriesStore = defineStore('stories', () => {
     assistantMessage: Message,
     storyCharacters: Character[],
     storyBackgrounds: Background[],
+    storyImages: CharacterImage[],
     userName: string,
     speed: Exclude<ResponseSpeed, 'instant'>
   ) {
@@ -332,7 +364,14 @@ export const useStoriesStore = defineStore('stories', () => {
           replaceDraft({
             ...assistantMessage,
             raw: visibleRaw,
-            segments: parseSegments(visibleRaw, storyCharacters, storyBackgrounds, userName)
+            segments: parseSegments(
+              visibleRaw,
+              storyCharacters,
+              storyBackgrounds,
+              userName,
+              storyImages,
+              assistantMessage.id
+            )
           })
         }
 
@@ -491,6 +530,7 @@ export const useStoriesStore = defineStore('stories', () => {
             assistantMessage,
             storyCharacters,
             backgroundsStore.backgrounds,
+            charactersStore.images,
             settingsStore.activeUserName,
             settings.responseSpeed
           )
@@ -503,7 +543,9 @@ export const useStoriesStore = defineStore('stories', () => {
             raw,
             storyCharacters,
             backgroundsStore.backgrounds,
-            settingsStore.activeUserName
+            settingsStore.activeUserName,
+            charactersStore.images,
+            assistantMessage.id
           )
         })
         if (requestController.signal.aborted) {

@@ -19,6 +19,14 @@ let failedCount = 0
 let skippedCount = 0
 
 const images = computed(() => characters.imagesFor(props.characterId))
+const galleryItems = computed(() => {
+  const characterName = characters.byId(props.characterId)?.name ?? 'Personaje'
+  return images.value.map((image) => ({
+    src: characters.urlFor(image.id)!,
+    alt: `${characterName} ${primaryTag(image) ?? ''}`.trim(),
+    downloadName: downloadName(image)
+  }))
+})
 const imageTagSuggestions = computed(() =>
   characters.images.flatMap((image) => visibleImageTags(image.tags))
 )
@@ -204,6 +212,7 @@ async function remove(id: string) {
           container-class="w-full shrink-0 sm:h-24 sm:w-24"
           image-class="max-h-56 w-full rounded-lg object-contain sm:h-24 sm:w-24"
           :download-name="downloadName(image)"
+          :gallery-items="galleryItems"
         />
         <div class="min-w-0 flex-1 space-y-2">
           <TagInput

@@ -536,6 +536,7 @@ onBeforeUnmount(() => {
         :character-ids="stories.activeStory.characterIds"
         :active-character-id="lastDialogue?.characterId ?? null"
         :active-tag="lastDialogue?.tag ?? null"
+        :active-image-id="lastDialogue?.imageId ?? null"
         :background-id="currentBackground.id"
         :background-tag="currentBackground.tag"
       />

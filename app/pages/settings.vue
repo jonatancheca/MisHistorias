@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AppSettings } from '#shared/types'
 import { fetchLlmModels } from '~/lib/llm'
+import { readApiKey } from '~/lib/db'
 
 const settings = useSettingsStore()
 const characters = useCharactersStore()
@@ -25,11 +26,16 @@ const importMessage = ref<string | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const saveError = ref<string | null>(null)
+const apiKeyVisible = ref(false)
+const apiKeyLoading = ref(false)
+const apiKeyError = ref<string | null>(null)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+let savedTimer: ReturnType<typeof setTimeout> | null = null
 let savePending = false
 let saveRevision = 0
 let saveQueue: Promise<void> = Promise.resolve()
 let apiKeyDirty = false
+let revealingApiKey = false
 let privateUserNameDirty: boolean = false
 let privateProtagonistPreferencesDirty: boolean = false
 let privateClickCount = 0
@@ -79,6 +85,10 @@ function settingsPatch() {
 function enqueueSave(revision: number) {
   const patch = settingsPatch()
   const run = async () => {
+    if (savedTimer) {
+      clearTimeout(savedTimer)
+      savedTimer = null
+    }
     saveStatus.value = 'saving'
     saveError.value = null
     try {
@@ -89,6 +99,10 @@ function enqueueSave(revision: number) {
         if ('privateProtagonistPreferences' in patch) privateProtagonistPreferencesDirty = false
         form.apiKeyConfigured = settings.settings.apiKeyConfigured
         saveStatus.value = 'saved'
+        savedTimer = setTimeout(() => {
+          savedTimer = null
+          if (saveStatus.value === 'saved') saveStatus.value = 'idle'
+        }, 2000)
       }
     } catch (caught) {
       if (revision === saveRevision) {
@@ -103,6 +117,7 @@ function enqueueSave(revision: number) {
 
 function onApiKeyInput() {
   apiKeyDirty = true
+  apiKeyError.value = null
 }
 
 function markPrivateUserNameDirty() {
@@ -115,11 +130,39 @@ function markPrivateProtagonistPreferencesDirty() {
 
 function clearApiKey() {
   form.apiKey = ''
+  apiKeyVisible.value = false
+  apiKeyError.value = null
   apiKeyDirty = true
   scheduleSave()
 }
 
+async function toggleApiKeyVisibility() {
+  if (apiKeyVisible.value) {
+    apiKeyVisible.value = false
+    return
+  }
+  apiKeyError.value = null
+  if (!form.apiKey && form.apiKeyConfigured) {
+    apiKeyLoading.value = true
+    try {
+      const result = await readApiKey()
+      revealingApiKey = true
+      form.apiKey = result.apiKey
+      await nextTick()
+      apiKeyDirty = false
+    } catch (caught) {
+      apiKeyError.value = (caught as Error).message || 'No se pudo mostrar el token.'
+      return
+    } finally {
+      revealingApiKey = false
+      apiKeyLoading.value = false
+    }
+  }
+  apiKeyVisible.value = true
+}
+
 function scheduleSave() {
+  if (revealingApiKey) return
   saveRevision += 1
   savePending = true
   if (saveTimer) clearTimeout(saveTimer)
@@ -220,6 +263,7 @@ async function onPrivateTrigger() {
 
 onBeforeUnmount(() => {
   if (privateClickTimer) clearTimeout(privateClickTimer)
+  if (savedTimer) clearTimeout(savedTimer)
   void flushSave()
 })
 
@@ -342,12 +386,29 @@ onBeforeRouteLeave(async () => {
           <input
             id="apiKey"
             v-model="form.apiKey"
-            type="password"
+            :type="apiKeyVisible ? 'text' : 'password'"
             autocomplete="off"
-            class="field"
+            class="field min-w-0 flex-1"
             :placeholder="form.apiKeyConfigured ? 'Token configurado; escribe para cambiarlo' : 'Solo si LMStudio pide API key'"
             @input="onApiKeyInput"
           >
+          <button
+            v-if="form.apiKeyConfigured || form.apiKey"
+            type="button"
+            class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
+            :disabled="apiKeyLoading"
+            :aria-label="apiKeyVisible ? 'Ocultar token' : 'Mostrar token'"
+            :title="apiKeyVisible ? 'Ocultar token' : 'Mostrar token'"
+            @click="toggleApiKeyVisibility"
+          >
+            <svg v-if="apiKeyVisible" aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 4.2A10.7 10.7 0 0 1 12 4c5.5 0 9 5.5 9 5.5a16.8 16.8 0 0 1-2.1 2.7M6.6 6.6C4.3 8 3 10 3 10s3.5 5.5 9 5.5c1 0 2-.2 2.8-.5" />
+            </svg>
+            <svg v-else aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
           <button
             v-if="form.apiKeyConfigured"
             type="button"
@@ -358,8 +419,9 @@ onBeforeRouteLeave(async () => {
           </button>
         </div>
         <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-          Se guarda en SQLite sin cifrar y nunca se devuelve al navegador.
+          Se guarda en SQLite sin cifrar. Solo se muestra en este navegador al pulsar el botón.
         </p>
+        <p v-if="apiKeyError" class="mt-1 text-xs text-red-500" role="alert">{{ apiKeyError }}</p>
       </div>
 
       <div>
