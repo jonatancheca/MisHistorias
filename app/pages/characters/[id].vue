@@ -96,7 +96,7 @@ async function save() {
             placeholder="aventurera"
           />
           <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-            Describen al personaje y no se mezclan con etiquetas de imagen. Pulsa Enter o coma para añadir.
+            Describen al personaje y no se mezclan con etiquetas de imagen. Pulsa badges o escribe una nueva.
           </p>
         </div>
         <div class="flex items-center gap-3">

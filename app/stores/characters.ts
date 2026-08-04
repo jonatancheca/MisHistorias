@@ -118,14 +118,14 @@ export const useCharactersStore = defineStore('characters', () => {
     syncUrls()
   }
 
-  async function addImage(characterId: string, file: Blob, tags: string[], description: string) {
+  async function addImage(characterId: string, file: Blob, tags: string[]) {
     const { blob, mimeType } = await normalizeImage(file)
     const isFirst = imagesFor(characterId).length === 0
     const image: StoredImage = {
       id: newId(),
       characterId,
       tags: sanitizeTags(tags, undefined, 'neutral'),
-      description: description.trim(),
+      description: '',
       isDefault: isFirst,
       mimeType,
       createdAt: Date.now(),

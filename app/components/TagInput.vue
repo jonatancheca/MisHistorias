@@ -110,7 +110,12 @@ function onKeydown(event: KeyboardEvent) {
     commitDraft()
     return
   }
-  if (event.key === 'Backspace' && !draft.value && props.modelValue.length) {
+  if (
+    !props.showAllSuggestions &&
+    event.key === 'Backspace' &&
+    !draft.value &&
+    props.modelValue.length
+  ) {
     emit('update:modelValue', props.modelValue.slice(0, -1))
   }
 }
@@ -123,28 +128,30 @@ function remove(tag: string) {
 
 <template>
   <div class="field relative flex min-h-10 flex-wrap items-center gap-1.5 py-1.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/30">
-    <span
-      v-for="tag in modelValue"
-      :key="tagKey(tag)"
-      class="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-500/15 px-2 py-1 text-xs"
-    >
-      <span class="truncate">{{ tag }}</span>
-      <button
-        type="button"
-        class="shrink-0 rounded-full px-0.5 text-[var(--color-fg-muted)] hover:text-red-500"
-        :aria-label="`Quitar etiqueta ${tag}`"
-        @click="remove(tag)"
+    <template v-if="!showAllSuggestions">
+      <span
+        v-for="tag in modelValue"
+        :key="tagKey(tag)"
+        class="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-500/15 px-2 py-1 text-xs"
       >
-        ×
-      </button>
-    </span>
+        <span class="truncate">{{ tag }}</span>
+        <button
+          type="button"
+          class="shrink-0 rounded-full px-0.5 text-[var(--color-fg-muted)] hover:text-red-500"
+          :aria-label="`Quitar etiqueta ${tag}`"
+          @click="remove(tag)"
+        >
+          ×
+        </button>
+      </span>
+    </template>
     <input
       :id="id"
       v-model="draft"
       type="text"
       autocomplete="off"
       class="min-w-24 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-[var(--color-fg-muted)]"
-      :placeholder="modelValue.length ? '' : placeholder"
+      :placeholder="showAllSuggestions || !modelValue.length ? placeholder : ''"
       :aria-label="ariaLabel"
       :role="showAllSuggestions ? undefined : 'combobox'"
       :aria-autocomplete="showAllSuggestions ? undefined : 'list'"
@@ -180,7 +187,7 @@ function remove(tag: string) {
   </div>
   <div
     v-if="showAllSuggestions && suggestionBadges.length"
-    class="mt-2 flex min-w-0 flex-wrap gap-1.5"
+    class="mt-2 flex w-full min-w-0 flex-wrap gap-1.5"
     role="group"
     aria-label="Etiquetas disponibles"
   >

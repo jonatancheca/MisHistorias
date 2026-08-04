@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import type { StoredImage } from '~/lib/db'
-import { primaryTag } from '~/lib/tags'
+import { primaryTag, tagKey } from '~/lib/tags'
 
 const props = defineProps<{ characterId: string }>()
 
 const characters = useCharactersStore()
 const confirmDialog = useConfirmStore()
 const pendingTags = ref<string[]>([])
-const pendingDescription = ref('')
 const pendingFiles = ref<File[]>([])
 const batchMode = ref<'original' | 'crop' | null>(null)
 const batchTags = ref<string[]>([])
-const batchDescription = ref('')
 const processingCurrent = ref(false)
 const busy = ref(false)
 const error = ref<string | null>(null)
@@ -22,16 +20,19 @@ let skippedCount = 0
 
 const images = computed(() => characters.imagesFor(props.characterId))
 const imageTagSuggestions = computed(() =>
-  characters.images.flatMap((image) => image.tags)
+  characters.images.flatMap((image) => visibleImageTags(image.tags))
 )
 const pendingFile = computed(() => pendingFiles.value[0] ?? null)
+
+function visibleImageTags(tags: string[]) {
+  return tags.filter((tag) => tagKey(tag) !== 'neutral')
+}
 
 function selectFiles(files: File[]) {
   if (busy.value || files.length === 0) return
   error.value = null
   notice.value = null
   batchTags.value = [...pendingTags.value]
-  batchDescription.value = pendingDescription.value
   pendingFiles.value = [...files]
   addedCount = 0
   failedCount = 0
@@ -41,12 +42,7 @@ function selectFiles(files: File[]) {
 }
 
 async function addPendingImage(file: Blob) {
-  await characters.addImage(
-    props.characterId,
-    file,
-    batchTags.value,
-    batchDescription.value
-  )
+  await characters.addImage(props.characterId, file, batchTags.value)
 }
 
 function finishBatch() {
@@ -60,7 +56,6 @@ function finishBatch() {
   else notice.value = summary
   if (addedCount) {
     pendingTags.value = []
-    pendingDescription.value = ''
   }
   pendingFiles.value = []
   batchMode.value = null
@@ -144,7 +139,7 @@ function downloadName(image: StoredImage) {
 
 async function updateImage(
   id: string,
-  patch: Partial<Pick<StoredImage, 'tags' | 'description' | 'isDefault'>>
+  patch: Partial<Pick<StoredImage, 'tags' | 'isDefault'>>
 ) {
   error.value = null
   try {
@@ -169,13 +164,13 @@ async function remove(id: string) {
   <section>
     <h2 class="mb-1 text-lg font-semibold">Imágenes</h2>
     <p class="mb-4 text-sm text-[var(--color-fg-muted)]">
-      Etiquetas indican al modelo qué imagen usar. Pulsa Enter o coma para añadir varias.
+      Etiquetas indican al modelo qué imagen usar. Pulsa badges o escribe una etiqueta nueva.
       Imágenes se limitan a 1920px y se guardan en WebP.
     </p>
 
-    <div class="card mb-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
+    <div class="card mb-4 grid gap-3">
       <div>
-        <label class="label" for="new-tags">Etiquetas</label>
+        <label class="label" for="new-tags">Nueva etiqueta</label>
         <TagInput
           id="new-tags"
           v-model="pendingTags"
@@ -183,16 +178,6 @@ async function remove(id: string) {
           show-all-suggestions
           placeholder="feliz"
         />
-      </div>
-      <div>
-        <label class="label" for="new-desc">Descripción</label>
-        <input
-          id="new-desc"
-          v-model="pendingDescription"
-          autocomplete="off"
-          class="field"
-          placeholder="Sonríe, relajada, mirando de frente"
-        >
       </div>
       <ImageUploadDropZone
         :busy="busy"
@@ -203,8 +188,8 @@ async function remove(id: string) {
         @select="selectFiles"
         @error="error = $event"
       />
-      <p v-if="error" class="text-sm text-red-500 sm:col-span-3" role="alert">{{ error }}</p>
-      <p v-else-if="notice" class="text-sm text-green-600 sm:col-span-3" role="status">{{ notice }}</p>
+      <p v-if="error" class="text-sm text-red-500" role="alert">{{ error }}</p>
+      <p v-else-if="notice" class="text-sm text-green-600" role="status">{{ notice }}</p>
     </div>
 
     <p v-if="images.length === 0" class="text-sm text-[var(--color-fg-muted)]">
@@ -222,20 +207,13 @@ async function remove(id: string) {
         />
         <div class="min-w-0 flex-1 space-y-2">
           <TagInput
-            :model-value="image.tags"
+            :model-value="visibleImageTags(image.tags)"
             :suggestions="imageTagSuggestions"
             show-all-suggestions
-            aria-label="Etiquetas de imagen"
-            placeholder="neutral"
+            aria-label="Nueva etiqueta de imagen"
+            placeholder="Nueva etiqueta"
             @update:model-value="updateImage(image.id, { tags: $event })"
           />
-          <input
-            class="field"
-            :value="image.description"
-            autocomplete="off"
-            placeholder="descripción"
-            @change="updateImage(image.id, { description: ($event.target as HTMLInputElement).value })"
-          >
           <div class="flex flex-wrap items-center justify-between gap-2">
             <label class="flex items-center gap-2 text-xs text-[var(--color-fg-muted)]">
               <input
