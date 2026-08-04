@@ -59,7 +59,7 @@ async function remove(id: string) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl p-4 sm:p-8">
+  <div class="page-shell">
     <h1 class="mb-2 text-2xl font-bold">Fondos</h1>
     <p class="mb-6 text-sm text-[var(--color-fg-muted)]">
       Modelo puede elegir fondo usando cualquiera de sus etiquetas. Cada etiqueta debe ser única.
@@ -95,7 +95,7 @@ async function remove(id: string) {
       Sin fondos todavía.
     </p>
 
-    <ul class="grid gap-4 md:grid-cols-2">
+    <ul class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <li v-for="background in backgrounds.backgrounds" :key="background.id" class="card min-w-0">
         <ImageLightbox
           :src="backgrounds.urlFor(background.id)!"

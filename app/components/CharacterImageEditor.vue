@@ -204,7 +204,7 @@ async function remove(id: string) {
       Sin imágenes todavía.
     </p>
 
-    <ul class="grid gap-3 sm:grid-cols-2">
+    <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       <li v-for="image in images" :key="image.id" class="card flex min-w-0 flex-col gap-3 sm:flex-row">
         <ImageLightbox
           :src="characters.urlFor(image.id)!"

@@ -49,10 +49,10 @@ async function submit() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl p-8">
+  <div class="page-shell">
     <h1 class="mb-6 text-2xl font-bold">Nueva historia</h1>
 
-    <form class="grid gap-5" @submit.prevent="submit">
+    <form class="grid max-w-5xl gap-5" @submit.prevent="submit">
       <div>
         <label class="label" for="title">Título</label>
         <input id="title" v-model="title" autocomplete="off" class="field" placeholder="La taberna del puerto" >
@@ -99,7 +99,7 @@ async function submit() {
           No hay personajes.
           <NuxtLink to="/characters" class="text-brand-600 underline">Crea uno primero</NuxtLink>.
         </p>
-        <div class="grid gap-2 sm:grid-cols-2">
+        <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           <button
             v-for="character in characters.characters"
             :key="character.id"
@@ -134,7 +134,7 @@ async function submit() {
         <p class="mb-2 text-xs text-[var(--color-fg-muted)]">
           Opcional. El modelo podrá cambiarlo después por cualquier fondo del catálogo.
         </p>
-        <div class="grid gap-2 sm:grid-cols-2">
+        <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           <button
             type="button"
             class="rounded-xl border p-3 text-left transition"

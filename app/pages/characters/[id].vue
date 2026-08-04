@@ -126,7 +126,7 @@ onBeforeRouteLeave(flushSave)
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl p-8">
+  <div class="page-shell">
     <header class="mb-6 flex items-center justify-between">
       <h1 class="text-2xl font-bold">{{ isNew ? 'Nuevo personaje' : name || 'Personaje' }}</h1>
       <NuxtLink to="/characters" class="btn-ghost">Volver</NuxtLink>
@@ -135,7 +135,7 @@ onBeforeRouteLeave(flushSave)
     <p v-if="!isNew && !existing" class="card text-sm">Personaje no encontrado.</p>
 
     <template v-else>
-      <form class="mb-8 grid gap-4" @submit.prevent="save">
+      <form class="mb-8 grid max-w-3xl gap-4" @submit.prevent="save">
         <div>
           <label class="label" for="name">Nombre</label>
           <input id="name" v-model="name" autocomplete="off" class="field" placeholder="Ana" >

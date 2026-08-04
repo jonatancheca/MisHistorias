@@ -22,7 +22,7 @@ function galleryItems(characterId: string) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-8">
+  <div class="page-shell">
     <header class="mb-6 flex items-center justify-between">
       <h1 class="text-2xl font-bold">Personajes</h1>
       <NuxtLink to="/characters/new" class="btn-primary">Nuevo personaje</NuxtLink>
@@ -32,7 +32,7 @@ function galleryItems(characterId: string) {
       Aún no hay personajes.
     </p>
 
-    <ul class="grid gap-3 sm:grid-cols-2">
+    <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       <li v-for="character in characters.characters" :key="character.id" class="card">
         <div class="flex items-start gap-3">
           <ImageLightbox

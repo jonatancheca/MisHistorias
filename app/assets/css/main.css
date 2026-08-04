@@ -94,3 +94,13 @@ body {
 @utility card {
   @apply rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] p-4;
 }
+
+@utility page-shell {
+  @apply mx-auto w-full max-w-7xl p-8;
+}
+
+@media (max-width: 639px) {
+  .page-shell {
+    padding: 1rem;
+  }
+}

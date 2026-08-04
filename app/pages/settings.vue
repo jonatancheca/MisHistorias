@@ -273,7 +273,7 @@ onBeforeRouteLeave(async () => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl p-8">
+  <div class="page-shell">
     <h1 class="mb-6 text-2xl font-bold">Ajustes</h1>
     <p class="-mt-4 mb-6 min-h-5 text-xs text-[var(--color-fg-muted)]" aria-live="polite">
       <span v-if="saveStatus === 'saving'">Guardando…</span>

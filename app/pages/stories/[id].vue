@@ -38,6 +38,7 @@ let accumulatedScroll = 0
 let desktopMedia: MediaQueryList | null = null
 let timelineResizeObserver: ResizeObserver | null = null
 let followScrollFrame: number | null = null
+let followSettleFrame: number | null = null
 
 type TimelineItem =
   | { kind: 'message'; id: string; createdAt: number; message: Message }
@@ -96,16 +97,29 @@ function updateScrollControls() {
   canScrollToBottom.value = !followingBottom.value || scroller.value.scrollTop < maximum - 1
 }
 
+function scrollFollowingToBottom() {
+  if (!followingBottom.value || !scroller.value) return
+  const maximum = Math.max(0, scroller.value.scrollHeight - scroller.value.clientHeight)
+  autoScrollTarget = maximum
+  scroller.value.scrollTo({ top: maximum, behavior: 'auto' })
+  lastScrollTop = scroller.value.scrollTop
+  updateScrollControls()
+}
+
 function scheduleFollowBottom() {
-  if (!followingBottom.value || followScrollFrame !== null) return
+  if (
+    !followingBottom.value ||
+    followScrollFrame !== null ||
+    followSettleFrame !== null
+  ) return
   followScrollFrame = requestAnimationFrame(() => {
     followScrollFrame = null
-    if (!followingBottom.value || !scroller.value) return
-    const maximum = Math.max(0, scroller.value.scrollHeight - scroller.value.clientHeight)
-    autoScrollTarget = maximum
-    scroller.value.scrollTo({ top: maximum, behavior: 'auto' })
-    lastScrollTop = scroller.value.scrollTop
-    updateScrollControls()
+    if (!followingBottom.value) return
+    scrollFollowingToBottom()
+    followSettleFrame = requestAnimationFrame(() => {
+      followSettleFrame = null
+      scrollFollowingToBottom()
+    })
   })
 }
 
@@ -122,13 +136,23 @@ async function scrollToBottom(behavior: ScrollBehavior = 'auto', resume = true) 
   if (resume) followingBottom.value = true
   await nextTick()
   if (!scroller.value) return
+  if (behavior === 'auto') {
+    scrollFollowingToBottom()
+    scheduleFollowBottom()
+    return
+  }
   const maximum = Math.max(0, scroller.value.scrollHeight - scroller.value.clientHeight)
   autoScrollTarget = maximum
   scroller.value.scrollTo({ top: maximum, behavior })
-  if (behavior === 'auto') {
-    lastScrollTop = scroller.value.scrollTop
-  }
   updateScrollControls()
+}
+
+async function resumeFollowingBottom() {
+  followingBottom.value = true
+  autoScrollTarget = null
+  await nextTick()
+  scrollFollowingToBottom()
+  scheduleFollowBottom()
 }
 
 async function submit() {
@@ -154,6 +178,17 @@ async function generateContinuation(mode: Exclude<GenerationMode, 'normal'>) {
 }
 
 const isEmpty = computed(() => timeline.value.length === 0 && !stories.generating)
+
+watch(timeline, () => scheduleFollowBottom(), { deep: true, flush: 'post' })
+watch(
+  () => [stories.waitingForResponse, stories.error],
+  () => scheduleFollowBottom(),
+  { flush: 'post' }
+)
+
+function onTimelineAssetLoad(event: Event) {
+  if (event.target instanceof HTMLImageElement) scheduleFollowBottom()
+}
 
 function onStoryScroll() {
   const current = scroller.value?.scrollTop ?? 0
@@ -273,6 +308,7 @@ onMounted(() => {
   timelineResizeObserver = new ResizeObserver(scheduleFollowBottom)
   if (timelineContent.value) timelineResizeObserver.observe(timelineContent.value)
   if (scroller.value) timelineResizeObserver.observe(scroller.value)
+  timelineContent.value?.addEventListener('load', onTimelineAssetLoad, true)
   void scrollToBottom()
 })
 
@@ -297,8 +333,10 @@ const currentBackground = computed(() => {
 
 onBeforeUnmount(() => {
   desktopMedia?.removeEventListener('change', onBreakpointChange)
+  timelineContent.value?.removeEventListener('load', onTimelineAssetLoad, true)
   timelineResizeObserver?.disconnect()
   if (followScrollFrame !== null) cancelAnimationFrame(followScrollFrame)
+  if (followSettleFrame !== null) cancelAnimationFrame(followSettleFrame)
   showMobileChrome()
 })
 </script>
@@ -351,7 +389,7 @@ onBeforeUnmount(() => {
             aria-label="Volver al final"
             title="Volver al final"
             :disabled="!canScrollToBottom"
-            @click="scrollToBottom()"
+            @click="resumeFollowingBottom"
           >
             <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 20h14M12 4v13m-5-5 5 5 5-5" />
@@ -381,7 +419,7 @@ onBeforeUnmount(() => {
         class="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6"
         @scroll.passive="onStoryScroll"
       >
-        <div ref="timelineContent" class="mx-auto max-w-3xl space-y-3">
+        <div ref="timelineContent" class="mx-auto max-w-5xl space-y-3">
           <figure v-if="stories.activeStory.initialBackgroundId" class="mb-5">
             <ImageLightbox
               v-if="initialBackground && backgrounds.urlFor(initialBackground.id)"

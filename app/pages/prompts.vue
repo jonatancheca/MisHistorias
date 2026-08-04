@@ -55,7 +55,7 @@ async function setActive() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl p-8">
+  <div class="page-shell">
     <header class="mb-6 flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold">Prompts de preparación</h1>
@@ -66,7 +66,7 @@ async function setActive() {
       <button type="button" class="btn-primary" @click="startNew">Nuevo prompt</button>
     </header>
 
-    <div class="grid gap-6 md:grid-cols-[220px_1fr]">
+    <div class="grid gap-6 md:grid-cols-[240px_minmax(0,1fr)]">
       <ul class="grid h-fit gap-1">
         <li v-for="preset in presets.presets" :key="preset.id">
           <button

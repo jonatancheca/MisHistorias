@@ -15,7 +15,7 @@ async function remove(id: string) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-8">
+  <div class="page-shell">
     <header class="mb-6 flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold">Historias</h1>
@@ -28,7 +28,7 @@ async function remove(id: string) {
       Todavía no hay historias. Crea personajes y empieza una.
     </p>
 
-    <ul class="grid gap-2">
+    <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       <li v-for="story in stories.stories" :key="story.id" class="card flex items-center gap-4 py-3">
         <NuxtLink
           :to="`/stories/${story.id}`"
