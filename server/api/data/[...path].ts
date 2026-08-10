@@ -49,6 +49,22 @@ function hasStringArray(value: Record<string, unknown>, key: string) {
   return Array.isArray(value[key]) && value[key].every((item) => typeof item === 'string')
 }
 
+function hasCharacterCustomizations(value: Record<string, unknown>) {
+  return (
+    Array.isArray(value.characterCustomizations) &&
+    value.characterCustomizations.every((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return false
+      const customization = item as Record<string, unknown>
+      return (
+        typeof customization.characterId === 'string' &&
+        typeof customization.prompt === 'string' &&
+        Array.isArray(customization.tags) &&
+        customization.tags.every((tag) => typeof tag === 'string')
+      )
+    })
+  )
+}
+
 function validatePayload(resource: DataResource, rawValue: unknown) {
   const value = asRecord(rawValue)
   let valid = false
@@ -70,6 +86,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         (value.protagonistPreferencesMode === 'append' ||
           value.protagonistPreferencesMode === 'replace') &&
         hasStringArray(value, 'characterIds') &&
+        hasCharacterCustomizations(value) &&
         (value.initialBackgroundId === null || typeof value.initialBackgroundId === 'string') &&
         (value.presetId === null || typeof value.presetId === 'string') &&
         (value.imageCatalogSnapshot === undefined || Array.isArray(value.imageCatalogSnapshot)) &&

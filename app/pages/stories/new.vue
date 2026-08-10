@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { StoryCharacterCustomization } from '#shared/types'
 import { primaryTag } from '~/lib/tags'
 
 const stories = useStoriesStore()
@@ -17,6 +18,31 @@ const selected = ref<string[]>([])
 const initialBackgroundId = ref<string | null>(null)
 const presetId = ref<string | null>(settings.activePresetId)
 const saving = ref(false)
+const characterCustomizations = ref<Record<string, StoryCharacterCustomization>>(
+  Object.fromEntries(
+    characters.characters.map((character) => [
+      character.id,
+      {
+        characterId: character.id,
+        prompt: character.prompt,
+        tags: [...character.tags]
+      }
+    ])
+  )
+)
+const selectedCharacters = computed(() =>
+  selected.value.flatMap((id) => {
+    const character = characters.byId(id)
+    return character ? [character] : []
+  })
+)
+const characterTagSuggestions = computed(() =>
+  characters.characters.flatMap((character) => character.tags ?? [])
+)
+
+function customizationFor(characterId: string) {
+  return characterCustomizations.value[characterId]!
+}
 
 function toggle(id: string) {
   selected.value = selected.value.includes(id)
@@ -38,6 +64,10 @@ async function submit() {
       protagonistPreferences: protagonistPreferences.value,
       protagonistPreferencesMode: protagonistPreferencesMode.value,
       characterIds: selected.value,
+      characterCustomizations: selected.value.map((characterId) => ({
+        ...customizationFor(characterId),
+        tags: [...customizationFor(characterId).tags]
+      })),
       initialBackgroundId: initialBackgroundId.value,
       presetId: presetId.value
     })
@@ -127,6 +157,45 @@ async function submit() {
             </span>
           </button>
         </div>
+      </div>
+
+      <div v-if="selectedCharacters.length" class="grid gap-3">
+        <div>
+          <span class="label">Personalización en esta historia</span>
+          <p class="text-xs text-[var(--color-fg-muted)]">
+            Copia independiente. Cambiarla no modifica los personajes globales.
+          </p>
+        </div>
+        <section
+          v-for="character in selectedCharacters"
+          :key="character.id"
+          class="rounded-xl border border-[var(--color-border-soft)] p-4"
+        >
+          <h2 class="font-semibold">{{ character.name }}</h2>
+          <div class="mt-3 grid gap-3">
+            <div>
+              <label class="label" :for="`story-character-prompt-${character.id}`">Prompt</label>
+              <textarea
+                :id="`story-character-prompt-${character.id}`"
+                v-model="customizationFor(character.id).prompt"
+                autocomplete="off"
+                class="field min-h-32"
+              />
+            </div>
+            <div>
+              <label class="label" :for="`story-character-tags-${character.id}`">
+                Etiquetas descriptivas
+              </label>
+              <TagInput
+                :id="`story-character-tags-${character.id}`"
+                v-model="customizationFor(character.id).tags"
+                :suggestions="characterTagSuggestions"
+                show-all-suggestions
+                placeholder="aventurera"
+              />
+            </div>
+          </div>
+        </section>
       </div>
 
       <div>

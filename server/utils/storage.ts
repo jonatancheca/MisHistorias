@@ -32,7 +32,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 
 function parseJson<T>(value: unknown, fallback: T): T {
@@ -125,6 +125,7 @@ function rowToStory(row: SqliteRow) {
     protagonistPreferencesMode:
       row.protagonist_preferences_mode === 'replace' ? 'replace' : 'append',
     characterIds: parseJson<string[]>(row.character_ids_json, []),
+    characterCustomizations: parseJson(row.character_customizations_json, []),
     initialBackgroundId:
       typeof row.initial_background_id === 'string' ? row.initial_background_id : null,
     presetId: typeof row.preset_id === 'string' ? row.preset_id : null,
@@ -252,6 +253,7 @@ export class MisHistoriasStorage {
           protagonist_preferences TEXT NOT NULL,
           protagonist_preferences_mode TEXT NOT NULL CHECK (protagonist_preferences_mode IN ('append', 'replace')),
           character_ids_json TEXT NOT NULL,
+          character_customizations_json TEXT NOT NULL,
           initial_background_id TEXT,
           preset_id TEXT,
           image_catalog_snapshot_json TEXT,
@@ -313,9 +315,48 @@ export class MisHistoriasStorage {
           value_json TEXT NOT NULL,
           api_key TEXT NOT NULL DEFAULT ''
         ) STRICT;
-
-        PRAGMA user_version = ${SCHEMA_VERSION};
       `)
+
+      if (version.user_version < 2) {
+        const columns = this.database.prepare('PRAGMA table_info(stories)').all() as Array<{
+          name: string
+        }>
+        if (!columns.some((column) => column.name === 'character_customizations_json')) {
+          this.database.exec(
+            "ALTER TABLE stories ADD COLUMN character_customizations_json TEXT NOT NULL DEFAULT '[]'"
+          )
+        }
+
+        const stories = this.database
+          .prepare('SELECT scope, id, character_ids_json FROM stories')
+          .all() as Array<{ scope: string; id: string; character_ids_json: string }>
+        const characterStatement = this.database.prepare(
+          'SELECT id, prompt, tags_json FROM characters WHERE scope = ? AND id = ?'
+        )
+        const updateStatement = this.database.prepare(
+          'UPDATE stories SET character_customizations_json = ? WHERE scope = ? AND id = ?'
+        )
+        for (const story of stories) {
+          const characterIds = parseJson<string[]>(story.character_ids_json, [])
+          const customizations = characterIds.flatMap((characterId) => {
+            const character = characterStatement.get(story.scope, characterId) as
+              | { id: string; prompt: string; tags_json: string }
+              | undefined
+            return character
+              ? [
+                  {
+                    characterId: character.id,
+                    prompt: text(character.prompt),
+                    tags: parseJson<string[]>(character.tags_json, [])
+                  }
+                ]
+              : []
+          })
+          updateStatement.run(json(customizations), story.scope, story.id)
+        }
+      }
+
+      this.database.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
     })
   }
 
@@ -456,15 +497,16 @@ export class MisHistoriasStorage {
           .prepare(`
             INSERT INTO stories(
               scope, id, title, premise, protagonist_preferences,
-              protagonist_preferences_mode, character_ids_json, initial_background_id,
-              preset_id, image_catalog_snapshot_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              protagonist_preferences_mode, character_ids_json, character_customizations_json,
+              initial_background_id, preset_id, image_catalog_snapshot_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
               protagonist_preferences = excluded.protagonist_preferences,
               protagonist_preferences_mode = excluded.protagonist_preferences_mode,
               character_ids_json = excluded.character_ids_json,
+              character_customizations_json = excluded.character_customizations_json,
               initial_background_id = excluded.initial_background_id,
               preset_id = excluded.preset_id,
               image_catalog_snapshot_json = excluded.image_catalog_snapshot_json,
@@ -479,6 +521,7 @@ export class MisHistoriasStorage {
             text(value.protagonistPreferences),
             value.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
             json(stringArray(value.characterIds)),
+            json(value.characterCustomizations),
             typeof value.initialBackgroundId === 'string' ? value.initialBackgroundId : null,
             typeof value.presetId === 'string' ? value.presetId : null,
             value.imageCatalogSnapshot === undefined ? null : json(value.imageCatalogSnapshot),

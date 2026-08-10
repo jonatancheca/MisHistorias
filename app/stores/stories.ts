@@ -9,7 +9,8 @@ import type {
   Message,
   ProtagonistPreferencesMode,
   ResponseSpeed,
-  Story
+  Story,
+  StoryCharacterCustomization
 } from '#shared/types'
 import {
   deleteMessage as dbDeleteMessage,
@@ -29,6 +30,7 @@ import { buildMockResponse } from '~/lib/mockLlm'
 import { fetchLlmChat, type LlmCallError } from '~/lib/llm'
 import { parseSegments } from '~/lib/streamParser'
 import { selectCharacterImage } from '~/lib/imageSelection'
+import { sanitizeTags } from '~/lib/tags'
 import {
   buildStoryImageCatalog,
   compareStoryImageCatalogs,
@@ -39,6 +41,27 @@ const RESPONSE_CHARACTERS_PER_SECOND: Record<Exclude<ResponseSpeed, 'instant'>, 
   slow: 20,
   medium: 50,
   high: 100
+}
+
+function normalizeCharacterCustomizations(
+  characterIds: string[],
+  characters: Character[],
+  customizations: StoryCharacterCustomization[] = []
+) {
+  const requested = new Map(customizations.map((item) => [item.characterId, item]))
+  const available = new Map(characters.map((character) => [character.id, character]))
+  return characterIds.flatMap((characterId) => {
+    const source = requested.get(characterId) ?? available.get(characterId)
+    return source
+      ? [
+          {
+            characterId,
+            prompt: source.prompt,
+            tags: sanitizeTags(source.tags)
+          }
+        ]
+      : []
+  })
 }
 
 interface GraphemeSegment {
@@ -97,6 +120,7 @@ export const useStoriesStore = defineStore('stories', () => {
     protagonistPreferences: string
     protagonistPreferencesMode: ProtagonistPreferencesMode
     characterIds: string[]
+    characterCustomizations: StoryCharacterCustomization[]
     initialBackgroundId: string | null
     presetId: string | null
   }) {
@@ -110,6 +134,11 @@ export const useStoriesStore = defineStore('stories', () => {
       protagonistPreferences: input.protagonistPreferences.trim(),
       protagonistPreferencesMode: input.protagonistPreferencesMode,
       characterIds: [...input.characterIds],
+      characterCustomizations: normalizeCharacterCustomizations(
+        input.characterIds,
+        charactersStore.characters,
+        input.characterCustomizations
+      ),
       initialBackgroundId: input.initialBackgroundId,
       presetId: input.presetId,
       imageCatalogSnapshot: buildStoryImageCatalog(
@@ -286,14 +315,22 @@ export const useStoriesStore = defineStore('stories', () => {
   async function updateStorySettings(
     premise: string,
     protagonistPreferences: string,
-    protagonistPreferencesMode: ProtagonistPreferencesMode
+    protagonistPreferencesMode: ProtagonistPreferencesMode,
+    characterCustomizations: StoryCharacterCustomization[]
   ) {
     if (!activeStory.value || !premise.trim()) return
+    const charactersStore = useCharactersStore()
+    await charactersStore.load()
     const updated: Story = {
       ...activeStory.value,
       premise: premise.trim(),
       protagonistPreferences: protagonistPreferences.trim(),
       protagonistPreferencesMode,
+      characterCustomizations: normalizeCharacterCustomizations(
+        activeStory.value.characterIds,
+        charactersStore.characters,
+        characterCustomizations
+      ),
       updatedAt: Date.now()
     }
     await putStory(updated)

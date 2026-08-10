@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { DatabaseSync } from 'node:sqlite'
 import { MisHistoriasStorage } from './storage.ts'
 
 function withStorage(run: (storage: MisHistoriasStorage, path: string) => void) {
@@ -37,6 +38,7 @@ function story(id: string) {
     protagonistPreferences: '',
     protagonistPreferencesMode: 'append',
     characterIds: [],
+    characterCustomizations: [],
     initialBackgroundId: null,
     presetId: null,
     createdAt: 3,
@@ -48,6 +50,20 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
   withStorage((storage, path) => {
     storage.put('characters', 'normal', 'normal-1', character('normal-1'))
     storage.put('characters', 'private', 'private-1', character('private-1'))
+    storage.put('stories', 'normal', 'story-normal', {
+      ...story('story-normal'),
+      characterIds: ['normal-1'],
+      characterCustomizations: [
+        { characterId: 'normal-1', prompt: 'Prompt normal', tags: ['normal'] }
+      ]
+    })
+    storage.put('stories', 'private', 'story-private', {
+      ...story('story-private'),
+      characterIds: ['private-1'],
+      characterCustomizations: [
+        { characterId: 'private-1', prompt: 'Prompt privado', tags: ['privado'] }
+      ]
+    })
     storage.writeSettings({ model: 'modelo', apiKey: 'secreto' })
     storage.close()
 
@@ -61,13 +77,87 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
         reopened.list('characters', 'private').map((item) => item.id),
         ['private-1']
       )
+      assert.deepEqual(reopened.get('stories', 'normal', 'story-normal')?.characterCustomizations, [
+        { characterId: 'normal-1', prompt: 'Prompt normal', tags: ['normal'] }
+      ])
+      assert.deepEqual(
+        reopened.get('stories', 'private', 'story-private')?.characterCustomizations,
+        [{ characterId: 'private-1', prompt: 'Prompt privado', tags: ['privado'] }]
+      )
       assert.equal(reopened.readSettings()?.value.model, 'modelo')
       assert.equal(reopened.readSettings()?.apiKey, 'secreto')
-      assert.equal(reopened.health().schemaVersion, 1)
+      assert.equal(reopened.health().schemaVersion, 2)
     } finally {
       reopened.close()
     }
   })
+})
+
+test('migra v1 a v2 copiando prompt y etiquetas de cada personaje de la historia', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
+  const path = join(directory, 'test.sqlite')
+  const legacy = new DatabaseSync(path)
+  legacy.exec(`
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE characters (
+      scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+      id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      tags_json TEXT NOT NULL,
+      color TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (scope, id)
+    ) STRICT;
+    CREATE TABLE stories (
+      scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+      id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      premise TEXT NOT NULL,
+      protagonist_preferences TEXT NOT NULL,
+      protagonist_preferences_mode TEXT NOT NULL CHECK (protagonist_preferences_mode IN ('append', 'replace')),
+      character_ids_json TEXT NOT NULL,
+      initial_background_id TEXT,
+      preset_id TEXT,
+      image_catalog_snapshot_json TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (scope, id)
+    ) STRICT;
+    PRAGMA user_version = 1;
+  `)
+  legacy
+    .prepare(`
+      INSERT INTO characters(scope, id, name, prompt, tags_json, color, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    .run('normal', 'character-1', 'Alicia', 'Prompt original', '["aventurera"]', '#123456', 1, 1)
+  legacy
+    .prepare(`
+      INSERT INTO stories(
+        scope, id, title, premise, protagonist_preferences, protagonist_preferences_mode,
+        character_ids_json, initial_background_id, preset_id, image_catalog_snapshot_json,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    .run('normal', 'story-1', 'Historia', 'Premisa', '', 'append', '["character-1"]', null, null, null, 2, 2)
+  legacy.close()
+
+  const storage = new MisHistoriasStorage(path)
+  try {
+    assert.equal(storage.health().schemaVersion, 2)
+    assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.characterCustomizations, [
+      {
+        characterId: 'character-1',
+        prompt: 'Prompt original',
+        tags: ['aventurera']
+      }
+    ])
+  } finally {
+    storage.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 test('guarda BLOB y mantiene una sola imagen predeterminada', () => {

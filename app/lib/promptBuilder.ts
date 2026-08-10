@@ -1,4 +1,10 @@
-import type { Character, GenerationMode, Message, Story } from '#shared/types'
+import type {
+  Character,
+  GenerationMode,
+  Message,
+  Story,
+  StoryCharacterCustomization
+} from '#shared/types'
 import type { StoredBackground, StoredImage } from '~/lib/db'
 import { serializeSegments } from '~/lib/streamParser'
 import { primaryTag } from '~/lib/tags'
@@ -26,7 +32,11 @@ function continuationInstruction(generationMode: GenerationMode, userName: strin
   return null
 }
 
-function characterSheet(character: Character, images: StoredImage[]) {
+function characterSheet(
+  character: Character,
+  images: StoredImage[],
+  customization?: StoryCharacterCustomization
+) {
   const own = images.filter((image) => image.characterId === character.id)
   const fallback = own.find((image) => image.isDefault) ?? own[0]
   const tags = own.length
@@ -40,8 +50,8 @@ function characterSheet(character: Character, images: StoredImage[]) {
 
   return [
     `### ${character.name}`,
-    character.prompt.trim() || '(sin descripción)',
-    `Etiquetas descriptivas del personaje (no son etiquetas de imagen): ${(character.tags ?? []).join(', ') || '(ninguna)'}`,
+    (customization?.prompt ?? character.prompt).trim() || '(sin descripción)',
+    `Etiquetas descriptivas del personaje (no son etiquetas de imagen): ${(customization?.tags ?? character.tags ?? []).join(', ') || '(ninguna)'}`,
     'Etiquetas de imagen disponibles:',
     tags,
     fallback ? `Etiqueta por defecto: [${primaryTag(fallback)}]` : 'Etiqueta por defecto: [neutral]'
@@ -88,6 +98,9 @@ export function buildSystemPrompt(options: {
     protagonistPreferences,
     generationMode
   } = options
+  const characterCustomizations = new Map(
+    (story.characterCustomizations ?? []).map((item) => [item.characterId, item])
+  )
   return [
     presetContent.trim(),
     '',
@@ -104,7 +117,11 @@ export function buildSystemPrompt(options: {
       : 'No hables ni decidas por el protagonista; reacciona a lo que hace.',
     '',
     '## PERSONAJES',
-    characters.map((character) => characterSheet(character, images)).join('\n\n'),
+    characters
+      .map((character) =>
+        characterSheet(character, images, characterCustomizations.get(character.id))
+      )
+      .join('\n\n'),
     '',
     '## FONDOS',
     backgroundSheet(story, backgrounds)

@@ -209,6 +209,18 @@ async function seedNormalData() {
       protagonistPreferences: 'Mantener tono aventurero.',
       protagonistPreferencesMode: 'append',
       characterIds: [TEST_DATA_IDS.characterAlicia, TEST_DATA_IDS.characterBruno],
+      characterCustomizations: [
+        {
+          characterId: TEST_DATA_IDS.characterAlicia,
+          prompt: characters[0]!.prompt,
+          tags: [...characters[0]!.tags]
+        },
+        {
+          characterId: TEST_DATA_IDS.characterBruno,
+          prompt: characters[1]!.prompt,
+          tags: [...characters[1]!.tags]
+        }
+      ],
       initialBackgroundId: TEST_DATA_IDS.backgroundForest,
       presetId: TEST_DATA_IDS.presetNarrative,
       imageCatalogSnapshot: buildStoryImageCatalog(
@@ -226,6 +238,13 @@ async function seedNormalData() {
       protagonistPreferences: 'Usar frases muy cortas.',
       protagonistPreferencesMode: 'replace',
       characterIds: [TEST_DATA_IDS.characterAlicia],
+      characterCustomizations: [
+        {
+          characterId: TEST_DATA_IDS.characterAlicia,
+          prompt: characters[0]!.prompt,
+          tags: [...characters[0]!.tags]
+        }
+      ],
       initialBackgroundId: null,
       presetId: TEST_DATA_IDS.presetDialogue,
       imageCatalogSnapshot: buildStoryImageCatalog(

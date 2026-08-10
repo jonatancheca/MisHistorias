@@ -1,4 +1,10 @@
-import type { Character, Message, PromptPreset, Story } from '#shared/types'
+import type {
+  Character,
+  Message,
+  PromptPreset,
+  Story,
+  StoryCharacterCustomization
+} from '#shared/types'
 import {
   listBackgrounds,
   listAllImages,
@@ -21,7 +27,7 @@ import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
 
-const EXPORT_VERSION = 7
+const EXPORT_VERSION = 8
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -56,6 +62,7 @@ interface ExportedStory {
   protagonistPreferences?: string
   protagonistPreferencesMode?: 'append' | 'replace'
   characterIds: string[]
+  characterCustomizations?: StoryCharacterCustomization[]
   initialBackgroundId?: string | null
   presetId: string | null
   messages: Array<Pick<Message, 'role' | 'raw' | 'segments' | 'generationMode' | 'createdAt'>>
@@ -107,6 +114,7 @@ export async function exportBundle(): Promise<ExportBundle> {
       protagonistPreferences: story.protagonistPreferences ?? '',
       protagonistPreferencesMode: story.protagonistPreferencesMode ?? 'append',
       characterIds: story.characterIds,
+      characterCustomizations: story.characterCustomizations,
       initialBackgroundId: story.initialBackgroundId ?? null,
       presetId: story.presetId,
       messages: (await listMessages(story.id)).map((message) => ({
@@ -149,7 +157,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -243,6 +251,29 @@ export async function importBundle(raw: string) {
   }
 
   for (const item of parsed.stories) {
+    const storyCharacterIds = (item.characterIds ?? [])
+      .map((id: string) => characterIdMap.get(String(id)))
+      .filter((id): id is string => Boolean(id))
+    const exportedCustomizations = new Map(
+      (item.characterCustomizations ?? []).map((customization) => [
+        String(customization.characterId),
+        customization
+      ])
+    )
+    const characterCustomizations = (item.characterIds ?? []).flatMap((sourceId: string) => {
+      const characterId = characterIdMap.get(String(sourceId))
+      if (!characterId) return []
+      const source = exportedCustomizations.get(String(sourceId))
+      const character = importedCharacters.find((candidate) => candidate.id === characterId)
+      if (!source && !character) return []
+      return [
+        {
+          characterId,
+          prompt: String(source?.prompt ?? character?.prompt ?? ''),
+          tags: sanitizeTags(source?.tags ?? character?.tags)
+        }
+      ]
+    })
     const story: Story = {
       id: newId(),
       title: String(item.title ?? 'Historia importada'),
@@ -250,17 +281,14 @@ export async function importBundle(raw: string) {
       protagonistPreferences: String(item.protagonistPreferences ?? ''),
       protagonistPreferencesMode:
         item.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
-      characterIds: (item.characterIds ?? [])
-        .map((id: string) => characterIdMap.get(String(id)))
-        .filter((id): id is string => Boolean(id)),
+      characterIds: storyCharacterIds,
+      characterCustomizations,
       initialBackgroundId: item.initialBackgroundId
         ? (backgroundIdMap.get(String(item.initialBackgroundId)) ?? null)
         : null,
       presetId: item.presetId ? (presetIdMap.get(String(item.presetId)) ?? null) : null,
       imageCatalogSnapshot: buildStoryImageCatalog(
-        (item.characterIds ?? [])
-          .map((id: string) => characterIdMap.get(String(id)))
-          .filter((id): id is string => Boolean(id)),
+        storyCharacterIds,
         importedCharacters,
         importedImages
       ),

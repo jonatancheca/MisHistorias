@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { GenerationMode, LlmDebugTrace, Message } from '#shared/types'
+import type {
+  GenerationMode,
+  LlmDebugTrace,
+  Message,
+  StoryCharacterCustomization
+} from '#shared/types'
 import { primaryTag } from '~/lib/tags'
 
 const route = useRoute()
@@ -31,6 +36,16 @@ const storyPreferencesOpen = ref(false)
 const storyPremise = ref('')
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
+const storyCharacterCustomizations = ref<StoryCharacterCustomization[]>([])
+const storyCustomizationRows = computed(() =>
+  storyCharacterCustomizations.value.map((customization) => ({
+    customization,
+    character: characters.byId(customization.characterId)
+  }))
+)
+const characterTagSuggestions = computed(() =>
+  characters.characters.flatMap((character) => character.tags ?? [])
+)
 const followingBottom = ref(true)
 let lastScrollTop = 0
 let autoScrollTarget: number | null = null
@@ -240,6 +255,21 @@ function openStoryPreferences() {
   storyPremise.value = stories.activeStory.premise
   storyPreferences.value = stories.activeStory.protagonistPreferences ?? ''
   storyPreferencesMode.value = stories.activeStory.protagonistPreferencesMode ?? 'append'
+  const stored = new Map(
+    (stories.activeStory.characterCustomizations ?? []).map((item) => [item.characterId, item])
+  )
+  storyCharacterCustomizations.value = stories.activeStory.characterIds.flatMap((characterId) => {
+    const source = stored.get(characterId) ?? characters.byId(characterId)
+    return source
+      ? [
+          {
+            characterId,
+            prompt: source.prompt,
+            tags: [...source.tags]
+          }
+        ]
+      : []
+  })
   storyPreferencesOpen.value = true
 }
 
@@ -248,7 +278,8 @@ async function saveStoryPreferences() {
   await stories.updateStorySettings(
     storyPremise.value,
     storyPreferences.value,
-    storyPreferencesMode.value
+    storyPreferencesMode.value,
+    storyCharacterCustomizations.value.map((item) => ({ ...item, tags: [...item.tags] }))
   )
   storyPreferencesOpen.value = false
 }
@@ -588,7 +619,7 @@ onBeforeUnmount(() => {
         @keydown.esc.stop.prevent="storyPreferencesOpen = false"
       >
         <form
-          class="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-5 shadow-2xl"
+          class="max-h-[calc(100dvh-2rem)] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-5 shadow-2xl"
           @submit.prevent="saveStoryPreferences"
         >
           <h2 class="text-lg font-bold">Ajustes de la historia</h2>
@@ -623,6 +654,54 @@ onBeforeUnmount(() => {
                 <option value="append">Añadir</option>
                 <option value="replace">Reemplazar</option>
               </select>
+            </div>
+            <div v-if="storyCustomizationRows.length" class="grid gap-3">
+              <div>
+                <span class="label">Personalización de personajes</span>
+                <p class="text-xs text-[var(--color-fg-muted)]">
+                  Copia independiente. No modifica los personajes globales.
+                </p>
+              </div>
+              <section
+                v-for="row in storyCustomizationRows"
+                :key="row.customization.characterId"
+                class="rounded-xl border border-[var(--color-border-soft)] p-4"
+              >
+                <h3 class="font-semibold">
+                  {{ row.character?.name ?? 'Personaje no disponible' }}
+                </h3>
+                <div class="mt-3 grid gap-3">
+                  <div>
+                    <label
+                      class="label"
+                      :for="`story-settings-character-prompt-${row.customization.characterId}`"
+                    >
+                      Prompt
+                    </label>
+                    <textarea
+                      :id="`story-settings-character-prompt-${row.customization.characterId}`"
+                      v-model="row.customization.prompt"
+                      autocomplete="off"
+                      class="field min-h-32"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      class="label"
+                      :for="`story-settings-character-tags-${row.customization.characterId}`"
+                    >
+                      Etiquetas descriptivas
+                    </label>
+                    <TagInput
+                      :id="`story-settings-character-tags-${row.customization.characterId}`"
+                      v-model="row.customization.tags"
+                      :suggestions="characterTagSuggestions"
+                      show-all-suggestions
+                      placeholder="aventurera"
+                    />
+                  </div>
+                </div>
+              </section>
             </div>
           </div>
           <div class="mt-5 flex justify-end gap-2">

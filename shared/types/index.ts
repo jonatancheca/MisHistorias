@@ -40,6 +40,14 @@ export interface Background {
   createdAt: number
 }
 
+export interface StoryCharacterCustomization {
+  characterId: string
+  /** Copia independiente del prompt global para esta historia. */
+  prompt: string
+  /** Copia independiente de etiquetas descriptivas; nunca incluye etiquetas de imagen. */
+  tags: string[]
+}
+
 export interface Story {
   id: string
   title: string
@@ -49,6 +57,8 @@ export interface Story {
   /** Anade las preferencias globales o las reemplaza para esta historia */
   protagonistPreferencesMode: ProtagonistPreferencesMode
   characterIds: string[]
+  /** Prompt y etiquetas descriptivas fijados al crear la historia. */
+  characterCustomizations: StoryCharacterCustomization[]
   /** Fondo inicial; null permite que el modelo decida */
   initialBackgroundId: string | null
   presetId: string | null
