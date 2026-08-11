@@ -2,32 +2,69 @@
 import type { StoryCharacterCustomization } from '#shared/types'
 import { primaryTag } from '~/lib/tags'
 
+const route = useRoute()
 const stories = useStoriesStore()
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
 const presets = usePresetsStore()
 const settings = useSettingsStore()
 
-await Promise.all([characters.load(), backgrounds.load(), presets.load(), settings.load()])
+await Promise.all([
+  stories.load(),
+  characters.load(),
+  backgrounds.load(),
+  presets.load(),
+  settings.load()
+])
+
+const copyFromId = Array.isArray(route.query.copyFrom)
+  ? route.query.copyFrom[0]
+  : route.query.copyFrom
+const copiedStory =
+  typeof copyFromId === 'string'
+    ? (stories.stories.find((story) => story.id === copyFromId) ?? null)
+    : null
+const availableCharacterIds = new Set(characters.characters.map((character) => character.id))
+const copiedCustomizations = new Map(
+  (copiedStory?.characterCustomizations ?? []).map((customization) => [
+    customization.characterId,
+    customization
+  ])
+)
 
 const title = ref('')
-const premise = ref('')
-const protagonistPreferences = ref('')
-const protagonistPreferencesMode = ref<'append' | 'replace'>('append')
-const selected = ref<string[]>([])
-const initialBackgroundId = ref<string | null>(null)
-const presetId = ref<string | null>(settings.activePresetId)
+const premise = ref(copiedStory?.premise ?? '')
+const protagonistPreferences = ref(copiedStory?.protagonistPreferences ?? '')
+const protagonistPreferencesMode = ref<'append' | 'replace'>(
+  copiedStory?.protagonistPreferencesMode ?? 'append'
+)
+const selected = ref<string[]>(
+  copiedStory?.characterIds.filter((characterId) => availableCharacterIds.has(characterId)) ?? []
+)
+const initialBackgroundId = ref<string | null>(
+  copiedStory && backgrounds.byId(copiedStory.initialBackgroundId)
+    ? copiedStory.initialBackgroundId
+    : null
+)
+const presetId = ref<string | null>(
+  copiedStory && presets.byId(copiedStory.presetId)
+    ? copiedStory.presetId
+    : settings.activePresetId
+)
 const saving = ref(false)
 const characterCustomizations = ref<Record<string, StoryCharacterCustomization>>(
   Object.fromEntries(
-    characters.characters.map((character) => [
-      character.id,
-      {
-        characterId: character.id,
-        prompt: character.prompt,
-        tags: [...character.tags]
-      }
-    ])
+    characters.characters.map((character) => {
+      const copied = copiedCustomizations.get(character.id)
+      return [
+        character.id,
+        {
+          characterId: character.id,
+          prompt: copied?.prompt ?? character.prompt,
+          tags: [...(copied?.tags ?? character.tags)]
+        }
+      ]
+    })
   )
 )
 const selectedCharacters = computed(() =>

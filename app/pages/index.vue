@@ -29,14 +29,26 @@ async function remove(id: string) {
     </p>
 
     <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      <li v-for="story in stories.stories" :key="story.id" class="card flex items-center gap-4 py-3">
+      <li
+        v-for="story in stories.stories"
+        :key="story.id"
+        class="card flex flex-wrap items-center gap-2 py-3"
+      >
         <NuxtLink
           :to="`/stories/${story.id}`"
-          class="min-w-0 flex-1 truncate text-lg font-semibold hover:text-brand-600"
+          class="min-w-0 flex-1 basis-full truncate text-lg font-semibold hover:text-brand-600 sm:basis-auto"
         >
           {{ story.title }}
         </NuxtLink>
-        <button type="button" class="btn-danger shrink-0" @click="remove(story.id)">Borrar</button>
+        <div class="ml-auto flex shrink-0 gap-2">
+          <NuxtLink
+            :to="{ path: '/stories/new', query: { copyFrom: story.id } }"
+            class="btn-ghost"
+          >
+            Copiar
+          </NuxtLink>
+          <button type="button" class="btn-danger" @click="remove(story.id)">Borrar</button>
+        </div>
       </li>
     </ul>
   </div>
