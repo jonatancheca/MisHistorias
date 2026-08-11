@@ -97,6 +97,7 @@ export const useStoriesStore = defineStore('stories', () => {
   let animationFrame: number | null = null
   let finishAnimation: ((completed: boolean) => void) | null = null
   let animationDraft: Message | null = null
+  let generationModeInProgress: GenerationMode | null = null
 
   async function resetForScope() {
     await stop()
@@ -356,7 +357,9 @@ export const useStoriesStore = defineStore('stories', () => {
     finish?.(false)
   }
 
-  async function stop() {
+  async function stop(options: { preserveAutoResponse?: boolean } = {}) {
+    if (options.preserveAutoResponse && generationModeInProgress === 'auto') return
+
     const wasWaiting = waitingForResponse.value
     const draft = animationDraft
     const wasAnimating = finishAnimation !== null
@@ -481,6 +484,7 @@ export const useStoriesStore = defineStore('stories', () => {
 
     error.value = null
     generating.value = true
+    generationModeInProgress = generationMode
     const requestController = new AbortController()
     controller = requestController
     const assistantMessage: Message = {
@@ -637,6 +641,7 @@ export const useStoriesStore = defineStore('stories', () => {
       }
     } finally {
       waitingForResponse.value = false
+      if (generationModeInProgress === generationMode) generationModeInProgress = null
       if (controller === requestController) {
         generating.value = false
         controller = null

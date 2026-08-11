@@ -769,33 +769,51 @@ onBeforeUnmount(() => {
           />
           <div class="grid shrink-0 grid-cols-3 gap-2 sm:w-56">
             <button type="submit" class="btn-primary" :disabled="stories.generating">Enviar</button>
-            <button
-              type="button"
-              class="btn-ghost"
-              data-testid="continue-button"
-              title="Continuar sin decidir por el protagonista"
-              aria-label="Continuar sin decidir por el protagonista"
-              :disabled="stories.generating"
-              @click="generateContinuation('continue')"
-            >
-              Sigue
-            </button>
-            <button
-              type="button"
-              class="btn-ghost"
-              data-testid="auto-button"
-              title="Continuar permitiendo que la IA decida por el protagonista"
-              aria-label="Continuar permitiendo que la IA decida por el protagonista"
-              :disabled="stories.generating"
-              @click="generateContinuation('auto')"
-            >
-              Auto
-            </button>
+            <span class="group relative min-w-0">
+              <button
+                type="button"
+                class="btn-ghost w-full"
+                data-testid="continue-button"
+                aria-describedby="continue-tooltip"
+                aria-label="Continuar sin decidir por el protagonista"
+                :disabled="stories.generating"
+                @click="generateContinuation('continue')"
+              >
+                Sigue
+              </button>
+              <span
+                id="continue-tooltip"
+                role="tooltip"
+                class="pointer-events-none invisible absolute bottom-full right-0 z-20 mb-2 w-64 max-w-[calc(100vw-2rem)] rounded-lg bg-slate-950 px-3 py-2 text-left text-xs font-normal leading-snug text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+              >
+                Continúa la historia sin que la IA hable ni decida por el protagonista.
+              </span>
+            </span>
+            <span class="group relative min-w-0">
+              <button
+                type="button"
+                class="btn-ghost w-full"
+                data-testid="auto-button"
+                aria-describedby="auto-tooltip"
+                aria-label="Continuar permitiendo que la IA decida por el protagonista"
+                :disabled="stories.generating"
+                @click="generateContinuation('auto')"
+              >
+                Auto
+              </button>
+              <span
+                id="auto-tooltip"
+                role="tooltip"
+                class="pointer-events-none invisible absolute bottom-full right-0 z-20 mb-2 w-64 max-w-[calc(100vw-2rem)] rounded-lg bg-slate-950 px-3 py-2 text-left text-xs font-normal leading-snug text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+              >
+                Continúa la historia y permite que la IA decida acciones o diálogos del protagonista.
+              </span>
+            </span>
             <button
               v-if="stories.generating"
               type="button"
               class="btn-ghost col-span-3"
-              @click="stories.stop()"
+              @click="stories.stop({ preserveAutoResponse: true })"
             >
               Parar
             </button>
