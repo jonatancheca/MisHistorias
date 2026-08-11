@@ -18,8 +18,11 @@ const confirmDialog = useConfirmStore()
 const {
   hidden: mobileChromeHidden,
   hide: hideMobileChrome,
-  show: showMobileChrome
+  show: showMobileChrome,
+  toggle: toggleMobileChrome
 } = useMobileChrome()
+
+hideMobileChrome()
 
 await Promise.all([
   characters.load(),
@@ -51,8 +54,6 @@ const characterTagSuggestions = computed(() =>
 const followingBottom = ref(true)
 let lastScrollTop = 0
 let autoScrollTarget: number | null = null
-let accumulatedScroll = 0
-let desktopMedia: MediaQueryList | null = null
 let timelineResizeObserver: ResizeObserver | null = null
 let followScrollFrame: number | null = null
 let followSettleFrame: number | null = null
@@ -145,7 +146,6 @@ function scrollToTop() {
   if (!scroller.value) return
   followingBottom.value = false
   autoScrollTarget = 0
-  showMobileChrome()
   scroller.value.scrollTo({ top: 0, behavior: 'smooth' })
   updateScrollControls()
 }
@@ -237,31 +237,8 @@ function onStoryScroll() {
 
   if (delta < -1) {
     followingBottom.value = false
-    accumulatedScroll = 0
-    showMobileChrome()
-    updateScrollControls()
-    return
   }
   updateScrollControls()
-  if (window.innerWidth >= 640) {
-    showMobileChrome()
-    return
-  }
-
-  if (current <= 8) {
-    accumulatedScroll = 0
-    showMobileChrome()
-    return
-  }
-  if (Math.sign(delta) !== Math.sign(accumulatedScroll)) accumulatedScroll = 0
-  accumulatedScroll += delta
-  if (accumulatedScroll >= 12) {
-    hideMobileChrome()
-    accumulatedScroll = 0
-  } else if (accumulatedScroll <= -4) {
-    showMobileChrome()
-    accumulatedScroll = 0
-  }
 }
 
 function openStoryPreferences() {
@@ -343,13 +320,7 @@ async function resendFrom(id: string) {
   }
 }
 
-function onBreakpointChange(event: MediaQueryListEvent) {
-  if (event.matches) showMobileChrome()
-}
-
 onMounted(() => {
-  desktopMedia = window.matchMedia('(min-width: 640px)')
-  desktopMedia.addEventListener('change', onBreakpointChange)
   timelineResizeObserver = new ResizeObserver(scheduleFollowBottom)
   if (timelineContent.value) timelineResizeObserver.observe(timelineContent.value)
   if (scroller.value) timelineResizeObserver.observe(scroller.value)
@@ -469,7 +440,6 @@ function onVisualNovelKeydown(event: KeyboardEvent) {
 }
 
 onBeforeUnmount(() => {
-  desktopMedia?.removeEventListener('change', onBreakpointChange)
   timelineContent.value?.removeEventListener('load', onTimelineAssetLoad, true)
   timelineResizeObserver?.disconnect()
   window.removeEventListener('keydown', onVisualNovelKeydown)
@@ -485,9 +455,44 @@ onBeforeUnmount(() => {
   </div>
 
   <div v-else class="flex h-full min-h-0">
+    <button
+      type="button"
+      class="btn-ghost fixed top-[calc(0.75rem+env(safe-area-inset-top))] right-3 z-30 flex h-10 w-10 items-center justify-center bg-[var(--color-surface)]/90 px-0 py-0 shadow-lg backdrop-blur-sm sm:hidden"
+      data-testid="mobile-story-menu-toggle"
+      aria-controls="app-navigation story-header"
+      :aria-expanded="!mobileChromeHidden"
+      :aria-label="mobileChromeHidden ? 'Mostrar menú de historia' : 'Ocultar menú de historia'"
+      :title="mobileChromeHidden ? 'Mostrar menú de historia' : 'Ocultar menú de historia'"
+      @click="toggleMobileChrome"
+    >
+      <svg
+        v-if="mobileChromeHidden"
+        aria-hidden="true"
+        class="h-5 w-5"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+      <svg
+        v-else
+        aria-hidden="true"
+        class="h-5 w-5"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path d="m6 6 12 12M18 6 6 18" />
+      </svg>
+    </button>
+
     <section class="flex min-w-0 flex-1 flex-col">
       <header
-        class="flex shrink-0 items-center justify-between border-b border-[var(--color-border-soft)] px-4 transition-[max-height,opacity,padding,transform] duration-200 sm:max-h-none sm:translate-y-0 sm:px-6 sm:py-4 sm:opacity-100"
+        id="story-header"
+        class="flex shrink-0 items-center justify-between border-b border-[var(--color-border-soft)] px-4 transition-[max-height,opacity,padding,transform] duration-200 sm:max-h-none sm:translate-y-0 sm:overflow-visible sm:border-b sm:px-6 sm:py-4 sm:opacity-100"
         :class="
           mobileChromeHidden
             ? 'max-h-0 -translate-y-2 overflow-hidden border-b-0 py-0 opacity-0'

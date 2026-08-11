@@ -9,5 +9,9 @@ export function useMobileChrome() {
     hidden.value = false
   }
 
-  return { hidden, hide, show }
+  function toggle() {
+    hidden.value = !hidden.value
+  }
+
+  return { hidden, hide, show, toggle }
 }
