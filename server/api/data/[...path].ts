@@ -82,6 +82,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
       valid =
         hasString(value, 'title') &&
         hasString(value, 'premise') &&
+        typeof value.visualMode === 'boolean' &&
         hasString(value, 'protagonistPreferences') &&
         (value.protagonistPreferencesMode === 'append' ||
           value.protagonistPreferencesMode === 'replace') &&

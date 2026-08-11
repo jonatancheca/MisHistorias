@@ -117,6 +117,7 @@ export const useStoriesStore = defineStore('stories', () => {
   async function createStory(input: {
     title: string
     premise: string
+    visualMode?: boolean
     protagonistPreferences: string
     protagonistPreferencesMode: ProtagonistPreferencesMode
     characterIds: string[]
@@ -131,6 +132,7 @@ export const useStoriesStore = defineStore('stories', () => {
       id: newId(),
       title: input.title.trim() || 'Historia sin título',
       premise: input.premise.trim(),
+      visualMode: input.visualMode === true,
       protagonistPreferences: input.protagonistPreferences.trim(),
       protagonistPreferencesMode: input.protagonistPreferencesMode,
       characterIds: [...input.characterIds],
@@ -333,6 +335,14 @@ export const useStoriesStore = defineStore('stories', () => {
       ),
       updatedAt: Date.now()
     }
+    await putStory(updated)
+    activeStory.value = updated
+    stories.value = stories.value.map((story) => (story.id === updated.id ? updated : story))
+  }
+
+  async function setVisualMode(visualMode: boolean) {
+    if (!activeStory.value || activeStory.value.visualMode === visualMode) return
+    const updated: Story = { ...activeStory.value, visualMode }
     await putStory(updated)
     activeStory.value = updated
     stories.value = stories.value.map((story) => (story.id === updated.id ? updated : story))
@@ -683,6 +693,7 @@ export const useStoriesStore = defineStore('stories', () => {
     load,
     createStory,
     updateStorySettings,
+    setVisualMode,
     removeStory,
     openStory,
     addUserMessage,

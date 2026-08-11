@@ -7,6 +7,7 @@ const props = defineProps<{
   message: Message
   editable?: boolean
   debugTrace?: LlmDebugTrace | null
+  visualMode?: boolean
 }>()
 const emit = defineEmits<{
   edit: [string]
@@ -116,7 +117,7 @@ const rows = computed<FlowRow[]>(() => {
       imageUrl: isNewImage ? characters.urlFor(image!.id) : null,
       characterId: segment.characterId
     }
-  })
+  }).filter((row) => !props.visualMode || !row.background)
 })
 
 function startEdit() {
@@ -253,7 +254,7 @@ function confirmEdit() {
                 <span class="font-semibold" :style="{ color: row.color }">:</span>
                 <span class="ml-1 whitespace-pre-wrap" :style="{ color: row.color }">{{ row.text }}</span>
               </p>
-              <figure v-if="row.imageUrl" class="mt-2 mb-3 w-40">
+              <figure v-if="row.imageUrl && !visualMode" class="mt-2 mb-3 w-40">
                 <ImageLightbox
                   :src="row.imageUrl"
                   :alt="`${row.name} ${row.tag ?? ''}`"

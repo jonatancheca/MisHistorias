@@ -52,6 +52,8 @@ export interface Story {
   id: string
   title: string
   premise: string
+  /** Vista alternativa con fondo, personajes superpuestos y diálogo inferior. */
+  visualMode: boolean
   /** Preferencias del protagonista especificas de esta historia */
   protagonistPreferences: string
   /** Anade las preferencias globales o las reemplaza para esta historia */

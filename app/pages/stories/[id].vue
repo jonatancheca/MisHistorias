@@ -101,6 +101,27 @@ const lastDialogue = computed(() => {
   return null
 })
 
+const novelCharacterStates = computed(() => {
+  const latest = new Map<
+    string,
+    { characterId: string; tag: string | null; imageId: string | null }
+  >()
+  for (const message of stories.messages) {
+    for (const segment of message.segments) {
+      if (segment.type !== 'dialogue' || !segment.characterId) continue
+      latest.set(segment.characterId, {
+        characterId: segment.characterId,
+        tag: segment.tag,
+        imageId: segment.imageId ?? null
+      })
+    }
+  }
+  return (stories.activeStory?.characterIds ?? []).map(
+    (characterId) =>
+      latest.get(characterId) ?? { characterId, tag: null, imageId: null }
+  )
+})
+
 function updateScrollControls() {
   if (!scroller.value) {
     canScrollToTop.value = false
@@ -168,6 +189,12 @@ async function resumeFollowingBottom() {
   await nextTick()
   scrollFollowingToBottom()
   scheduleFollowBottom()
+}
+
+async function toggleVisualMode() {
+  if (!stories.activeStory || stories.generating) return
+  await stories.setVisualMode(!stories.activeStory.visualMode)
+  await resumeFollowingBottom()
 }
 
 async function submit() {
@@ -429,6 +456,22 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="btn-ghost"
+            data-testid="visual-mode-toggle"
+            :aria-label="stories.activeStory.visualMode ? 'Desactivar modo novela visual' : 'Activar modo novela visual'"
+            :title="stories.activeStory.visualMode ? 'Desactivar modo novela visual' : 'Activar modo novela visual'"
+            :aria-pressed="stories.activeStory.visualMode"
+            :disabled="stories.generating"
+            @click="toggleVisualMode"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="m3 15 5-5 4 4 3-3 6 6M8 8h.01" />
+            </svg>
+            <span class="hidden xl:inline">Novela</span>
+          </button>
+          <button
+            type="button"
+            class="btn-ghost"
             aria-label="Ajustes de la historia"
             title="Ajustes de la historia"
             :disabled="stories.generating"
@@ -444,14 +487,30 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <div
-        ref="scroller"
-        data-testid="story-scroller"
-        class="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6"
-        @scroll.passive="onStoryScroll"
-      >
-        <div ref="timelineContent" class="mx-auto max-w-5xl space-y-3">
-          <figure v-if="stories.activeStory.initialBackgroundId" class="mb-5">
+      <div class="relative min-h-0 flex-1 overflow-hidden">
+        <VisualNovelStage
+          v-if="stories.activeStory.visualMode"
+          :character-ids="stories.activeStory.characterIds"
+          :character-states="novelCharacterStates"
+          :background-id="currentBackground.id"
+          :background-tag="currentBackground.tag"
+        />
+
+        <div
+          ref="scroller"
+          data-testid="story-scroller"
+          :class="
+            stories.activeStory.visualMode
+              ? 'absolute inset-x-2 bottom-2 z-20 min-h-36 max-h-[46%] overflow-y-auto rounded-2xl border border-white/25 bg-black/75 p-3 text-white shadow-2xl backdrop-blur-sm [--color-border-soft:rgba(255,255,255,0.25)] [--color-fg-muted:#cbd5e1] [--color-fg:#f8fafc] [--color-surface-alt:#1e293b] [--color-surface:#0f172a] sm:inset-x-6 sm:bottom-5 sm:max-h-[42%] sm:p-5'
+              : 'relative z-10 h-full overflow-y-auto px-4 py-4 sm:px-6 sm:py-6'
+          "
+          @scroll.passive="onStoryScroll"
+        >
+          <div ref="timelineContent" class="mx-auto max-w-5xl space-y-3">
+          <figure
+            v-if="!stories.activeStory.visualMode && stories.activeStory.initialBackgroundId"
+            class="mb-5"
+          >
             <ImageLightbox
               v-if="initialBackground && backgrounds.urlFor(initialBackground.id)"
               :src="backgrounds.urlFor(initialBackground.id)!"
@@ -484,6 +543,7 @@ onBeforeUnmount(() => {
               :message="item.message"
               :debug-trace="debugForMessage(item.message.id)"
               :editable="!stories.generating"
+              :visual-mode="stories.activeStory.visualMode"
               @debug="selectedDebugTrace = $event"
               @edit="stories.updateMessage(item.message.id, $event)"
               @remove="removeMessage(item.message.id)"
@@ -546,6 +606,7 @@ onBeforeUnmount(() => {
           >
             {{ stories.error }}
           </p>
+          </div>
         </div>
       </div>
 
@@ -599,6 +660,7 @@ onBeforeUnmount(() => {
     </section>
 
     <div
+      v-if="!stories.activeStory.visualMode"
       class="hidden w-64 shrink-0 overflow-y-auto border-l border-[var(--color-border-soft)] p-4 lg:block"
     >
       <SceneStage

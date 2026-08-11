@@ -32,7 +32,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 
 function parseJson<T>(value: unknown, fallback: T): T {
@@ -121,6 +121,7 @@ function rowToStory(row: SqliteRow) {
     id: row.id,
     title: text(row.title),
     premise: text(row.premise),
+    visualMode: row.visual_mode === 1,
     protagonistPreferences: text(row.protagonist_preferences),
     protagonistPreferencesMode:
       row.protagonist_preferences_mode === 'replace' ? 'replace' : 'append',
@@ -250,6 +251,7 @@ export class MisHistoriasStorage {
           id TEXT NOT NULL,
           title TEXT NOT NULL,
           premise TEXT NOT NULL,
+          visual_mode INTEGER NOT NULL DEFAULT 0 CHECK (visual_mode IN (0, 1)),
           protagonist_preferences TEXT NOT NULL,
           protagonist_preferences_mode TEXT NOT NULL CHECK (protagonist_preferences_mode IN ('append', 'replace')),
           character_ids_json TEXT NOT NULL,
@@ -353,6 +355,17 @@ export class MisHistoriasStorage {
               : []
           })
           updateStatement.run(json(customizations), story.scope, story.id)
+        }
+      }
+
+      if (version.user_version < 3) {
+        const columns = this.database.prepare('PRAGMA table_info(stories)').all() as Array<{
+          name: string
+        }>
+        if (!columns.some((column) => column.name === 'visual_mode')) {
+          this.database.exec(
+            'ALTER TABLE stories ADD COLUMN visual_mode INTEGER NOT NULL DEFAULT 0 CHECK (visual_mode IN (0, 1))'
+          )
         }
       }
 
@@ -496,13 +509,14 @@ export class MisHistoriasStorage {
         this.database
           .prepare(`
             INSERT INTO stories(
-              scope, id, title, premise, protagonist_preferences,
+              scope, id, title, premise, visual_mode, protagonist_preferences,
               protagonist_preferences_mode, character_ids_json, character_customizations_json,
               initial_background_id, preset_id, image_catalog_snapshot_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
+              visual_mode = excluded.visual_mode,
               protagonist_preferences = excluded.protagonist_preferences,
               protagonist_preferences_mode = excluded.protagonist_preferences_mode,
               character_ids_json = excluded.character_ids_json,
@@ -518,6 +532,7 @@ export class MisHistoriasStorage {
             id,
             text(value.title),
             text(value.premise),
+            value.visualMode === true ? 1 : 0,
             text(value.protagonistPreferences),
             value.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
             json(stringArray(value.characterIds)),

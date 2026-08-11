@@ -98,6 +98,7 @@ async function submit() {
     const story = await stories.createStory({
       title: title.value,
       premise: premise.value,
+      visualMode: copiedStory?.visualMode ?? false,
       protagonistPreferences: protagonistPreferences.value,
       protagonistPreferencesMode: protagonistPreferencesMode.value,
       characterIds: selected.value,

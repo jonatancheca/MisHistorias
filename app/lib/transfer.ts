@@ -27,7 +27,7 @@ import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
 
-const EXPORT_VERSION = 8
+const EXPORT_VERSION = 9
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -59,6 +59,7 @@ interface ExportedBackground {
 interface ExportedStory {
   title: string
   premise: string
+  visualMode?: boolean
   protagonistPreferences?: string
   protagonistPreferencesMode?: 'append' | 'replace'
   characterIds: string[]
@@ -111,6 +112,7 @@ export async function exportBundle(): Promise<ExportBundle> {
     stories.map(async (story) => ({
       title: story.title,
       premise: story.premise,
+      visualMode: story.visualMode,
       protagonistPreferences: story.protagonistPreferences ?? '',
       protagonistPreferencesMode: story.protagonistPreferencesMode ?? 'append',
       characterIds: story.characterIds,
@@ -157,7 +159,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -278,6 +280,7 @@ export async function importBundle(raw: string) {
       id: newId(),
       title: String(item.title ?? 'Historia importada'),
       premise: String(item.premise ?? ''),
+      visualMode: item.visualMode === true,
       protagonistPreferences: String(item.protagonistPreferences ?? ''),
       protagonistPreferencesMode:
         item.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',

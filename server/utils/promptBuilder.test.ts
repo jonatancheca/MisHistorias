@@ -22,6 +22,7 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
       id: 'story-1',
       title: 'Historia',
       premise: 'Premisa',
+      visualMode: false,
       protagonistPreferences: '',
       protagonistPreferencesMode: 'append',
       characterIds: ['character-1'],

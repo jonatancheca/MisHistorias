@@ -35,6 +35,7 @@ function story(id: string) {
     id,
     title: `Historia ${id}`,
     premise: 'Premisa',
+    visualMode: false,
     protagonistPreferences: '',
     protagonistPreferencesMode: 'append',
     characterIds: [],
@@ -52,6 +53,7 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
     storage.put('characters', 'private', 'private-1', character('private-1'))
     storage.put('stories', 'normal', 'story-normal', {
       ...story('story-normal'),
+      visualMode: true,
       characterIds: ['normal-1'],
       characterCustomizations: [
         { characterId: 'normal-1', prompt: 'Prompt normal', tags: ['normal'] }
@@ -86,14 +88,19 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
       )
       assert.equal(reopened.readSettings()?.value.model, 'modelo')
       assert.equal(reopened.readSettings()?.apiKey, 'secreto')
-      assert.equal(reopened.health().schemaVersion, 2)
+      assert.equal(
+        (reopened.get('stories', 'normal', 'story-normal') as { visualMode?: boolean } | null)
+          ?.visualMode,
+        true
+      )
+      assert.equal(reopened.health().schemaVersion, 3)
     } finally {
       reopened.close()
     }
   })
 })
 
-test('migra v1 a v2 copiando prompt y etiquetas de cada personaje de la historia', () => {
+test('migra v1 a v3 copiando personajes y dejando modo visual desactivado', () => {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
   const path = join(directory, 'test.sqlite')
   const legacy = new DatabaseSync(path)
@@ -146,7 +153,12 @@ test('migra v1 a v2 copiando prompt y etiquetas de cada personaje de la historia
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 2)
+    assert.equal(storage.health().schemaVersion, 3)
+    assert.equal(
+      (storage.get('stories', 'normal', 'story-1') as { visualMode?: boolean } | null)
+        ?.visualMode,
+      false
+    )
     assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.characterCustomizations, [
       {
         characterId: 'character-1',
