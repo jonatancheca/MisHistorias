@@ -5,7 +5,9 @@ import type {
   Message,
   StoryCharacterCustomization
 } from '#shared/types'
+import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
 import { primaryTag } from '~/lib/tags'
+import { buildVisualNovelFrames } from '~/lib/visualNovelFrames'
 
 const route = useRoute()
 const stories = useStoriesStore()
@@ -101,27 +103,6 @@ const lastDialogue = computed(() => {
   return null
 })
 
-const novelCharacterStates = computed(() => {
-  const latest = new Map<
-    string,
-    { characterId: string; tag: string | null; imageId: string | null }
-  >()
-  for (const message of stories.messages) {
-    for (const segment of message.segments) {
-      if (segment.type !== 'dialogue' || !segment.characterId) continue
-      latest.set(segment.characterId, {
-        characterId: segment.characterId,
-        tag: segment.tag,
-        imageId: segment.imageId ?? null
-      })
-    }
-  }
-  return (stories.activeStory?.characterIds ?? []).map(
-    (characterId) =>
-      latest.get(characterId) ?? { characterId, tag: null, imageId: null }
-  )
-})
-
 function updateScrollControls() {
   if (!scroller.value) {
     canScrollToTop.value = false
@@ -144,6 +125,7 @@ function scrollFollowingToBottom() {
 
 function scheduleFollowBottom() {
   if (
+    stories.activeStory?.visualMode ||
     !followingBottom.value ||
     followScrollFrame !== null ||
     followSettleFrame !== null
@@ -193,8 +175,13 @@ async function resumeFollowingBottom() {
 
 async function toggleVisualMode() {
   if (!stories.activeStory || stories.generating) return
-  await stories.setVisualMode(!stories.activeStory.visualMode)
-  await resumeFollowingBottom()
+  const visualMode = !stories.activeStory.visualMode
+  await stories.setVisualMode(visualMode)
+  if (visualMode) {
+    visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
+  } else {
+    await resumeFollowingBottom()
+  }
 }
 
 async function submit() {
@@ -367,7 +354,8 @@ onMounted(() => {
   if (timelineContent.value) timelineResizeObserver.observe(timelineContent.value)
   if (scroller.value) timelineResizeObserver.observe(scroller.value)
   timelineContent.value?.addEventListener('load', onTimelineAssetLoad, true)
-  void scrollToBottom()
+  window.addEventListener('keydown', onVisualNovelKeydown)
+  if (!stories.activeStory?.visualMode) void scrollToBottom()
 })
 
 const initialBackground = computed(() =>
@@ -389,10 +377,90 @@ const currentBackground = computed(() => {
   return { id, tag }
 })
 
+const visualFrames = computed(() =>
+  buildVisualNovelFrames(stories.messages, {
+    initialBackgroundId: stories.activeStory?.initialBackgroundId ?? null,
+    initialBackgroundTag: primaryTag(initialBackground.value),
+    resolveBackgroundId: (tag) => backgrounds.byTag(tag)?.id ?? null
+  })
+)
+const visualFrameIndex = ref(Math.max(0, visualFrames.value.length - 1))
+const activeVisualFrame = computed(() => visualFrames.value[visualFrameIndex.value] ?? null)
+const canShowPreviousVisualFrame = computed(() => visualFrameIndex.value > 0)
+const canShowNextVisualFrame = computed(
+  () => visualFrameIndex.value < visualFrames.value.length - 1
+)
+const visualBackground = computed(() => ({
+  id: activeVisualFrame.value?.backgroundId ?? stories.activeStory?.initialBackgroundId ?? null,
+  tag: activeVisualFrame.value?.backgroundTag ?? primaryTag(initialBackground.value)
+}))
+const visualCharacterStates = computed(() =>
+  activeVisualFrame.value?.characterState ? [activeVisualFrame.value.characterState] : []
+)
+const visualCharacterIds = computed(() =>
+  activeVisualFrame.value?.characterState
+    ? [activeVisualFrame.value.characterState.characterId]
+    : []
+)
+const visualSpeaker = computed(() => {
+  const frame = activeVisualFrame.value
+  if (!frame || frame.kind === 'narration') return null
+  if (frame.kind === 'dialogue' && frame.characterState) {
+    return {
+      name: characters.byId(frame.characterState.characterId)?.name ?? 'Personaje',
+      color: characters.colorOf(frame.characterState.characterId)
+    }
+  }
+  return {
+    name: settings.activeUserName,
+    color: normalizeColor(settings.settings.userColor, DEFAULT_USER_COLOR)
+  }
+})
+
+watch(
+  () => visualFrames.value.length,
+  (length, previousLength) => {
+    if (length === 0) {
+      visualFrameIndex.value = 0
+      return
+    }
+    const wasAtEnd = previousLength === 0 || visualFrameIndex.value >= previousLength - 1
+    visualFrameIndex.value = wasAtEnd
+      ? length - 1
+      : Math.min(visualFrameIndex.value, length - 1)
+  }
+)
+
+function showPreviousVisualFrame() {
+  if (canShowPreviousVisualFrame.value) visualFrameIndex.value -= 1
+}
+
+function showNextVisualFrame() {
+  if (canShowNextVisualFrame.value) visualFrameIndex.value += 1
+}
+
+function onVisualNovelKeydown(event: KeyboardEvent) {
+  if (!stories.activeStory?.visualMode) return
+  const target = event.target
+  if (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || target.matches('input, textarea, select, [contenteditable="true"]'))
+  ) return
+
+  if (event.key === 'ArrowLeft' && canShowPreviousVisualFrame.value) {
+    event.preventDefault()
+    showPreviousVisualFrame()
+  } else if (event.key === 'ArrowRight' && canShowNextVisualFrame.value) {
+    event.preventDefault()
+    showNextVisualFrame()
+  }
+}
+
 onBeforeUnmount(() => {
   desktopMedia?.removeEventListener('change', onBreakpointChange)
   timelineContent.value?.removeEventListener('load', onTimelineAssetLoad, true)
   timelineResizeObserver?.disconnect()
+  window.removeEventListener('keydown', onVisualNovelKeydown)
   if (followScrollFrame !== null) cancelAnimationFrame(followScrollFrame)
   if (followSettleFrame !== null) cancelAnimationFrame(followSettleFrame)
   showMobileChrome()
@@ -429,6 +497,7 @@ onBeforeUnmount(() => {
           </p>
         </div>
         <div class="flex shrink-0 gap-1 sm:gap-2">
+          <template v-if="!stories.activeStory.visualMode">
           <button
             type="button"
             class="btn-ghost h-10 w-10 shrink-0 px-0 py-0"
@@ -453,6 +522,7 @@ onBeforeUnmount(() => {
               <path d="M5 20h14M12 4v13m-5-5 5 5 5-5" />
             </svg>
           </button>
+          </template>
           <button
             type="button"
             class="btn-ghost"
@@ -467,7 +537,7 @@ onBeforeUnmount(() => {
               <rect x="3" y="4" width="18" height="16" rx="2" />
               <path d="m3 15 5-5 4 4 3-3 6 6M8 8h.01" />
             </svg>
-            <span class="hidden xl:inline">Novela</span>
+            <span>{{ stories.activeStory.visualMode ? 'Chat' : 'Novela' }}</span>
           </button>
           <button
             type="button"
@@ -483,27 +553,88 @@ onBeforeUnmount(() => {
             </svg>
             <span class="hidden sm:inline">Ajustes</span>
           </button>
-          <NuxtLink to="/" class="btn-ghost">Historias</NuxtLink>
         </div>
       </header>
 
       <div class="relative min-h-0 flex-1 overflow-hidden">
-        <VisualNovelStage
+        <div
           v-if="stories.activeStory.visualMode"
-          :character-ids="stories.activeStory.characterIds"
-          :character-states="novelCharacterStates"
-          :background-id="currentBackground.id"
-          :background-tag="currentBackground.tag"
-        />
+          data-testid="visual-novel-view"
+          class="flex h-full min-h-0 flex-col bg-slate-950"
+        >
+          <div class="min-h-0 flex-1">
+            <VisualNovelStage
+              :character-ids="visualCharacterIds"
+              :character-states="visualCharacterStates"
+              :background-id="visualBackground.id"
+              :background-tag="visualBackground.tag"
+            />
+          </div>
+
+          <section
+            data-testid="visual-novel-dialogue"
+            class="max-h-[46%] shrink-0 overflow-y-auto border-t border-white/20 bg-slate-950 px-2 py-3 text-white shadow-[0_-10px_30px_rgba(0,0,0,0.35)] sm:max-h-[42%] sm:px-6 sm:py-5"
+            aria-live="polite"
+          >
+            <div class="mx-auto grid max-w-5xl grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2 sm:grid-cols-[3rem_minmax(0,1fr)_3rem] sm:gap-4">
+              <button
+                type="button"
+                class="btn-ghost h-10 w-10 px-0 py-0 text-white disabled:text-slate-500 sm:h-12 sm:w-12"
+                data-testid="visual-novel-previous"
+                aria-label="Frase anterior"
+                title="Frase anterior"
+                :disabled="!canShowPreviousVisualFrame"
+                @click="showPreviousVisualFrame"
+              >
+                <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
+              </button>
+
+              <div data-testid="visual-novel-frame" class="min-w-0 text-center">
+                <template v-if="activeVisualFrame">
+                  <p
+                    v-if="visualSpeaker"
+                    class="mb-1 truncate text-sm font-semibold"
+                    :style="{ color: visualSpeaker.color }"
+                  >
+                    {{ visualSpeaker.name }}
+                  </p>
+                  <p
+                    class="text-[15px] leading-relaxed whitespace-pre-wrap sm:text-base"
+                    :class="activeVisualFrame.kind === 'narration' ? 'italic text-slate-300' : ''"
+                  >
+                    {{ activeVisualFrame.text }}
+                  </p>
+                  <p class="mt-2 text-xs text-slate-400">
+                    {{ visualFrameIndex + 1 }} / {{ visualFrames.length }}
+                  </p>
+                </template>
+                <p v-else class="text-sm text-slate-300">La historia aún no ha empezado.</p>
+              </div>
+
+              <button
+                type="button"
+                class="btn-ghost h-10 w-10 px-0 py-0 text-white disabled:text-slate-500 sm:h-12 sm:w-12"
+                data-testid="visual-novel-next"
+                aria-label="Frase siguiente"
+                title="Frase siguiente"
+                :disabled="!canShowNextVisualFrame"
+                @click="showNextVisualFrame"
+              >
+                <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
+            </div>
+          </section>
+        </div>
 
         <div
+          v-show="!stories.activeStory.visualMode"
           ref="scroller"
           data-testid="story-scroller"
-          :class="
-            stories.activeStory.visualMode
-              ? 'absolute inset-x-2 bottom-2 z-20 min-h-36 max-h-[46%] overflow-y-auto rounded-2xl border border-white/25 bg-black/75 p-3 text-white shadow-2xl backdrop-blur-sm [--color-border-soft:rgba(255,255,255,0.25)] [--color-fg-muted:#cbd5e1] [--color-fg:#f8fafc] [--color-surface-alt:#1e293b] [--color-surface:#0f172a] sm:inset-x-6 sm:bottom-5 sm:max-h-[42%] sm:p-5'
-              : 'relative z-10 h-full overflow-y-auto px-4 py-4 sm:px-6 sm:py-6'
-          "
+          class="relative z-10 h-full overflow-y-auto px-4 py-4 sm:px-6 sm:py-6"
           @scroll.passive="onStoryScroll"
         >
           <div ref="timelineContent" class="mx-auto max-w-5xl space-y-3">

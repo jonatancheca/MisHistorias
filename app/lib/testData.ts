@@ -274,7 +274,7 @@ async function seedNormalData() {
       id: assistantMessageId,
       storyId: TEST_DATA_IDS.storyConversation,
       role: 'assistant',
-      raw: 'Fondo [bosque]:\nNarración: Las ramas crujen.\nTEST Alicia [feliz]: ¡Bruno! Por fin te encuentro.',
+      raw: 'Fondo [bosque]:\nNarración: Las ramas crujen.\nTEST Alicia [feliz]: ¡Bruno! Por fin te encuentro.\nFondo [taberna]:\nNarración: Dentro, la música se apaga.\nTEST Bruno [serio]: Llegas tarde.',
       segments: [
         {
           type: 'background',
@@ -293,7 +293,28 @@ async function seedNormalData() {
           type: 'dialogue',
           characterId: TEST_DATA_IDS.characterAlicia,
           tag: 'feliz',
+          imageId: 'test-image-alicia-happy',
           text: '¡Bruno! Por fin te encuentro.'
+        },
+        {
+          type: 'background',
+          characterId: null,
+          backgroundId: TEST_DATA_IDS.backgroundTavern,
+          tag: 'taberna',
+          text: ''
+        },
+        {
+          type: 'narration',
+          characterId: null,
+          tag: null,
+          text: 'Dentro, la música se apaga.'
+        },
+        {
+          type: 'dialogue',
+          characterId: TEST_DATA_IDS.characterBruno,
+          tag: 'serio',
+          imageId: 'test-image-bruno-serious',
+          text: 'Llegas tarde.'
         }
       ],
       createdAt: TEST_TIME + 61
