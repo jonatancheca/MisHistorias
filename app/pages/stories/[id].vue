@@ -439,6 +439,18 @@ function showNextVisualFrame() {
   if (canShowNextVisualFrame.value) visualFrameIndex.value += 1
 }
 
+function onVisualFrameClick(event: MouseEvent) {
+  if (window.innerWidth >= 640) return
+  const target = event.currentTarget
+  if (!(target instanceof HTMLElement)) return
+  const bounds = target.getBoundingClientRect()
+  if (event.clientX < bounds.left + bounds.width / 2) {
+    showPreviousVisualFrame()
+  } else {
+    showNextVisualFrame()
+  }
+}
+
 function onVisualNovelKeydown(event: KeyboardEvent) {
   if (!stories.activeStory?.visualMode) return
   const target = event.target
@@ -523,6 +535,13 @@ onBeforeUnmount(() => {
             </svg>
           </button>
           </template>
+          <span
+            v-if="stories.activeStory.visualMode"
+            data-testid="visual-novel-counter"
+            class="flex h-10 shrink-0 items-center text-xs text-[var(--color-fg-muted)]"
+          >
+            {{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrames.length }}
+          </span>
           <button
             type="button"
             class="btn-ghost"
@@ -573,13 +592,13 @@ onBeforeUnmount(() => {
 
           <section
             data-testid="visual-novel-dialogue"
-            class="max-h-[46%] shrink-0 overflow-y-auto border-t border-white/20 bg-slate-950 px-2 py-3 text-white shadow-[0_-10px_30px_rgba(0,0,0,0.35)] sm:max-h-[42%] sm:px-6 sm:py-5"
+            class="h-24 shrink-0 overflow-hidden border-t border-white/20 bg-slate-950 text-white shadow-[0_-10px_30px_rgba(0,0,0,0.35)] sm:h-[120px]"
             aria-live="polite"
           >
-            <div class="mx-auto grid max-w-5xl grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2 sm:grid-cols-[3rem_minmax(0,1fr)_3rem] sm:gap-4">
+            <div class="grid h-full grid-cols-1 sm:grid-cols-[4rem_minmax(0,1fr)_4rem]">
               <button
                 type="button"
-                class="btn-ghost h-10 w-10 px-0 py-0 text-white disabled:text-slate-500 sm:h-12 sm:w-12"
+                class="btn-ghost hidden h-full w-full rounded-none px-0 py-0 text-white disabled:text-slate-500 sm:flex"
                 data-testid="visual-novel-previous"
                 aria-label="Frase anterior"
                 title="Frase anterior"
@@ -591,23 +610,18 @@ onBeforeUnmount(() => {
                 </svg>
               </button>
 
-              <div data-testid="visual-novel-frame" class="min-w-0 text-center">
+              <div
+                data-testid="visual-novel-frame"
+                class="h-full min-w-0 overflow-y-auto px-4 py-3 text-center sm:px-6 sm:py-4"
+                @click="onVisualFrameClick"
+              >
                 <template v-if="activeVisualFrame">
-                  <p
-                    v-if="visualSpeaker"
-                    class="mb-1 truncate text-sm font-semibold"
-                    :style="{ color: visualSpeaker.color }"
-                  >
-                    {{ visualSpeaker.name }}
-                  </p>
                   <p
                     class="text-[15px] leading-relaxed whitespace-pre-wrap sm:text-base"
                     :class="activeVisualFrame.kind === 'narration' ? 'italic text-slate-300' : ''"
+                    :style="visualSpeaker ? { color: visualSpeaker.color } : undefined"
                   >
-                    {{ activeVisualFrame.text }}
-                  </p>
-                  <p class="mt-2 text-xs text-slate-400">
-                    {{ visualFrameIndex + 1 }} / {{ visualFrames.length }}
+                    <span v-if="visualSpeaker" class="font-semibold">{{ `${visualSpeaker.name}: ` }}</span><span>{{ activeVisualFrame.text }}</span>
                   </p>
                 </template>
                 <p v-else class="text-sm text-slate-300">La historia aún no ha empezado.</p>
@@ -615,7 +629,7 @@ onBeforeUnmount(() => {
 
               <button
                 type="button"
-                class="btn-ghost h-10 w-10 px-0 py-0 text-white disabled:text-slate-500 sm:h-12 sm:w-12"
+                class="btn-ghost hidden h-full w-full rounded-none px-0 py-0 text-white disabled:text-slate-500 sm:flex"
                 data-testid="visual-novel-next"
                 aria-label="Frase siguiente"
                 title="Frase siguiente"
