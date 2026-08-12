@@ -60,7 +60,10 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
         .flatMap((background) => background.tags)
         .map(tagKey)
     )
-    const prepared = sanitizeTags(tags)
+    const sanitized = sanitizeTags(tags)
+    const prepared = sanitized.filter(
+      (tag) => sanitized.length === 1 || tagKey(tag) !== 'neutral'
+    )
     if (prepared.length === 0) prepared.push(nextAvailableTag('neutral', used))
     const duplicate = prepared.find((tag) => used.has(tagKey(tag)))
     if (duplicate) throw new Error(`Ya existe un fondo con la etiqueta “${duplicate}”.`)
