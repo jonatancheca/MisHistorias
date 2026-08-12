@@ -586,13 +586,38 @@ onBeforeUnmount(() => {
           data-testid="visual-novel-view"
           class="flex h-full min-h-0 flex-col bg-slate-950"
         >
-          <div class="min-h-0 flex-1">
+          <div class="relative min-h-0 flex-1">
             <VisualNovelStage
               :character-ids="visualCharacterIds"
               :character-states="visualCharacterStates"
               :background-id="visualBackground.id"
               :background-tag="visualBackground.tag"
             />
+
+            <div
+              v-if="stories.waitingForResponse"
+              data-testid="visual-thinking-indicator"
+              class="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center px-4"
+              role="status"
+              aria-live="polite"
+            >
+              <div
+                class="flex items-center gap-3 rounded-full border border-white/25 bg-slate-950/85 px-4 py-2 text-sm text-white shadow-lg backdrop-blur-sm"
+              >
+                <span>La IA está pensando…</span>
+                <span class="flex items-center gap-1" aria-hidden="true">
+                  <span class="h-2 w-2 animate-bounce rounded-full bg-brand-400 motion-reduce:animate-none" />
+                  <span
+                    class="h-2 w-2 animate-bounce rounded-full bg-brand-400 motion-reduce:animate-none"
+                    style="animation-delay: 120ms"
+                  />
+                  <span
+                    class="h-2 w-2 animate-bounce rounded-full bg-brand-400 motion-reduce:animate-none"
+                    style="animation-delay: 240ms"
+                  />
+                </span>
+              </div>
+            </div>
           </div>
 
           <section
