@@ -12,7 +12,10 @@
     "lint:fix": "eslint . --fix",
     "start": "node .output/start-server.mjs",
     "serve": "pnpm build && pnpm start",
-    "test:storage": "node --test server/utils/storage.test.ts server/utils/llm.test.ts server/utils/promptBuilder.test.ts server/utils/streamParser.test.ts app/lib/imageSelection.test.ts",
+    "test": "pnpm test:unit && pnpm test:e2e",
+    "test:unit": "node --test --test-isolation=none",
+    "test:e2e": "playwright test",
+    "test:storage": "pnpm test:unit",
     "postinstall": "nuxt prepare"
   },
   "engines": {
@@ -28,6 +31,7 @@
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.16.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "eslint": "^10.8.0",
     "tailwindcss": "^4.3.3",

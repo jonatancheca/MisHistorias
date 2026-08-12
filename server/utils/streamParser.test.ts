@@ -101,4 +101,40 @@ describe('parser de etiquetas visuales', () => {
     assert.equal(segments[0]?.tag, 'bosque')
     assert.deepEqual(segments[1]?.tags, ['neutral'])
   })
+
+  it('serializa y vuelve a parsear todos los tipos visibles', () => {
+    const backgrounds = [
+      { id: 'forest', tags: ['bosque'], description: '', mimeType: 'image/png', createdAt: 1 }
+    ]
+    const raw = [
+      'Fondo [bosque]:',
+      'Las hojas crujen.',
+      'Alicia [feliz][sonrisa]: Hola.',
+      'Vera: Avanzo.'
+    ].join('\n')
+    const parsed = parseSegments(raw, characters, backgrounds, 'Vera', images, 'round-trip')
+    const serialized = serializeSegments(parsed, characters, 'Vera')
+
+    assert.equal(serialized, raw)
+    assert.deepEqual(
+      parseSegments(serialized, characters, backgrounds, 'Vera', images, 'round-trip').map(
+        ({ type, characterId, backgroundId, tag, tags, text }) => ({
+          type,
+          characterId,
+          backgroundId,
+          tag,
+          tags,
+          text
+        })
+      ),
+      parsed.map(({ type, characterId, backgroundId, tag, tags, text }) => ({
+        type,
+        characterId,
+        backgroundId,
+        tag,
+        tags,
+        text
+      }))
+    )
+  })
 })

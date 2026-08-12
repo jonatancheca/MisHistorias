@@ -23,4 +23,6 @@ logs
 .env.*
 !.env.example
 .playwright-mcp
+playwright-report
+test-results
 .pnpm-store
