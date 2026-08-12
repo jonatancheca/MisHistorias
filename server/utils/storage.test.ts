@@ -66,7 +66,11 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
         { characterId: 'private-1', prompt: 'Prompt privado', tags: ['privado'] }
       ]
     })
-    storage.writeSettings({ model: 'modelo', apiKey: 'secreto' })
+    storage.writeSettings({
+      model: 'modelo',
+      apiKey: 'secreto',
+      visualNovelManualAdvance: true
+    })
     storage.close()
 
     const reopened = new MisHistoriasStorage(path)
@@ -87,6 +91,7 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
         [{ characterId: 'private-1', prompt: 'Prompt privado', tags: ['privado'] }]
       )
       assert.equal(reopened.readSettings()?.value.model, 'modelo')
+      assert.equal(reopened.readSettings()?.value.visualNovelManualAdvance, true)
       assert.equal(reopened.readSettings()?.apiKey, 'secreto')
       assert.equal(
         (reopened.get('stories', 'normal', 'story-normal') as { visualMode?: boolean } | null)

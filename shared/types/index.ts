@@ -162,6 +162,8 @@ export interface AppSettings {
   theme: Theme
   /** Velocidad de revelado visual de las respuestas del asistente */
   responseSpeed: ResponseSpeed
+  /** En novela visual, espera una acción antes de mostrar el siguiente texto. */
+  visualNovelManualAdvance: boolean
   /** Modo prueba: responde texto aleatorio sin llamar al LLM */
   mockMode: boolean
   /** Nombre con el que aparece el protagonista en la historia */

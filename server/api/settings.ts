@@ -13,6 +13,7 @@ const ALLOWED_SETTINGS = new Set([
   'privateDefaultPresetVersion',
   'theme',
   'responseSpeed',
+  'visualNovelManualAdvance',
   'mockMode',
   'userName',
   'privateUserName',
@@ -45,6 +46,7 @@ function validSetting(key: string, value: unknown) {
       return value === 'system' || value === 'light' || value === 'dark'
     case 'responseSpeed':
       return value === 'slow' || value === 'medium' || value === 'high' || value === 'instant'
+    case 'visualNovelManualAdvance':
     case 'mockMode':
       return typeof value === 'boolean'
     case 'userName':

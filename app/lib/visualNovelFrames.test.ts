@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Message } from '#shared/types'
-import { buildVisualNovelFrames } from './visualNovelFrames.ts'
+import { buildVisualNovelFrames, resolveVisualNovelFrameIndex } from './visualNovelFrames.ts'
 
 const messages: Message[] = [
   {
@@ -47,6 +47,16 @@ describe('pasos de novela visual', () => {
     ])
     assert.equal(frames[0]?.backgroundId, 'room')
     assert.equal(frames[1]?.backgroundId, 'forest')
+  })
+
+  it('mantiene el texto actual cuando el avance manual está activo', () => {
+    assert.equal(resolveVisualNovelFrameIndex(4, 5, 6, true), 4)
+    assert.equal(resolveVisualNovelFrameIndex(4, 5, 6, false), 5)
+  })
+
+  it('ajusta el índice si desaparecen textos', () => {
+    assert.equal(resolveVisualNovelFrameIndex(5, 6, 3, true), 2)
+    assert.equal(resolveVisualNovelFrameIndex(0, 1, 0, true), 0)
   })
 
   it('cambia al hablante y lo mantiene durante narración o protagonista', () => {

@@ -31,17 +31,12 @@ import { fetchLlmChat, type LlmCallError } from '~/lib/llm'
 import { parseSegments } from '~/lib/streamParser'
 import { selectCharacterImage } from '~/lib/imageSelection'
 import { sanitizeTags } from '~/lib/tags'
+import { responseCharactersPerSecond } from '~/lib/responseSpeed'
 import {
   buildStoryImageCatalog,
   compareStoryImageCatalogs,
   formatStoryImageCatalogChange
 } from '~/lib/imageCatalog'
-
-const RESPONSE_CHARACTERS_PER_SECOND: Record<Exclude<ResponseSpeed, 'instant'>, number> = {
-  slow: 20,
-  medium: 50,
-  high: 100
-}
 
 function normalizeCharacterCustomizations(
   characterIds: string[],
@@ -393,7 +388,10 @@ export const useStoriesStore = defineStore('stories', () => {
     speed: Exclude<ResponseSpeed, 'instant'>
   ) {
     const graphemes = splitGraphemes(raw)
-    const charactersPerSecond = RESPONSE_CHARACTERS_PER_SECOND[speed]
+    const charactersPerSecond = responseCharactersPerSecond(
+      speed,
+      activeStory.value?.visualMode === true
+    )
     const startedAt = performance.now()
     let visibleCount = 0
 

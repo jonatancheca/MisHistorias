@@ -7,7 +7,7 @@ import type {
 } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
 import { primaryTag } from '~/lib/tags'
-import { buildVisualNovelFrames } from '~/lib/visualNovelFrames'
+import { buildVisualNovelFrames, resolveVisualNovelFrameIndex } from '~/lib/visualNovelFrames'
 
 const route = useRoute()
 const stories = useStoriesStore()
@@ -182,6 +182,12 @@ async function toggleVisualMode() {
   } else {
     await resumeFollowingBottom()
   }
+}
+
+async function toggleVisualNovelManualAdvance() {
+  await settings.save({
+    visualNovelManualAdvance: !settings.settings.visualNovelManualAdvance
+  })
 }
 
 async function submit() {
@@ -391,14 +397,12 @@ const visualSpeaker = computed(() => {
 watch(
   () => visualFrames.value.length,
   (length, previousLength) => {
-    if (length === 0) {
-      visualFrameIndex.value = 0
-      return
-    }
-    const wasAtEnd = previousLength === 0 || visualFrameIndex.value >= previousLength - 1
-    visualFrameIndex.value = wasAtEnd
-      ? length - 1
-      : Math.min(visualFrameIndex.value, length - 1)
+    visualFrameIndex.value = resolveVisualNovelFrameIndex(
+      visualFrameIndex.value,
+      previousLength,
+      length,
+      settings.settings.visualNovelManualAdvance
+    )
   }
 )
 
@@ -547,6 +551,22 @@ onBeforeUnmount(() => {
           >
             {{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrames.length }}
           </span>
+          <button
+            v-if="stories.activeStory.visualMode"
+            type="button"
+            class="btn-ghost h-10 w-10 shrink-0 px-0 py-0"
+            :class="settings.settings.visualNovelManualAdvance ? 'bg-brand-500/15 text-brand-500' : ''"
+            data-testid="visual-manual-advance-toggle"
+            :aria-label="settings.settings.visualNovelManualAdvance ? 'Activar avance automático' : 'Activar avance manual'"
+            :title="settings.settings.visualNovelManualAdvance ? 'Avance manual activo. Pulsar para avanzar automáticamente' : 'Avance automático activo. Pulsar para esperar flecha, teclado o toque'"
+            :aria-pressed="settings.settings.visualNovelManualAdvance"
+            @click="toggleVisualNovelManualAdvance"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="m7 5 8 7-8 7V5Z" />
+              <path d="M18 5v14" />
+            </svg>
+          </button>
           <button
             type="button"
             class="btn-ghost"

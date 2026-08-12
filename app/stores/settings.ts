@@ -17,6 +17,7 @@ const DEFAULTS: AppSettings = {
   privateDefaultPresetVersion: 0,
   theme: 'system',
   responseSpeed: 'high',
+  visualNovelManualAdvance: false,
   mockMode: false,
   userName: 'Protagonista',
   privateUserName: null,

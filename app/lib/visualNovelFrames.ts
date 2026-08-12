@@ -27,6 +27,19 @@ function hasBackgroundId(segment: MessageSegment) {
   return Object.prototype.hasOwnProperty.call(segment, 'backgroundId')
 }
 
+export function resolveVisualNovelFrameIndex(
+  currentIndex: number,
+  previousLength: number,
+  length: number,
+  manualAdvance: boolean
+) {
+  if (length === 0) return 0
+  const safeCurrentIndex = Math.min(Math.max(0, currentIndex), length - 1)
+  if (manualAdvance && previousLength > 0) return safeCurrentIndex
+  const wasAtEnd = previousLength === 0 || currentIndex >= previousLength - 1
+  return wasAtEnd ? length - 1 : safeCurrentIndex
+}
+
 export function buildVisualNovelFrames(
   messages: Message[],
   options: BuildVisualNovelFramesOptions
