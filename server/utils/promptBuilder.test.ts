@@ -11,7 +11,7 @@ const jiti = createJiti(import.meta.url, {
     '#shared': resolve(root, 'shared')
   }
 })
-const { buildSystemPrompt } = await jiti.import<
+const { buildHistory, buildSystemPrompt } = await jiti.import<
   typeof import('../../app/lib/promptBuilder.ts')
 >('../../app/lib/promptBuilder.ts')
 
@@ -74,4 +74,35 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
   assert.match(prompt, /\[feliz\]/)
   assert.match(prompt, /\[feliz\]\[armadura\]/)
   assert.doesNotMatch(prompt, /\[feliz\] \/ \[armadura\]/)
+})
+
+test('convierte mensajes IA en instrucciones ocultas del historial', () => {
+  const history = buildHistory(
+    [
+      {
+        id: 'instruction-1',
+        storyId: 'story-1',
+        role: 'user',
+        raw: 'IA: Haz que todos hablen en susurros.',
+        segments: [],
+        createdAt: 1
+      },
+      {
+        id: 'user-1',
+        storyId: 'story-1',
+        role: 'user',
+        raw: 'Entra en la sala.',
+        segments: [],
+        createdAt: 2
+      }
+    ],
+    [],
+    1000,
+    'Usuario'
+  )
+
+  assert.deepEqual(history, [
+    { role: 'system', content: 'Instrucción del usuario para la IA:\nHaz que todos hablen en susurros.' },
+    { role: 'user', content: 'Usuario: Entra en la sala.' }
+  ])
 })

@@ -49,6 +49,27 @@ describe('pasos de novela visual', () => {
     assert.equal(frames[1]?.backgroundId, 'forest')
   })
 
+  it('omite instrucciones IA de los pasos visibles', () => {
+    const frames = buildVisualNovelFrames([
+      messages[0]!,
+      {
+        id: 'instruction-1',
+        storyId: 'story-1',
+        role: 'user',
+        raw: 'IA: Cambia el tono.',
+        segments: [],
+        createdAt: 1.5
+      },
+      messages[1]!
+    ], {
+      initialBackgroundId: null,
+      initialBackgroundTag: null
+    })
+
+    assert.equal(frames.filter((frame) => frame.text.includes('Cambia el tono.')).length, 0)
+    assert.equal(frames.filter((frame) => frame.kind === 'user').length, 1)
+  })
+
   it('mantiene el texto actual cuando el avance manual está activo', () => {
     assert.equal(resolveVisualNovelFrameIndex(4, 5, 6, true), 4)
     assert.equal(resolveVisualNovelFrameIndex(4, 5, 6, false), 5)

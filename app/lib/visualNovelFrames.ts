@@ -1,4 +1,5 @@
 import type { Message, MessageSegment } from '#shared/types'
+import { isAiInstruction } from './chatInstructions.ts'
 
 export interface VisualNovelCharacterState {
   characterId: string
@@ -52,6 +53,7 @@ export function buildVisualNovelFrames(
 
   for (const message of messages) {
     if (message.role === 'user') {
+      if (isAiInstruction(message.raw)) continue
       if (message.raw.trim()) {
         frames.push({
           id: `${message.id}:user`,
