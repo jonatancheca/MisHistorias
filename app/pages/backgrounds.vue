@@ -118,6 +118,7 @@ async function remove(id: string) {
             placeholder="Descripción"
             @change="update(background.id, { description: ($event.target as HTMLInputElement).value })"
           >
+          <SoundEditor :background-id="background.id" title="Sonidos del fondo" />
           <div class="flex justify-end">
             <button type="button" class="btn-danger" @click="remove(background.id)">Borrar</button>
           </div>

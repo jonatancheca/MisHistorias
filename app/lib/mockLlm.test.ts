@@ -31,6 +31,14 @@ const background: StoredBackground = {
   createdAt: 1,
   blob: new Blob()
 }
+const sound = {
+  id: 'sound-1',
+  tags: ['ramas'],
+  characterId: null,
+  backgroundId: background.id,
+  mimeType: 'audio/wav',
+  createdAt: 1
+}
 
 describe('LLM simulado', () => {
   it('usa personajes, imágenes y fondos disponibles', () => {
@@ -41,12 +49,14 @@ describe('LLM simulado', () => {
         [character],
         [image],
         [background],
+        [sound],
         null,
         'continue',
         'Usuario'
       )
       assert.match(response, /Fondo \[bosque\]:/)
       assert.match(response, /Alicia \[feliz\]\[armadura\]:/)
+      assert.match(response, /Sonido \[ramas\]:/)
       assert.doesNotMatch(response, /Usuario:/)
     } finally {
       Math.random = originalRandom
@@ -57,7 +67,7 @@ describe('LLM simulado', () => {
     const originalRandom = Math.random
     Math.random = () => 0
     try {
-      const response = buildMockResponse([character], [], [], null, 'auto', 'Vera')
+      const response = buildMockResponse([character], [], [], [], null, 'auto', 'Vera')
       assert.match(response, /Vera: Decido seguir adelante\./)
       assert.match(response, /Vera avanza con cautela\./)
       assert.match(response, /Alicia \[neutral\]:/)

@@ -125,14 +125,14 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
           ?.visualMode,
         true
       )
-      assert.equal(reopened.health().schemaVersion, 4)
+      assert.equal(reopened.health().schemaVersion, 5)
     } finally {
       reopened.close()
     }
   })
 })
 
-test('migra v1 a v4 copiando personajes y dejando modo visual desactivado', () => {
+test('migra v1 a v5 copiando personajes y dejando modo visual desactivado', () => {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
   const path = join(directory, 'test.sqlite')
   const legacy = new DatabaseSync(path)
@@ -202,7 +202,7 @@ test('migra v1 a v4 copiando personajes y dejando modo visual desactivado', () =
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 4)
+    assert.equal(storage.health().schemaVersion, 5)
     assert.equal(
       (storage.get('stories', 'normal', 'story-1') as { visualMode?: boolean } | null)
         ?.visualMode,
@@ -307,7 +307,7 @@ test('migra imágenes v3 a BLOBs referenciados sin perder contenido', () => {
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 4)
+    assert.equal(storage.health().schemaVersion, 5)
     assert.deepEqual(Array.from(storage.getBinary('images', 'normal', 'image-1')!.data), [7, 8, 9])
     const row = storage.database
       .prepare('SELECT blob_id FROM images WHERE scope = ? AND id = ?')
@@ -338,7 +338,7 @@ test('conserva backup y revierte la base original si falla la migración', () =>
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /Falló la migración SQLite v3 a v4\. Backup:/
+      /Falló la migración SQLite v3 a v5\. Backup:/
     )
 
     const backups = migrationBackups(path)
@@ -379,7 +379,7 @@ test('no inicia la migración si no puede crear el backup', () => {
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /No se pudo crear el backup previo de SQLite\. Migración v3 a v4 no iniciada\./
+      /No se pudo crear el backup previo de SQLite\. Migración v3 a v5 no iniciada\./
     )
     const source = new DatabaseSync(path, { readOnly: true })
     try {
@@ -456,7 +456,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     const backup = storage.createManualBackup()
     assert.equal(backup.kind, 'manual')
     assert.equal(backup.valid, true)
-    assert.equal(backup.schemaVersion, 4)
+    assert.equal(backup.schemaVersion, 5)
     assert.equal(storage.listBackups().some((item) => item.name === backup.name), true)
 
     storage.put('characters', 'normal', 'normal-1', {
@@ -653,6 +653,39 @@ test('copia personajes con imágenes nuevas y BLOBs compartidos dentro del ámbi
         .total,
       0
     )
+  })
+})
+
+test('guarda sonidos asociados o sueltos y borra asociaciones en cascada', () => {
+  withStorage((storage) => {
+    storage.put('characters', 'normal', 'character-1', character('character-1'))
+    storage.putBinary('sounds', 'normal', 'sound-character', {
+      metadata: {
+        id: 'sound-character',
+        tags: ['voz'],
+        characterId: 'character-1',
+        backgroundId: null,
+        mimeType: 'audio/ogg',
+        createdAt: 1
+      },
+      data: new Uint8Array([1, 2, 3])
+    })
+    storage.putBinary('sounds', 'normal', 'sound-loose', {
+      metadata: {
+        id: 'sound-loose',
+        tags: ['trueno'],
+        characterId: null,
+        backgroundId: null,
+        mimeType: 'audio/mpeg',
+        createdAt: 2
+      },
+      data: new Uint8Array([4, 5])
+    })
+
+    assert.equal(storage.list('sounds', 'normal').length, 2)
+    assert.deepEqual(Array.from(storage.getBinary('sounds', 'normal', 'sound-loose')!.data), [4, 5])
+    storage.delete('characters', 'normal', 'character-1')
+    assert.deepEqual(storage.list('sounds', 'normal').map((sound) => sound.id), ['sound-loose'])
   })
 })
 

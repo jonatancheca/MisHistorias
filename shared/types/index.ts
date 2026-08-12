@@ -40,6 +40,17 @@ export interface Background {
   createdAt: number
 }
 
+export interface Sound {
+  id: string
+  /** Etiquetas únicas que el modelo usa en `Sonido [etiqueta]:` */
+  tags: string[]
+  /** Asociación opcional y exclusiva; ambos null indican un sonido suelto. */
+  characterId: string | null
+  backgroundId: string | null
+  mimeType: string
+  createdAt: number
+}
+
 export interface StoryCharacterCustomization {
   characterId: string
   /** Copia independiente del prompt global para esta historia. */
@@ -77,7 +88,12 @@ export type ResponseSpeed = 'slow' | 'medium' | 'high' | 'instant'
 export type ProtagonistPreferencesMode = 'append' | 'replace'
 export type GenerationMode = 'normal' | 'continue' | 'auto'
 
-export type SegmentType = 'dialogue' | 'protagonist-dialogue' | 'narration' | 'background'
+export type SegmentType =
+  | 'dialogue'
+  | 'protagonist-dialogue'
+  | 'narration'
+  | 'background'
+  | 'sound'
 
 export interface MessageSegment {
   type: SegmentType
@@ -85,6 +101,8 @@ export interface MessageSegment {
   characterId: string | null
   /** Fondo resuelto al parsear; null si la etiqueta no existe */
   backgroundId?: string | null
+  /** Sonido resuelto al parsear; null si la etiqueta no existe */
+  soundId?: string | null
   /** etiqueta emitida por el modelo (puede no existir entre las imágenes) */
   tag: string | null
   /** Etiquetas visuales emitidas para un diálogo, en orden y sin duplicados. */

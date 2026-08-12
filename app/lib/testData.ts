@@ -14,6 +14,7 @@ import {
   listLlmDebugTraces,
   listMessages,
   listPresets,
+  listSounds,
   listStories,
   putBackground,
   putCharacter,
@@ -21,10 +22,12 @@ import {
   putLlmDebugTrace,
   putMessage,
   putPreset,
+  putSound,
   putStory,
   writeSettings,
   type StoredBackground,
-  type StoredImage
+  type StoredImage,
+  type StoredSound
 } from '~/lib/db'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
 
@@ -37,6 +40,7 @@ export const TEST_DATA_IDS = {
   characterBruno: 'test-character-bruno',
   backgroundForest: 'test-background-forest',
   backgroundTavern: 'test-background-tavern',
+  soundBranches: 'test-sound-branches',
   storyConversation: 'test-story-conversation',
   storyEmpty: 'test-story-empty'
 } as const
@@ -45,6 +49,7 @@ export interface TestDataCounts {
   characters: number
   images: number
   backgrounds: number
+  sounds: number
   stories: number
   messages: number
   llmDebugTraces: number
@@ -77,11 +82,36 @@ function svgBlob(label: string, background: string, foreground = '#ffffff') {
   )
 }
 
+function silentWavBlob() {
+  const sampleRate = 8000
+  const sampleCount = 800
+  const bytes = new Uint8Array(44 + sampleCount)
+  const view = new DataView(bytes.buffer)
+  const write = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) bytes[offset + index] = value.charCodeAt(index)
+  }
+  write(0, 'RIFF')
+  view.setUint32(4, 36 + sampleCount, true)
+  write(8, 'WAVEfmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate, true)
+  view.setUint16(32, 1, true)
+  view.setUint16(34, 8, true)
+  write(36, 'data')
+  view.setUint32(40, sampleCount, true)
+  bytes.fill(128, 44)
+  return new Blob([bytes], { type: 'audio/wav' })
+}
+
 async function counts(): Promise<TestDataCounts> {
-  const [characters, images, backgrounds, stories, presets] = await Promise.all([
+  const [characters, images, backgrounds, sounds, stories, presets] = await Promise.all([
     listCharacters(),
     listAllImages(),
     listBackgrounds(),
+    listSounds(),
     listStories(),
     listPresets()
   ])
@@ -93,6 +123,7 @@ async function counts(): Promise<TestDataCounts> {
     characters: characters.length,
     images: images.length,
     backgrounds: backgrounds.length,
+    sounds: sounds.length,
     stories: stories.length,
     messages: messageGroups.reduce((total, group) => total + group.length, 0),
     llmDebugTraces: traceGroups.reduce((total, group) => total + group.length, 0),
@@ -201,6 +232,18 @@ async function seedNormalData() {
     }
   ]
 
+  const sounds: StoredSound[] = [
+    {
+      id: TEST_DATA_IDS.soundBranches,
+      tags: ['ramas', 'crujido'],
+      characterId: null,
+      backgroundId: TEST_DATA_IDS.backgroundForest,
+      mimeType: 'audio/wav',
+      createdAt: TEST_TIME + 35,
+      blob: silentWavBlob()
+    }
+  ]
+
   const stories: Story[] = [
     {
       id: TEST_DATA_IDS.storyConversation,
@@ -274,13 +317,20 @@ async function seedNormalData() {
       id: assistantMessageId,
       storyId: TEST_DATA_IDS.storyConversation,
       role: 'assistant',
-      raw: 'Fondo [bosque]:\nNarración: Las ramas crujen.\nTEST Alicia [feliz]: ¡Bruno! Por fin te encuentro.\nFondo [taberna]:\nNarración: Dentro, la música se apaga.\nTEST Bruno [serio]: Llegas tarde.',
+      raw: 'Fondo [bosque]:\nSonido [ramas]:\nNarración: Las ramas crujen.\nTEST Alicia [feliz]: ¡Bruno! Por fin te encuentro.\nFondo [taberna]:\nNarración: Dentro, la música se apaga.\nTEST Bruno [serio]: Llegas tarde.',
       segments: [
         {
           type: 'background',
           characterId: null,
           backgroundId: TEST_DATA_IDS.backgroundForest,
           tag: 'bosque',
+          text: ''
+        },
+        {
+          type: 'sound',
+          characterId: null,
+          soundId: TEST_DATA_IDS.soundBranches,
+          tag: 'ramas',
           text: ''
         },
         {
@@ -349,6 +399,7 @@ async function seedNormalData() {
     ...presets.map(putPreset)
   ])
   await Promise.all(images.map(putImage))
+  await Promise.all(sounds.map(putSound))
   await Promise.all(stories.map(putStory))
   await Promise.all(messages.map(putMessage))
   await Promise.all(traces.map(putLlmDebugTrace))

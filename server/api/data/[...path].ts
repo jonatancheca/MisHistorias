@@ -6,12 +6,14 @@ const RESOURCES = new Set<DataResource>([
   'characters',
   'images',
   'backgrounds',
+  'sounds',
   'stories',
   'messages',
   'llmDebugTraces',
   'presets'
 ])
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const MAX_SOUND_BYTES = 10 * 1024 * 1024
 
 function asScope(value: unknown): DataScope {
   if (value === 'normal' || value === 'private') return value
@@ -141,6 +143,19 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         String(value.mimeType).startsWith('image/') &&
         hasNumber(value, 'createdAt')
       break
+    case 'sounds':
+      valid =
+        hasStringArray(value, 'tags') &&
+        value.tags.length > 0 &&
+        (value.characterId === null || typeof value.characterId === 'string') &&
+        (value.backgroundId === null || typeof value.backgroundId === 'string') &&
+        !(typeof value.characterId === 'string' && typeof value.backgroundId === 'string') &&
+        hasString(value, 'mimeType') &&
+        ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/ogg'].includes(
+          String(value.mimeType).toLocaleLowerCase()
+        ) &&
+        hasNumber(value, 'createdAt')
+      break
   }
   if (!valid) throw createError({ statusCode: 400, statusMessage: 'Datos no válidos' })
   return value
@@ -160,14 +175,18 @@ function validateCharacterCopy(rawValue: unknown) {
   return value
 }
 
-async function readBinaryPayload(event: H3Event) {
+async function readBinaryPayload(event: H3Event, resource: 'images' | 'backgrounds' | 'sounds') {
   const parts = await readMultipartFormData(event)
   const metadataPart = parts?.find((part) => part.name === 'metadata')
   const filePart = parts?.find((part) => part.name === 'file')
   if (!metadataPart || !filePart) {
-    throw createError({ statusCode: 400, statusMessage: 'Faltan metadatos o imagen' })
+    throw createError({ statusCode: 400, statusMessage: 'Faltan metadatos o archivo' })
   }
-  if (filePart.data.byteLength > MAX_IMAGE_BYTES) {
+  const maximum = resource === 'sounds' ? MAX_SOUND_BYTES : MAX_IMAGE_BYTES
+  if (filePart.data.byteLength > maximum) {
+    if (resource === 'sounds') {
+      throw createError({ statusCode: 413, statusMessage: 'El sonido supera 10 MB' })
+    }
     throw createError({ statusCode: 413, statusMessage: 'La imagen supera 5 MB' })
   }
   let metadata: unknown
@@ -187,6 +206,7 @@ function mapStorageError(caught: unknown): never {
   }
   if (
     error.code === 'ERR_BACKGROUND_TAG_CONFLICT' ||
+    error.code === 'ERR_SOUND_TAG_CONFLICT' ||
     error.errcode === 1555 ||
     error.errcode === 2067 ||
     error.message?.includes('UNIQUE constraint failed')
@@ -242,13 +262,13 @@ export default defineEventHandler(async (event) => {
     const id = segments[1]
 
     if (
-      (resource === 'images' || resource === 'backgrounds') &&
+      (resource === 'images' || resource === 'backgrounds' || resource === 'sounds') &&
       id &&
       segments[2] === 'content' &&
       event.method === 'GET'
     ) {
       const binary = storage.getBinary(resource, scope, asId(id))
-      if (!binary) throw createError({ statusCode: 404, statusMessage: 'Imagen no encontrada' })
+      if (!binary) throw createError({ statusCode: 404, statusMessage: 'Archivo no encontrado' })
       setResponseHeader(event, 'content-type', binary.mimeType)
       setResponseHeader(event, 'cache-control', 'private, max-age=300')
       return binary.data
@@ -268,8 +288,8 @@ export default defineEventHandler(async (event) => {
 
     if (event.method === 'PUT') {
       const resourceId = asId(id)
-      if (resource === 'images' || resource === 'backgrounds') {
-        const payload = await readBinaryPayload(event)
+      if (resource === 'images' || resource === 'backgrounds' || resource === 'sounds') {
+        const payload = await readBinaryPayload(event, resource)
         payload.metadata = validatePayload(resource, payload.metadata)
         return storage.putBinary(resource, scope, resourceId, payload)
       }

@@ -70,6 +70,16 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
       }
     ],
     backgrounds: [],
+    sounds: [
+      {
+        id: 'sound-1',
+        tags: ['campana'],
+        characterId: character.id,
+        backgroundId: null,
+        mimeType: 'audio/ogg',
+        createdAt: 1
+      }
+    ],
     userName: 'Usuario',
     protagonistPreferences: '',
     generationMode: 'normal'
@@ -82,6 +92,8 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
   assert.match(prompt, /\[feliz\]/)
   assert.match(prompt, /\[feliz\]\[armadura\]/)
   assert.doesNotMatch(prompt, /\[feliz\] \/ \[armadura\]/)
+  assert.match(prompt, /Sonido \[etiqueta\]:/)
+  assert.match(prompt, /\[campana\] \(personaje Alicia\)/)
 })
 
 test('combina o reemplaza preferencias del protagonista', () => {
@@ -140,6 +152,7 @@ test('añade apertura, actualización de catálogo y reglas distintas para Sigue
     characters: [character],
     images: [],
     backgrounds: [],
+    sounds: [],
     messages: [],
     historyBudget: 1000,
     userName: 'Vera',

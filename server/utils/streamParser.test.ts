@@ -137,4 +137,22 @@ describe('parser de etiquetas visuales', () => {
       }))
     )
   })
+
+  it('resuelve y serializa directivas de sonido', () => {
+    const sounds = [
+      {
+        id: 'bell',
+        tags: ['campana', 'metal'],
+        characterId: null,
+        backgroundId: null,
+        mimeType: 'audio/ogg',
+        createdAt: 1
+      }
+    ]
+    const parsed = parseSegments('Sonido [campana]:', characters, [], '', images, 'sound', sounds)
+
+    assert.equal(parsed[0]?.type, 'sound')
+    assert.equal(parsed[0]?.soundId, 'bell')
+    assert.equal(serializeSegments(parsed, characters), 'Sonido [campana]:')
+  })
 })

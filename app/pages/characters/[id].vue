@@ -209,6 +209,9 @@ onBeforeRouteLeave(flushSave)
       </form>
 
       <CharacterImageEditor v-if="!isNew && existing" :character-id="characterId" />
+      <section v-if="!isNew && existing" class="card mt-8 max-w-3xl">
+        <SoundEditor :character-id="characterId" title="Sonidos del personaje" />
+      </section>
       <p v-else class="text-sm text-[var(--color-fg-muted)]">
         {{
           copiedCharacter

@@ -1,4 +1,4 @@
-import type { Character, GenerationMode } from '#shared/types'
+import type { Character, GenerationMode, Sound } from '#shared/types'
 import type { StoredBackground, StoredImage } from '~/lib/db'
 
 const NARRATION_LINES = [
@@ -54,7 +54,8 @@ function tagGroupsOf(characterId: string, images: StoredImage[]) {
 }
 
 /**
- * Genera una respuesta falsa con el mismo formato que se le pide al modelo:
+ * Genera una respuesta falsa con el mismo formato que se le pide al modelo,
+ * incluidas directivas de sonido cuando el catálogo las ofrece:
  * número aleatorio de personajes, hasta 3 intervenciones cada uno y varias
  * líneas de narración intercaladas.
  */
@@ -62,6 +63,7 @@ export function buildMockResponse(
   characters: Character[],
   images: StoredImage[],
   backgrounds: StoredBackground[],
+  sounds: Sound[],
   initialBackgroundId: string | null,
   generationMode: GenerationMode,
   userName: string
@@ -72,6 +74,11 @@ export function buildMockResponse(
     const available = backgrounds.filter((background) => background.id !== initialBackgroundId)
     const background = pick(available.length ? available : backgrounds)
     lines.push(`Fondo [${pick(background.tags)}]:`)
+  }
+
+  if (sounds.length) {
+    const sound = pick(sounds)
+    lines.push(`Sonido [${pick(sound.tags)}]:`)
   }
 
   const speakers = shuffle(characters).slice(0, randomInt(1, Math.min(3, characters.length || 1)))

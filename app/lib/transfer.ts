@@ -26,6 +26,7 @@ import { blobToDataUrl, dataUrlToBlob } from '~/lib/images'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
+import { stripSoundDirectives, stripSoundSegments } from '~/lib/soundTransfer'
 
 const EXPORT_VERSION = 10
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -121,8 +122,8 @@ export async function exportBundle(): Promise<ExportBundle> {
       presetId: story.presetId,
       messages: (await listMessages(story.id)).map((message) => ({
         role: message.role,
-        raw: message.raw,
-        segments: message.segments,
+        raw: stripSoundDirectives(message.raw),
+        segments: stripSoundSegments(message.segments),
         generationMode: message.generationMode,
         createdAt: message.createdAt
       }))
@@ -305,12 +306,12 @@ export async function importBundle(raw: string) {
         id: newId(),
         storyId: story.id,
         role: message.role === 'assistant' ? 'assistant' : 'user',
-        raw: String(message.raw ?? ''),
+        raw: stripSoundDirectives(String(message.raw ?? '')),
         generationMode:
           message.generationMode === 'continue' || message.generationMode === 'auto'
             ? message.generationMode
             : 'normal',
-        segments: (message.segments ?? []).map((segment) => ({
+        segments: stripSoundSegments(message.segments ?? []).map((segment) => ({
           ...segment,
           tags:
             segment.type === 'dialogue'

@@ -17,6 +17,7 @@ export type DataResource =
   | 'characters'
   | 'images'
   | 'backgrounds'
+  | 'sounds'
   | 'stories'
   | 'messages'
   | 'llmDebugTraces'
@@ -42,7 +43,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -130,6 +131,17 @@ function rowToBackground(row: SqliteRow) {
     id: row.id,
     tags: parseJson<string[]>(row.tags_json, []),
     description: text(row.description),
+    mimeType: text(row.mime_type, 'application/octet-stream'),
+    createdAt: integer(row.created_at)
+  }
+}
+
+function rowToSound(row: SqliteRow) {
+  return {
+    id: row.id,
+    tags: parseJson<string[]>(row.tags_json, []),
+    characterId: typeof row.character_id === 'string' ? row.character_id : null,
+    backgroundId: typeof row.background_id === 'string' ? row.background_id : null,
     mimeType: text(row.mime_type, 'application/octet-stream'),
     createdAt: integer(row.created_at)
   }
@@ -490,6 +502,25 @@ export class MisHistoriasStorage {
         CREATE INDEX IF NOT EXISTS backgrounds_by_created_at
           ON backgrounds(scope, created_at);
 
+        CREATE TABLE IF NOT EXISTS sounds (
+          scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          id TEXT NOT NULL,
+          tags_json TEXT NOT NULL,
+          character_id TEXT,
+          background_id TEXT,
+          mime_type TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          data BLOB NOT NULL,
+          PRIMARY KEY (scope, id),
+          CHECK (character_id IS NULL OR background_id IS NULL),
+          FOREIGN KEY (scope, character_id) REFERENCES characters(scope, id) ON DELETE CASCADE,
+          FOREIGN KEY (scope, background_id) REFERENCES backgrounds(scope, id) ON DELETE CASCADE
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS sounds_by_character
+          ON sounds(scope, character_id, created_at);
+        CREATE INDEX IF NOT EXISTS sounds_by_background
+          ON sounds(scope, background_id, created_at);
+
         CREATE TABLE IF NOT EXISTS stories (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
           id TEXT NOT NULL,
@@ -741,6 +772,12 @@ export class MisHistoriasStorage {
             'SELECT scope, id, tags_json, description, mime_type, created_at FROM backgrounds WHERE scope = ? ORDER BY created_at'
           )
           .all(scope) as SqliteRow[]).map(rowToBackground)
+      case 'sounds':
+        return (this.database
+          .prepare(
+            'SELECT scope, id, tags_json, character_id, background_id, mime_type, created_at FROM sounds WHERE scope = ? ORDER BY created_at'
+          )
+          .all(scope) as SqliteRow[]).map(rowToSound)
       case 'stories':
         return (this.database
           .prepare('SELECT * FROM stories WHERE scope = ? ORDER BY updated_at DESC')
@@ -775,6 +812,8 @@ export class MisHistoriasStorage {
         return rowToImage(row)
       case 'backgrounds':
         return rowToBackground(row)
+      case 'sounds':
+        return rowToSound(row)
       case 'stories':
         return rowToStory(row)
       case 'messages':
@@ -786,7 +825,7 @@ export class MisHistoriasStorage {
     }
   }
 
-  getBinary(resource: 'images' | 'backgrounds', scope: DataScope, id: string) {
+  getBinary(resource: 'images' | 'backgrounds' | 'sounds', scope: DataScope, id: string) {
     const row = (resource === 'images'
       ? this.database
           .prepare(`
@@ -797,9 +836,13 @@ export class MisHistoriasStorage {
             WHERE images.scope = ? AND images.id = ?
           `)
           .get(scope, id)
-      : this.database
-          .prepare('SELECT mime_type, data FROM backgrounds WHERE scope = ? AND id = ?')
-          .get(scope, id)) as { mime_type: string; data: Uint8Array } | undefined
+      : resource === 'backgrounds'
+        ? this.database
+            .prepare('SELECT mime_type, data FROM backgrounds WHERE scope = ? AND id = ?')
+            .get(scope, id)
+        : this.database
+            .prepare('SELECT mime_type, data FROM sounds WHERE scope = ? AND id = ?')
+            .get(scope, id)) as { mime_type: string; data: Uint8Array } | undefined
     return row ? { mimeType: row.mime_type, data: row.data } : null
   }
 
@@ -862,7 +905,7 @@ export class MisHistoriasStorage {
   }
 
   put(
-    resource: Exclude<DataResource, 'images' | 'backgrounds'>,
+    resource: Exclude<DataResource, 'images' | 'backgrounds' | 'sounds'>,
     scope: DataScope,
     id: string,
     rawValue: unknown
@@ -1007,7 +1050,7 @@ export class MisHistoriasStorage {
   }
 
   putBinary(
-    resource: 'images' | 'backgrounds',
+    resource: 'images' | 'backgrounds' | 'sounds',
     scope: DataScope,
     id: string,
     payload: BinaryPayload
@@ -1071,7 +1114,7 @@ export class MisHistoriasStorage {
       })
     }
 
-    return this.transaction(() => {
+    if (resource === 'backgrounds') return this.transaction(() => {
       const preparedTags = tags(value.tags)
       const usedTags = new Set(
         (this.list('backgrounds', scope) as Array<{ id: string; tags: string[] }>)
@@ -1105,6 +1148,47 @@ export class MisHistoriasStorage {
           payload.data
         )
       return this.get('backgrounds', scope, id)
+    })
+
+    return this.transaction(() => {
+      const preparedTags = tags(value.tags)
+      const usedTags = new Set(
+        (this.list('sounds', scope) as Array<{ id: string; tags: string[] }>)
+          .filter((sound) => sound.id !== id)
+          .flatMap((sound) => sound.tags)
+          .map((tag) => tag.trim().toLocaleLowerCase())
+      )
+      if (preparedTags.some((tag) => usedTags.has(tag.toLocaleLowerCase()))) {
+        throw Object.assign(new Error('Sound tag conflict'), {
+          code: 'ERR_SOUND_TAG_CONFLICT'
+        })
+      }
+      const characterId = typeof value.characterId === 'string' ? value.characterId : null
+      const backgroundId = typeof value.backgroundId === 'string' ? value.backgroundId : null
+      this.database
+        .prepare(`
+          INSERT INTO sounds(
+            scope, id, tags_json, character_id, background_id, mime_type, created_at, data
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(scope, id) DO UPDATE SET
+            tags_json = excluded.tags_json,
+            character_id = excluded.character_id,
+            background_id = excluded.background_id,
+            mime_type = excluded.mime_type,
+            created_at = excluded.created_at,
+            data = excluded.data
+        `)
+        .run(
+          scope,
+          id,
+          json(preparedTags),
+          characterId,
+          backgroundId,
+          text(value.mimeType, 'application/octet-stream'),
+          integer(value.createdAt),
+          payload.data
+        )
+      return this.get('sounds', scope, id)
     })
   }
 
@@ -1154,6 +1238,7 @@ export class MisHistoriasStorage {
         'llm_debug_traces',
         'messages',
         'stories',
+        'sounds',
         'images',
         'image_blobs',
         'characters',

@@ -7,6 +7,7 @@ import type {
   LlmDebugRequest,
   LlmDebugTrace,
   Message,
+  Sound,
   ProtagonistPreferencesMode,
   ResponseSpeed,
   Story,
@@ -75,6 +76,20 @@ function splitGraphemes(value: string) {
     new Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
     ({ segment }) => segment
   )
+}
+
+function playNewSounds(
+  segments: Message['segments'],
+  played: Set<string>,
+  sounds: ReturnType<typeof useSoundsStore>
+) {
+  segments.forEach((segment, index) => {
+    if (segment.type !== 'sound' || !segment.soundId) return
+    const key = `${index}:${segment.soundId}`
+    if (played.has(key)) return
+    played.add(key)
+    sounds.play(segment.soundId)
+  })
 }
 
 export const useStoriesStore = defineStore('stories', () => {
@@ -236,6 +251,7 @@ export const useStoriesStore = defineStore('stories', () => {
     if (!current) return
     const characters = useCharactersStore()
     const backgrounds = useBackgroundsStore()
+    const sounds = useSoundsStore()
     const settings = useSettingsStore()
     const storyCharacters = characters.characters.filter((character) =>
       activeStory.value?.characterIds.includes(character.id)
@@ -251,7 +267,8 @@ export const useStoriesStore = defineStore('stories', () => {
               backgrounds.backgrounds,
               settings.activeUserName,
               characters.images,
-              current.id
+              current.id,
+              sounds.sounds
             )
           : []
     }
@@ -384,6 +401,7 @@ export const useStoriesStore = defineStore('stories', () => {
     storyCharacters: Character[],
     storyBackgrounds: Background[],
     storyImages: CharacterImage[],
+    storySounds: Sound[],
     userName: string,
     speed: Exclude<ResponseSpeed, 'instant'>
   ) {
@@ -394,6 +412,8 @@ export const useStoriesStore = defineStore('stories', () => {
     )
     const startedAt = performance.now()
     let visibleCount = 0
+    const soundsStore = useSoundsStore()
+    const playedSounds = new Set<string>()
 
     replaceDraft(assistantMessage)
 
@@ -409,17 +429,20 @@ export const useStoriesStore = defineStore('stories', () => {
         if (targetCount > visibleCount) {
           visibleCount = targetCount
           const visibleRaw = graphemes.slice(0, visibleCount).join('')
+          const segments = parseSegments(
+            visibleRaw,
+            storyCharacters,
+            storyBackgrounds,
+            userName,
+            storyImages,
+            assistantMessage.id,
+            storySounds
+          )
+          playNewSounds(segments, playedSounds, soundsStore)
           replaceDraft({
             ...assistantMessage,
             raw: visibleRaw,
-            segments: parseSegments(
-              visibleRaw,
-              storyCharacters,
-              storyBackgrounds,
-              userName,
-              storyImages,
-              assistantMessage.id
-            )
+            segments
           })
         }
 
@@ -445,12 +468,14 @@ export const useStoriesStore = defineStore('stories', () => {
     const presetsStore = usePresetsStore()
     const charactersStore = useCharactersStore()
     const backgroundsStore = useBackgroundsStore()
+    const soundsStore = useSoundsStore()
 
     await Promise.all([
       settingsStore.load(),
       presetsStore.load(),
       charactersStore.load(),
-      backgroundsStore.load()
+      backgroundsStore.load(),
+      soundsStore.load()
     ])
 
     const settings = settingsStore.settings
@@ -462,6 +487,19 @@ export const useStoriesStore = defineStore('stories', () => {
 
     const storyCharacters = charactersStore.characters.filter((character) =>
       story.characterIds.includes(character.id)
+    )
+    const storySounds = soundsStore.sounds.filter(
+      (sound) =>
+        (!sound.characterId && !sound.backgroundId) ||
+        Boolean(
+          sound.characterId &&
+          story.characterIds.includes(sound.characterId) &&
+          storyCharacters.some((character) => character.id === sound.characterId)
+        ) ||
+        Boolean(
+          sound.backgroundId &&
+          backgroundsStore.backgrounds.some((background) => background.id === sound.backgroundId)
+        )
     )
     const currentImageCatalog = buildStoryImageCatalog(
       story.characterIds,
@@ -508,6 +546,7 @@ export const useStoriesStore = defineStore('stories', () => {
           storyCharacters,
           charactersStore.images,
           backgroundsStore.backgrounds,
+          storySounds,
           story.initialBackgroundId ?? null,
           generationMode,
           settingsStore.activeUserName
@@ -519,6 +558,7 @@ export const useStoriesStore = defineStore('stories', () => {
           characters: storyCharacters,
           images: charactersStore.images,
           backgrounds: backgroundsStore.backgrounds,
+          sounds: storySounds,
           messages: messages.value,
           historyBudget: settings.historyBudget,
           userName: settingsStore.activeUserName,
@@ -580,22 +620,28 @@ export const useStoriesStore = defineStore('stories', () => {
             storyCharacters,
             backgroundsStore.backgrounds,
             charactersStore.images,
+            storySounds,
             settingsStore.activeUserName,
             settings.responseSpeed
           )
           if (!completed) return
         }
+        const segments = parseSegments(
+          raw,
+          storyCharacters,
+          backgroundsStore.backgrounds,
+          settingsStore.activeUserName,
+          charactersStore.images,
+          assistantMessage.id,
+          storySounds
+        )
+        if (settings.responseSpeed === 'instant') {
+          playNewSounds(segments, new Set<string>(), soundsStore)
+        }
         await persist({
           ...assistantMessage,
           raw,
-          segments: parseSegments(
-            raw,
-            storyCharacters,
-            backgroundsStore.backgrounds,
-            settingsStore.activeUserName,
-            charactersStore.images,
-            assistantMessage.id
-          )
+          segments
         })
         if (requestController.signal.aborted) {
           await dbDeleteMessage(assistantMessage.id)

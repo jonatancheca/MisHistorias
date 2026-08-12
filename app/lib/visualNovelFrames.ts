@@ -75,6 +75,7 @@ export function buildVisualNovelFrames(
         backgroundTag = segment.tag
         return
       }
+      if (segment.type === 'sound') return
       if (!segment.text.trim()) return
 
       let kind: VisualNovelFrame['kind'] = segment.type

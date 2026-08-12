@@ -8,6 +8,7 @@ import type {
   LlmDebugTrace,
   Message,
   PromptPreset,
+  Sound,
   Story
 } from '#shared/types'
 
@@ -19,8 +20,13 @@ export interface StoredBackground extends Background {
   blob: Blob
 }
 
+export interface StoredSound extends Sound {
+  blob: Blob
+}
+
 type ImageMetadata = CharacterImage
 type BackgroundMetadata = Background
+type SoundMetadata = Sound
 
 export type DataScope = 'normal' | 'private'
 
@@ -67,14 +73,14 @@ async function deleteJson(resource: string, id: string) {
   await $fetch(dataUrl(`${resource}/${encodeURIComponent(id)}`), { method: 'DELETE' })
 }
 
-async function fetchBlob(resource: 'images' | 'backgrounds', id: string) {
+async function fetchBlob(resource: 'images' | 'backgrounds' | 'sounds', id: string) {
   const response = await fetch(dataUrl(`${resource}/${encodeURIComponent(id)}/content`))
-  if (!response.ok) throw new Error('No se pudo cargar una imagen guardada')
+  if (!response.ok) throw new Error('No se pudo cargar el archivo guardado')
   return response.blob()
 }
 
 async function putBinary<T extends { id: string; blob: Blob }>(
-  resource: 'images' | 'backgrounds',
+  resource: 'images' | 'backgrounds' | 'sounds',
   value: T
 ) {
   const { blob, ...metadata } = unwrap(value)
@@ -159,6 +165,25 @@ export async function putBackground(background: StoredBackground) {
 
 export async function deleteBackground(id: string) {
   await deleteJson('backgrounds', id)
+}
+
+export async function listSounds() {
+  const metadata = await $fetch<SoundMetadata[]>(dataUrl('sounds'))
+  return Promise.all(
+    metadata.map(async (sound) => ({
+      ...sound,
+      blob: await fetchBlob('sounds', sound.id)
+    }))
+  )
+}
+
+export async function putSound(sound: StoredSound) {
+  await putBinary('sounds', sound)
+  return sound
+}
+
+export async function deleteSound(id: string) {
+  await deleteJson('sounds', id)
 }
 
 export async function listStories() {

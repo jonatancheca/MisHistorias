@@ -19,6 +19,7 @@ const emit = defineEmits<{
 
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
+const sounds = useSoundsStore()
 const settings = useSettingsStore()
 const editing = ref(false)
 const buffer = ref('')
@@ -29,6 +30,7 @@ const userColor = computed(() => normalizeColor(settings.settings.userColor, DEF
 interface FlowRow {
   key: string
   background: boolean
+  sound: boolean
   narration: boolean
   text: string
   name: string
@@ -37,6 +39,7 @@ interface FlowRow {
   inlineTag: string | null
   imageUrl: string | null
   characterId: string | null
+  soundUrl: string | null
 }
 
 function galleryItems(characterId: string | null) {
@@ -62,6 +65,7 @@ const rows = computed<FlowRow[]>(() => {
       return {
         key: String(index),
         background: true,
+        sound: false,
         narration: false,
         text: segment.text,
         name: 'Fondo',
@@ -69,13 +73,34 @@ const rows = computed<FlowRow[]>(() => {
         tag: primaryTag(background) ?? segment.tag,
         inlineTag: null,
         imageUrl: backgrounds.urlFor(background?.id),
-        characterId: null
+        characterId: null,
+        soundUrl: null
+      }
+    }
+    if (segment.type === 'sound') {
+      const sound = Object.prototype.hasOwnProperty.call(segment, 'soundId')
+        ? sounds.byId(segment.soundId)
+        : sounds.byTag(segment.tag)
+      return {
+        key: String(index),
+        background: false,
+        sound: true,
+        narration: false,
+        text: segment.text,
+        name: 'Sonido',
+        color: '',
+        tag: sound?.tags[0] ?? segment.tag,
+        inlineTag: null,
+        imageUrl: null,
+        characterId: null,
+        soundUrl: sounds.urlFor(sound?.id)
       }
     }
     if (segment.type === 'protagonist-dialogue') {
       return {
         key: String(index),
         background: false,
+        sound: false,
         narration: false,
         text: segment.text,
         name: userName.value,
@@ -83,13 +108,15 @@ const rows = computed<FlowRow[]>(() => {
         tag: null,
         inlineTag: null,
         imageUrl: null,
-        characterId: null
+        characterId: null,
+        soundUrl: null
       }
     }
     if (segment.type !== 'dialogue' || !segment.characterId) {
       return {
         key: String(index),
         background: false,
+        sound: false,
         narration: true,
         text: segment.text,
         name: '',
@@ -97,7 +124,8 @@ const rows = computed<FlowRow[]>(() => {
         tag: null,
         inlineTag: null,
         imageUrl: null,
-        characterId: null
+        characterId: null,
+        soundUrl: null
       }
     }
 
@@ -109,6 +137,7 @@ const rows = computed<FlowRow[]>(() => {
     return {
       key: String(index),
       background: false,
+      sound: false,
       narration: false,
       text: segment.text,
       name: characters.byId(segment.characterId)?.name ?? 'Personaje',
@@ -116,7 +145,8 @@ const rows = computed<FlowRow[]>(() => {
       tag: primaryTag(image) ?? requestedTags[0] ?? null,
       inlineTag: image ? null : requestedTags.join('][') || null,
       imageUrl: isNewImage ? characters.urlFor(image!.id) : null,
-      characterId: segment.characterId
+      characterId: segment.characterId,
+      soundUrl: null
     }
   }).filter((row) => !props.visualMode || !row.background)
 })
@@ -242,6 +272,16 @@ function confirmEdit() {
                 <span v-if="row.text"> · {{ row.text }}</span>
               </figcaption>
             </figure>
+            <p
+              v-else-if="row.sound"
+              class="rounded-xl border border-[var(--color-border-soft)] p-3"
+            >
+              <span class="mb-2 block text-xs font-medium text-[var(--color-fg-muted)]">
+                Sonido [{{ row.tag || 'sin etiqueta' }}]
+              </span>
+              <audio v-if="row.soundUrl" :src="row.soundUrl" controls preload="metadata" class="w-full" />
+              <span v-else class="text-sm text-[var(--color-fg-muted)]">Sonido no disponible</span>
+            </p>
             <p
               v-else-if="row.narration"
               class="text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--color-fg-muted)] italic"

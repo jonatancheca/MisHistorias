@@ -1,9 +1,10 @@
-import type { Background, Character, CharacterImage, MessageSegment } from '#shared/types'
+import type { Background, Character, CharacterImage, MessageSegment, Sound } from '#shared/types'
 import { tagKey } from '~/lib/tags'
 import { normalizeRequestedImageTags, selectCharacterImage } from '~/lib/imageSelection'
 
 const LINE_RE = /^\s*([^:[\]\n]{1,60}?)\s*((?:\s*\[[^\]\n]{1,40}\])*)\s*:\s*([\s\S]*)$/
 const BACKGROUND_RE = /^\s*Fondo\s*\[([^\]\n]{1,80})\]\s*:\s*([\s\S]*)$/i
+const SOUND_RE = /^\s*Sonido\s*\[([^\]\n]{1,80})\]\s*:\s*([\s\S]*)$/i
 const DIALOGUE_TAG_RE = /\[([^\]\n]{1,40})\]/g
 
 function normalize(value: string) {
@@ -26,7 +27,8 @@ export function parseSegments(
   backgrounds: Background[] = [],
   protagonistName = '',
   images: CharacterImage[] = [],
-  selectionSeed = ''
+  selectionSeed = '',
+  sounds: Sound[] = []
 ): MessageSegment[] {
   const byName = new Map(characters.map((character) => [normalize(character.name), character]))
   const normalizedProtagonistName = normalize(protagonistName)
@@ -35,11 +37,28 @@ export function parseSegments(
       background.tags.map((tag) => [normalize(tag), background] as const)
     )
   )
+  const soundsByTag = new Map(
+    sounds.flatMap((sound) => sound.tags.map((tag) => [normalize(tag), sound] as const))
+  )
   const segments: MessageSegment[] = []
 
   for (const line of raw.split('\n')) {
     const trimmed = line.trim()
     if (trimmed === '') continue
+
+    const soundMatch = SOUND_RE.exec(trimmed)
+    if (soundMatch) {
+      const tag = (soundMatch[1] ?? '').trim()
+      const sound = soundsByTag.get(normalize(tag))
+      segments.push({
+        type: 'sound',
+        characterId: null,
+        soundId: sound?.id ?? null,
+        tag,
+        text: (soundMatch[2] ?? '').trim()
+      })
+      continue
+    }
 
     const backgroundMatch = BACKGROUND_RE.exec(trimmed)
     if (backgroundMatch) {
@@ -108,6 +127,9 @@ export function serializeSegments(
     .map((segment) => {
       if (segment.type === 'background') {
         return `Fondo [${segment.tag ?? ''}]:${segment.text ? ` ${segment.text}` : ''}`
+      }
+      if (segment.type === 'sound') {
+        return `Sonido [${segment.tag ?? ''}]:${segment.text ? ` ${segment.text}` : ''}`
       }
       if (segment.type === 'protagonist-dialogue') {
         return `${protagonistName}: ${segment.text}`

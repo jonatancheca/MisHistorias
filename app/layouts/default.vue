@@ -8,6 +8,7 @@ const links = [
   { to: '/', label: 'Histórias' },
   { to: '/characters', label: 'Personajes' },
   { to: '/backgrounds', label: 'Fondos' },
+  { to: '/sounds', label: 'Sonidos' },
   { to: '/prompts', label: 'Prompts' },
   { to: '/settings', label: 'Ajustes' }
 ]
@@ -20,6 +21,7 @@ function iconFor(to: string) {
   if (to === '/') return 'book'
   if (to === '/characters') return 'users'
   if (to === '/backgrounds') return 'image'
+  if (to === '/sounds') return 'sound'
   if (to === '/prompts') return 'document'
   return 'settings'
 }
@@ -72,7 +74,7 @@ async function leavePrivateMode() {
         </button>
       </div>
 
-      <nav class="grid grid-cols-5 gap-1 sm:flex sm:flex-1 sm:flex-col">
+      <nav class="grid min-w-0 grid-cols-6 gap-1 sm:flex sm:flex-1 sm:flex-col">
         <NuxtLink
           v-for="link in links"
           :key="link.to"
@@ -124,6 +126,19 @@ async function leavePrivateMode() {
             <rect x="3" y="3" width="18" height="18" rx="2" />
             <circle cx="8.5" cy="8.5" r="1.5" />
             <path d="m21 15-5-5L5 21" />
+          </svg>
+          <svg
+            v-else-if="iconFor(link.to) === 'sound'"
+            aria-hidden="true"
+            class="h-5 w-5 shrink-0 sm:h-4 sm:w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
           </svg>
           <svg
             v-else-if="iconFor(link.to) === 'document'"

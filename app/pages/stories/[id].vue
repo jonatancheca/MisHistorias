@@ -13,6 +13,7 @@ const route = useRoute()
 const stories = useStoriesStore()
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
+const sounds = useSoundsStore()
 const settings = useSettingsStore()
 const confirmDialog = useConfirmStore()
 const {
@@ -27,6 +28,7 @@ hideMobileChrome()
 await Promise.all([
   characters.load(),
   backgrounds.load(),
+  sounds.load(),
   settings.load(),
   stories.openStory(String(route.params.id))
 ])
@@ -191,6 +193,7 @@ async function toggleVisualNovelManualAdvance() {
 }
 
 async function submit() {
+  void sounds.unlock()
   const text = input.value
   if (!text.trim() || stories.generating) return
   followingBottom.value = true
@@ -200,12 +203,14 @@ async function submit() {
 }
 
 async function generateOpening() {
+  void sounds.unlock()
   followingBottom.value = true
   scheduleFollowBottom()
   await stories.generate()
 }
 
 async function generateContinuation(mode: Exclude<GenerationMode, 'normal'>) {
+  void sounds.unlock()
   if (stories.generating) return
   followingBottom.value = true
   scheduleFollowBottom()

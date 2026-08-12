@@ -2,6 +2,7 @@ import type {
   Character,
   GenerationMode,
   Message,
+  Sound,
   Story,
   StoryCharacterCustomization
 } from '#shared/types'
@@ -23,7 +24,7 @@ function formatReminder(generationMode: GenerationMode, userName: string) {
     generationMode === 'auto'
       ? ` El protagonista es la única excepción al catálogo: escribe su diálogo como \`${userName}: texto\`, sin etiqueta visual.`
       : ''
-  return `Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa \`Nombre [etiqueta][otra etiqueta]: texto\` para diálogo, con cada etiqueta visual en sus propios corchetes, y \`Fondo [etiqueta]:\` solo cuando cambie el fondo. Las etiquetas combinadas deben pertenecer a la misma imagen del personaje. Usa una línea sin prefijo para narración y solo personajes, fondos y etiquetas visuales listados.${protagonistFormat} Las etiquetas visuales representan el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje las últimas etiquetas usadas mientras su aspecto no cambie; no vuelvas a \`[neutral]\` por defecto en intervenciones posteriores. Usa otras etiquetas solo cuando la historia cambie realmente su aspecto o ropa.`
+  return `Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa \`Nombre [etiqueta][otra etiqueta]: texto\` para diálogo, con cada etiqueta visual en sus propios corchetes, \`Fondo [etiqueta]:\` solo cuando cambie el fondo y \`Sonido [etiqueta]:\` cuando deba reproducirse un sonido disponible. Las etiquetas combinadas deben pertenecer a la misma imagen del personaje. Usa una línea sin prefijo para narración y solo personajes, fondos, sonidos y etiquetas listados.${protagonistFormat} Las etiquetas visuales representan el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje las últimas etiquetas usadas mientras su aspecto no cambie; no vuelvas a \`[neutral]\` por defecto en intervenciones posteriores. Usa otras etiquetas solo cuando la historia cambie realmente su aspecto o ropa.`
 }
 
 function continuationInstruction(generationMode: GenerationMode, userName: string) {
@@ -82,12 +83,35 @@ function backgroundSheet(story: Story, backgrounds: StoredBackground[]) {
   ].join('\n')
 }
 
+function soundSheet(sounds: Sound[], characters: Character[], backgrounds: StoredBackground[]) {
+  if (!sounds.length) return 'No hay sonidos disponibles.'
+  const characterNames = new Map(characters.map((character) => [character.id, character.name]))
+  const backgroundTags = new Map(
+    backgrounds.map((background) => [background.id, primaryTag(background) ?? 'sin etiqueta'])
+  )
+  const catalog = sounds
+    .map((sound) => {
+      const association = sound.characterId
+        ? `personaje ${characterNames.get(sound.characterId) ?? 'no disponible'}`
+        : sound.backgroundId
+          ? `fondo ${backgroundTags.get(sound.backgroundId) ?? 'no disponible'}`
+          : 'suelto'
+      return `- ${sound.tags.map((tag) => `[${tag}]`).join(' / ')} (${association})`
+    })
+    .join('\n')
+  return [
+    catalog,
+    'Reproduce solo cuando encaje con la escena. Escribe una línea independiente exacta: `Sonido [etiqueta]:`.'
+  ].join('\n')
+}
+
 export function buildSystemPrompt(options: {
   presetContent: string
   story: Story
   characters: Character[]
   images: StoredImage[]
   backgrounds: StoredBackground[]
+  sounds: Sound[]
   userName: string
   protagonistPreferences: string
   generationMode: GenerationMode
@@ -98,6 +122,7 @@ export function buildSystemPrompt(options: {
     characters,
     images,
     backgrounds,
+    sounds,
     userName,
     protagonistPreferences,
     generationMode
@@ -128,7 +153,10 @@ export function buildSystemPrompt(options: {
       .join('\n\n'),
     '',
     '## FONDOS',
-    backgroundSheet(story, backgrounds)
+    backgroundSheet(story, backgrounds),
+    '',
+    '## SONIDOS',
+    soundSheet(sounds, characters, backgrounds)
   ].join('\n')
 }
 
@@ -165,6 +193,7 @@ export function buildChatMessages(options: {
   characters: Character[]
   images: StoredImage[]
   backgrounds: StoredBackground[]
+  sounds: Sound[]
   messages: Message[]
   historyBudget: number
   userName: string
