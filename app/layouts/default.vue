@@ -33,16 +33,17 @@ async function leavePrivateMode() {
   <div class="flex h-dvh min-h-0 flex-col bg-[var(--color-surface)] text-[var(--color-fg)] sm:flex-row">
     <aside
       id="app-navigation"
-      class="flex w-full shrink-0 flex-col border-b border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] px-3 transition-[max-height,opacity,padding,transform] duration-200 sm:max-h-none sm:w-56 sm:translate-y-0 sm:overflow-visible sm:border-r sm:border-b-0 sm:p-4 sm:opacity-100"
-      :class="
+      class="flex w-full shrink-0 flex-col border-b border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] px-3 transition-[max-height,opacity,padding,transform,width] duration-200 sm:max-h-none sm:translate-y-0 sm:overflow-visible sm:border-r sm:border-b-0 sm:opacity-100"
+      :class="[
         mobileChromeHidden
           ? 'max-h-0 -translate-y-2 overflow-hidden border-b-0 py-0 opacity-0'
-          : 'max-h-32 translate-y-0 py-3 opacity-100'
-      "
+          : 'max-h-32 translate-y-0 py-3 opacity-100',
+        isStoryView ? 'sm:w-16 sm:px-2 sm:py-4' : 'sm:w-56 sm:p-4'
+      ]"
     >
       <div
         class="mb-3 flex items-center gap-2 sm:mb-6"
-        :class="isStoryView ? 'pr-12 sm:pr-0' : ''"
+        :class="isStoryView ? 'pr-12 sm:hidden' : ''"
       >
         <NuxtLink to="/" class="flex items-center gap-2 text-lg font-bold">
           <span class="inline-block h-3 w-3 rounded-full bg-brand-500" />
@@ -76,14 +77,15 @@ async function leavePrivateMode() {
           v-for="link in links"
           :key="link.to"
           :to="link.to"
-          class="flex min-w-0 items-center justify-center gap-2 rounded-lg px-1 py-2 text-xs font-medium transition sm:justify-start sm:px-3 sm:text-sm"
+          class="flex min-w-0 items-center justify-center gap-2 rounded-lg px-1 py-2 text-xs font-medium transition sm:text-sm"
           :aria-label="link.label"
           :title="link.label"
-          :class="
+          :class="[
+            isStoryView ? 'sm:px-2' : 'sm:justify-start sm:px-3',
             isActive(link.to)
               ? 'bg-brand-500 text-white'
               : 'text-[var(--color-fg-muted)] hover:bg-brand-500/10 hover:text-brand-600'
-          "
+          ]"
         >
           <svg
             v-if="iconFor(link.to) === 'book'"
@@ -147,7 +149,10 @@ async function leavePrivateMode() {
             <path d="M12 3v2m0 14v2M3 12h2m14 0h2m-3.36-6.36-1.42 1.42M8.78 16.64l-1.42 1.42m0-12.84 1.42 1.42m7.86 7.86 1.42 1.42" />
             <circle cx="12" cy="12" r="3" />
           </svg>
-          <span class="hidden min-w-0 truncate sm:inline">{{ link.label }}</span>
+          <span
+            class="hidden min-w-0 truncate"
+            :class="isStoryView ? '' : 'sm:inline'"
+          >{{ link.label }}</span>
         </NuxtLink>
       </nav>
     </aside>
