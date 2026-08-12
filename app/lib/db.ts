@@ -4,6 +4,7 @@ import type {
   Background,
   Character,
   CharacterImage,
+  DatabaseBackup,
   LlmDebugTrace,
   Message,
   PromptPreset,
@@ -234,6 +235,23 @@ export async function writeSettings(patch: Partial<AppSettings>) {
 
 export async function readApiKey() {
   return $fetch<{ apiKey: string }>('/api/settings/api-key', { method: 'POST' })
+}
+
+export async function listDatabaseBackups() {
+  return $fetch<DatabaseBackup[]>('/api/backups')
+}
+
+export async function createDatabaseBackup() {
+  return $fetch<DatabaseBackup>('/api/backups', { method: 'POST' })
+}
+
+export async function restoreDatabaseBackup(name: string) {
+  return $fetch<{
+    restored: DatabaseBackup
+    safety: DatabaseBackup
+    health: { ok: boolean, schemaVersion: number }
+    backups: DatabaseBackup[]
+  }>(`/api/backups/${encodeURIComponent(name)}/restore`, { method: 'POST' })
 }
 
 export async function clearAll(scope: DataScope = activeDataScope.value) {

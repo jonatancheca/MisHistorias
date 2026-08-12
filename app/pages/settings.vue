@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import type { AppSettings } from '#shared/types'
+import type { AppSettings, DatabaseBackup } from '#shared/types'
 import { fetchLlmModels } from '~/lib/llm'
-import { readApiKey } from '~/lib/db'
+import {
+  createDatabaseBackup,
+  listDatabaseBackups,
+  readApiKey,
+  restoreDatabaseBackup
+} from '~/lib/db'
 
 const settings = useSettingsStore()
 const characters = useCharactersStore()
@@ -9,6 +14,7 @@ const backgrounds = useBackgroundsStore()
 const stories = useStoriesStore()
 const presets = usePresetsStore()
 const privacy = usePrivacyStore()
+const confirmDialog = useConfirmStore()
 await settings.load()
 
 const form = reactive({ ...settings.settings })
@@ -24,6 +30,11 @@ const testError = ref<string | null>(null)
 const importing = ref(false)
 const importMessage = ref<string | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
+const backups = ref<DatabaseBackup[]>([])
+const backupsLoading = ref(false)
+const backupAction = ref<string | null>(null)
+const backupMessage = ref<string | null>(null)
+const backupError = ref<string | null>(null)
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const saveError = ref<string | null>(null)
 const apiKeyVisible = ref(false)
@@ -218,6 +229,86 @@ async function doExport() {
   downloadBundle(await exportBundle())
 }
 
+function backupErrorMessage(caught: unknown, fallback: string) {
+  const detail = caught as {
+    data?: { statusMessage?: string }
+    statusMessage?: string
+    message?: string
+  }
+  return detail.data?.statusMessage || detail.statusMessage || detail.message || fallback
+}
+
+async function loadBackups() {
+  backupsLoading.value = true
+  backupError.value = null
+  try {
+    backups.value = await listDatabaseBackups()
+  } catch (caught) {
+    backupError.value = backupErrorMessage(caught, 'No se pudieron cargar los backups.')
+  } finally {
+    backupsLoading.value = false
+  }
+}
+
+async function createBackup() {
+  backupAction.value = 'create'
+  backupMessage.value = null
+  backupError.value = null
+  try {
+    await flushSave()
+    const created = await createDatabaseBackup()
+    await loadBackups()
+    backupMessage.value = `Backup creado: ${created.name}`
+  } catch (caught) {
+    backupError.value = backupErrorMessage(caught, 'No se pudo crear el backup.')
+  } finally {
+    backupAction.value = null
+  }
+}
+
+async function restoreBackup(backup: DatabaseBackup) {
+  const accepted = await confirmDialog.ask({
+    title: 'Restaurar backup',
+    message: `Restaurar “${backup.name}” reemplazará toda la base SQLite actual: colección normal, colección privada y ajustes. Antes se creará otro backup de seguridad.`,
+    confirmLabel: 'Restaurar'
+  })
+  if (!accepted) return
+
+  backupAction.value = `restore:${backup.name}`
+  backupMessage.value = null
+  backupError.value = null
+  try {
+    await flushSave()
+    await restoreDatabaseBackup(backup.name)
+    sessionStorage.setItem('mishistorias-backup-message', `Backup restaurado: ${backup.name}`)
+    window.location.reload()
+  } catch (caught) {
+    backupError.value = backupErrorMessage(caught, 'No se pudo restaurar el backup.')
+    backupAction.value = null
+  }
+}
+
+function backupKindLabel(kind: DatabaseBackup['kind']) {
+  if (kind === 'manual') return 'Manual'
+  if (kind === 'before-restore') return 'Antes de restaurar'
+  return 'Antes de migrar'
+}
+
+function formatBackupDate(value: string) {
+  return new Intl.DateTimeFormat('es-ES', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(new Date(value))
+}
+
+function formatBackupSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+await loadBackups()
+
 async function onImportFile(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -265,6 +356,13 @@ onBeforeUnmount(() => {
   if (privateClickTimer) clearTimeout(privateClickTimer)
   if (savedTimer) clearTimeout(savedTimer)
   void flushSave()
+})
+
+onMounted(() => {
+  const message = sessionStorage.getItem('mishistorias-backup-message')
+  if (!message) return
+  sessionStorage.removeItem('mishistorias-backup-message')
+  backupMessage.value = message
 })
 
 onBeforeRouteLeave(async () => {
@@ -568,6 +666,69 @@ onBeforeRouteLeave(async () => {
       </div>
 
       <p v-if="importMessage" class="mt-2 text-xs text-[var(--color-fg-muted)]">{{ importMessage }}</p>
+
+      <div class="mt-6 rounded-xl border border-[var(--color-border-soft)] p-4">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 class="font-semibold">Backups SQLite</h3>
+            <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+              Incluyen colección normal, colección privada y ajustes.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn-primary"
+            :disabled="backupAction !== null"
+            @click="createBackup"
+          >
+            {{ backupAction === 'create' ? 'Creando…' : 'Crear backup' }}
+          </button>
+        </div>
+
+        <p v-if="backupMessage" class="mt-3 break-words text-xs text-brand-600" role="status">
+          {{ backupMessage }}
+        </p>
+        <p v-if="backupError" class="mt-3 text-xs text-red-500" role="alert">
+          {{ backupError }}
+        </p>
+        <p v-if="backupsLoading" class="mt-4 text-sm text-[var(--color-fg-muted)]">
+          Cargando backups…
+        </p>
+        <p v-else-if="backups.length === 0" class="mt-4 text-sm text-[var(--color-fg-muted)]">
+          No hay backups todavía.
+        </p>
+        <ul v-else class="mt-4 divide-y divide-[var(--color-border-soft)]">
+          <li
+            v-for="backup in backups"
+            :key="backup.name"
+            class="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="rounded-full bg-brand-500/10 px-2 py-0.5 text-xs font-semibold text-brand-600">
+                  {{ backupKindLabel(backup.kind) }}
+                </span>
+                <span v-if="!backup.valid" class="text-xs font-semibold text-red-500">
+                  No válido
+                </span>
+              </div>
+              <p class="mt-1 break-all text-sm font-medium">{{ backup.name }}</p>
+              <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+                {{ formatBackupDate(backup.createdAt) }} · {{ formatBackupSize(backup.size) }}
+                <template v-if="backup.schemaVersion !== null"> · Esquema v{{ backup.schemaVersion }}</template>
+              </p>
+            </div>
+            <button
+              type="button"
+              class="btn-danger shrink-0 self-start sm:self-auto"
+              :disabled="!backup.valid || backupAction !== null"
+              @click="restoreBackup(backup)"
+            >
+              {{ backupAction === `restore:${backup.name}` ? 'Restaurando…' : 'Restaurar' }}
+            </button>
+          </li>
+        </ul>
+      </div>
     </section>
   </div>
 </template>

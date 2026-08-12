@@ -1,7 +1,16 @@
-import { mkdirSync } from 'node:fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync
+} from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { dirname, isAbsolute, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import type { DatabaseBackup, DatabaseBackupKind } from '../../shared/types/index.ts'
 
 export type DataScope = 'normal' | 'private'
 export type DataResource =
@@ -35,6 +44,7 @@ interface SqliteRow extends Record<string, unknown> {
 
 const SCHEMA_VERSION = 4
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
+const MIGRATION_BACKUP_RETENTION = 5
 
 function parseJson<T>(value: unknown, fallback: T): T {
   if (typeof value !== 'string') return fallback
@@ -197,21 +207,238 @@ export class MisHistoriasStorage {
 
   constructor(path = resolveDatabasePath()) {
     this.path = path
+    const databaseExisted = existsSync(path)
     mkdirSync(dirname(path), { recursive: true })
     this.database = new DatabaseSync(path, { timeout: 5000 })
-    this.database.exec('PRAGMA foreign_keys = ON')
-    this.database.exec('PRAGMA journal_mode = WAL')
-    this.database.exec('PRAGMA synchronous = FULL')
-    this.database.exec('PRAGMA busy_timeout = 5000')
-    this.migrate()
+    try {
+      this.database.exec('PRAGMA foreign_keys = ON')
+      this.database.exec('PRAGMA journal_mode = WAL')
+      this.database.exec('PRAGMA synchronous = FULL')
+      this.database.exec('PRAGMA busy_timeout = 5000')
+      this.migrate(databaseExisted)
+    } catch (caught) {
+      this.close()
+      throw caught
+    }
   }
 
-  private migrate() {
+  private hasExistingSchema() {
+    const row = this.database
+      .prepare("SELECT COUNT(*) AS total FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'")
+      .get() as { total: number }
+    return row.total > 0
+  }
+
+  private backupDirectory() {
+    return join(dirname(this.path), 'backups')
+  }
+
+  private databaseName() {
+    return parse(basename(this.path)).name
+  }
+
+  private nextBackupPath(label: string) {
+    const backupDirectory = this.backupDirectory()
+    const databaseName = this.databaseName()
+    const timestamp = new Date().toISOString().replace(/[-:.]/g, '')
+    const stem = `${databaseName}.${label}-${timestamp}`
+    let backupPath = join(backupDirectory, `${stem}.sqlite`)
+    let collision = 1
+    while (existsSync(backupPath)) {
+      backupPath = join(backupDirectory, `${stem}-${collision}.sqlite`)
+      collision += 1
+    }
+    return { backupDirectory, backupPath, databaseName }
+  }
+
+  private readBackupVersion(path: string) {
+    let backupDatabase: DatabaseSync | undefined
+    try {
+      backupDatabase = new DatabaseSync(path, { readOnly: true })
+      const quickCheck = backupDatabase.prepare('PRAGMA quick_check').all() as Array<{
+        quick_check: string
+      }>
+      const version = backupDatabase.prepare('PRAGMA user_version').get() as {
+        user_version: number
+      }
+      const schema = backupDatabase
+        .prepare("SELECT COUNT(*) AS total FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'")
+        .get() as { total: number }
+      const schemaVersion = version.user_version
+      return {
+        valid:
+          quickCheck.length === 1 &&
+          quickCheck[0]?.quick_check === 'ok' &&
+          schema.total > 0 &&
+          Number.isInteger(schemaVersion) &&
+          schemaVersion >= 0 &&
+          schemaVersion <= SCHEMA_VERSION,
+        schemaVersion
+      }
+    } catch {
+      return { valid: false, schemaVersion: null }
+    } finally {
+      if (backupDatabase?.isOpen) backupDatabase.close()
+    }
+  }
+
+  private backupKind(name: string): DatabaseBackupKind {
+    if (name.startsWith(`${this.databaseName()}.manual-`)) return 'manual'
+    if (name.startsWith(`${this.databaseName()}.before-restore-`)) return 'before-restore'
+    return 'migration'
+  }
+
+  private inspectBackup(name: string, path: string): DatabaseBackup {
+    const stats = statSync(path)
+    const validation = this.readBackupVersion(path)
+    return {
+      name,
+      kind: this.backupKind(name),
+      createdAt: stats.mtime.toISOString(),
+      size: stats.size,
+      ...validation
+    }
+  }
+
+  listBackups() {
+    const backupDirectory = this.backupDirectory()
+    if (!existsSync(backupDirectory)) return []
+    const prefix = `${this.databaseName()}.`
+    return readdirSync(backupDirectory, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          !entry.isSymbolicLink() &&
+          entry.name.startsWith(prefix) &&
+          entry.name.endsWith('.sqlite')
+      )
+      .map((entry) => {
+        const path = join(backupDirectory, entry.name)
+        return this.inspectBackup(entry.name, path)
+      })
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  }
+
+  private pruneMigrationBackups(backupDirectory: string, databaseName: string) {
+    const prefix = `${databaseName}.from-v`
+    const backups = readdirSync(backupDirectory, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          !entry.isSymbolicLink() &&
+          entry.name.startsWith(prefix) &&
+          entry.name.endsWith('.sqlite')
+      )
+      .map((entry) => {
+        const path = join(backupDirectory, entry.name)
+        return { path, modifiedAt: statSync(path).mtimeMs }
+      })
+      .sort((left, right) => right.modifiedAt - left.modifiedAt)
+
+    for (const backup of backups.slice(MIGRATION_BACKUP_RETENTION)) {
+      rmSync(backup.path, { force: true })
+    }
+  }
+
+  private createBackup(label: string, expectedVersion: number) {
+    const { backupPath } = this.nextBackupPath(label)
+    const temporaryPath = `${backupPath}.tmp-${randomUUID()}`
+    mkdirSync(this.backupDirectory(), { recursive: true })
+
+    try {
+      this.database.prepare('VACUUM INTO ?').run(temporaryPath)
+      const validation = this.readBackupVersion(temporaryPath)
+      if (!validation.valid || validation.schemaVersion !== expectedVersion) {
+        throw new Error('La copia SQLite no superó la validación')
+      }
+      renameSync(temporaryPath, backupPath)
+      return {
+        path: backupPath,
+        backup: this.inspectBackup(basename(backupPath), backupPath)
+      }
+    } catch (caught) {
+      rmSync(temporaryPath, { force: true })
+      throw caught
+    }
+  }
+
+  private createMigrationBackup(fromVersion: number) {
+    const created = this.createBackup(
+      `from-v${fromVersion}-to-v${SCHEMA_VERSION}`,
+      fromVersion
+    )
+    this.pruneMigrationBackups(this.backupDirectory(), this.databaseName())
+    return created.path
+  }
+
+  createManualBackup() {
+    const version = this.database.prepare('PRAGMA user_version').get() as { user_version: number }
+    return this.createBackup('manual', version.user_version).backup
+  }
+
+  restoreBackup(name: string) {
+    const backup = this.listBackups().find((item) => item.name === name)
+    if (!backup) throw new Error('Backup no encontrado')
+    if (!backup.valid || backup.schemaVersion === null) {
+      throw new Error('El backup no es válido y no puede restaurarse')
+    }
+
+    const sourcePath = join(this.backupDirectory(), backup.name)
+    const currentVersion = this.database.prepare('PRAGMA user_version').get() as {
+      user_version: number
+    }
+    const safety = this.createBackup('before-restore', currentVersion.user_version).backup
+    const temporaryPath = `${this.path}.restore-${randomUUID()}.tmp`
+    const previousPath = `${this.path}.restore-${randomUUID()}.previous`
+
+    try {
+      copyFileSync(sourcePath, temporaryPath)
+      const validation = this.readBackupVersion(temporaryPath)
+      if (!validation.valid || validation.schemaVersion !== backup.schemaVersion) {
+        throw new Error('La copia seleccionada no superó la validación final')
+      }
+
+      this.close()
+      rmSync(`${this.path}-wal`, { force: true })
+      rmSync(`${this.path}-shm`, { force: true })
+      renameSync(this.path, previousPath)
+      try {
+        renameSync(temporaryPath, this.path)
+      } catch (caught) {
+        renameSync(previousPath, this.path)
+        throw caught
+      }
+      rmSync(previousPath, { force: true })
+      return { restored: backup, safety }
+    } catch (caught) {
+      rmSync(temporaryPath, { force: true })
+      if (existsSync(previousPath)) {
+        rmSync(this.path, { force: true })
+        renameSync(previousPath, this.path)
+      }
+      throw caught
+    }
+  }
+
+  private migrate(databaseExisted: boolean) {
     const version = this.database.prepare('PRAGMA user_version').get() as { user_version: number }
     if (version.user_version >= SCHEMA_VERSION) return
 
-    this.transaction(() => {
-      this.database.exec(`
+    let backupPath: string | null = null
+    if (databaseExisted && this.hasExistingSchema()) {
+      try {
+        backupPath = this.createMigrationBackup(version.user_version)
+      } catch (caught) {
+        throw new Error(
+          `No se pudo crear el backup previo de SQLite. Migración v${version.user_version} a v${SCHEMA_VERSION} no iniciada.`,
+          { cause: caught }
+        )
+      }
+    }
+
+    try {
+      this.transaction(() => {
+        this.database.exec(`
         CREATE TABLE IF NOT EXISTS characters (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
           id TEXT NOT NULL,
@@ -455,8 +682,15 @@ export class MisHistoriasStorage {
         END;
       `)
 
-      this.database.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
-    })
+        this.database.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
+      })
+    } catch (caught) {
+      const backupDetail = backupPath ? ` Backup: ${backupPath}.` : ''
+      throw new Error(
+        `Falló la migración SQLite v${version.user_version} a v${SCHEMA_VERSION}.${backupDetail}`,
+        { cause: caught }
+      )
+    }
   }
 
   transaction<T>(callback: () => T): T {

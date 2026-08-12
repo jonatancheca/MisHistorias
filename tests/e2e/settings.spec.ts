@@ -1,4 +1,4 @@
-import type { AppSettings, Character, PromptPreset } from '../../shared/types'
+import type { AppSettings, Character, DatabaseBackup, PromptPreset } from '../../shared/types'
 import { expect, test } from './fixtures'
 
 test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) => {
@@ -22,6 +22,41 @@ test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) =>
     userName
   })
   await expect(page.locator('html')).toHaveClass(/dark/)
+})
+
+test('muestra, crea y restaura backups SQLite con confirmación', async ({ page, data }) => {
+  const character = await data.createCharacter({ name: data.unique('Original-backup') })
+  const response = await page.request.post('/api/backups')
+  await expect(response).toBeOK()
+  const existing = await response.json() as DatabaseBackup
+
+  const changedName = data.unique('Cambiado-después-backup')
+  const changedResponse = await page.request.put(
+    `/api/data/characters/${character.id}?scope=normal`,
+    { data: { ...character, name: changedName } }
+  )
+  await expect(changedResponse).toBeOK()
+
+  await page.goto('/settings')
+  const existingRow = page.getByRole('listitem').filter({ hasText: existing.name })
+  await expect(existingRow).toBeVisible()
+  await expect(existingRow.getByText('Manual', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Crear backup' }).click()
+  await expect(page.getByText(/^Backup creado:/)).toBeVisible()
+  await expect(page.getByRole('listitem')).toHaveCount(2)
+
+  await existingRow.getByRole('button', { name: 'Restaurar' }).click()
+  const dialog = page.getByRole('alertdialog', { name: 'Restaurar backup' })
+  await expect(dialog).toContainText('colección normal, colección privada y ajustes')
+  await dialog.getByRole('button', { name: 'Cancelar' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await existingRow.getByRole('button', { name: 'Restaurar' }).click()
+  await page.getByRole('alertdialog', { name: 'Restaurar backup' })
+    .getByRole('button', { name: 'Restaurar' }).click()
+  await expect(page.getByText(`Backup restaurado: ${existing.name}`)).toBeVisible()
+  expect((await data.get<Character>('characters', character.id)).name).toBe(character.name)
 })
 
 test('crea, edita, activa y borra prompt', async ({ page, data }) => {

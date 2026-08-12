@@ -180,6 +180,17 @@ export interface AppSettings {
   privateProtagonistPreferences: string | null
 }
 
+export type DatabaseBackupKind = 'manual' | 'migration' | 'before-restore'
+
+export interface DatabaseBackup {
+  name: string
+  kind: DatabaseBackupKind
+  createdAt: string
+  size: number
+  schemaVersion: number | null
+  valid: boolean
+}
+
 export interface LlmModel {
   id: string
 }
