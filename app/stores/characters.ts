@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import type { Character } from '#shared/types'
 import {
+  copyCharacter as copyStoredCharacter,
   deleteCharacter,
   deleteImage,
   listAllImages,
@@ -120,6 +121,20 @@ export const useCharactersStore = defineStore('characters', () => {
     return character
   }
 
+  async function copyCharacter(
+    sourceId: string,
+    input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color'>
+  ) {
+    const { character } = await copyStoredCharacter(sourceId, {
+      ...input,
+      name: input.name.trim(),
+      tags: sanitizeTags(input.tags),
+      color: normalizeColor(input.color, DEFAULT_CHARACTER_COLOR)
+    })
+    await load(true)
+    return character
+  }
+
   async function removeCharacter(id: string) {
     await deleteCharacter(id)
     characters.value = characters.value.filter((character) => character.id !== id)
@@ -197,6 +212,7 @@ export const useCharactersStore = defineStore('characters', () => {
     resolveImage,
     urlFor,
     saveCharacter,
+    copyCharacter,
     removeCharacter,
     addImage,
     updateImage,

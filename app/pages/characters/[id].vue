@@ -8,12 +8,20 @@ await characters.load()
 const isNew = computed(() => route.params.id === 'new')
 const characterId = ref(String(route.params.id))
 const existing = computed(() => (isNew.value ? null : characters.byId(characterId.value)))
+const copyFromId = Array.isArray(route.query.copyFrom)
+  ? route.query.copyFrom[0]
+  : route.query.copyFrom
+const copiedCharacter =
+  isNew.value && typeof copyFromId === 'string' ? characters.byId(copyFromId) : null
 
-const name = ref(existing.value?.name ?? '')
-const prompt = ref(existing.value?.prompt ?? '')
-const tags = ref([...(existing.value?.tags ?? [])])
+const name = ref(existing.value?.name ?? copiedCharacter?.name ?? '')
+const prompt = ref(existing.value?.prompt ?? copiedCharacter?.prompt ?? '')
+const tags = ref([...(existing.value?.tags ?? copiedCharacter?.tags ?? [])])
 const color = ref(
-  normalizeColor(existing.value?.color, pickColor(characters.characters.length))
+  normalizeColor(
+    existing.value?.color ?? copiedCharacter?.color,
+    pickColor(characters.characters.length)
+  )
 )
 const characterTagSuggestions = computed(() =>
   characters.characters.flatMap((character) => character.tags ?? [])
@@ -45,7 +53,9 @@ function enqueueSave(revision: number, navigateAfterCreate = false) {
     saveStatus.value = 'saving'
     saveError.value = null
     try {
-      const character = await characters.saveCharacter(input)
+      const character = copiedCharacter && isNew.value
+        ? await characters.copyCharacter(copiedCharacter.id, input)
+        : await characters.saveCharacter(input)
       if (revision === saveRevision) {
         saveStatus.value = 'saved'
         savedTimer = setTimeout(() => {
@@ -128,7 +138,9 @@ onBeforeRouteLeave(flushSave)
 <template>
   <div class="page-shell">
     <header class="mb-6 flex items-center justify-between">
-      <h1 class="text-2xl font-bold">{{ isNew ? 'Nuevo personaje' : name || 'Personaje' }}</h1>
+      <h1 class="text-2xl font-bold">
+        {{ copiedCharacter ? 'Copiar personaje' : isNew ? 'Nuevo personaje' : name || 'Personaje' }}
+      </h1>
       <NuxtLink to="/characters" class="btn-ghost">Volver</NuxtLink>
     </header>
 
@@ -198,7 +210,11 @@ onBeforeRouteLeave(flushSave)
 
       <CharacterImageEditor v-if="!isNew && existing" :character-id="characterId" />
       <p v-else class="text-sm text-[var(--color-fg-muted)]">
-        Guarda el personaje para poder añadirle imágenes.
+        {{
+          copiedCharacter
+            ? 'Las imágenes se copiarán al guardar el personaje.'
+            : 'Guarda el personaje para poder añadirle imágenes.'
+        }}
       </p>
     </template>
   </div>

@@ -72,8 +72,14 @@ function galleryItems(characterId: string) {
             </p>
           </div>
         </div>
-        <div class="mt-3 flex gap-2">
+        <div class="mt-3 flex flex-wrap gap-2">
           <NuxtLink :to="`/characters/${character.id}`" class="btn-ghost">Editar</NuxtLink>
+          <NuxtLink
+            :to="{ path: '/characters/new', query: { copyFrom: character.id } }"
+            class="btn-ghost"
+          >
+            Copiar
+          </NuxtLink>
           <button type="button" class="btn-danger" @click="remove(character.id)">Borrar</button>
         </div>
       </li>

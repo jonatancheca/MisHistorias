@@ -146,6 +146,20 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
   return value
 }
 
+function validateCharacterCopy(rawValue: unknown) {
+  const value = asRecord(rawValue)
+  if (
+    !hasString(value, 'name') ||
+    !String(value.name).trim() ||
+    !hasString(value, 'prompt') ||
+    !hasStringArray(value, 'tags') ||
+    !hasString(value, 'color')
+  ) {
+    throw createError({ statusCode: 400, statusMessage: 'Datos no válidos' })
+  }
+  return value
+}
+
 async function readBinaryPayload(event: H3Event) {
   const parts = await readMultipartFormData(event)
   const metadataPart = parts?.find((part) => part.name === 'metadata')
@@ -207,6 +221,21 @@ export default defineEventHandler(async (event) => {
         : []
       storage.deleteMessages(scope, ids)
       return { ok: true }
+    }
+
+    if (
+      segments[0] === 'characters' &&
+      segments[1] &&
+      segments[2] === 'copy' &&
+      event.method === 'POST'
+    ) {
+      const copied = storage.copyCharacter(
+        scope,
+        asId(segments[1]),
+        validateCharacterCopy(await readBody(event))
+      )
+      if (!copied) throw createError({ statusCode: 404, statusMessage: 'Personaje no encontrado' })
+      return copied
     }
 
     const resource = asResource(segments[0])

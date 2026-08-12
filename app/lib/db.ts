@@ -103,6 +103,19 @@ export async function putCharacter(character: Character) {
   return putJson('characters', character)
 }
 
+export async function copyCharacter(
+  sourceId: string,
+  input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color'>
+) {
+  return $fetch<{ character: Character; images: CharacterImage[] }>(
+    dataUrl(`characters/${encodeURIComponent(sourceId)}/copy`),
+    {
+      method: 'POST',
+      body: unwrap(input)
+    }
+  )
+}
+
 export async function deleteCharacter(id: string) {
   await deleteJson('characters', id)
 }

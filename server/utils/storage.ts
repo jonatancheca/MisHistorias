@@ -1,4 +1,5 @@
 import { mkdirSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
@@ -32,7 +33,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 
 function parseJson<T>(value: unknown, fallback: T): T {
@@ -58,6 +59,14 @@ function text(value: unknown, fallback = '') {
 
 function integer(value: unknown, fallback = 0) {
   return Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : fallback
+}
+
+function sameBinary(left: Uint8Array, right: Uint8Array) {
+  if (left.byteLength !== right.byteLength) return false
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false
+  }
+  return true
 }
 
 function stringArray(value: unknown) {
@@ -215,6 +224,13 @@ export class MisHistoriasStorage {
           PRIMARY KEY (scope, id)
         ) STRICT;
 
+        CREATE TABLE IF NOT EXISTS image_blobs (
+          scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          id TEXT NOT NULL,
+          data BLOB NOT NULL,
+          PRIMARY KEY (scope, id)
+        ) STRICT;
+
         CREATE TABLE IF NOT EXISTS images (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
           id TEXT NOT NULL,
@@ -224,9 +240,10 @@ export class MisHistoriasStorage {
           is_default INTEGER NOT NULL CHECK (is_default IN (0, 1)),
           mime_type TEXT NOT NULL,
           created_at INTEGER NOT NULL,
-          data BLOB NOT NULL,
+          blob_id TEXT NOT NULL,
           PRIMARY KEY (scope, id),
-          FOREIGN KEY (scope, character_id) REFERENCES characters(scope, id) ON DELETE CASCADE
+          FOREIGN KEY (scope, character_id) REFERENCES characters(scope, id) ON DELETE CASCADE,
+          FOREIGN KEY (scope, blob_id) REFERENCES image_blobs(scope, id)
         ) STRICT;
         CREATE INDEX IF NOT EXISTS images_by_character
           ON images(scope, character_id, created_at);
@@ -369,6 +386,75 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 4) {
+        const imageColumns = this.database.prepare('PRAGMA table_info(images)').all() as Array<{
+          name: string
+        }>
+        if (imageColumns.some((column) => column.name === 'data')) {
+          this.database.exec(`
+            INSERT INTO image_blobs(scope, id, data)
+            SELECT scope, id, data FROM images;
+
+            CREATE TABLE images_v4 (
+              scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+              id TEXT NOT NULL,
+              character_id TEXT NOT NULL,
+              tags_json TEXT NOT NULL,
+              description TEXT NOT NULL,
+              is_default INTEGER NOT NULL CHECK (is_default IN (0, 1)),
+              mime_type TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              blob_id TEXT NOT NULL,
+              PRIMARY KEY (scope, id),
+              FOREIGN KEY (scope, character_id) REFERENCES characters(scope, id) ON DELETE CASCADE,
+              FOREIGN KEY (scope, blob_id) REFERENCES image_blobs(scope, id)
+            ) STRICT;
+
+            INSERT INTO images_v4(
+              scope, id, character_id, tags_json, description, is_default,
+              mime_type, created_at, blob_id
+            )
+            SELECT
+              scope, id, character_id, tags_json, description, is_default,
+              mime_type, created_at, id
+            FROM images;
+
+            DROP TABLE images;
+            ALTER TABLE images_v4 RENAME TO images;
+            CREATE INDEX images_by_character ON images(scope, character_id, created_at);
+            CREATE UNIQUE INDEX images_one_default
+              ON images(scope, character_id) WHERE is_default = 1;
+          `)
+        }
+      }
+
+      this.database.exec(`
+        CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
+        AFTER DELETE ON images
+        BEGIN
+          DELETE FROM image_blobs
+          WHERE scope = OLD.scope
+            AND id = OLD.blob_id
+            AND NOT EXISTS (
+              SELECT 1 FROM images
+              WHERE scope = OLD.scope AND blob_id = OLD.blob_id
+            );
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_update
+        AFTER UPDATE OF blob_id ON images
+        WHEN OLD.blob_id <> NEW.blob_id
+        BEGIN
+          DELETE FROM image_blobs
+          WHERE scope = OLD.scope
+            AND id = OLD.blob_id
+            AND NOT EXISTS (
+              SELECT 1 FROM images
+              WHERE scope = OLD.scope AND blob_id = OLD.blob_id
+            );
+        END;
+      `)
+
       this.database.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
     })
   }
@@ -467,10 +553,78 @@ export class MisHistoriasStorage {
   }
 
   getBinary(resource: 'images' | 'backgrounds', scope: DataScope, id: string) {
-    const row = this.database
-      .prepare(`SELECT mime_type, data FROM ${resource} WHERE scope = ? AND id = ?`)
-      .get(scope, id) as { mime_type: string; data: Uint8Array } | undefined
+    const row = (resource === 'images'
+      ? this.database
+          .prepare(`
+            SELECT images.mime_type, image_blobs.data
+            FROM images
+            INNER JOIN image_blobs
+              ON image_blobs.scope = images.scope AND image_blobs.id = images.blob_id
+            WHERE images.scope = ? AND images.id = ?
+          `)
+          .get(scope, id)
+      : this.database
+          .prepare('SELECT mime_type, data FROM backgrounds WHERE scope = ? AND id = ?')
+          .get(scope, id)) as { mime_type: string; data: Uint8Array } | undefined
     return row ? { mimeType: row.mime_type, data: row.data } : null
+  }
+
+  copyCharacter(scope: DataScope, sourceId: string, rawValue: unknown) {
+    const source = this.get('characters', scope, sourceId)
+    if (!source) return null
+    const value = record(rawValue)
+    const characterId = randomUUID()
+    const now = Date.now()
+
+    return this.transaction(() => {
+      const character = this.put('characters', scope, characterId, {
+        id: characterId,
+        name: text(value.name),
+        prompt: text(value.prompt),
+        tags: tags(value.tags),
+        color: text(value.color),
+        createdAt: now,
+        updatedAt: now
+      })
+      const sourceImages = this.database
+        .prepare(`
+          SELECT tags_json, description, is_default, mime_type, created_at, blob_id
+          FROM images
+          WHERE scope = ? AND character_id = ?
+          ORDER BY created_at, id
+        `)
+        .all(scope, sourceId) as Array<{
+        tags_json: string
+        description: string
+        is_default: number
+        mime_type: string
+        created_at: number
+        blob_id: string
+      }>
+      const insertImage = this.database.prepare(`
+        INSERT INTO images(
+          scope, id, character_id, tags_json, description, is_default,
+          mime_type, created_at, blob_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      for (const image of sourceImages) {
+        insertImage.run(
+          scope,
+          randomUUID(),
+          characterId,
+          image.tags_json,
+          image.description,
+          image.is_default,
+          image.mime_type,
+          image.created_at,
+          image.blob_id
+        )
+      }
+      return {
+        character,
+        images: this.list('images', scope, { characterId })
+      }
+    })
   }
 
   put(
@@ -629,6 +783,25 @@ export class MisHistoriasStorage {
       return this.transaction(() => {
         const characterId = text(value.characterId)
         const isDefault = Boolean(value.isDefault)
+        const current = this.database
+          .prepare(`
+            SELECT images.blob_id, image_blobs.data
+            FROM images
+            INNER JOIN image_blobs
+              ON image_blobs.scope = images.scope AND image_blobs.id = images.blob_id
+            WHERE images.scope = ? AND images.id = ?
+          `)
+          .get(scope, id) as { blob_id: string; data: Uint8Array } | undefined
+        const blobId = current && sameBinary(current.data, payload.data)
+          ? current.blob_id
+          : current
+            ? randomUUID()
+            : id
+        if (!current || blobId !== current.blob_id) {
+          this.database
+            .prepare('INSERT INTO image_blobs(scope, id, data) VALUES (?, ?, ?)')
+            .run(scope, blobId, payload.data)
+        }
         if (isDefault) {
           this.database
             .prepare('UPDATE images SET is_default = 0 WHERE scope = ? AND character_id = ? AND id <> ?')
@@ -638,7 +811,7 @@ export class MisHistoriasStorage {
           .prepare(`
             INSERT INTO images(
               scope, id, character_id, tags_json, description, is_default,
-              mime_type, created_at, data
+              mime_type, created_at, blob_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               character_id = excluded.character_id,
@@ -647,7 +820,7 @@ export class MisHistoriasStorage {
               is_default = excluded.is_default,
               mime_type = excluded.mime_type,
               created_at = excluded.created_at,
-              data = excluded.data
+              blob_id = excluded.blob_id
           `)
           .run(
             scope,
@@ -658,7 +831,7 @@ export class MisHistoriasStorage {
             bool(isDefault),
             text(value.mimeType, 'application/octet-stream'),
             integer(value.createdAt),
-            payload.data
+            blobId
           )
         return this.get('images', scope, id)
       })
@@ -748,6 +921,7 @@ export class MisHistoriasStorage {
         'messages',
         'stories',
         'images',
+        'image_blobs',
         'characters',
         'backgrounds',
         'presets'
