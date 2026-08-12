@@ -53,7 +53,7 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
       {
         id: 'image-1',
         characterId: 'character-1',
-        tags: ['feliz'],
+        tags: ['feliz', 'armadura'],
         description: '',
         isDefault: true,
         mimeType: 'image/png',
@@ -72,4 +72,6 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
   assert.match(prompt, /Etiquetas descriptivas[^\n]*misteriosa/)
   assert.doesNotMatch(prompt, /Etiquetas descriptivas[^\n]*global/)
   assert.match(prompt, /\[feliz\]/)
+  assert.match(prompt, /\[feliz\]\[armadura\]/)
+  assert.doesNotMatch(prompt, /\[feliz\] \/ \[armadura\]/)
 })

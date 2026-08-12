@@ -12,7 +12,7 @@
     "lint:fix": "eslint . --fix",
     "start": "node .output/start-server.mjs",
     "serve": "pnpm build && pnpm start",
-    "test:storage": "node --test server/utils/storage.test.ts server/utils/llm.test.ts server/utils/promptBuilder.test.ts",
+    "test:storage": "node --test server/utils/storage.test.ts server/utils/llm.test.ts server/utils/promptBuilder.test.ts server/utils/streamParser.test.ts app/lib/imageSelection.test.ts",
     "postinstall": "nuxt prepare"
   },
   "engines": {

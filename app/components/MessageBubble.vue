@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { LlmDebugTrace, Message } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
-import { hasTag, primaryTag } from '~/lib/tags'
+import { primaryTag } from '~/lib/tags'
 
 const props = defineProps<{
   message: Message
@@ -101,7 +101,8 @@ const rows = computed<FlowRow[]>(() => {
       }
     }
 
-    const image = characters.resolveImage(segment.characterId, segment.tag, segment.imageId)
+    const requestedTags = segment.tags?.length ? segment.tags : segment.tag ? [segment.tag] : []
+    const image = characters.resolveImage(segment.characterId, requestedTags, segment.imageId)
     const isNewImage = Boolean(image) && image!.id !== lastImageId
     if (image) lastImageId = image.id
 
@@ -112,8 +113,8 @@ const rows = computed<FlowRow[]>(() => {
       text: segment.text,
       name: characters.byId(segment.characterId)?.name ?? 'Personaje',
       color: characters.colorOf(segment.characterId),
-      tag: primaryTag(image) ?? segment.tag,
-      inlineTag: image && segment.tag && hasTag(image, segment.tag) ? null : segment.tag,
+      tag: primaryTag(image) ?? requestedTags[0] ?? null,
+      inlineTag: image ? null : requestedTags.join('][') || null,
       imageUrl: isNewImage ? characters.urlFor(image!.id) : null,
       characterId: segment.characterId
     }

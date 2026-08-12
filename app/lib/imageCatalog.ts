@@ -61,7 +61,7 @@ export function compareStoryImageCatalogs(
 }
 
 function catalogLabel(entry: StoryImageCatalogEntry) {
-  const tags = entry.tags.length ? entry.tags.map((tag) => `[${tag}]`).join(' / ') : '[sin etiqueta]'
+  const tags = entry.tags.length ? entry.tags.map((tag) => `[${tag}]`).join('') : '[sin etiqueta]'
   return `${entry.characterName} ${tags}`
 }
 

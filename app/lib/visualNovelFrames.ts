@@ -3,6 +3,7 @@ import type { Message, MessageSegment } from '#shared/types'
 export interface VisualNovelCharacterState {
   characterId: string
   tag: string | null
+  tags?: string[]
   imageId: string | null
 }
 
@@ -81,6 +82,7 @@ export function buildVisualNovelFrames(
         characterState = {
           characterId: segment.characterId,
           tag: segment.tag,
+          tags: segment.tags?.length ? [...segment.tags] : segment.tag ? [segment.tag] : [],
           imageId: segment.imageId ?? null
         }
       } else if (segment.type === 'dialogue') {

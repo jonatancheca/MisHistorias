@@ -46,11 +46,11 @@ function shuffle<T>(items: T[]): T[] {
   return copy
 }
 
-function tagsOf(characterId: string, images: StoredImage[]) {
+function tagGroupsOf(characterId: string, images: StoredImage[]) {
   const own = images
     .filter((image) => image.characterId === characterId)
-    .flatMap((image) => image.tags)
-  return own.length ? own : ['neutral']
+    .map((image) => image.tags)
+  return own.length ? own : [['neutral']]
 }
 
 /**
@@ -76,9 +76,10 @@ export function buildMockResponse(
 
   const speakers = shuffle(characters).slice(0, randomInt(1, Math.min(3, characters.length || 1)))
   for (const speaker of speakers) {
-    const tags = tagsOf(speaker.id, images)
+    const tagGroups = tagGroupsOf(speaker.id, images)
     for (let turn = 0; turn < randomInt(1, 3); turn += 1) {
-      lines.push(`${speaker.name} [${pick(tags)}]: ${pick(DIALOGUE_LINES)}`)
+      const tags = pick(tagGroups)
+      lines.push(`${speaker.name} ${tags.map((tag) => `[${tag}]`).join('')}: ${pick(DIALOGUE_LINES)}`)
     }
   }
 

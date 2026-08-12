@@ -14,12 +14,16 @@ export interface ChatMessage {
   content: string
 }
 
+function formatImageTags(tags: string[]) {
+  return tags.map((tag) => `[${tag}]`).join('')
+}
+
 function formatReminder(generationMode: GenerationMode, userName: string) {
   const protagonistFormat =
     generationMode === 'auto'
       ? ` El protagonista es la única excepción al catálogo: escribe su diálogo como \`${userName}: texto\`, sin etiqueta visual.`
       : ''
-  return `Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa \`Nombre [etiqueta]: texto\` para diálogo, \`Fondo [etiqueta]:\` solo cuando cambie el fondo y una línea sin prefijo para narración. Usa solo personajes, fondos y etiquetas visuales listados.${protagonistFormat} La etiqueta visual representa el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje la última etiqueta usada mientras su aspecto no cambie; no vuelvas a \`[neutral]\` por defecto en intervenciones posteriores. Usa otra etiqueta solo cuando la historia cambie realmente su aspecto o ropa.`
+  return `Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa \`Nombre [etiqueta][otra etiqueta]: texto\` para diálogo, con cada etiqueta visual en sus propios corchetes, y \`Fondo [etiqueta]:\` solo cuando cambie el fondo. Las etiquetas combinadas deben pertenecer a la misma imagen del personaje. Usa una línea sin prefijo para narración y solo personajes, fondos y etiquetas visuales listados.${protagonistFormat} Las etiquetas visuales representan el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje las últimas etiquetas usadas mientras su aspecto no cambie; no vuelvas a \`[neutral]\` por defecto en intervenciones posteriores. Usa otras etiquetas solo cuando la historia cambie realmente su aspecto o ropa.`
 }
 
 function continuationInstruction(generationMode: GenerationMode, userName: string) {
@@ -43,7 +47,7 @@ function characterSheet(
     ? own
         .map(
           (image) =>
-            `  - ${image.tags.map((tag) => `[${tag}]`).join(' / ')}${image.isDefault ? ' (por defecto)' : ''}: ${image.description || 'sin descripción'}`
+            `  - ${formatImageTags(image.tags)}${image.isDefault ? ' (por defecto)' : ''}: ${image.description || 'sin descripción'}`
         )
         .join('\n')
     : '  - (sin imágenes; usa [neutral])'

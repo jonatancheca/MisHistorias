@@ -20,7 +20,7 @@ const messages: Message[] = [
     segments: [
       { type: 'background', characterId: null, backgroundId: 'forest', tag: 'bosque', text: '' },
       { type: 'narration', characterId: null, tag: null, text: 'Las ramas crujen.' },
-      { type: 'dialogue', characterId: 'alicia', tag: 'feliz', imageId: 'alicia-feliz', text: 'Hola.' },
+      { type: 'dialogue', characterId: 'alicia', tag: 'feliz', tags: ['feliz', 'sonrisa'], imageId: 'alicia-feliz', text: 'Hola.' },
       { type: 'narration', characterId: null, tag: null, text: 'Se oye un ruido.' },
       { type: 'dialogue', characterId: 'bruno', tag: 'serio', imageId: 'bruno-serio', text: 'Cuidado.' },
       { type: 'protagonist-dialogue', characterId: null, tag: null, text: 'Te sigo.' }
@@ -67,6 +67,7 @@ describe('pasos de novela visual', () => {
 
     assert.equal(frames[1]?.characterState, null)
     assert.equal(frames[2]?.characterState?.characterId, 'alicia')
+    assert.deepEqual(frames[2]?.characterState?.tags, ['feliz', 'sonrisa'])
     assert.equal(frames[3]?.characterState?.characterId, 'alicia')
     assert.equal(frames[4]?.characterState?.characterId, 'bruno')
     assert.equal(frames[5]?.characterState?.characterId, 'bruno')

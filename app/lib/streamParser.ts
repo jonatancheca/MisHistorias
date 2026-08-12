@@ -1,12 +1,19 @@
 import type { Background, Character, CharacterImage, MessageSegment } from '#shared/types'
 import { tagKey } from '~/lib/tags'
-import { selectCharacterImage } from '~/lib/imageSelection'
+import { normalizeRequestedImageTags, selectCharacterImage } from '~/lib/imageSelection'
 
-const LINE_RE = /^\s*([^:[\]\n]{1,60}?)\s*(?:\[([^\]\n]{1,40})\])?\s*:\s*([\s\S]*)$/
+const LINE_RE = /^\s*([^:[\]\n]{1,60}?)\s*((?:\s*\[[^\]\n]{1,40}\])*)\s*:\s*([\s\S]*)$/
 const BACKGROUND_RE = /^\s*Fondo\s*\[([^\]\n]{1,80})\]\s*:\s*([\s\S]*)$/i
+const DIALOGUE_TAG_RE = /\[([^\]\n]{1,40})\]/g
 
 function normalize(value: string) {
   return tagKey(value)
+}
+
+export function parseDialogueTags(value: string) {
+  return normalizeRequestedImageTags(
+    Array.from(value.matchAll(DIALOGUE_TAG_RE), (match) => match[1] ?? '')
+  )
 }
 
 /**
@@ -50,18 +57,19 @@ export function parseSegments(
 
     const match = LINE_RE.exec(trimmed)
     if (match) {
-      const [, rawName, rawTag, rest] = match
+      const [, rawName, rawTagBlock, rest] = match
       const character = byName.get(normalize(rawName ?? ''))
       if (character) {
-        const tag = rawTag?.trim() ? rawTag.trim() : null
+        const tags = parseDialogueTags(rawTagBlock ?? '')
         segments.push({
           type: 'dialogue',
           characterId: character.id,
-          tag,
+          tag: tags[0] ?? null,
+          tags: tags.length ? tags : undefined,
           imageId: selectCharacterImage(
             images,
             character.id,
-            tag,
+            tags,
             `${selectionSeed}:${segments.length}`
           )?.id ?? null,
           text: (rest ?? '').trim()
@@ -106,7 +114,11 @@ export function serializeSegments(
       }
       if (segment.type !== 'dialogue' || !segment.characterId) return segment.text
       const name = byId.get(segment.characterId)?.name ?? 'Personaje'
-      return segment.tag ? `${name} [${segment.tag}]: ${segment.text}` : `${name}: ${segment.text}`
+      const tags = normalizeRequestedImageTags(
+        segment.tags?.length ? segment.tags : segment.tag
+      )
+      const tagBlock = tags.map((tag) => `[${tag}]`).join('')
+      return tagBlock ? `${name} ${tagBlock}: ${segment.text}` : `${name}: ${segment.text}`
     })
     .join('\n')
 }

@@ -5,6 +5,7 @@ const props = defineProps<{
   characterIds: string[]
   activeCharacterId: string | null
   activeTag: string | null
+  activeTags?: string[]
   activeImageId: string | null
   backgroundId: string | null
   backgroundTag: string | null
@@ -21,16 +22,20 @@ const cast = computed(() =>
 )
 
 function imageUrl(characterId: string) {
-  const tag = characterId === props.activeCharacterId ? props.activeTag : null
+  const tags = characterId === props.activeCharacterId
+    ? props.activeTags?.length ? props.activeTags : props.activeTag
+    : null
   const imageId = characterId === props.activeCharacterId ? props.activeImageId : null
-  const image = characters.resolveImage(characterId, tag, imageId)
+  const image = characters.resolveImage(characterId, tags, imageId)
   return characters.urlFor(image?.id)
 }
 
 function currentTag(characterId: string) {
-  const tag = characterId === props.activeCharacterId ? props.activeTag : null
+  const tags = characterId === props.activeCharacterId
+    ? props.activeTags?.length ? props.activeTags : props.activeTag
+    : null
   const imageId = characterId === props.activeCharacterId ? props.activeImageId : null
-  return primaryTag(characters.resolveImage(characterId, tag, imageId))
+  return primaryTag(characters.resolveImage(characterId, tags, imageId))
 }
 
 function galleryItems(characterId: string) {

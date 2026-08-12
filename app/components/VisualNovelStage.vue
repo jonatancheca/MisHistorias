@@ -4,6 +4,7 @@ import { primaryTag } from '~/lib/tags'
 interface CharacterVisualState {
   characterId: string
   tag: string | null
+  tags?: string[]
   imageId: string | null
 }
 
@@ -27,7 +28,7 @@ const cast = computed(() =>
     const state = stateByCharacter.value.get(characterId)
     const image = characters.resolveImage(
       characterId,
-      state?.tag ?? null,
+      state?.tags?.length ? state.tags : state?.tag ?? null,
       state?.imageId ?? null
     )
     return [

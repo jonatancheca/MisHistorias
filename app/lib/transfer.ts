@@ -27,7 +27,7 @@ import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
 
-const EXPORT_VERSION = 9
+const EXPORT_VERSION = 10
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -159,7 +159,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -312,6 +312,10 @@ export async function importBundle(raw: string) {
             : 'normal',
         segments: (message.segments ?? []).map((segment) => ({
           ...segment,
+          tags:
+            segment.type === 'dialogue'
+              ? sanitizeTags(segment.tags, segment.tag)
+              : undefined,
           tag:
             segment.type === 'background' && segment.backgroundId
               ? (backgroundTagMap.get(String(segment.backgroundId)) ?? segment.tag)
