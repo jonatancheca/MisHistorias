@@ -3,6 +3,7 @@
 - Sé muy escueto.
 - Usa siempre la skill `/caveman`.
 - Pregunta las dudas antes de empezar.
+- Cuando pida hacer una issue, haz commit, push y ciérrala al terminar.
 
 ## Datos de prueba
 

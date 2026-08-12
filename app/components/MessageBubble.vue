@@ -36,7 +36,6 @@ interface FlowRow {
   name: string
   color: string
   tag: string | null
-  inlineTag: string | null
   imageUrl: string | null
   characterId: string | null
   soundUrl: string | null
@@ -71,7 +70,6 @@ const rows = computed<FlowRow[]>(() => {
         name: 'Fondo',
         color: '',
         tag: primaryTag(background) ?? segment.tag,
-        inlineTag: null,
         imageUrl: backgrounds.urlFor(background?.id),
         characterId: null,
         soundUrl: null
@@ -106,7 +104,6 @@ const rows = computed<FlowRow[]>(() => {
         name: userName.value,
         color: userColor.value,
         tag: null,
-        inlineTag: null,
         imageUrl: null,
         characterId: null,
         soundUrl: null
@@ -122,7 +119,6 @@ const rows = computed<FlowRow[]>(() => {
         name: '',
         color: '',
         tag: null,
-        inlineTag: null,
         imageUrl: null,
         characterId: null,
         soundUrl: null
@@ -143,7 +139,6 @@ const rows = computed<FlowRow[]>(() => {
       name: characters.byId(segment.characterId)?.name ?? 'Personaje',
       color: characters.colorOf(segment.characterId),
       tag: primaryTag(image) ?? requestedTags[0] ?? null,
-      inlineTag: image ? null : requestedTags.join('][') || null,
       imageUrl: isNewImage ? characters.urlFor(image!.id) : null,
       characterId: segment.characterId,
       soundUrl: null
@@ -291,7 +286,6 @@ function confirmEdit() {
             <template v-else>
               <p class="text-[15px] leading-relaxed">
                 <span class="font-semibold" :style="{ color: row.color }">{{ row.name }}</span>
-                <span v-if="row.inlineTag" class="text-xs text-[var(--color-fg-muted)]"> [{{ row.inlineTag }}]</span>
                 <span class="font-semibold" :style="{ color: row.color }">:</span>
                 <span class="ml-1 whitespace-pre-wrap" :style="{ color: row.color }">{{ row.text }}</span>
               </p>
