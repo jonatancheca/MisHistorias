@@ -169,3 +169,34 @@ test('añade apertura, actualización de catálogo y reglas distintas para Sigue
   assert.ok(automatic.some((message) => /Puedes inventar acciones/.test(message.content)))
   assert.match(automatic[0]?.content ?? '', /Puedes hablar y decidir por el protagonista/)
 })
+
+test('convierte mensajes IA en instrucciones ocultas del historial', () => {
+  const history = buildHistory(
+    [
+      {
+        id: 'instruction-1',
+        storyId: 'story-1',
+        role: 'user',
+        raw: 'IA: Haz que todos hablen en susurros.',
+        segments: [],
+        createdAt: 1
+      },
+      {
+        id: 'user-1',
+        storyId: 'story-1',
+        role: 'user',
+        raw: 'Entra en la sala.',
+        segments: [],
+        createdAt: 2
+      }
+    ],
+    [],
+    1000,
+    'Usuario'
+  )
+
+  assert.deepEqual(history, [
+    { role: 'system', content: 'Instrucción del usuario para la IA:\nHaz que todos hablen en susurros.' },
+    { role: 'user', content: 'Usuario: Entra en la sala.' }
+  ])
+})

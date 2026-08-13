@@ -13,6 +13,7 @@ FORMATO DE SALIDA (obligatorio):
 - Si combinas etiquetas, deben pertenecer todas a la misma imagen del personaje.
 - Elige la imagen cuya descripción encaje mejor con el tono de lo que dice el personaje en ese momento.
 - Devuelve directamente la historia. No muestres análisis, razonamiento, deliberaciones ni explicaciones de tu respuesta.
+- Los mensajes del usuario que empiecen por \`IA: \` son instrucciones para cambiar tu comportamiento o lo que has de hacer; no forman parte del chat y debes aplicar solo el texto posterior al prefijo.
 - No escribas texto fuera de este formato: nada de encabezados, listas, markdown ni comentarios sobre las reglas.
 
 Ejemplo:

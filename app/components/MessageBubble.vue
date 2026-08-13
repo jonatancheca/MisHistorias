@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { LlmDebugTrace, Message } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
+import { isAiInstruction } from '~/lib/chatInstructions'
 import { primaryTag } from '~/lib/tags'
 
 const props = defineProps<{
@@ -158,7 +159,7 @@ function confirmEdit() {
 </script>
 
 <template>
-  <div class="group flex min-w-0 items-start gap-2">
+  <div v-if="!isAiInstruction(message.raw)" class="group flex min-w-0 items-start gap-2">
     <div
       v-if="!editing && (editable || debugTrace)"
       class="flex w-8 shrink-0 flex-col gap-1 text-[var(--color-fg-muted)] opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"

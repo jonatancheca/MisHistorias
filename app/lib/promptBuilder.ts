@@ -7,6 +7,7 @@ import type {
   StoryCharacterCustomization
 } from '#shared/types'
 import type { StoredBackground, StoredImage } from '~/lib/db'
+import { extractAiInstruction, isAiInstruction } from '~/lib/chatInstructions'
 import { serializeSegments } from '~/lib/streamParser'
 import { primaryTag } from '~/lib/tags'
 
@@ -138,6 +139,7 @@ export function buildSystemPrompt(options: {
     '',
     '## EL PROTAGONISTA',
     `El protagonista se llama "${userName}". Sus mensajes llegan con el prefijo \`${userName}:\`.`,
+    'Los mensajes del usuario que empiecen por `IA: ` son instrucciones para cambiar tu comportamiento o lo que debes hacer. No forman parte del chat ni de las acciones del protagonista; aplica únicamente el texto posterior al prefijo y no lo muestres ni lo menciones.',
     protagonistPreferences.trim()
       ? `Preferencias del protagonista:\n${protagonistPreferences.trim()}`
       : 'Preferencias del protagonista: (sin preferencias adicionales)',
@@ -172,15 +174,20 @@ export function buildHistory(
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!
-    const content =
-      message.role === 'assistant'
+    const isInstruction = message.role === 'user' && isAiInstruction(message.raw)
+    const instruction = isInstruction ? extractAiInstruction(message.raw) : null
+    if (isInstruction && !instruction) continue
+
+    const content = isInstruction
+      ? `Instrucción del usuario para la IA:\n${instruction}`
+      : message.role === 'assistant'
         ? message.segments.length
           ? serializeSegments(message.segments, characters, userName)
           : message.raw
         : `${userName}: ${message.raw}`
     if (!content.trim()) continue
     if (used + content.length > budget && history.length > 0) break
-    history.unshift({ role: message.role, content })
+    history.unshift({ role: isInstruction ? 'system' : message.role, content })
     used += content.length
   }
 
