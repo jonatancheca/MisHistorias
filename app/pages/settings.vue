@@ -2,6 +2,11 @@
 import type { AppSettings, DatabaseBackup } from '#shared/types'
 import { fetchLlmModels } from '~/lib/llm'
 import {
+  getChromeLlmAvailability,
+  prepareChromeLlm,
+  type ChromeLlmAvailability
+} from '~/lib/chromeLlm'
+import {
   createDatabaseBackup,
   listDatabaseBackups,
   readApiKey,
@@ -40,6 +45,11 @@ const saveError = ref<string | null>(null)
 const apiKeyVisible = ref(false)
 const apiKeyLoading = ref(false)
 const apiKeyError = ref<string | null>(null)
+const chromeLlmEnabled = ref(settings.activeUseChromeLlm)
+const chromeLlmAvailability = ref<ChromeLlmAvailability | 'checking' | 'error'>('checking')
+const chromeLlmPreparing = ref(false)
+const chromeLlmProgress = ref<number | null>(null)
+const chromeLlmError = ref<string | null>(null)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let savedTimer: ReturnType<typeof setTimeout> | null = null
 let savePending = false
@@ -229,6 +239,62 @@ async function doExport() {
   downloadBundle(await exportBundle())
 }
 
+async function refreshChromeLlmAvailability() {
+  chromeLlmAvailability.value = 'checking'
+  chromeLlmError.value = null
+  try {
+    chromeLlmAvailability.value = await getChromeLlmAvailability()
+  } catch (caught) {
+    chromeLlmAvailability.value = 'error'
+    chromeLlmError.value = (caught as Error).message || 'No se pudo comprobar la IA local de Chrome.'
+  }
+}
+
+async function setChromeLlmEnabled(enabled: boolean) {
+  if (chromeLlmPreparing.value) return
+  chromeLlmError.value = null
+  chromeLlmEnabled.value = enabled
+
+  const patch = privacy.isPrivate
+    ? { privateUseChromeLlm: enabled }
+    : { useChromeLlm: enabled }
+
+  if (!enabled) {
+    try {
+      await settings.save(patch)
+      chromeLlmEnabled.value = false
+    } catch (caught) {
+      chromeLlmEnabled.value = settings.activeUseChromeLlm
+      chromeLlmError.value = (caught as Error).message || 'No se pudo guardar el ajuste.'
+    }
+    return
+  }
+
+  chromeLlmPreparing.value = true
+  chromeLlmProgress.value = null
+  try {
+    const availability = await getChromeLlmAvailability()
+    chromeLlmAvailability.value = availability
+    if (availability === 'unavailable') {
+      throw new Error('La IA local de Chrome no está disponible en este navegador o equipo.')
+    }
+    await prepareChromeLlm({
+      onDownloadProgress(percent) {
+        chromeLlmProgress.value = percent
+        chromeLlmAvailability.value = percent >= 100 ? 'available' : 'downloading'
+      }
+    })
+    await settings.save(patch)
+    chromeLlmEnabled.value = true
+    chromeLlmAvailability.value = 'available'
+  } catch (caught) {
+    chromeLlmEnabled.value = settings.activeUseChromeLlm
+    chromeLlmError.value = (caught as Error).message || 'No se pudo preparar la IA local de Chrome.'
+  } finally {
+    chromeLlmPreparing.value = false
+  }
+}
+
 function backupErrorMessage(caught: unknown, fallback: string) {
   const detail = caught as {
     data?: { statusMessage?: string }
@@ -359,6 +425,7 @@ onBeforeUnmount(() => {
 })
 
 onMounted(() => {
+  void refreshChromeLlmAvailability()
   const message = sessionStorage.getItem('mishistorias-backup-message')
   if (!message) return
   sessionStorage.removeItem('mishistorias-backup-message')
@@ -438,6 +505,48 @@ onBeforeRouteLeave(async () => {
           </span>
         </label>
       </div>
+
+      <div class="card">
+        <label class="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            autocomplete="off"
+            class="mt-1 h-4 w-4 accent-[var(--color-brand-500)]"
+            :checked="chromeLlmEnabled"
+            :disabled="chromeLlmPreparing"
+            @change="setChromeLlmEnabled(($event.target as HTMLInputElement).checked)"
+          >
+          <span class="min-w-0">
+            <span class="block text-sm font-semibold">Usar IA local de Chrome</span>
+            <span class="block text-xs text-[var(--color-fg-muted)]">
+              <template v-if="privacy.isPrivate">
+                Ajuste exclusivo del modo privado. Hereda el valor normal hasta cambiarlo.
+              </template>
+              <template v-else>
+                Usa la Prompt API y Gemini Nano dentro del navegador. No envía la historia a LMStudio.
+              </template>
+            </span>
+            <span class="mt-1 block text-xs" aria-live="polite">
+              <template v-if="chromeLlmPreparing">
+                Preparando modelo<span v-if="chromeLlmProgress !== null">: {{ chromeLlmProgress }}%</span>…
+              </template>
+              <template v-else-if="chromeLlmAvailability === 'checking'">Comprobando compatibilidad…</template>
+              <template v-else-if="chromeLlmAvailability === 'available'">Modelo local preparado.</template>
+              <template v-else-if="chromeLlmAvailability === 'downloadable'">Compatible; falta descargar el modelo.</template>
+              <template v-else-if="chromeLlmAvailability === 'downloading'">Descarga del modelo en curso.</template>
+              <template v-else-if="chromeLlmAvailability === 'unavailable'">No disponible en este navegador o equipo.</template>
+            </span>
+            <span v-if="chromeLlmError" class="mt-1 block text-xs text-red-500" role="alert">
+              {{ chromeLlmError }}
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <p v-if="chromeLlmEnabled" class="text-xs text-[var(--color-fg-muted)]">
+        URL, token, modelo, temperatura y máximo de tokens solo se aplican a LMStudio y quedan
+        guardados para cuando desactives Chrome.
+      </p>
 
       <div>
         <label class="label" for="baseUrl">URL del servidor (LMStudio)</label>

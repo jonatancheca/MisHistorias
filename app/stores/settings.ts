@@ -7,6 +7,8 @@ const DEFAULTS: AppSettings = {
   baseUrl: 'http://localhost:1234',
   apiKey: '',
   apiKeyConfigured: false,
+  useChromeLlm: false,
+  privateUseChromeLlm: null,
   model: '',
   temperature: 0.8,
   maxTokens: 10000,
@@ -32,6 +34,11 @@ export const useSettingsStore = defineStore('settings', () => {
     activeDataScope.value === 'private'
       ? settings.value.privateActivePresetId
       : settings.value.activePresetId
+  )
+  const activeUseChromeLlm = computed(() =>
+    activeDataScope.value === 'private'
+      ? (settings.value.privateUseChromeLlm ?? settings.value.useChromeLlm)
+      : settings.value.useChromeLlm
   )
   const activeUserName = computed(() => {
     const value =
@@ -99,6 +106,7 @@ export const useSettingsStore = defineStore('settings', () => {
   return {
     settings,
     activePresetId,
+    activeUseChromeLlm,
     activeUserName,
     activeProtagonistPreferences,
     loaded,

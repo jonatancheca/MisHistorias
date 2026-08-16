@@ -125,6 +125,8 @@ export interface Message {
 }
 
 export interface LlmDebugRequest {
+  /** Proveedor usado para generar la respuesta; ausente en trazas antiguas. */
+  provider?: 'lmstudio' | 'chrome'
   model: string
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   temperature: number
@@ -168,6 +170,10 @@ export interface AppSettings {
   apiKey: string
   /** El servidor tiene un token guardado; nunca devuelve su valor. */
   apiKeyConfigured: boolean
+  /** Usa la Prompt API local del navegador en la coleccion normal. */
+  useChromeLlm: boolean
+  /** Override privado; null hereda useChromeLlm. */
+  privateUseChromeLlm: boolean | null
   model: string
   temperature: number
   maxTokens: number

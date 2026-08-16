@@ -33,6 +33,7 @@
     "@nuxt/eslint": "^1.16.0",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
+    "@types/dom-chromium-ai": "^0.0.17",
     "eslint": "^10.8.0",
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3",

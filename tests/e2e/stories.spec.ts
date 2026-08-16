@@ -1,4 +1,4 @@
-import type { Message, Story } from '../../shared/types'
+import type { LlmDebugTrace, Message, Story } from '../../shared/types'
 import { expect, test, type TestDataFactory } from './fixtures'
 
 async function createStoryFixture(data: TestDataFactory, visualMode = false) {
@@ -109,6 +109,69 @@ test.describe('historias', () => {
 })
 
 test.describe('chat', () => {
+  test('usa Chrome AI sin modelo LMStudio ni fallback', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data)
+    const localResponse = 'Narración: respuesta local de Chrome.'
+    await data.patchSettings({
+      mockMode: false,
+      model: '',
+      responseSpeed: 'instant',
+      useChromeLlm: true,
+      privateUseChromeLlm: null
+    })
+    await page.addInitScript((response) => {
+      type PromptMessage = { role: string; content: string }
+      type ChromeWindow = Window & { __chromePromptRoles?: string[] }
+
+      class FakeLanguageModel {
+        static async availability() {
+          return 'available'
+        }
+
+        static async create() {
+          return new FakeLanguageModel()
+        }
+
+        async prompt(messages: PromptMessage[]) {
+          ;(window as ChromeWindow).__chromePromptRoles = messages.map((message) => message.role)
+          return response
+        }
+
+        destroy() {}
+      }
+
+      Object.defineProperty(globalThis, 'LanguageModel', {
+        configurable: true,
+        value: FakeLanguageModel
+      })
+    }, localResponse)
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Continúa con Chrome.')
+    await page.getByRole('button', { name: 'Enviar' }).click()
+
+    await expect.poll(async () => {
+      const messages = await data.list<Message>('messages', 'normal', { storyId: story.id })
+      return messages.find((message) => message.role === 'assistant')?.raw
+    }).toBe(localResponse)
+
+    const roles = await page.evaluate(() =>
+      (window as Window & { __chromePromptRoles?: string[] }).__chromePromptRoles
+    )
+    expect(roles?.[0]).toBe('system')
+    expect(roles?.slice(1)).not.toContain('system')
+
+    const traces = await data.list<LlmDebugTrace>('llmDebugTraces', 'normal', {
+      storyId: story.id
+    })
+    expect(traces.at(-1)?.request).toMatchObject({
+      provider: 'chrome',
+      model: 'chrome-prompt-api'
+    })
+
+    await data.patchSettings({ useChromeLlm: false, privateUseChromeLlm: null })
+  })
+
   test('envía, edita, reenvía, regenera y borra mensajes', async ({ page, data }) => {
     const { story } = await createStoryFixture(data)
     await data.patchSettings({ mockMode: true, responseSpeed: 'instant', userName: 'Vera' })

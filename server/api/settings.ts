@@ -3,6 +3,8 @@ import { getStorage } from '../utils/storage'
 const ALLOWED_SETTINGS = new Set([
   'baseUrl',
   'apiKey',
+  'useChromeLlm',
+  'privateUseChromeLlm',
   'model',
   'temperature',
   'maxTokens',
@@ -28,6 +30,10 @@ function validSetting(key: string, value: unknown) {
       return typeof value === 'string' && value.length <= 2048
     case 'apiKey':
       return typeof value === 'string' && value.length <= 4096
+    case 'useChromeLlm':
+      return typeof value === 'boolean'
+    case 'privateUseChromeLlm':
+      return value === null || typeof value === 'boolean'
     case 'model':
       return typeof value === 'string' && value.length <= 500
     case 'temperature':
@@ -67,6 +73,8 @@ function validSetting(key: string, value: unknown) {
 function publicSettings(row: ReturnType<ReturnType<typeof getStorage>['readSettings']>) {
   if (!row) return null
   return {
+    useChromeLlm: false,
+    privateUseChromeLlm: null,
     ...row.value,
     apiKey: '',
     apiKeyConfigured: Boolean(row.apiKey)

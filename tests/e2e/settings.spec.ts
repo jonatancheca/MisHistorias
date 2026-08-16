@@ -24,6 +24,93 @@ test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) =>
   await expect(page.locator('html')).toHaveClass(/dark/)
 })
 
+test('prepara Chrome AI y guarda override privado', async ({ page, data }) => {
+  await data.patchSettings({ useChromeLlm: false, privateUseChromeLlm: null })
+  await page.addInitScript(() => {
+    type Monitor = {
+      addEventListener: (type: string, listener: (event: { loaded: number }) => void) => void
+    }
+    type CreateOptions = { monitor?: (monitor: Monitor) => void }
+
+    class FakeLanguageModel {
+      static async availability() {
+        return 'downloadable'
+      }
+
+      static async create(options?: CreateOptions) {
+        options?.monitor?.({
+          addEventListener(_type, listener) {
+            listener({ loaded: 0.5 })
+            listener({ loaded: 1 })
+          }
+        })
+        return new FakeLanguageModel()
+      }
+
+      destroy() {}
+    }
+
+    Object.defineProperty(globalThis, 'LanguageModel', {
+      configurable: true,
+      value: FakeLanguageModel
+    })
+  })
+
+  await page.goto('/settings')
+  const checkbox = page.getByRole('checkbox', { name: /Usar IA local de Chrome/ })
+  await checkbox.click()
+  await expect(page.getByText('Modelo local preparado.', { exact: true })).toBeVisible()
+  await expect.poll(async () => {
+    const response = await page.request.get('/api/settings')
+    return ((await response.json()) as AppSettings).useChromeLlm
+  }).toBe(true)
+
+  const privateTrigger = page.getByRole('button', { name: 'Activar modo privado' })
+  await privateTrigger.click()
+  await privateTrigger.click()
+  await privateTrigger.click()
+  await expect(page).toHaveURL('/')
+  await page.getByRole('link', { name: 'Ajustes' }).click()
+
+  const privateCheckbox = page.getByRole('checkbox', { name: /Usar IA local de Chrome/ })
+  await expect(privateCheckbox).toBeChecked()
+  await privateCheckbox.uncheck()
+  await expect.poll(async () => {
+    const response = await page.request.get('/api/settings')
+    return ((await response.json()) as AppSettings).privateUseChromeLlm
+  }).toBe(false)
+
+  const invalid = await page.request.patch('/api/settings', {
+    data: { useChromeLlm: 'sí' }
+  })
+  expect(invalid.status()).toBe(400)
+
+  await data.patchSettings({ useChromeLlm: false, privateUseChromeLlm: null })
+})
+
+test('no activa Chrome AI cuando navegador es incompatible', async ({ page, data }) => {
+  await data.patchSettings({ useChromeLlm: false, privateUseChromeLlm: null })
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis, 'LanguageModel', {
+      configurable: true,
+      value: {
+        async availability() {
+          return 'unavailable'
+        }
+      }
+    })
+  })
+
+  await page.goto('/settings')
+  const checkbox = page.getByRole('checkbox', { name: /Usar IA local de Chrome/ })
+  await checkbox.click()
+
+  await expect(page.getByRole('alert')).toContainText('no está disponible')
+  await expect(checkbox).not.toBeChecked()
+  const response = await page.request.get('/api/settings')
+  expect(((await response.json()) as AppSettings).useChromeLlm).toBe(false)
+})
+
 test('muestra, crea y restaura backups SQLite con confirmación', async ({ page, data }) => {
   const character = await data.createCharacter({ name: data.unique('Original-backup') })
   const response = await page.request.post('/api/backups')

@@ -29,6 +29,7 @@ import {
 import { buildChatMessages, resolveProtagonistPreferences } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
 import { fetchLlmChat, type LlmCallError } from '~/lib/llm'
+import { fetchChromeLlmChat } from '~/lib/chromeLlm'
 import { parseSegments } from '~/lib/streamParser'
 import { selectCharacterImage } from '~/lib/imageSelection'
 import { sanitizeTags } from '~/lib/tags'
@@ -480,7 +481,8 @@ export const useStoriesStore = defineStore('stories', () => {
 
     const settings = settingsStore.settings
     const mock = settings.mockMode
-    if (!mock && !settings.model) {
+    const useChromeLlm = settingsStore.activeUseChromeLlm
+    if (!mock && !useChromeLlm && !settings.model) {
       error.value = 'Configura primero el modelo en Ajustes.'
       return
     }
@@ -574,7 +576,8 @@ export const useStoriesStore = defineStore('stories', () => {
         })
 
         debugRequest = {
-          model: settings.model,
+          provider: useChromeLlm ? 'chrome' : 'lmstudio',
+          model: useChromeLlm ? 'chrome-prompt-api' : settings.model,
           messages: payload,
           temperature: settings.temperature,
           max_tokens: settings.maxTokens,
@@ -582,13 +585,18 @@ export const useStoriesStore = defineStore('stories', () => {
         }
 
         waitingForResponse.value = true
-        const result = await fetchLlmChat({
-          model: settings.model,
-          messages: payload,
-          temperature: settings.temperature,
-          maxTokens: settings.maxTokens,
-          signal: requestController.signal
-        })
+        const result = useChromeLlm
+          ? await fetchChromeLlmChat({
+              messages: payload,
+              signal: requestController.signal
+            })
+          : await fetchLlmChat({
+              model: settings.model,
+              messages: payload,
+              temperature: settings.temperature,
+              maxTokens: settings.maxTokens,
+              signal: requestController.signal
+            })
         raw = result.content
         finishReason = result.finishReason
         waitingForResponse.value = false

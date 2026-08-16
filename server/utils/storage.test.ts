@@ -96,6 +96,8 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
     storage.writeSettings({
       model: 'modelo',
       apiKey: 'secreto',
+      useChromeLlm: true,
+      privateUseChromeLlm: false,
       visualNovelManualAdvance: true
     })
     storage.close()
@@ -118,6 +120,8 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
         [{ characterId: 'private-1', prompt: 'Prompt privado', tags: ['privado'] }]
       )
       assert.equal(reopened.readSettings()?.value.model, 'modelo')
+      assert.equal(reopened.readSettings()?.value.useChromeLlm, true)
+      assert.equal(reopened.readSettings()?.value.privateUseChromeLlm, false)
       assert.equal(reopened.readSettings()?.value.visualNovelManualAdvance, true)
       assert.equal(reopened.readSettings()?.apiKey, 'secreto')
       assert.equal(
