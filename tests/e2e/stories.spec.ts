@@ -297,6 +297,63 @@ test.describe('novela visual y responsive', () => {
     expect((await settingsResponse.json()).visualNovelManualAdvance).toBe(true)
   })
 
+  test('muestra los dos últimos hablantes y los mantiene durante narración', async ({ page, data }) => {
+    const first = await data.createCharacter({ name: data.unique('Primero') })
+    const second = await data.createCharacter({ name: data.unique('Segundo') })
+    const third = await data.createCharacter({ name: data.unique('Tercero') })
+    const [firstImage, secondImage, thirdImage] = await Promise.all([
+      data.createImage(first, ['primero']),
+      data.createImage(second, ['segundo']),
+      data.createImage(third, ['tercero'])
+    ])
+    const story = await data.createStory({
+      characters: [first, second, third],
+      visualMode: true
+    })
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Primero. Segundo. Pausa. Tercero. Otra pausa.',
+      segments: [
+        {
+          type: 'dialogue',
+          characterId: first.id,
+          tag: 'primero',
+          imageId: firstImage.id,
+          text: 'Habla primero.'
+        },
+        {
+          type: 'dialogue',
+          characterId: second.id,
+          tag: 'segundo',
+          imageId: secondImage.id,
+          text: 'Habla segundo.'
+        },
+        { type: 'narration', characterId: null, tag: null, text: 'Pausa entre ambos.' },
+        {
+          type: 'dialogue',
+          characterId: third.id,
+          tag: 'tercero',
+          imageId: thirdImage.id,
+          text: 'Habla tercero.'
+        },
+        { type: 'narration', characterId: null, tag: null, text: 'Otra pausa.' }
+      ]
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    const cast = page.getByTestId('visual-novel-cast').locator('figure')
+    await expect(cast).toHaveCount(2)
+    await expect(cast.nth(0)).toHaveAttribute('data-character-id', second.id)
+    await expect(cast.nth(1)).toHaveAttribute('data-character-id', third.id)
+
+    await page.getByTestId('visual-novel-previous').click()
+    await page.getByTestId('visual-novel-previous').click()
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('Pausa entre ambos.')
+    await expect(cast.nth(0)).toHaveAttribute('data-character-id', first.id)
+    await expect(cast.nth(1)).toHaveAttribute('data-character-id', second.id)
+  })
+
   for (const width of [320, 390]) {
     test(`menú móvil y editor sin overflow a ${width}px`, async ({ page, data }) => {
       const { story } = await createStoryFixture(data)

@@ -377,20 +377,19 @@ const visualBackground = computed(() => ({
   tag: activeVisualFrame.value?.backgroundTag ?? primaryTag(initialBackground.value)
 }))
 const visualCharacterStates = computed(() =>
-  activeVisualFrame.value?.characterState ? [activeVisualFrame.value.characterState] : []
+  activeVisualFrame.value?.characterStates ?? []
 )
 const visualCharacterIds = computed(() =>
-  activeVisualFrame.value?.characterState
-    ? [activeVisualFrame.value.characterState.characterId]
-    : []
+  visualCharacterStates.value.map((state) => state.characterId)
 )
 const visualSpeaker = computed(() => {
   const frame = activeVisualFrame.value
   if (!frame || frame.kind === 'narration') return null
-  if (frame.kind === 'dialogue' && frame.characterState) {
+  const speakerState = frame.characterStates[frame.characterStates.length - 1]
+  if (frame.kind === 'dialogue' && speakerState) {
     return {
-      name: characters.byId(frame.characterState.characterId)?.name ?? 'Personaje',
-      color: characters.colorOf(frame.characterState.characterId)
+      name: characters.byId(speakerState.characterId)?.name ?? 'Personaje',
+      color: characters.colorOf(speakerState.characterId)
     }
   }
   return {

@@ -16,7 +16,7 @@ export interface VisualNovelFrame {
   text: string
   backgroundId: string | null
   backgroundTag: string | null
-  characterState: VisualNovelCharacterState | null
+  characterStates: VisualNovelCharacterState[]
 }
 
 interface BuildVisualNovelFramesOptions {
@@ -27,6 +27,13 @@ interface BuildVisualNovelFramesOptions {
 
 function hasBackgroundId(segment: MessageSegment) {
   return Object.prototype.hasOwnProperty.call(segment, 'backgroundId')
+}
+
+function cloneCharacterStates(states: VisualNovelCharacterState[]) {
+  return states.map((state) => ({
+    ...state,
+    tags: state.tags ? [...state.tags] : undefined
+  }))
 }
 
 export function resolveVisualNovelFrameIndex(
@@ -49,7 +56,7 @@ export function buildVisualNovelFrames(
   const frames: VisualNovelFrame[] = []
   let backgroundId = options.initialBackgroundId
   let backgroundTag = options.initialBackgroundTag
-  let characterState: VisualNovelCharacterState | null = null
+  let characterStates: VisualNovelCharacterState[] = []
 
   for (const message of messages) {
     if (message.role === 'user') {
@@ -63,7 +70,7 @@ export function buildVisualNovelFrames(
           text: message.raw,
           backgroundId,
           backgroundTag,
-          characterState: characterState ? { ...characterState } : null
+          characterStates: cloneCharacterStates(characterStates)
         })
       }
       continue
@@ -78,19 +85,25 @@ export function buildVisualNovelFrames(
         return
       }
       if (segment.type === 'sound') return
-      if (!segment.text.trim()) return
 
       let kind: VisualNovelFrame['kind'] = segment.type
       if (segment.type === 'dialogue' && segment.characterId) {
-        characterState = {
+        const characterState = {
           characterId: segment.characterId,
           tag: segment.tag,
           tags: segment.tags?.length ? [...segment.tags] : segment.tag ? [segment.tag] : [],
           imageId: segment.imageId ?? null
         }
+        characterStates = [
+          ...characterStates.filter((state) => state.characterId !== segment.characterId),
+          characterState
+        ].slice(-2)
       } else if (segment.type === 'dialogue') {
         kind = 'narration'
       }
+
+      const isRecognizedDialogue = segment.type === 'dialogue' && Boolean(segment.characterId)
+      if (!segment.text.trim() && !isRecognizedDialogue) return
 
       frames.push({
         id: `${message.id}:${segmentIndex}`,
@@ -100,7 +113,7 @@ export function buildVisualNovelFrames(
         text: segment.text,
         backgroundId,
         backgroundTag,
-        characterState: characterState ? { ...characterState } : null
+        characterStates: cloneCharacterStates(characterStates)
       })
     })
   }

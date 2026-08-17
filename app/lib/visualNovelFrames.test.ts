@@ -80,19 +80,123 @@ describe('pasos de novela visual', () => {
     assert.equal(resolveVisualNovelFrameIndex(0, 1, 0, true), 0)
   })
 
-  it('cambia al hablante y lo mantiene durante narración o protagonista', () => {
+  it('mantiene hasta dos hablantes recientes durante narración o protagonista', () => {
     const frames = buildVisualNovelFrames(messages, {
       initialBackgroundId: null,
       initialBackgroundTag: null
     })
 
-    assert.equal(frames[1]?.characterState, null)
-    assert.equal(frames[2]?.characterState?.characterId, 'alicia')
-    assert.deepEqual(frames[2]?.characterState?.tags, ['feliz', 'sonrisa'])
-    assert.equal(frames[3]?.characterState?.characterId, 'alicia')
-    assert.equal(frames[4]?.characterState?.characterId, 'bruno')
-    assert.equal(frames[5]?.characterState?.characterId, 'bruno')
-    assert.equal(frames[5]?.characterState?.imageId, 'bruno-serio')
+    assert.deepEqual(frames[1]?.characterStates, [])
+    assert.deepEqual(frames[2]?.characterStates.map((state) => state.characterId), ['alicia'])
+    assert.deepEqual(frames[2]?.characterStates[0]?.tags, ['feliz', 'sonrisa'])
+    assert.deepEqual(frames[3]?.characterStates.map((state) => state.characterId), ['alicia'])
+    assert.deepEqual(frames[4]?.characterStates.map((state) => state.characterId), [
+      'alicia',
+      'bruno'
+    ])
+    assert.deepEqual(frames[5]?.characterStates.map((state) => state.characterId), [
+      'alicia',
+      'bruno'
+    ])
+    assert.equal(frames[5]?.characterStates[1]?.imageId, 'bruno-serio')
+  })
+
+  it('reordena hablantes repetidos y conserva los dos últimos en mensajes del usuario', () => {
+    const frames = buildVisualNovelFrames([
+      {
+        id: 'assistant-cast',
+        storyId: 'story-1',
+        role: 'assistant',
+        raw: '',
+        segments: [
+          {
+            type: 'dialogue',
+            characterId: 'alicia',
+            tag: 'feliz',
+            imageId: 'alicia-feliz',
+            text: 'A.'
+          },
+          {
+            type: 'dialogue',
+            characterId: 'bruno',
+            tag: 'serio',
+            imageId: 'bruno-serio',
+            text: 'B.'
+          },
+          {
+            type: 'dialogue',
+            characterId: 'carla',
+            tag: 'neutral',
+            imageId: 'carla-neutral',
+            text: 'C.'
+          },
+          {
+            type: 'dialogue',
+            characterId: 'bruno',
+            tag: 'sorprendido',
+            imageId: 'bruno-sorprendido',
+            text: 'B otra vez.'
+          },
+          { type: 'narration', characterId: null, tag: null, text: 'Pausa.' }
+        ],
+        createdAt: 3
+      },
+      {
+        id: 'user-after-cast',
+        storyId: 'story-1',
+        role: 'user',
+        raw: 'Sigo escuchando.',
+        segments: [],
+        createdAt: 4
+      }
+    ], {
+      initialBackgroundId: null,
+      initialBackgroundTag: null
+    })
+
+    assert.deepEqual(frames[1]?.characterStates.map((state) => state.characterId), [
+      'alicia',
+      'bruno'
+    ])
+    assert.deepEqual(frames[2]?.characterStates.map((state) => state.characterId), [
+      'bruno',
+      'carla'
+    ])
+    assert.deepEqual(frames[3]?.characterStates.map((state) => state.characterId), [
+      'carla',
+      'bruno'
+    ])
+    assert.equal(frames[3]?.characterStates[1]?.tag, 'sorprendido')
+    assert.deepEqual(frames[4]?.characterStates, frames[3]?.characterStates)
+    assert.deepEqual(frames[5]?.characterStates, frames[4]?.characterStates)
+  })
+
+  it('crea el paso de diálogo al reconocer el prefijo aunque el texto esté vacío', () => {
+    const frames = buildVisualNovelFrames([
+      {
+        id: 'assistant-prefix',
+        storyId: 'story-1',
+        role: 'assistant',
+        raw: 'Alicia [feliz]:',
+        segments: [
+          {
+            type: 'dialogue',
+            characterId: 'alicia',
+            tag: 'feliz',
+            imageId: 'alicia-feliz',
+            text: ''
+          }
+        ],
+        createdAt: 5
+      }
+    ], {
+      initialBackgroundId: null,
+      initialBackgroundTag: null
+    })
+
+    assert.equal(frames.length, 1)
+    assert.equal(frames[0]?.text, '')
+    assert.deepEqual(frames[0]?.characterStates.map((state) => state.characterId), ['alicia'])
   })
 
   it('resuelve fondos antiguos por etiqueta sin mostrar la directiva', () => {
