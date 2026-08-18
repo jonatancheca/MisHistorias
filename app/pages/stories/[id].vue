@@ -40,6 +40,7 @@ const canScrollToTop = ref(false)
 const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
 const storyPreferencesOpen = ref(false)
+const storyTitle = ref('')
 const storyPremise = ref('')
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
@@ -254,6 +255,7 @@ function onStoryScroll() {
 
 function openStoryPreferences() {
   if (!stories.activeStory) return
+  storyTitle.value = stories.activeStory.title
   storyPremise.value = stories.activeStory.premise
   storyPreferences.value = stories.activeStory.protagonistPreferences ?? ''
   storyPreferencesMode.value = stories.activeStory.protagonistPreferencesMode ?? 'append'
@@ -276,8 +278,9 @@ function openStoryPreferences() {
 }
 
 async function saveStoryPreferences() {
-  if (!storyPremise.value.trim()) return
+  if (!storyTitle.value.trim() || !storyPremise.value.trim()) return
   await stories.updateStorySettings(
+    storyTitle.value,
     storyPremise.value,
     storyPreferences.value,
     storyPreferencesMode.value,
@@ -905,13 +908,23 @@ onBeforeUnmount(() => {
           <h2 class="text-lg font-bold">Ajustes de la historia</h2>
           <div class="mt-4 grid gap-4">
             <div>
+              <label class="label" for="storyTitle">Título</label>
+              <input
+                id="storyTitle"
+                v-model="storyTitle"
+                autocomplete="off"
+                class="field"
+                autofocus
+                required
+              >
+            </div>
+            <div>
               <label class="label" for="storyPremise">Planteamiento</label>
               <textarea
                 id="storyPremise"
                 v-model="storyPremise"
                 autocomplete="off"
                 class="field min-h-32"
-                autofocus
                 required
               />
             </div>
@@ -986,7 +999,13 @@ onBeforeUnmount(() => {
           </div>
           <div class="mt-5 flex justify-end gap-2">
             <button type="button" class="btn-ghost" @click="storyPreferencesOpen = false">Cancelar</button>
-            <button type="submit" class="btn-primary" :disabled="!storyPremise.trim()">Guardar</button>
+            <button
+              type="submit"
+              class="btn-primary"
+              :disabled="!storyTitle.trim() || !storyPremise.trim()"
+            >
+              Guardar
+            </button>
           </div>
         </form>
       </div>

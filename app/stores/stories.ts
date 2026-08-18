@@ -329,16 +329,18 @@ export const useStoriesStore = defineStore('stories', () => {
   }
 
   async function updateStorySettings(
+    title: string,
     premise: string,
     protagonistPreferences: string,
     protagonistPreferencesMode: ProtagonistPreferencesMode,
     characterCustomizations: StoryCharacterCustomization[]
   ) {
-    if (!activeStory.value || !premise.trim()) return
+    if (!activeStory.value || !title.trim() || !premise.trim()) return
     const charactersStore = useCharactersStore()
     await charactersStore.load()
     const updated: Story = {
       ...activeStory.value,
+      title: title.trim(),
       premise: premise.trim(),
       protagonistPreferences: protagonistPreferences.trim(),
       protagonistPreferencesMode,

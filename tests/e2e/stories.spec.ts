@@ -55,13 +55,18 @@ test.describe('historias', () => {
     expect(stored.characterCustomizations[0]?.tags).toContain(storyTag)
 
     const updatedPremise = data.unique('Planteamiento-editado')
+    const updatedTitle = data.unique('Historia-editada')
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     const form = page.getByRole('heading', { name: 'Ajustes de la historia' }).locator('..')
+    await form.getByLabel('Título').fill(updatedTitle)
     await form.getByLabel('Planteamiento').fill(updatedPremise)
     await form.getByRole('button', { name: 'Guardar' }).click()
+    await expect(page.getByRole('heading', { name: updatedTitle })).toBeVisible()
     await expect(page.getByText(updatedPremise)).toBeVisible()
-    await expect.poll(async () => (await data.get<Story>('stories', storyId)).premise)
-      .toBe(updatedPremise)
+    await expect.poll(async () => await data.get<Story>('stories', storyId)).toMatchObject({
+      title: updatedTitle,
+      premise: updatedPremise
+    })
   })
 
   test('copia planteamiento sin título ni mensajes y mantiene independencia', async ({ page, data }) => {
