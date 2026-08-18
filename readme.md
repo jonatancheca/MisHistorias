@@ -11,6 +11,8 @@ SQLite y se comparten con los navegadores que acceden al mismo servidor.
 
 ## Desarrollo
 
+Trabaja siempre en la rama actual. Crea o cambia de rama solo cuando se pida expresamente.
+
 ```powershell
 pnpm install
 pnpm dev
