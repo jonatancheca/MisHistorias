@@ -65,7 +65,7 @@ describe('parser de etiquetas visuales', () => {
     assert.equal(serializeSegments(segments, characters), 'Alicia [feliz][SONRISA]: Hola.')
   })
 
-  it('usa coincidencia parcial pero no imagen sin ninguna coincidencia', () => {
+  it('usa coincidencia parcial y la imagen predeterminada sin coincidencias', () => {
     const partial = parseSegments(
       'Alicia [feliz][armadura]: Parcial.',
       characters,
@@ -84,7 +84,7 @@ describe('parser de etiquetas visuales', () => {
     )
 
     assert.equal(partial[0]?.imageId, 'happy')
-    assert.equal(missing[0]?.imageId, null)
+    assert.equal(missing[0]?.imageId, 'neutral')
   })
 
   it('mantiene formato antiguo de una etiqueta y fondos sin cambios', () => {

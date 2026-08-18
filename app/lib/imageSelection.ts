@@ -76,6 +76,6 @@ export function selectCharacterImage<T extends CharacterImageCandidate>(
     ? exact
     : ranked.filter((candidate) => candidate.matches === bestScore && bestScore > 0)
 
-  if (!candidates.length) return null
+  if (!candidates.length) return own.find((image) => image.isDefault) ?? own[0] ?? null
   return candidates[seed ? stableIndex(seed, candidates.length) : 0]!.image
 }

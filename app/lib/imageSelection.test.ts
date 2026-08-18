@@ -31,8 +31,8 @@ describe('selección estable de imágenes', () => {
     )
   })
 
-  it('no usa la imagen por defecto cuando ninguna etiqueta coincide', () => {
-    assert.equal(selectCharacterImage(images, 'c1', ['serio'], 'message-1:3'), null)
+  it('usa la imagen por defecto cuando ninguna etiqueta coincide', () => {
+    assert.equal(selectCharacterImage(images, 'c1', ['serio'], 'message-1:3')?.id, 'default')
     assert.equal(selectCharacterImage(images, 'missing', ['feliz'], 'message-1:4'), null)
   })
 
