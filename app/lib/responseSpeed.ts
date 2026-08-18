@@ -6,13 +6,19 @@ const RESPONSE_CHARACTERS_PER_SECOND: Record<Exclude<ResponseSpeed, 'instant'>, 
   high: 100
 }
 
-const VISUAL_NOVEL_SLOW_CHARACTERS_PER_SECOND = 8
+const VISUAL_NOVEL_CHARACTERS_PER_SECOND = {
+  slow: 8,
+  medium: 20
+} as const
 
 export function responseCharactersPerSecond(
   speed: Exclude<ResponseSpeed, 'instant'>,
   visualMode: boolean
 ) {
-  return speed === 'slow' && visualMode
-    ? VISUAL_NOVEL_SLOW_CHARACTERS_PER_SECOND
-    : RESPONSE_CHARACTERS_PER_SECOND[speed]
+  if (visualMode && speed in VISUAL_NOVEL_CHARACTERS_PER_SECOND) {
+    return VISUAL_NOVEL_CHARACTERS_PER_SECOND[
+      speed as keyof typeof VISUAL_NOVEL_CHARACTERS_PER_SECOND
+    ]
+  }
+  return RESPONSE_CHARACTERS_PER_SECOND[speed]
 }
