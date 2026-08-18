@@ -36,6 +36,11 @@ function cloneCharacterStates(states: VisualNovelCharacterState[]) {
   }))
 }
 
+export function visualNovelCharacterCapacity(width: number) {
+  if (!Number.isFinite(width) || width <= 0) return 2
+  return Math.max(2, Math.floor(width / 240))
+}
+
 export function resolveVisualNovelFrameIndex(
   currentIndex: number,
   previousLength: number,
@@ -97,7 +102,7 @@ export function buildVisualNovelFrames(
         characterStates = [
           ...characterStates.filter((state) => state.characterId !== segment.characterId),
           characterState
-        ].slice(-2)
+        ]
       } else if (segment.type === 'dialogue') {
         kind = 'narration'
       }

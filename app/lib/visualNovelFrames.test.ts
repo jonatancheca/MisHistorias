@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Message } from '#shared/types'
-import { buildVisualNovelFrames, resolveVisualNovelFrameIndex } from './visualNovelFrames.ts'
+import {
+  buildVisualNovelFrames,
+  resolveVisualNovelFrameIndex,
+  visualNovelCharacterCapacity
+} from './visualNovelFrames.ts'
 
 const messages: Message[] = [
   {
@@ -80,7 +84,7 @@ describe('pasos de novela visual', () => {
     assert.equal(resolveVisualNovelFrameIndex(0, 1, 0, true), 0)
   })
 
-  it('mantiene hasta dos hablantes recientes durante narración o protagonista', () => {
+  it('mantiene los hablantes recientes durante narración o protagonista', () => {
     const frames = buildVisualNovelFrames(messages, {
       initialBackgroundId: null,
       initialBackgroundTag: null
@@ -101,7 +105,7 @@ describe('pasos de novela visual', () => {
     assert.equal(frames[5]?.characterStates[1]?.imageId, 'bruno-serio')
   })
 
-  it('reordena hablantes repetidos y conserva los dos últimos en mensajes del usuario', () => {
+  it('reordena hablantes repetidos y conserva el reparto en mensajes del usuario', () => {
     const frames = buildVisualNovelFrames([
       {
         id: 'assistant-cast',
@@ -159,16 +163,26 @@ describe('pasos de novela visual', () => {
       'bruno'
     ])
     assert.deepEqual(frames[2]?.characterStates.map((state) => state.characterId), [
+      'alicia',
       'bruno',
       'carla'
     ])
     assert.deepEqual(frames[3]?.characterStates.map((state) => state.characterId), [
+      'alicia',
       'carla',
       'bruno'
     ])
-    assert.equal(frames[3]?.characterStates[1]?.tag, 'sorprendido')
+    assert.equal(frames[3]?.characterStates[2]?.tag, 'sorprendido')
     assert.deepEqual(frames[4]?.characterStates, frames[3]?.characterStates)
     assert.deepEqual(frames[5]?.characterStates, frames[4]?.characterStates)
+  })
+
+  it('calcula cuántos personajes caben según el ancho', () => {
+    assert.equal(visualNovelCharacterCapacity(0), 2)
+    assert.equal(visualNovelCharacterCapacity(320), 2)
+    assert.equal(visualNovelCharacterCapacity(719), 2)
+    assert.equal(visualNovelCharacterCapacity(720), 3)
+    assert.equal(visualNovelCharacterCapacity(1200), 5)
   })
 
   it('crea el paso de diálogo al reconocer el prefijo aunque el texto esté vacío', () => {

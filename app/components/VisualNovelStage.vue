@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { primaryTag } from '~/lib/tags'
+import { visualNovelCharacterCapacity } from '~/lib/visualNovelFrames'
 
 interface CharacterVisualState {
   characterId: string
@@ -17,11 +18,14 @@ const props = defineProps<{
 
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
+const stage = ref<HTMLElement | null>(null)
+const stageWidth = ref(0)
+let stageResizeObserver: ResizeObserver | null = null
 const currentBackground = computed(() => backgrounds.byId(props.backgroundId))
 const stateByCharacter = computed(
   () => new Map(props.characterStates.map((state) => [state.characterId, state]))
 )
-const cast = computed(() =>
+const resolvedCast = computed(() =>
   props.characterIds.flatMap((characterId) => {
     const character = characters.byId(characterId)
     if (!character) return []
@@ -40,10 +44,25 @@ const cast = computed(() =>
     ]
   })
 )
+const cast = computed(() =>
+  resolvedCast.value.slice(-visualNovelCharacterCapacity(stageWidth.value))
+)
+
+onMounted(() => {
+  if (!stage.value) return
+  stageWidth.value = stage.value.getBoundingClientRect().width
+  stageResizeObserver = new ResizeObserver(([entry]) => {
+    if (entry) stageWidth.value = entry.contentRect.width
+  })
+  stageResizeObserver.observe(stage.value)
+})
+
+onBeforeUnmount(() => stageResizeObserver?.disconnect())
 </script>
 
 <template>
   <div
+    ref="stage"
     data-testid="visual-novel-stage"
     class="relative h-full min-h-0 overflow-hidden bg-slate-950"
   >

@@ -311,7 +311,7 @@ test.describe('novela visual y responsive', () => {
     expect((await settingsResponse.json()).visualNovelManualAdvance).toBe(true)
   })
 
-  test('muestra los dos últimos hablantes y los mantiene durante narración', async ({ page, data }) => {
+  test('adapta los hablantes visibles al ancho y los mantiene durante narración', async ({ page, data }) => {
     const first = await data.createCharacter({ name: data.unique('Primero') })
     const second = await data.createCharacter({ name: data.unique('Segundo') })
     const third = await data.createCharacter({ name: data.unique('Tercero') })
@@ -357,12 +357,18 @@ test.describe('novela visual y responsive', () => {
 
     await page.goto(`/stories/${story.id}`)
     const cast = page.getByTestId('visual-novel-cast').locator('figure')
+    await expect(cast).toHaveCount(3)
+    await expect(cast.nth(0)).toHaveAttribute('data-character-id', first.id)
+    await expect(cast.nth(1)).toHaveAttribute('data-character-id', second.id)
+    await expect(cast.nth(2)).toHaveAttribute('data-character-id', third.id)
+
+    await page.setViewportSize({ width: 390, height: 760 })
     await expect(cast).toHaveCount(2)
     await expect(cast.nth(0)).toHaveAttribute('data-character-id', second.id)
     await expect(cast.nth(1)).toHaveAttribute('data-character-id', third.id)
 
-    await page.getByTestId('visual-novel-previous').click()
-    await page.getByTestId('visual-novel-previous').click()
+    await page.keyboard.press('ArrowLeft')
+    await page.keyboard.press('ArrowLeft')
     await expect(page.getByTestId('visual-novel-frame')).toContainText('Pausa entre ambos.')
     await expect(cast.nth(0)).toHaveAttribute('data-character-id', first.id)
     await expect(cast.nth(1)).toHaveAttribute('data-character-id', second.id)
