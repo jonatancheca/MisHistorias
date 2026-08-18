@@ -265,6 +265,15 @@ test.describe('chat', () => {
 })
 
 test.describe('novela visual y responsive', () => {
+  test('activa modo privado con tres pulsaciones desde una historia inexistente', async ({ page }) => {
+    await page.goto('/stories/historia-inexistente')
+    const trigger = page.getByTestId('missing-story-private-trigger')
+    await expect(page.getByText('Historia no encontrada.')).toBeVisible()
+    await trigger.click({ force: true, clickCount: 3 })
+    await expect(page).toHaveURL('/')
+    await expect(page.getByRole('button', { name: 'Salir del modo privado' })).toBeVisible()
+  })
+
   test('persiste modo visual, fondo y avance manual', async ({ page, data }) => {
     const { story, character, image, background } = await createStoryFixture(data)
     await data.patchSettings({ visualNovelManualAdvance: false })

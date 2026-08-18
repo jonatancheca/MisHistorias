@@ -15,6 +15,7 @@ const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
 const sounds = useSoundsStore()
 const settings = useSettingsStore()
+const privacy = usePrivacyStore()
 const confirmDialog = useConfirmStore()
 const {
   hidden: mobileChromeHidden,
@@ -60,6 +61,8 @@ let autoScrollTarget: number | null = null
 let timelineResizeObserver: ResizeObserver | null = null
 let followScrollFrame: number | null = null
 let followSettleFrame: number | null = null
+let missingStoryPrivateClickCount = 0
+let missingStoryPrivateClickTimer: ReturnType<typeof setTimeout> | null = null
 
 type TimelineItem =
   | { kind: 'message'; id: string; createdAt: number; message: Message }
@@ -289,6 +292,25 @@ async function saveStoryPreferences() {
   storyPreferencesOpen.value = false
 }
 
+async function onMissingStoryPrivateTrigger() {
+  if (privacy.isPrivate) return
+
+  missingStoryPrivateClickCount += 1
+  if (missingStoryPrivateClickTimer) clearTimeout(missingStoryPrivateClickTimer)
+
+  if (missingStoryPrivateClickCount === 3) {
+    missingStoryPrivateClickCount = 0
+    missingStoryPrivateClickTimer = null
+    await privacy.activate()
+    return
+  }
+
+  missingStoryPrivateClickTimer = setTimeout(() => {
+    missingStoryPrivateClickCount = 0
+    missingStoryPrivateClickTimer = null
+  }, 1000)
+}
+
 async function removeMessage(id: string) {
   const accepted = await confirmDialog.ask({
     title: 'Borrar mensaje',
@@ -456,6 +478,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onVisualNovelKeydown)
   if (followScrollFrame !== null) cancelAnimationFrame(followScrollFrame)
   if (followSettleFrame !== null) cancelAnimationFrame(followSettleFrame)
+  if (missingStoryPrivateClickTimer) clearTimeout(missingStoryPrivateClickTimer)
   showMobileChrome()
 })
 </script>
@@ -463,6 +486,15 @@ onBeforeUnmount(() => {
 <template>
   <div v-if="!stories.activeStory" class="p-8">
     <p class="card text-sm">Historia no encontrada.</p>
+    <button
+      v-if="!privacy.isPrivate"
+      type="button"
+      class="mx-auto block h-10 w-12 opacity-0"
+      data-testid="missing-story-private-trigger"
+      aria-label="Activar modo privado"
+      :disabled="privacy.switching"
+      @click="onMissingStoryPrivateTrigger"
+    />
   </div>
 
   <div v-else class="flex h-full min-h-0">
