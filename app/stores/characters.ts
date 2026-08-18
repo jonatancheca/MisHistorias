@@ -15,7 +15,6 @@ import { normalizeImage } from '~/lib/images'
 import { sanitizeTags } from '~/lib/tags'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor, pickColor } from '~/lib/colors'
 import {
-  imageMatchesAnyRequestedTag,
   selectCharacterImage,
   type RequestedImageTags
 } from '~/lib/imageSelection'
@@ -80,11 +79,13 @@ export const useCharactersStore = defineStore('characters', () => {
     selectionSeed = ''
   ) {
     const own = imagesFor(characterId)
-    const preferred = preferredImageId
-      ? own.find((image) => image.id === preferredImageId)
-      : null
-    if (preferred && imageMatchesAnyRequestedTag(preferred, requestedTags)) return preferred
-    return selectCharacterImage(own, characterId, requestedTags, selectionSeed)
+    return selectCharacterImage(
+      own,
+      characterId,
+      requestedTags,
+      selectionSeed,
+      preferredImageId
+    )
   }
 
   function urlFor(imageId: string | null | undefined) {

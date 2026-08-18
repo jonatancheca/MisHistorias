@@ -27,8 +27,11 @@ export function normalizeRequestedImageTags(value: RequestedImageTags) {
   return tags
 }
 
-function matchingTagCount(image: CharacterImageCandidate, requestedKeys: Set<string>) {
-  const imageKeys = new Set(image.tags.map(normalizedTag))
+function imageTagKeys(image: CharacterImageCandidate) {
+  return new Set(image.tags.map(normalizedTag).filter(Boolean))
+}
+
+function matchingTagCount(imageKeys: Set<string>, requestedKeys: Set<string>) {
   let count = 0
   for (const key of requestedKeys) {
     if (imageKeys.has(key)) count += 1
@@ -36,13 +39,39 @@ function matchingTagCount(image: CharacterImageCandidate, requestedKeys: Set<str
   return count
 }
 
-export function imageMatchesAnyRequestedTag(
-  image: CharacterImageCandidate,
+function bestCharacterImageCandidates<T extends CharacterImageCandidate>(
+  images: T[],
+  characterId: string,
   requestedTags: RequestedImageTags
 ) {
-  const normalized = normalizeRequestedImageTags(requestedTags)
-  if (!normalized.length) return true
-  return matchingTagCount(image, new Set(normalized.map(normalizedTag))) > 0
+  const own = images.filter((image) => image.characterId === characterId)
+  const requested = normalizeRequestedImageTags(requestedTags)
+  if (!requested.length) {
+    const fallback = own.find((image) => image.isDefault) ?? own[0]
+    return fallback ? [fallback] : []
+  }
+
+  const requestedKeys = new Set(requested.map(normalizedTag))
+  const ranked = own.map((image) => {
+    const imageKeys = imageTagKeys(image)
+    const matches = matchingTagCount(imageKeys, requestedKeys)
+    return {
+      image,
+      matches,
+      extras: imageKeys.size - matches
+    }
+  })
+  const bestScore = Math.max(0, ...ranked.map((candidate) => candidate.matches))
+  if (bestScore === 0) {
+    const fallback = own.find((image) => image.isDefault) ?? own[0]
+    return fallback ? [fallback] : []
+  }
+
+  const bestMatches = ranked.filter((candidate) => candidate.matches === bestScore)
+  const fewestExtras = Math.min(...bestMatches.map((candidate) => candidate.extras))
+  return bestMatches
+    .filter((candidate) => candidate.extras === fewestExtras)
+    .map((candidate) => candidate.image)
 }
 
 export function stableIndex(seed: string, length: number) {
@@ -59,23 +88,14 @@ export function selectCharacterImage<T extends CharacterImageCandidate>(
   images: T[],
   characterId: string,
   requestedTags: RequestedImageTags,
-  seed = ''
+  seed = '',
+  preferredImageId?: string | null
 ) {
-  const own = images.filter((image) => image.characterId === characterId)
-  const requested = normalizeRequestedImageTags(requestedTags)
-  if (!requested.length) return own.find((image) => image.isDefault) ?? own[0] ?? null
-
-  const requestedKeys = new Set(requested.map(normalizedTag))
-  const ranked = own.map((image) => ({
-    image,
-    matches: matchingTagCount(image, requestedKeys)
-  }))
-  const exact = ranked.filter((candidate) => candidate.matches === requestedKeys.size)
-  const bestScore = Math.max(0, ...ranked.map((candidate) => candidate.matches))
-  const candidates = exact.length
-    ? exact
-    : ranked.filter((candidate) => candidate.matches === bestScore && bestScore > 0)
-
-  if (!candidates.length) return own.find((image) => image.isDefault) ?? own[0] ?? null
-  return candidates[seed ? stableIndex(seed, candidates.length) : 0]!.image
+  const candidates = bestCharacterImageCandidates(images, characterId, requestedTags)
+  const preferred = preferredImageId
+    ? candidates.find((candidate) => candidate.id === preferredImageId)
+    : null
+  if (preferred) return preferred
+  if (!candidates.length) return null
+  return candidates[seed ? stableIndex(seed, candidates.length) : 0]!
 }
