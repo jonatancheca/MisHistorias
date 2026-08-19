@@ -18,6 +18,12 @@ export default defineNuxtConfig({
   ssr: false,
   modules: ['@pinia/nuxt', '@nuxt/eslint'],
   css: ['~/assets/css/main.css'],
+  runtimeConfig: {
+    public: {
+      appVersion: process.env.NUXT_PUBLIC_APP_VERSION || 'dev',
+      appCommit: process.env.NUXT_PUBLIC_APP_COMMIT || ''
+    }
+  },
   vite: {
     plugins: [tailwindcss()]
   },

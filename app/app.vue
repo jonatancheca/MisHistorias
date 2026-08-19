@@ -23,6 +23,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onSaveShortcut))
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
+    <AppUpdateBanner />
     <ConfirmDialog />
   </div>
 </template>

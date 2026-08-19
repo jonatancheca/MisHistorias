@@ -225,6 +225,18 @@ export interface DatabaseBackup {
   valid: boolean
 }
 
+export interface AppUpdateInfo {
+  currentVersion: string
+  currentCommit: string
+  latestVersion: string | null
+  publishedAt: string | null
+  releaseUrl: string | null
+  downloadUrl: string | null
+  checksumUrl: string | null
+  updaterUrl: string | null
+  updateAvailable: boolean
+}
+
 export interface LlmModel {
   id: string
 }

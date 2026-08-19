@@ -1,6 +1,63 @@
 import type { AppSettings, Character, DatabaseBackup, PromptPreset } from '../../shared/types'
 import { expect, test } from './fixtures'
 
+test('avisa de una actualización, permite descartarla y comprobarla en Ajustes', async ({ page }) => {
+  const update = {
+    currentVersion: 'main-old123',
+    currentCommit: 'old123',
+    latestVersion: 'main-new456',
+    publishedAt: '2026-08-19T10:00:00Z',
+    releaseUrl: 'https://github.com/jonatancheca/MisHistorias/releases/tag/main-new456',
+    downloadUrl: 'https://example.test/app.zip',
+    checksumUrl: 'https://example.test/app.zip.sha256',
+    updaterUrl: 'https://example.test/update.ps1',
+    updateAvailable: true
+  }
+
+  await page.addInitScript(() => localStorage.removeItem('mishistorias.dismissed-update.v1'))
+  await page.route('**/api/app-update**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(update) })
+  })
+
+  await page.setViewportSize({ width: 320, height: 800 })
+  await page.goto('/')
+  const banner = page.getByTestId('app-update-banner')
+  await expect(banner).toContainText('main-new456')
+  await expect(banner.getByRole('link', { name: 'Descargar actualizador' }))
+    .toHaveAttribute('href', 'https://example.test/update.ps1')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+  await banner.getByRole('button', { name: 'Descartar actualización' }).click()
+  await expect(banner).toHaveCount(0)
+  await page.reload()
+  await expect(banner).toHaveCount(0)
+
+  await page.goto('/settings')
+  const updateSettings = page.getByTestId('app-update-settings')
+  await expect(updateSettings).toContainText('main-old123')
+  await expect(updateSettings).toContainText('main-new456')
+  await updateSettings.getByRole('button', { name: 'Comprobar ahora' }).click()
+  await expect(updateSettings.getByRole('link', { name: 'Descargar actualizador' }))
+    .toHaveAttribute('href', 'https://example.test/update.ps1')
+})
+
+test('muestra en Ajustes un error al comprobar actualizaciones', async ({ page }) => {
+  await page.route('**/api/app-update**', async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ statusMessage: 'GitHub no disponible para la prueba.' })
+    })
+  })
+
+  await page.goto('/settings')
+  await expect(page.getByTestId('app-update-settings').getByRole('alert'))
+    .toContainText('GitHub no disponible para la prueba.')
+})
+
 test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) => {
   const userName = data.unique('Protagonista')
   await data.patchSettings({ theme: 'system', mockMode: false, responseSpeed: 'high' })

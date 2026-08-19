@@ -41,24 +41,26 @@ modificar o borrar los datos, incluida la colección privada.
 
 ## Actualizar instalación local
 
-Detén primero el servidor abierto mediante `go.bat`. Desde la carpeta del proyecto ejecuta:
+Cada push a `main` crea una release con `app.zip`, su checksum SHA-256 y `update.ps1`.
+Descarga el actualizador desde la última release y ejecútalo:
 
 ```powershell
-pnpm run deploy
+PowerShell -ExecutionPolicy Bypass -File .\update.ps1
 ```
 
-El comando compila la aplicación y copia el contenido completo de `.output` a
-`C:\local\MisHistoriasInstall\install1`. Elimina artefactos antiguos de la aplicación, pero
-conserva `install1\.data`. Tampoco modifica `C:\local\MisHistoriasInstall\.data` ni `go.bat`.
+Por defecto actualiza `C:\local\MisHistoriasInstall\install1`. Comprueba checksum, detiene solo
+el servidor Node de esa instalación, sustituye archivos mediante staging y reinicia `go.bat`.
+No modifica `C:\local\MisHistoriasInstall\.data` y conserva también `install1\.data` si existe.
+Si la nueva versión no supera `/api/health`, restaura la instalación anterior.
 
-Cuando termine, reinicia la aplicación con:
+Para otra ubicación o para no reiniciar:
 
 ```powershell
-C:\local\MisHistoriasInstall\go.bat
+PowerShell -ExecutionPolicy Bypass -File .\update.ps1 -InstallRoot 'D:\MisHistorias' -NoRestart
 ```
 
-Usa `pnpm run deploy` con `run`: `pnpm upgrade` actualiza dependencias y `pnpm deploy` es otro
-comando propio de pnpm 11.
+La app comprueba nuevas releases al arrancar. Ajustes permite repetir la comprobación y descargar
+el actualizador más reciente.
 
 ## Comprobaciones
 

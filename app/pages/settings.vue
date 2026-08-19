@@ -26,6 +26,7 @@ const stories = useStoriesStore()
 const presets = usePresetsStore()
 const privacy = usePrivacyStore()
 const confirmDialog = useConfirmStore()
+const appUpdate = useAppUpdate()
 await settings.load()
 
 const form = reactive({ ...settings.settings })
@@ -475,6 +476,18 @@ function formatBackupDate(value: string) {
   }).format(new Date(value))
 }
 
+function formatReleaseDate(value: string | null) {
+  if (!value) return ''
+  return new Intl.DateTimeFormat('es-ES', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(new Date(value))
+}
+
+function refreshAppUpdate() {
+  return appUpdate.check({ refresh: true })
+}
+
 function formatBackupSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -535,6 +548,7 @@ onBeforeUnmount(() => {
 
 onMounted(() => {
   void refreshChromeLlmAvailability()
+  if (!appUpdate.checked.value) void appUpdate.check({ silent: true })
   const message = sessionStorage.getItem('mishistorias-backup-message')
   if (!message) return
   sessionStorage.removeItem('mishistorias-backup-message')
@@ -960,6 +974,61 @@ onBeforeRouteLeave(async () => {
           data-testid="swarm-test-preview"
           class="max-h-96 max-w-full rounded-lg object-contain"
         >
+      </div>
+    </section>
+
+    <section class="mt-10" data-testid="app-update-settings">
+      <h2 class="mb-2 text-lg font-semibold">Actualizaciones</h2>
+      <div class="card">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div class="min-w-0 text-sm">
+            <p>
+              <span class="font-semibold">Versión instalada:</span>
+              <span class="ml-1 break-all">{{ appUpdate.info.value?.currentVersion || 'Comprobando…' }}</span>
+            </p>
+            <p v-if="appUpdate.info.value?.latestVersion" class="mt-1">
+              <span class="font-semibold">Última versión:</span>
+              <span class="ml-1 break-all">{{ appUpdate.info.value.latestVersion }}</span>
+              <span v-if="appUpdate.info.value.publishedAt" class="text-[var(--color-fg-muted)]">
+                · {{ formatReleaseDate(appUpdate.info.value.publishedAt) }}
+              </span>
+            </p>
+            <p v-else-if="appUpdate.checked.value && !appUpdate.error.value" class="mt-1 text-[var(--color-fg-muted)]">
+              No hay releases publicadas todavía.
+            </p>
+            <p
+              v-if="appUpdate.info.value?.updateAvailable"
+              class="mt-2 font-semibold text-brand-600"
+              role="status"
+            >
+              Hay una actualización disponible.
+            </p>
+            <p v-else-if="appUpdate.info.value?.latestVersion" class="mt-2 text-[var(--color-fg-muted)]" role="status">
+              Aplicación actualizada.
+            </p>
+            <p v-if="appUpdate.error.value" class="mt-2 text-red-500" role="alert">
+              {{ appUpdate.error.value }}
+            </p>
+          </div>
+          <div class="flex shrink-0 flex-wrap gap-2">
+            <button
+              type="button"
+              class="btn-ghost"
+              :disabled="appUpdate.pending.value"
+              @click="refreshAppUpdate"
+            >
+              {{ appUpdate.pending.value ? 'Comprobando…' : 'Comprobar ahora' }}
+            </button>
+            <a
+              v-if="appUpdate.info.value?.updateAvailable && appUpdate.info.value.updaterUrl"
+              class="btn-primary"
+              :href="appUpdate.info.value.updaterUrl"
+              rel="noopener noreferrer"
+            >
+              Descargar actualizador
+            </a>
+          </div>
+        </div>
       </div>
     </section>
 
