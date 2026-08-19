@@ -444,6 +444,7 @@ function showNextVisualFrame() {
 }
 
 function onVisualFrameClick(event: MouseEvent) {
+  if (stories.completeCurrentRevealLine()) return
   if (window.innerWidth >= 640) return
   const target = event.currentTarget
   if (!(target instanceof HTMLElement)) return

@@ -34,6 +34,7 @@ import { hideIncompleteVisualDirectivePrefix, parseSegments } from '~/lib/stream
 import { selectCharacterImage } from '~/lib/imageSelection'
 import { sanitizeTags } from '~/lib/tags'
 import { responseCharactersPerSecond } from '~/lib/responseSpeed'
+import { currentRevealLineEnd } from '~/lib/progressiveReveal'
 import {
   buildStoryImageCatalog,
   compareStoryImageCatalogs,
@@ -107,6 +108,7 @@ export const useStoriesStore = defineStore('stories', () => {
   let controller: AbortController | null = null
   let animationFrame: number | null = null
   let finishAnimation: ((completed: boolean) => void) | null = null
+  let completeRevealLine: (() => void) | null = null
   let animationDraft: Message | null = null
   let generationModeInProgress: GenerationMode | null = null
 
@@ -367,9 +369,16 @@ export const useStoriesStore = defineStore('stories', () => {
   function cancelAnimation() {
     if (animationFrame !== null) cancelAnimationFrame(animationFrame)
     animationFrame = null
+    completeRevealLine = null
     const finish = finishAnimation
     finishAnimation = null
     finish?.(false)
+  }
+
+  function completeCurrentRevealLine() {
+    if (!completeRevealLine) return false
+    completeRevealLine()
+    return true
   }
 
   async function stop(options: { preserveAutoResponse?: boolean } = {}) {
@@ -413,7 +422,8 @@ export const useStoriesStore = defineStore('stories', () => {
       speed,
       activeStory.value?.visualMode === true
     )
-    const startedAt = performance.now()
+    let startedAt = performance.now()
+    let startCount = 0
     let visibleCount = 0
     const soundsStore = useSoundsStore()
     const playedSounds = new Set<string>()
@@ -423,43 +433,56 @@ export const useStoriesStore = defineStore('stories', () => {
     return new Promise<boolean>((resolve) => {
       finishAnimation = resolve
 
+      const applyVisibleCount = (nextCount: number) => {
+        if (nextCount <= visibleCount) return
+        visibleCount = Math.min(nextCount, graphemes.length)
+        const visibleRaw = graphemes.slice(0, visibleCount).join('')
+        const parseableRaw = activeStory.value?.visualMode
+          ? hideIncompleteVisualDirectivePrefix(
+              visibleRaw,
+              raw,
+              storyCharacters,
+              userName
+            )
+          : visibleRaw
+        const segments = parseSegments(
+          parseableRaw,
+          storyCharacters,
+          storyBackgrounds,
+          userName,
+          storyImages,
+          assistantMessage.id,
+          storySounds
+        )
+        playNewSounds(segments, playedSounds, soundsStore)
+        replaceDraft({
+          ...assistantMessage,
+          raw: visibleRaw,
+          segments
+        })
+      }
+
+      completeRevealLine = () => {
+        applyVisibleCount(currentRevealLineEnd(graphemes, visibleCount))
+        startCount = visibleCount
+        startedAt = performance.now()
+      }
+
       const revealFrame = (now: number) => {
         const targetCount = Math.min(
           graphemes.length,
-          Math.max(1, Math.floor(((now - startedAt) * charactersPerSecond) / 1000) + 1)
+          Math.max(
+            1,
+            startCount + Math.floor(((now - startedAt) * charactersPerSecond) / 1000) + 1
+          )
         )
 
-        if (targetCount > visibleCount) {
-          visibleCount = targetCount
-          const visibleRaw = graphemes.slice(0, visibleCount).join('')
-          const parseableRaw = activeStory.value?.visualMode
-            ? hideIncompleteVisualDirectivePrefix(
-                visibleRaw,
-                raw,
-                storyCharacters,
-                userName
-              )
-            : visibleRaw
-          const segments = parseSegments(
-            parseableRaw,
-            storyCharacters,
-            storyBackgrounds,
-            userName,
-            storyImages,
-            assistantMessage.id,
-            storySounds
-          )
-          playNewSounds(segments, playedSounds, soundsStore)
-          replaceDraft({
-            ...assistantMessage,
-            raw: visibleRaw,
-            segments
-          })
-        }
+        applyVisibleCount(targetCount)
 
         if (visibleCount >= graphemes.length) {
           animationFrame = null
           finishAnimation = null
+          completeRevealLine = null
           animationDraft = null
           resolve(true)
           return
@@ -771,6 +794,7 @@ export const useStoriesStore = defineStore('stories', () => {
     regenerateFrom,
     resendFrom,
     stop,
+    completeCurrentRevealLine,
     resetForScope
   }
 })

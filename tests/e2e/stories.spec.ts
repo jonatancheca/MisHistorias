@@ -336,6 +336,25 @@ test.describe('novela visual y responsive', () => {
     expect(seen.some((text) => text.includes('['))).toBe(false)
   })
 
+  test('completa solo la intervención actual al pulsar el texto', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data, true)
+    await data.patchSettings({ mockMode: true, responseSpeed: 'slow' })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('continue-button').click()
+    const frame = page.getByTestId('visual-novel-frame')
+    await expect.poll(async () => (await frame.innerText()).trim(), { timeout: 15_000 })
+      .not.toBe('La historia aún no ha empezado.')
+    const before = (await frame.innerText()).trim()
+
+    await frame.click()
+    const after = (await frame.innerText()).trim()
+    expect(after.length).toBeGreaterThan(before.length + 5)
+    await page.waitForTimeout(300)
+    await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+  })
+
   test('adapta los hablantes visibles al ancho y los mantiene durante narración', async ({ page, data }) => {
     const first = await data.createCharacter({ name: data.unique('Primero') })
     const second = await data.createCharacter({ name: data.unique('Segundo') })
