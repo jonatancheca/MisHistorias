@@ -33,7 +33,7 @@ test.describe('personajes', () => {
   })
 
   test('copia personaje e imágenes con IDs independientes', async ({ page, data }) => {
-    const source = await data.createCharacter()
+    const source = await data.createCharacter({ imageGenerationPreset: 'Retrato' })
     const sourceImage = await data.createImage(source, ['feliz'])
     const copiedName = data.unique('Copia')
 
@@ -46,6 +46,7 @@ test.describe('personajes', () => {
     const copied = (await data.list<Character>('characters')).find((item) => item.name === copiedName)
     expect(copied).toBeDefined()
     expect(copied?.id).not.toBe(source.id)
+    expect(copied?.imageGenerationPreset).toBe('Retrato')
     const copiedImages = await data.list<CharacterImage>('images', 'normal', {
       characterId: copied!.id
     })

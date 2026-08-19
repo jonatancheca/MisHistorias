@@ -77,6 +77,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'prompt') &&
         hasStringArray(value, 'tags') &&
         hasString(value, 'color') &&
+        hasString(value, 'imageGenerationPreset') &&
         hasNumber(value, 'createdAt') &&
         hasNumber(value, 'updatedAt')
       break
@@ -168,7 +169,8 @@ function validateCharacterCopy(rawValue: unknown) {
     !String(value.name).trim() ||
     !hasString(value, 'prompt') ||
     !hasStringArray(value, 'tags') ||
-    !hasString(value, 'color')
+    !hasString(value, 'color') ||
+    !hasString(value, 'imageGenerationPreset')
   ) {
     throw createError({ statusCode: 400, statusMessage: 'Datos no válidos' })
   }

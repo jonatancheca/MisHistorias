@@ -55,6 +55,7 @@ interface CharacterInput {
   prompt?: string
   tags?: string[]
   color?: string
+  imageGenerationPreset?: string
   scope?: DataScope
 }
 
@@ -167,6 +168,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
           prompt: input.prompt ?? 'Personaje creado exclusivamente para esta prueba.',
           tags: input.tags ?? ['prueba', unique('rasgo')],
           color: input.color ?? '#db2777',
+          imageGenerationPreset: input.imageGenerationPreset ?? '',
           createdAt: now,
           updatedAt: now
         }

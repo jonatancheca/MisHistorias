@@ -7,6 +7,9 @@ const DEFAULTS: AppSettings = {
   baseUrl: 'http://localhost:1234',
   apiKey: '',
   apiKeyConfigured: false,
+  swarmBaseUrl: 'http://localhost:7801',
+  swarmAuthToken: '',
+  swarmAuthConfigured: false,
   useChromeLlm: false,
   privateUseChromeLlm: null,
   model: '',
@@ -83,7 +86,13 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function persist(patch: Partial<AppSettings>) {
     const saved = await writeSettings(patch)
-    settings.value = { ...DEFAULTS, ...settings.value, ...saved, apiKey: '' }
+    settings.value = {
+      ...DEFAULTS,
+      ...settings.value,
+      ...saved,
+      apiKey: '',
+      swarmAuthToken: ''
+    }
     if ('theme' in patch) applyTheme()
     return settings.value
   }

@@ -10,6 +10,7 @@ const character: Character = {
   prompt: '',
   tags: [],
   color: '#db2777',
+  imageGenerationPreset: '',
   createdAt: 1,
   updatedAt: 1
 }

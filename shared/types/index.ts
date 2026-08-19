@@ -18,6 +18,8 @@ export interface Character {
   tags: string[]
   /** Color hex usado para su nombre y diálogo en la historia */
   color: string
+  /** Preset de SwarmUI usado solo al generar imágenes manualmente. */
+  imageGenerationPreset: string
   createdAt: number
   updatedAt: number
 }
@@ -170,6 +172,11 @@ export interface AppSettings {
   apiKey: string
   /** El servidor tiene un token guardado; nunca devuelve su valor. */
   apiKeyConfigured: boolean
+  swarmBaseUrl: string
+  /** Token opcional de SwarmUI. Solo se mantiene en memoria mientras se edita. */
+  swarmAuthToken: string
+  /** El servidor tiene un token de SwarmUI guardado; nunca devuelve su valor. */
+  swarmAuthConfigured: boolean
   /** Usa la Prompt API local del navegador en la coleccion normal. */
   useChromeLlm: boolean
   /** Override privado; null hereda useChromeLlm. */

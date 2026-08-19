@@ -17,6 +17,9 @@ const copiedCharacter =
 const name = ref(existing.value?.name ?? copiedCharacter?.name ?? '')
 const prompt = ref(existing.value?.prompt ?? copiedCharacter?.prompt ?? '')
 const tags = ref([...(existing.value?.tags ?? copiedCharacter?.tags ?? [])])
+const imageGenerationPreset = ref(
+  existing.value?.imageGenerationPreset ?? copiedCharacter?.imageGenerationPreset ?? ''
+)
 const color = ref(
   normalizeColor(
     existing.value?.color ?? copiedCharacter?.color,
@@ -41,7 +44,8 @@ function enqueueSave(revision: number, navigateAfterCreate = false) {
     name: name.value,
     prompt: prompt.value,
     tags: [...tags.value],
-    color: color.value
+    color: color.value,
+    imageGenerationPreset: imageGenerationPreset.value
   }
   const run = async () => {
     if (!input.name.trim()) return
@@ -121,7 +125,13 @@ function onSaveShortcut(event: KeyboardEvent) {
 }
 
 watch(
-  () => [name.value, prompt.value, JSON.stringify(tags.value), color.value],
+  () => [
+    name.value,
+    prompt.value,
+    JSON.stringify(tags.value),
+    color.value,
+    imageGenerationPreset.value
+  ],
   scheduleSave
 )
 
@@ -208,7 +218,11 @@ onBeforeRouteLeave(flushSave)
         </div>
       </form>
 
-      <CharacterImageEditor v-if="!isNew && existing" :character-id="characterId" />
+      <CharacterImageEditor
+        v-if="!isNew && existing"
+        v-model:image-generation-preset="imageGenerationPreset"
+        :character-id="characterId"
+      />
       <section v-if="!isNew && existing" class="card mt-8 max-w-3xl">
         <SoundEditor :character-id="characterId" title="Sonidos del personaje" />
       </section>

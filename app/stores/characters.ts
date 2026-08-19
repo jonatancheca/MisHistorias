@@ -99,6 +99,7 @@ export const useCharactersStore = defineStore('characters', () => {
     prompt: string
     tags: string[]
     color?: string
+    imageGenerationPreset?: string
   }) {
     const now = Date.now()
     const existing = input.id ? byId(input.id) : null
@@ -111,6 +112,8 @@ export const useCharactersStore = defineStore('characters', () => {
         input.color ?? existing?.color,
         existing?.color ?? pickColor(characters.value.length)
       ),
+      imageGenerationPreset:
+        input.imageGenerationPreset ?? existing?.imageGenerationPreset ?? '',
       createdAt: existing?.createdAt ?? now,
       updatedAt: now
     }
@@ -124,7 +127,7 @@ export const useCharactersStore = defineStore('characters', () => {
 
   async function copyCharacter(
     sourceId: string,
-    input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color'>
+    input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset'>
   ) {
     const { character } = await copyStoredCharacter(sourceId, {
       ...input,

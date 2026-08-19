@@ -10,8 +10,14 @@ import {
   createDatabaseBackup,
   listDatabaseBackups,
   readApiKey,
+  readSwarmAuthToken,
   restoreDatabaseBackup
 } from '~/lib/db'
+import {
+  fetchSwarmCatalog,
+  fetchSwarmImage,
+  type SwarmCatalog
+} from '~/lib/swarm'
 
 const settings = useSettingsStore()
 const characters = useCharactersStore()
@@ -45,6 +51,18 @@ const saveError = ref<string | null>(null)
 const apiKeyVisible = ref(false)
 const apiKeyLoading = ref(false)
 const apiKeyError = ref<string | null>(null)
+const swarmAuthTokenVisible = ref(false)
+const swarmAuthTokenLoading = ref(false)
+const swarmAuthTokenError = ref<string | null>(null)
+const swarmCatalog = ref<SwarmCatalog | null>(null)
+const swarmTesting = ref(false)
+const swarmTestMessage = ref<string | null>(null)
+const swarmTestError = ref<string | null>(null)
+const swarmTestPrompt = ref('A cinematic portrait of a traveler standing confidently, wearing a weathered coat, with a calm determined expression.')
+const swarmTestPreset = ref('')
+const swarmTestModel = ref('')
+const swarmGenerating = ref(false)
+const swarmPreviewUrl = ref<string | null>(null)
 const chromeLlmEnabled = ref(settings.activeUseChromeLlm)
 const chromeLlmAvailability = ref<ChromeLlmAvailability | 'checking' | 'error'>('checking')
 const chromeLlmPreparing = ref(false)
@@ -57,6 +75,8 @@ let saveRevision = 0
 let saveQueue: Promise<void> = Promise.resolve()
 let apiKeyDirty = false
 let revealingApiKey = false
+let swarmAuthTokenDirty = false
+let revealingSwarmAuthToken = false
 let privateUserNameDirty: boolean = false
 let privateProtagonistPreferencesDirty: boolean = false
 let privateClickCount = 0
@@ -83,6 +103,7 @@ async function testConnection() {
 function settingsPatch() {
   const patch: Partial<AppSettings> = {
     baseUrl: form.baseUrl.trim(),
+    swarmBaseUrl: form.swarmBaseUrl.trim(),
     model: form.model,
     temperature: Number(form.temperature),
     maxTokens: Number(form.maxTokens),
@@ -100,6 +121,7 @@ function settingsPatch() {
     patch.protagonistPreferences = form.protagonistPreferences.trim()
   }
   if (apiKeyDirty) patch.apiKey = form.apiKey.trim()
+  if (swarmAuthTokenDirty) patch.swarmAuthToken = form.swarmAuthToken.trim()
   return patch
 }
 
@@ -116,9 +138,11 @@ function enqueueSave(revision: number) {
       await settings.save(patch)
       if (revision === saveRevision) {
         if ('apiKey' in patch) apiKeyDirty = false
+        if ('swarmAuthToken' in patch) swarmAuthTokenDirty = false
         if ('privateUserName' in patch) privateUserNameDirty = false
         if ('privateProtagonistPreferences' in patch) privateProtagonistPreferencesDirty = false
         form.apiKeyConfigured = settings.settings.apiKeyConfigured
+        form.swarmAuthConfigured = settings.settings.swarmAuthConfigured
         saveStatus.value = 'saved'
         savedTimer = setTimeout(() => {
           savedTimer = null
@@ -139,6 +163,11 @@ function enqueueSave(revision: number) {
 function onApiKeyInput() {
   apiKeyDirty = true
   apiKeyError.value = null
+}
+
+function onSwarmAuthTokenInput() {
+  swarmAuthTokenDirty = true
+  swarmAuthTokenError.value = null
 }
 
 function markPrivateUserNameDirty() {
@@ -182,8 +211,41 @@ async function toggleApiKeyVisibility() {
   apiKeyVisible.value = true
 }
 
+function clearSwarmAuthToken() {
+  form.swarmAuthToken = ''
+  swarmAuthTokenVisible.value = false
+  swarmAuthTokenError.value = null
+  swarmAuthTokenDirty = true
+  scheduleSave()
+}
+
+async function toggleSwarmAuthTokenVisibility() {
+  if (swarmAuthTokenVisible.value) {
+    swarmAuthTokenVisible.value = false
+    return
+  }
+  swarmAuthTokenError.value = null
+  if (!form.swarmAuthToken && form.swarmAuthConfigured) {
+    swarmAuthTokenLoading.value = true
+    try {
+      const result = await readSwarmAuthToken()
+      revealingSwarmAuthToken = true
+      form.swarmAuthToken = result.swarmAuthToken
+      await nextTick()
+      swarmAuthTokenDirty = false
+    } catch (caught) {
+      swarmAuthTokenError.value = (caught as Error).message || 'No se pudo mostrar el token.'
+      return
+    } finally {
+      revealingSwarmAuthToken = false
+      swarmAuthTokenLoading.value = false
+    }
+  }
+  swarmAuthTokenVisible.value = true
+}
+
 function scheduleSave() {
-  if (revealingApiKey) return
+  if (revealingApiKey || revealingSwarmAuthToken) return
   saveRevision += 1
   savePending = true
   if (saveTimer) clearTimeout(saveTimer)
@@ -212,6 +274,8 @@ watch(
   () => [
     form.baseUrl,
     form.apiKey,
+    form.swarmBaseUrl,
+    form.swarmAuthToken,
     form.model,
     form.temperature,
     form.maxTokens,
@@ -223,6 +287,50 @@ watch(
   ],
   scheduleSave
 )
+
+async function testSwarmConnection() {
+  swarmTesting.value = true
+  swarmTestMessage.value = null
+  swarmTestError.value = null
+  try {
+    await flushSave()
+    const catalog = await fetchSwarmCatalog()
+    swarmCatalog.value = catalog
+    if (!swarmTestPreset.value && catalog.presets[0]) {
+      swarmTestPreset.value = catalog.presets[0]
+    }
+    if (!swarmTestModel.value && catalog.models[0]) {
+      swarmTestModel.value = catalog.models[0]
+    }
+    swarmTestMessage.value = `SwarmUI ${catalog.version || 'conectado'}: ${catalog.models.length} modelos, ${catalog.loras.length} LoRAs y ${catalog.presets.length} presets.`
+  } catch (caught) {
+    swarmTestError.value = (caught as Error).message || 'No se pudo conectar con SwarmUI.'
+  } finally {
+    swarmTesting.value = false
+  }
+}
+
+async function generateSwarmPreview() {
+  if (!swarmTestPrompt.value.trim() || swarmGenerating.value) return
+  swarmGenerating.value = true
+  swarmTestError.value = null
+  try {
+    if (!swarmCatalog.value) await testSwarmConnection()
+    const preset = swarmTestPreset.value.trim()
+    const model = swarmTestModel.value.trim()
+    if (!preset && !model) throw new Error('SwarmUI no ofrece presets ni modelos.')
+    const blob = await fetchSwarmImage({
+      prompt: swarmTestPrompt.value,
+      ...(preset ? { preset } : { model })
+    })
+    if (swarmPreviewUrl.value) URL.revokeObjectURL(swarmPreviewUrl.value)
+    swarmPreviewUrl.value = URL.createObjectURL(blob)
+  } catch (caught) {
+    swarmTestError.value = (caught as Error).message || 'No se pudo generar la imagen.'
+  } finally {
+    swarmGenerating.value = false
+  }
+}
 
 async function setTheme(theme: 'system' | 'light' | 'dark') {
   form.theme = theme
@@ -421,6 +529,7 @@ async function onPrivateTrigger() {
 onBeforeUnmount(() => {
   if (privateClickTimer) clearTimeout(privateClickTimer)
   if (savedTimer) clearTimeout(savedTimer)
+  if (swarmPreviewUrl.value) URL.revokeObjectURL(swarmPreviewUrl.value)
   void flushSave()
 })
 
@@ -698,6 +807,160 @@ onBeforeRouteLeave(async () => {
         </p>
       </div>
 
+    </section>
+
+    <section class="mt-10" data-testid="swarm-settings">
+      <h2 class="mb-2 text-lg font-semibold">SwarmUI</h2>
+      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+        Generación manual de imágenes. No se usa durante las historias.
+      </p>
+      <div class="card grid min-w-0 gap-4">
+        <div>
+          <label class="label" for="swarmBaseUrl">URL de SwarmUI</label>
+          <div class="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <input
+              id="swarmBaseUrl"
+              v-model="form.swarmBaseUrl"
+              autocomplete="off"
+              class="field min-w-0"
+              placeholder="http://localhost:7801"
+            >
+            <button
+              type="button"
+              class="btn-ghost"
+              :disabled="swarmTesting"
+              @click="testSwarmConnection"
+            >
+              {{ swarmTesting ? 'Probando…' : 'Probar conexión SwarmUI' }}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="label" for="swarmAuthToken">Token de SwarmUI (opcional)</label>
+          <div class="flex min-w-0 flex-wrap gap-2">
+            <input
+              id="swarmAuthToken"
+              v-model="form.swarmAuthToken"
+              :type="swarmAuthTokenVisible ? 'text' : 'password'"
+              autocomplete="off"
+              class="field min-w-0 basis-full sm:flex-1 sm:basis-auto"
+              :placeholder="form.swarmAuthConfigured ? 'Token configurado; escribe para cambiarlo' : 'swarm_token'"
+              @input="onSwarmAuthTokenInput"
+            >
+            <button
+              v-if="form.swarmAuthConfigured || form.swarmAuthToken"
+              type="button"
+              class="btn-ghost shrink-0"
+              :disabled="swarmAuthTokenLoading"
+              :aria-label="swarmAuthTokenVisible ? 'Ocultar token SwarmUI' : 'Mostrar token SwarmUI'"
+              @click="toggleSwarmAuthTokenVisibility"
+            >
+              {{ swarmAuthTokenVisible ? 'Ocultar' : 'Mostrar' }}
+            </button>
+            <button
+              v-if="form.swarmAuthConfigured"
+              type="button"
+              class="btn-ghost shrink-0"
+              @click="clearSwarmAuthToken"
+            >
+              Quitar token
+            </button>
+          </div>
+          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+            Se guarda separado en SQLite y se envía como cookie <code>swarm_token</code>.
+          </p>
+          <p v-if="swarmAuthTokenError" class="mt-1 text-xs text-red-500" role="alert">
+            {{ swarmAuthTokenError }}
+          </p>
+        </div>
+
+        <p v-if="swarmTestMessage" class="text-xs text-brand-600" role="status">
+          {{ swarmTestMessage }}
+        </p>
+        <p v-if="swarmTestError" class="text-xs text-red-500" role="alert">
+          {{ swarmTestError }}
+        </p>
+
+        <div v-if="swarmCatalog" class="grid min-w-0 gap-3 sm:grid-cols-3">
+          <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
+            <summary class="cursor-pointer text-sm font-semibold">
+              Modelos ({{ swarmCatalog.models.length }})
+            </summary>
+            <ul class="mt-2 max-h-40 overflow-auto text-xs">
+              <li v-for="model in swarmCatalog.models" :key="model" class="break-all py-1">
+                {{ model }}
+              </li>
+            </ul>
+          </details>
+          <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
+            <summary class="cursor-pointer text-sm font-semibold">
+              LoRAs ({{ swarmCatalog.loras.length }})
+            </summary>
+            <ul class="mt-2 max-h-40 overflow-auto text-xs">
+              <li v-for="lora in swarmCatalog.loras" :key="lora" class="break-all py-1">
+                {{ lora }}
+              </li>
+            </ul>
+          </details>
+          <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
+            <summary class="cursor-pointer text-sm font-semibold">
+              Presets ({{ swarmCatalog.presets.length }})
+            </summary>
+            <ul class="mt-2 max-h-40 overflow-auto text-xs">
+              <li v-for="preset in swarmCatalog.presets" :key="preset" class="break-all py-1">
+                {{ preset }}
+              </li>
+            </ul>
+          </details>
+        </div>
+
+        <div v-if="swarmCatalog" class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label class="label" for="swarmTestPreset">Preset de prueba</label>
+            <select id="swarmTestPreset" v-model="swarmTestPreset" class="field">
+              <option value="">Sin preset</option>
+              <option v-for="preset in swarmCatalog.presets" :key="preset" :value="preset">
+                {{ preset }}
+              </option>
+            </select>
+          </div>
+          <div v-if="!swarmTestPreset">
+            <label class="label" for="swarmTestModel">Modelo de prueba</label>
+            <select id="swarmTestModel" v-model="swarmTestModel" class="field">
+              <option value="">Selecciona un modelo</option>
+              <option v-for="model in swarmCatalog.models" :key="model" :value="model">
+                {{ model }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="label" for="swarmTestPrompt">Prompt de prueba</label>
+          <textarea
+            id="swarmTestPrompt"
+            v-model="swarmTestPrompt"
+            class="field min-h-24"
+            autocomplete="off"
+          />
+        </div>
+        <button
+          type="button"
+          class="btn-primary justify-self-start"
+          :disabled="swarmGenerating || !swarmTestPrompt.trim()"
+          @click="generateSwarmPreview"
+        >
+          {{ swarmGenerating ? 'Generando…' : 'Generar imagen de prueba' }}
+        </button>
+        <img
+          v-if="swarmPreviewUrl"
+          :src="swarmPreviewUrl"
+          alt="Resultado temporal de SwarmUI"
+          data-testid="swarm-test-preview"
+          class="max-h-96 max-w-full rounded-lg object-contain"
+        >
+      </div>
     </section>
 
     <section class="mt-10">

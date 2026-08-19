@@ -158,6 +158,7 @@ async function seedNormalData() {
       prompt: 'Exploradora curiosa, optimista y observadora.',
       tags: ['exploradora', 'optimista'],
       color: '#db2777',
+      imageGenerationPreset: '',
       createdAt: TEST_TIME + 10,
       updatedAt: TEST_TIME + 10
     },
@@ -167,6 +168,7 @@ async function seedNormalData() {
       prompt: 'Guardián prudente, directo y leal.',
       tags: ['guardián', 'prudente'],
       color: '#2563eb',
+      imageGenerationPreset: '',
       createdAt: TEST_TIME + 11,
       updatedAt: TEST_TIME + 11
     }

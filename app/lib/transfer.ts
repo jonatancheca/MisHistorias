@@ -27,8 +27,12 @@ import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
 import { stripSoundDirectives, stripSoundSegments } from '~/lib/soundTransfer'
+import {
+  exportCharacterTransferFields,
+  importImageGenerationPreset
+} from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 10
+const EXPORT_VERSION = 11
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -46,6 +50,7 @@ interface ExportedCharacter {
   prompt: string
   tags?: string[]
   color: string
+  imageGenerationPreset?: string
   images: ExportedImage[]
 }
 
@@ -90,11 +95,7 @@ export async function exportBundle(): Promise<ExportBundle> {
 
   const exportedCharacters: ExportedCharacter[] = await Promise.all(
     characters.map(async (character) => ({
-      id: character.id,
-      name: character.name,
-      prompt: character.prompt,
-      tags: character.tags,
-      color: character.color,
+      ...exportCharacterTransferFields(character),
       images: await Promise.all(
         images
           .filter((image) => image.characterId === character.id)
@@ -160,7 +161,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -197,6 +198,7 @@ export async function importBundle(raw: string) {
       prompt: String(item.prompt ?? ''),
       tags: sanitizeTags(item.tags),
       color: normalizeColor(item.color, DEFAULT_CHARACTER_COLOR),
+      imageGenerationPreset: importImageGenerationPreset(item.imageGenerationPreset),
       createdAt: now,
       updatedAt: now
     }

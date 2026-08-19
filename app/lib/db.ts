@@ -112,7 +112,7 @@ export async function putCharacter(character: Character) {
 
 export async function copyCharacter(
   sourceId: string,
-  input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color'>
+  input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset'>
 ) {
   return $fetch<{ character: Character; images: CharacterImage[] }>(
     dataUrl(`characters/${encodeURIComponent(sourceId)}/copy`),
@@ -260,6 +260,10 @@ export async function writeSettings(patch: Partial<AppSettings>) {
 
 export async function readApiKey() {
   return $fetch<{ apiKey: string }>('/api/settings/api-key', { method: 'POST' })
+}
+
+export async function readSwarmAuthToken() {
+  return $fetch<{ swarmAuthToken: string }>('/api/settings/swarm-token', { method: 'POST' })
 }
 
 export async function listDatabaseBackups() {

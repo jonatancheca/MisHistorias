@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import type { StoredImage } from '~/lib/db'
 import { primaryTag, tagKey } from '~/lib/tags'
+import { generateCharacterImagePrompt } from '~/lib/characterImagePrompt'
+import { fetchSwarmCatalog, fetchSwarmImage, type SwarmCatalog } from '~/lib/swarm'
 
 const props = defineProps<{ characterId: string }>()
+const imageGenerationPreset = defineModel<string>('imageGenerationPreset', { required: true })
 
 const characters = useCharactersStore()
+const settings = useSettingsStore()
 const confirmDialog = useConfirmStore()
+await settings.load()
 const pendingTags = ref<string[]>([])
 const pendingFiles = ref<File[]>([])
 const batchMode = ref<'original' | 'crop' | null>(null)
@@ -14,6 +19,16 @@ const processingCurrent = ref(false)
 const busy = ref(false)
 const error = ref<string | null>(null)
 const notice = ref<string | null>(null)
+const swarmCatalog = ref<SwarmCatalog | null>(null)
+const catalogLoading = ref(false)
+const generationTags = ref<string[]>([])
+const generationNotes = ref('')
+const generationPrompt = ref('')
+const generationModel = ref('')
+const promptBusy = ref(false)
+const generationBusy = ref(false)
+const generationError = ref<string | null>(null)
+const generationNotice = ref<string | null>(null)
 let addedCount = 0
 let failedCount = 0
 let skippedCount = 0
@@ -31,6 +46,72 @@ const imageTagSuggestions = computed(() =>
   characters.images.flatMap((image) => visibleImageTags(image.tags))
 )
 const pendingFile = computed(() => pendingFiles.value[0] ?? null)
+
+async function loadSwarmCatalog() {
+  catalogLoading.value = true
+  generationError.value = null
+  try {
+    swarmCatalog.value = await fetchSwarmCatalog()
+    if (!generationModel.value && swarmCatalog.value.models[0]) {
+      generationModel.value = swarmCatalog.value.models[0]
+    }
+    return true
+  } catch (caught) {
+    generationError.value = (caught as Error).message || 'No se pudo conectar con SwarmUI.'
+    return false
+  } finally {
+    catalogLoading.value = false
+  }
+}
+
+async function createGenerationPrompt() {
+  const character = characters.byId(props.characterId)
+  if (!character || promptBusy.value) return
+  promptBusy.value = true
+  generationError.value = null
+  generationNotice.value = null
+  try {
+    generationPrompt.value = await generateCharacterImagePrompt(
+      {
+        character,
+        tags: generationTags.value,
+        notes: generationNotes.value
+      },
+      {
+        useChromeLlm: settings.activeUseChromeLlm,
+        model: settings.settings.model,
+        temperature: settings.settings.temperature
+      }
+    )
+  } catch (caught) {
+    generationError.value = (caught as Error).message || 'No se pudo crear el prompt.'
+  } finally {
+    promptBusy.value = false
+  }
+}
+
+async function generateImage() {
+  if (!generationPrompt.value.trim() || generationBusy.value) return
+  generationBusy.value = true
+  generationError.value = null
+  generationNotice.value = null
+  try {
+    if (!swarmCatalog.value && !await loadSwarmCatalog()) return
+    const preset = imageGenerationPreset.value.trim()
+    const model = generationModel.value.trim()
+    if (!preset && !model) throw new Error('Selecciona un preset o un modelo de SwarmUI.')
+    const blob = await fetchSwarmImage({
+      prompt: generationPrompt.value,
+      ...(preset ? { preset } : { model })
+    })
+    await characters.addImage(props.characterId, blob, [])
+    generationNotice.value = 'Imagen generada y guardada en la galería.'
+  } catch (caught) {
+    generationError.value = (caught as Error).message || 'No se pudo generar la imagen.'
+  } finally {
+    generationBusy.value = false
+  }
+}
 
 function visibleImageTags(tags: string[]) {
   return tags.filter((tag) => tagKey(tag) !== 'neutral')
@@ -175,6 +256,102 @@ async function remove(id: string) {
       Etiquetas indican al modelo qué imagen usar. Pulsa badges o escribe una etiqueta nueva.
       Imágenes se limitan a 1920px y se guardan en WebP.
     </p>
+
+    <div class="card mb-4 grid min-w-0 gap-3" data-testid="character-swarm-generator">
+      <div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 class="font-semibold">Generar imagen con SwarmUI</h3>
+          <p class="text-xs text-[var(--color-fg-muted)]">
+            Flujo manual: crea o edita el prompt y después genera una imagen.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="btn-ghost shrink-0"
+          :disabled="catalogLoading"
+          @click="loadSwarmCatalog"
+        >
+          {{ catalogLoading ? 'Cargando…' : 'Cargar catálogo SwarmUI' }}
+        </button>
+      </div>
+
+      <div class="grid min-w-0 gap-3 sm:grid-cols-2">
+        <div>
+          <label class="label" for="character-swarm-preset">Preset SwarmUI</label>
+          <input
+            id="character-swarm-preset"
+            v-model="imageGenerationPreset"
+            list="character-swarm-presets"
+            autocomplete="off"
+            class="field min-w-0"
+            placeholder="Vacío para usar un modelo"
+          >
+          <datalist id="character-swarm-presets">
+            <option v-for="preset in swarmCatalog?.presets ?? []" :key="preset" :value="preset" />
+          </datalist>
+        </div>
+        <div v-if="!imageGenerationPreset.trim()">
+          <label class="label" for="character-swarm-model">Modelo SwarmUI</label>
+          <select id="character-swarm-model" v-model="generationModel" class="field min-w-0">
+            <option value="">Selecciona un modelo</option>
+            <option v-for="model in swarmCatalog?.models ?? []" :key="model" :value="model">
+              {{ model }}
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label class="label" for="generation-tags">Etiquetas para el prompt</label>
+        <TagInput
+          id="generation-tags"
+          v-model="generationTags"
+          placeholder="plano entero, enfadada"
+        />
+      </div>
+      <div>
+        <label class="label" for="generation-notes">Notas para el prompt</label>
+        <textarea
+          id="generation-notes"
+          v-model="generationNotes"
+          autocomplete="off"
+          class="field min-h-20"
+          placeholder="Postura, ropa, emoción o detalles de esta imagen."
+        />
+      </div>
+      <button
+        type="button"
+        class="btn-ghost justify-self-start"
+        :disabled="promptBusy"
+        @click="createGenerationPrompt"
+      >
+        {{ promptBusy ? 'Creando…' : 'Crear prompt con IA' }}
+      </button>
+      <div>
+        <label class="label" for="generation-prompt">Prompt de imagen (inglés y editable)</label>
+        <textarea
+          id="generation-prompt"
+          v-model="generationPrompt"
+          autocomplete="off"
+          class="field min-h-28"
+          placeholder="Describe pose, clothing and emotion…"
+        />
+      </div>
+      <button
+        type="button"
+        class="btn-primary justify-self-start"
+        :disabled="generationBusy || !generationPrompt.trim()"
+        @click="generateImage"
+      >
+        {{ generationBusy ? 'Generando…' : 'Generar imagen' }}
+      </button>
+      <p v-if="generationError" class="text-sm text-red-500" role="alert">
+        {{ generationError }}
+      </p>
+      <p v-else-if="generationNotice" class="text-sm text-green-600" role="status">
+        {{ generationNotice }}
+      </p>
+    </div>
 
     <div class="card mb-4 grid gap-3">
       <div>

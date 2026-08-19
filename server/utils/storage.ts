@@ -36,6 +36,7 @@ export interface BinaryPayload {
 interface SettingsRow {
   value: Record<string, unknown>
   apiKey: string
+  swarmAuthToken: string
 }
 
 interface SqliteRow extends Record<string, unknown> {
@@ -43,7 +44,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 5
+const SCHEMA_VERSION = 6
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -109,6 +110,7 @@ function rowToCharacter(row: SqliteRow) {
     prompt: text(row.prompt),
     tags: parseJson<string[]>(row.tags_json, []),
     color: text(row.color),
+    imageGenerationPreset: text(row.image_generation_preset),
     createdAt: integer(row.created_at),
     updatedAt: integer(row.updated_at)
   }
@@ -458,6 +460,7 @@ export class MisHistoriasStorage {
           prompt TEXT NOT NULL,
           tags_json TEXT NOT NULL,
           color TEXT NOT NULL,
+          image_generation_preset TEXT NOT NULL DEFAULT '',
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
           PRIMARY KEY (scope, id)
@@ -590,7 +593,8 @@ export class MisHistoriasStorage {
         CREATE TABLE IF NOT EXISTS settings (
           key TEXT PRIMARY KEY,
           value_json TEXT NOT NULL,
-          api_key TEXT NOT NULL DEFAULT ''
+          api_key TEXT NOT NULL DEFAULT '',
+          swarm_auth_token TEXT NOT NULL DEFAULT ''
         ) STRICT;
       `)
 
@@ -683,6 +687,25 @@ export class MisHistoriasStorage {
             CREATE UNIQUE INDEX images_one_default
               ON images(scope, character_id) WHERE is_default = 1;
           `)
+        }
+      }
+
+      if (version.user_version < 6) {
+        const characterColumns = this.database
+          .prepare('PRAGMA table_info(characters)')
+          .all() as Array<{ name: string }>
+        if (!characterColumns.some((column) => column.name === 'image_generation_preset')) {
+          this.database.exec(
+            "ALTER TABLE characters ADD COLUMN image_generation_preset TEXT NOT NULL DEFAULT ''"
+          )
+        }
+        const settingsColumns = this.database
+          .prepare('PRAGMA table_info(settings)')
+          .all() as Array<{ name: string }>
+        if (!settingsColumns.some((column) => column.name === 'swarm_auth_token')) {
+          this.database.exec(
+            "ALTER TABLE settings ADD COLUMN swarm_auth_token TEXT NOT NULL DEFAULT ''"
+          )
         }
       }
 
@@ -860,6 +883,10 @@ export class MisHistoriasStorage {
         prompt: text(value.prompt),
         tags: tags(value.tags),
         color: text(value.color),
+        imageGenerationPreset:
+          typeof value.imageGenerationPreset === 'string'
+            ? value.imageGenerationPreset
+            : source.imageGenerationPreset,
         createdAt: now,
         updatedAt: now
       })
@@ -915,13 +942,16 @@ export class MisHistoriasStorage {
       case 'characters':
         this.database
           .prepare(`
-            INSERT INTO characters(scope, id, name, prompt, tags_json, color, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO characters(
+              scope, id, name, prompt, tags_json, color, image_generation_preset,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               name = excluded.name,
               prompt = excluded.prompt,
               tags_json = excluded.tags_json,
               color = excluded.color,
+              image_generation_preset = excluded.image_generation_preset,
               created_at = excluded.created_at,
               updated_at = excluded.updated_at
           `)
@@ -932,6 +962,7 @@ export class MisHistoriasStorage {
             text(value.prompt),
             json(tags(value.tags)),
             text(value.color),
+            text(value.imageGenerationPreset),
             integer(value.createdAt),
             integer(value.updatedAt)
           )
@@ -1252,28 +1283,41 @@ export class MisHistoriasStorage {
 
   readSettings(): SettingsRow | null {
     const row = this.database
-      .prepare("SELECT value_json, api_key FROM settings WHERE key = 'app'")
-      .get() as { value_json: string; api_key: string } | undefined
+      .prepare("SELECT value_json, api_key, swarm_auth_token FROM settings WHERE key = 'app'")
+      .get() as { value_json: string; api_key: string; swarm_auth_token: string } | undefined
     if (!row) return null
-    return { value: parseJson(row.value_json, {}), apiKey: row.api_key }
+    return {
+      value: parseJson(row.value_json, {}),
+      apiKey: row.api_key,
+      swarmAuthToken: row.swarm_auth_token
+    }
   }
 
   writeSettings(patchValue: unknown) {
     const patch = record(patchValue)
-    const current = this.readSettings() ?? { value: {}, apiKey: '' }
+    const current = this.readSettings() ?? { value: {}, apiKey: '', swarmAuthToken: '' }
     const nextValue = { ...current.value }
     let nextApiKey = current.apiKey
+    let nextSwarmAuthToken = current.swarmAuthToken
     for (const [key, value] of Object.entries(patch)) {
       if (key === 'apiKey') nextApiKey = text(value).trim()
-      else if (key !== 'apiKeyConfigured') nextValue[key] = value
+      else if (key === 'swarmAuthToken') nextSwarmAuthToken = text(value).trim()
+      else if (key !== 'apiKeyConfigured' && key !== 'swarmAuthConfigured') nextValue[key] = value
     }
     this.database
       .prepare(`
-        INSERT INTO settings(key, value_json, api_key) VALUES ('app', ?, ?)
-        ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, api_key = excluded.api_key
+        INSERT INTO settings(key, value_json, api_key, swarm_auth_token) VALUES ('app', ?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          value_json = excluded.value_json,
+          api_key = excluded.api_key,
+          swarm_auth_token = excluded.swarm_auth_token
       `)
-      .run(json(nextValue), nextApiKey)
-    return { value: nextValue, apiKey: nextApiKey }
+      .run(json(nextValue), nextApiKey, nextSwarmAuthToken)
+    return {
+      value: nextValue,
+      apiKey: nextApiKey,
+      swarmAuthToken: nextSwarmAuthToken
+    }
   }
 }
 

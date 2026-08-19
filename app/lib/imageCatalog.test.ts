@@ -15,6 +15,7 @@ const characters: Character[] = [
     prompt: '',
     tags: [],
     color: '#000000',
+    imageGenerationPreset: '',
     createdAt: 1,
     updatedAt: 1
   },
@@ -24,6 +25,7 @@ const characters: Character[] = [
     prompt: '',
     tags: [],
     color: '#ffffff',
+    imageGenerationPreset: '',
     createdAt: 1,
     updatedAt: 1
   }

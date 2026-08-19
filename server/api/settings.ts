@@ -3,6 +3,8 @@ import { getStorage } from '../utils/storage'
 const ALLOWED_SETTINGS = new Set([
   'baseUrl',
   'apiKey',
+  'swarmBaseUrl',
+  'swarmAuthToken',
   'useChromeLlm',
   'privateUseChromeLlm',
   'model',
@@ -29,8 +31,10 @@ const ALLOWED_SETTINGS = new Set([
 function validSetting(key: string, value: unknown) {
   switch (key) {
     case 'baseUrl':
+    case 'swarmBaseUrl':
       return typeof value === 'string' && value.length <= 2048
     case 'apiKey':
+    case 'swarmAuthToken':
       return typeof value === 'string' && value.length <= 4096
     case 'useChromeLlm':
       return typeof value === 'boolean'
@@ -81,7 +85,9 @@ function publicSettings(row: ReturnType<ReturnType<typeof getStorage>['readSetti
     privateUseChromeLlm: null,
     ...row.value,
     apiKey: '',
-    apiKeyConfigured: Boolean(row.apiKey)
+    apiKeyConfigured: Boolean(row.apiKey),
+    swarmAuthToken: '',
+    swarmAuthConfigured: Boolean(row.swarmAuthToken)
   }
 }
 

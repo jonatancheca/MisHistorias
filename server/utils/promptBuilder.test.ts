@@ -27,6 +27,7 @@ const character: Character = {
   prompt: 'Prompt global',
   tags: ['global'],
   color: '#123456',
+  imageGenerationPreset: '',
   createdAt: 1,
   updatedAt: 1
 }
