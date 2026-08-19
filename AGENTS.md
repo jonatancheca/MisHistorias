@@ -4,12 +4,13 @@
 - Usa siempre la skill `/caveman`.
 - Pregunta las dudas antes de empezar.
 - Cuando pida hacer una issue, haz commit, push y ciérrala al terminar.
+- Trabaja siempre en la rama actual. Crea o cambia de rama solo cuando se pida expresamente.
 
 ## Datos de prueba
 
 - Antes de empezar cada tarea, usa únicamente el navegador de pruebas y abre `http://localhost:3000/dev/test-data`.
-- Ejecuta `Limpiar y cargar datos de prueba` antes de trabajar. Para tareas sobre estado vacío, ejecuta solo `Limpiar`.
-- La rutina limpia únicamente la colección normal. No limpies nunca la colección privada.
+- Ejecuta `Limpiar y cargar datos de prueba` antes de trabajar. Para tareas sobre estado vacío, ejecuta solo `Limpiar`. No hace falta pidas confirmación.
+- La rutina limpia únicamente la colección normal. No se ha de limpiar nunca la colección privada.
 - No borres datos de prueba uno a uno ni al terminar la tarea; la siguiente tarea hará una limpieza completa al empezar.
 
 ## Validación
