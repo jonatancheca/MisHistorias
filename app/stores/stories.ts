@@ -30,7 +30,7 @@ import { buildChatMessages, resolveProtagonistPreferences } from '~/lib/promptBu
 import { buildMockResponse } from '~/lib/mockLlm'
 import { fetchLlmChat, type LlmCallError } from '~/lib/llm'
 import { fetchChromeLlmChat } from '~/lib/chromeLlm'
-import { parseSegments } from '~/lib/streamParser'
+import { hideIncompleteVisualDirectivePrefix, parseSegments } from '~/lib/streamParser'
 import { selectCharacterImage } from '~/lib/imageSelection'
 import { sanitizeTags } from '~/lib/tags'
 import { responseCharactersPerSecond } from '~/lib/responseSpeed'
@@ -432,8 +432,16 @@ export const useStoriesStore = defineStore('stories', () => {
         if (targetCount > visibleCount) {
           visibleCount = targetCount
           const visibleRaw = graphemes.slice(0, visibleCount).join('')
+          const parseableRaw = activeStory.value?.visualMode
+            ? hideIncompleteVisualDirectivePrefix(
+                visibleRaw,
+                raw,
+                storyCharacters,
+                userName
+              )
+            : visibleRaw
           const segments = parseSegments(
-            visibleRaw,
+            parseableRaw,
             storyCharacters,
             storyBackgrounds,
             userName,

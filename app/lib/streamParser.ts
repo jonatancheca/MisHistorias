@@ -11,6 +11,50 @@ function normalize(value: string) {
   return tagKey(value)
 }
 
+function isVisualDirectiveLine(
+  line: string,
+  characters: Character[],
+  protagonistName: string
+) {
+  const trimmed = line.trim()
+  if (BACKGROUND_RE.test(trimmed) || SOUND_RE.test(trimmed)) return true
+
+  const match = LINE_RE.exec(trimmed)
+  if (!match) return false
+  const name = normalize(match[1] ?? '')
+  return (
+    characters.some((character) => normalize(character.name) === name) ||
+    (Boolean(protagonistName.trim()) && normalize(protagonistName) === name)
+  )
+}
+
+export function hideIncompleteVisualDirectivePrefix(
+  visibleRaw: string,
+  completeRaw: string,
+  characters: Character[],
+  protagonistName = ''
+) {
+  if (!completeRaw.startsWith(visibleRaw) || visibleRaw.length >= completeRaw.length) {
+    return visibleRaw
+  }
+
+  const lineStart = visibleRaw.lastIndexOf('\n') + 1
+  const lineEnd = completeRaw.indexOf('\n', lineStart)
+  const completeLine = completeRaw.slice(lineStart, lineEnd < 0 ? completeRaw.length : lineEnd)
+  const separatorIndex = completeLine.indexOf(':')
+  const visibleLineLength = visibleRaw.length - lineStart
+
+  if (
+    separatorIndex < 0 ||
+    visibleLineLength > separatorIndex ||
+    !isVisualDirectiveLine(completeLine, characters, protagonistName)
+  ) {
+    return visibleRaw
+  }
+
+  return visibleRaw.slice(0, lineStart)
+}
+
 export function parseDialogueTags(value: string) {
   return normalizeRequestedImageTags(
     Array.from(value.matchAll(DIALOGUE_TAG_RE), (match) => match[1] ?? '')

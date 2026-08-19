@@ -11,7 +11,7 @@ const jiti = createJiti(import.meta.url, {
     '#shared': resolve(root, 'shared')
   }
 })
-const { parseSegments, serializeSegments } = await jiti.import<
+const { hideIncompleteVisualDirectivePrefix, parseSegments, serializeSegments } = await jiti.import<
   typeof import('../../app/lib/streamParser.ts')
 >('../../app/lib/streamParser.ts')
 
@@ -49,6 +49,41 @@ const images = [
 ]
 
 describe('parser de etiquetas visuales', () => {
+  it('oculta directivas visuales parciales sin ocultar narración', () => {
+    assert.equal(
+      hideIncompleteVisualDirectivePrefix(
+        'Las hojas crujen.\nAlicia [feli',
+        'Las hojas crujen.\nAlicia [feliz]: Hola.',
+        characters
+      ),
+      'Las hojas crujen.\n'
+    )
+    assert.equal(
+      hideIncompleteVisualDirectivePrefix('Fondo [bos', 'Fondo [bosque]:', characters),
+      ''
+    )
+    assert.equal(
+      hideIncompleteVisualDirectivePrefix('Sonido [cam', 'Sonido [campana]:', characters),
+      ''
+    )
+    assert.equal(
+      hideIncompleteVisualDirectivePrefix(
+        'Alicia camina',
+        'Alicia camina por el bosque.',
+        characters
+      ),
+      'Alicia camina'
+    )
+    assert.equal(
+      hideIncompleteVisualDirectivePrefix(
+        'Alicia [feliz]:',
+        'Alicia [feliz]: Hola.',
+        characters
+      ),
+      'Alicia [feliz]:'
+    )
+  })
+
   it('extrae etiquetas repetidas, normaliza duplicados y resuelve coincidencia total', () => {
     const segments = parseSegments(
       'Alicia [ feliz ][SONRISA][feliz]: Hola.',

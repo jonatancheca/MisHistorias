@@ -311,6 +311,31 @@ test.describe('novela visual y responsive', () => {
     expect((await settingsResponse.json()).visualNovelManualAdvance).toBe(true)
   })
 
+  test('no muestra prefijos de imagen mientras pinta una respuesta visual', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data, true)
+    await data.patchSettings({ mockMode: true, responseSpeed: 'slow' })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.evaluate(() => {
+      const seen: string[] = []
+      Object.assign(window, { __visualFrameTexts: seen })
+      new MutationObserver(() => {
+        const text = document.querySelector('[data-testid="visual-novel-frame"]')?.textContent ?? ''
+        if (text.trim()) seen.push(text)
+      }).observe(document.body, { childList: true, characterData: true, subtree: true })
+    })
+
+    await page.getByTestId('continue-button').click()
+    await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
+    await page.waitForTimeout(5_000)
+    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+
+    const seen = await page.evaluate(() =>
+      (window as typeof window & { __visualFrameTexts?: string[] }).__visualFrameTexts ?? []
+    )
+    expect(seen.some((text) => text.includes('['))).toBe(false)
+  })
+
   test('adapta los hablantes visibles al ancho y los mantiene durante narración', async ({ page, data }) => {
     const first = await data.createCharacter({ name: data.unique('Primero') })
     const second = await data.createCharacter({ name: data.unique('Segundo') })
