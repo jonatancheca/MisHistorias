@@ -335,6 +335,7 @@ export const useStoriesStore = defineStore('stories', () => {
     premise: string,
     protagonistPreferences: string,
     protagonistPreferencesMode: ProtagonistPreferencesMode,
+    characterIds: string[],
     characterCustomizations: StoryCharacterCustomization[]
   ) {
     if (!activeStory.value || !title.trim() || !premise.trim()) return
@@ -346,8 +347,9 @@ export const useStoriesStore = defineStore('stories', () => {
       premise: premise.trim(),
       protagonistPreferences: protagonistPreferences.trim(),
       protagonistPreferencesMode,
+      characterIds: [...characterIds],
       characterCustomizations: normalizeCharacterCustomizations(
-        activeStory.value.characterIds,
+        characterIds,
         charactersStore.characters,
         characterCustomizations
       ),

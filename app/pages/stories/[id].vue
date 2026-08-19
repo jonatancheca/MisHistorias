@@ -45,12 +45,16 @@ const storyTitle = ref('')
 const storyPremise = ref('')
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
+const storyCharacterIds = ref<string[]>([])
 const storyCharacterCustomizations = ref<StoryCharacterCustomization[]>([])
 const storyCustomizationRows = computed(() =>
   storyCharacterCustomizations.value.map((customization) => ({
     customization,
     character: characters.byId(customization.characterId)
   }))
+)
+const availableStoryCharacters = computed(() =>
+  characters.characters.filter((character) => !storyCharacterIds.value.includes(character.id))
 )
 const characterTagSuggestions = computed(() =>
   characters.characters.flatMap((character) => character.tags ?? [])
@@ -262,6 +266,7 @@ function openStoryPreferences() {
   storyPremise.value = stories.activeStory.premise
   storyPreferences.value = stories.activeStory.protagonistPreferences ?? ''
   storyPreferencesMode.value = stories.activeStory.protagonistPreferencesMode ?? 'append'
+  storyCharacterIds.value = [...stories.activeStory.characterIds]
   const stored = new Map(
     (stories.activeStory.characterCustomizations ?? []).map((item) => [item.characterId, item])
   )
@@ -280,6 +285,18 @@ function openStoryPreferences() {
   storyPreferencesOpen.value = true
 }
 
+function addStoryCharacter(characterId: string) {
+  if (storyCharacterIds.value.includes(characterId)) return
+  const character = characters.byId(characterId)
+  if (!character) return
+  storyCharacterIds.value.push(characterId)
+  storyCharacterCustomizations.value.push({
+    characterId,
+    prompt: character.prompt,
+    tags: [...character.tags]
+  })
+}
+
 async function saveStoryPreferences() {
   if (!storyTitle.value.trim() || !storyPremise.value.trim()) return
   await stories.updateStorySettings(
@@ -287,6 +304,7 @@ async function saveStoryPreferences() {
     storyPremise.value,
     storyPreferences.value,
     storyPreferencesMode.value,
+    storyCharacterIds.value,
     storyCharacterCustomizations.value.map((item) => ({ ...item, tags: [...item.tags] }))
   )
   storyPreferencesOpen.value = false
@@ -501,12 +519,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="!stories.activeStory" class="p-8">
+  <div v-if="!stories.activeStory" class="flex h-full min-h-0 select-none flex-col p-8">
     <p class="card text-sm">Historia no encontrada.</p>
     <button
       v-if="!privacy.isPrivate"
       type="button"
-      class="mx-auto block h-10 w-12 opacity-0"
+      class="mt-2 block min-h-24 w-full flex-1 touch-manipulation opacity-0"
       data-testid="missing-story-private-trigger"
       aria-label="Activar modo privado"
       :disabled="privacy.switching"
@@ -996,6 +1014,28 @@ onBeforeUnmount(() => {
                 <option value="append">Añadir</option>
                 <option value="replace">Reemplazar</option>
               </select>
+            </div>
+            <div v-if="availableStoryCharacters.length" class="grid gap-2">
+              <span class="label">Añadir personajes</span>
+              <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                <button
+                  v-for="character in availableStoryCharacters"
+                  :key="character.id"
+                  type="button"
+                  class="flex items-center gap-3 rounded-xl border border-[var(--color-border-soft)] p-3 text-left transition hover:border-brand-400"
+                  :aria-label="`Añadir ${character.name}`"
+                  @click="addStoryCharacter(character.id)"
+                >
+                  <img
+                    v-if="characters.urlFor(characters.defaultImage(character.id)?.id)"
+                    :src="characters.urlFor(characters.defaultImage(character.id)?.id)!"
+                    alt=""
+                    class="h-10 w-10 rounded-full object-cover"
+                  >
+                  <span v-else class="h-10 w-10 shrink-0 rounded-full bg-brand-500/20" />
+                  <span class="min-w-0 truncate font-medium">{{ character.name }}</span>
+                </button>
+              </div>
             </div>
             <div v-if="storyCustomizationRows.length" class="grid gap-3">
               <div>

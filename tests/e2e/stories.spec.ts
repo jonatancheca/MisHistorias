@@ -99,6 +99,36 @@ test.describe('historias', () => {
     expect((await data.get<Story>('stories', story.id)).premise).toBe(story.premise)
   })
 
+  test('añade personajes desde ajustes y conserva su copia independiente', async ({ page, data }) => {
+    const { story, character } = await createStoryFixture(data)
+    const added = await data.createCharacter({
+      name: data.unique('Personaje-añadido'),
+      prompt: data.unique('Prompt-añadido'),
+      tags: [data.unique('rasgo-añadido')]
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
+    const form = page.getByRole('heading', { name: 'Ajustes de la historia' }).locator('..')
+    await form.getByRole('button', { name: `Añadir ${added.name}` }).click()
+    await expect(form.locator(`#story-settings-character-prompt-${added.id}`)).toHaveValue(
+      added.prompt
+    )
+    await form.getByRole('button', { name: 'Guardar' }).click()
+
+    await expect.poll(async () => await data.get<Story>('stories', story.id)).toMatchObject({
+      characterIds: [character.id, added.id],
+      characterCustomizations: [
+        { characterId: character.id, prompt: character.prompt, tags: character.tags },
+        { characterId: added.id, prompt: added.prompt, tags: added.tags }
+      ]
+    })
+
+    await page.reload()
+    await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
+    await expect(page.getByRole('heading', { name: added.name })).toBeVisible()
+  })
+
   test('cancela y confirma borrado de historia', async ({ page, data }) => {
     const { story } = await createStoryFixture(data)
     await page.goto('/')
@@ -269,7 +299,10 @@ test.describe('novela visual y responsive', () => {
     await page.goto('/stories/historia-inexistente')
     const trigger = page.getByTestId('missing-story-private-trigger')
     await expect(page.getByText('Historia no encontrada.')).toBeVisible()
-    await trigger.click({ force: true, clickCount: 3 })
+    await trigger.click()
+    await trigger.click()
+    expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('')
+    await trigger.click()
     await expect(page).toHaveURL('/')
     await expect(page.getByRole('button', { name: 'Salir del modo privado' })).toBeVisible()
   })
