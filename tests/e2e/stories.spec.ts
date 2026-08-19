@@ -469,6 +469,112 @@ test.describe('novela visual y responsive', () => {
     await page.getByRole('button', { name: 'Parar', exact: true }).click()
   })
 
+  test('el botón siguiente completa la frase activa y permite avanzar sin espera', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data, true)
+    await data.patchSettings({
+      mockMode: true,
+      responseSpeed: 'slow',
+      visualNovelManualAdvance: false
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.evaluate(() => {
+      Math.random = () => 0
+    })
+    await page.getByTestId('continue-button').click()
+    const frame = page.getByTestId('visual-novel-frame')
+    const next = page.getByTestId('visual-novel-next')
+    const counter = page.getByTestId('visual-novel-counter')
+    await expect.poll(async () => (await frame.innerText()).trim(), { timeout: 15_000 })
+      .not.toBe('La historia aún no ha empezado.')
+    await expect(next).toBeEnabled()
+    const beforeText = (await frame.innerText()).trim()
+    const beforeIndex = Number((await counter.innerText()).split('/')[0]?.trim())
+
+    await next.click()
+    expect((await frame.innerText()).trim().length).toBeGreaterThan(beforeText.length + 5)
+    await expect(next).toBeEnabled()
+    await next.click()
+    await expect.poll(async () =>
+      Number((await counter.innerText()).split('/')[0]?.trim())
+    ).toBe(beforeIndex + 1)
+
+    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+  })
+
+  test('no fuerza el avance al retroceder mientras sigue pintando', async ({ page, data }) => {
+    const { story, character, image } = await createStoryFixture(data, true)
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Última frase anterior.',
+      segments: [{
+        type: 'dialogue',
+        characterId: character.id,
+        tag: 'feliz',
+        imageId: image.id,
+        text: 'Última frase anterior.'
+      }]
+    })
+    await data.patchSettings({
+      mockMode: true,
+      responseSpeed: 'medium',
+      visualNovelManualAdvance: false
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.evaluate(() => {
+      Math.random = () => 0
+    })
+    await page.getByTestId('continue-button').click()
+    const frame = page.getByTestId('visual-novel-frame')
+    await expect(frame).not.toContainText('Última frase anterior.', { timeout: 15_000 })
+    await page.getByTestId('visual-novel-previous').click()
+    await expect(frame).toContainText('Última frase anterior.')
+
+    await page.waitForTimeout(4_000)
+    await expect(frame).toContainText('Última frase anterior.')
+    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+  })
+
+  test('la flecha derecha navega desde una frase anterior sin completar la activa', async ({ page, data }) => {
+    const { story, character, image } = await createStoryFixture(data, true)
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Última frase anterior.',
+      segments: [{
+        type: 'dialogue',
+        characterId: character.id,
+        tag: 'feliz',
+        imageId: image.id,
+        text: 'Última frase anterior.'
+      }]
+    })
+    await data.patchSettings({
+      mockMode: true,
+      responseSpeed: 'slow',
+      visualNovelManualAdvance: false
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.evaluate(() => {
+      Math.random = () => 0
+    })
+    await page.getByTestId('continue-button').click()
+    const frame = page.getByTestId('visual-novel-frame')
+    await expect(frame).not.toContainText('Última frase anterior.', { timeout: 15_000 })
+    const revealingText = (await frame.innerText()).trim()
+    await page.getByTestId('visual-novel-previous').click()
+    await expect(frame).toContainText('Última frase anterior.')
+
+    await page.keyboard.press('ArrowRight')
+    await expect(frame).not.toContainText('Última frase anterior.')
+    expect((await frame.innerText()).trim().length).toBeLessThanOrEqual(revealingText.length + 2)
+
+    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+  })
+
   test('muestra el mensaje escrito aunque el avance manual esté activo', async ({ page, data }) => {
     const { story, character, image } = await createStoryFixture(data, true)
     await data.patchSettings({

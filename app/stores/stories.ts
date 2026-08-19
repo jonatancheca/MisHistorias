@@ -109,7 +109,7 @@ export const useStoriesStore = defineStore('stories', () => {
   let controller: AbortController | null = null
   let animationFrame: number | null = null
   let finishAnimation: ((completed: boolean) => void) | null = null
-  let completeRevealLine: (() => void) | null = null
+  let completeRevealLine: (() => boolean) | null = null
   let animationDraft: Message | null = null
   let generationModeInProgress: GenerationMode | null = null
 
@@ -468,9 +468,12 @@ export const useStoriesStore = defineStore('stories', () => {
       }
 
       completeRevealLine = () => {
-        applyVisibleCount(currentRevealLineEnd(graphemes, visibleCount))
+        const nextVisibleCount = currentRevealLineEnd(graphemes, visibleCount)
+        if (nextVisibleCount <= visibleCount) return false
+        applyVisibleCount(nextVisibleCount)
         startCount = visibleCount
         startedAt = performance.now()
+        return true
       }
 
       const revealFrame = (now: number) => {

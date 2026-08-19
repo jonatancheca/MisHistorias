@@ -193,6 +193,7 @@ async function toggleVisualMode() {
   await stories.setVisualMode(visualMode)
   if (visualMode) {
     visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
+    followingVisualReveal.value = true
   } else {
     await resumeFollowingBottom()
   }
@@ -219,6 +220,7 @@ async function submit() {
   if (showSubmittedVisualFrame) {
     await nextTick()
     visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
+    followingVisualReveal.value = true
   }
   await stories.generate('normal')
 }
@@ -436,10 +438,30 @@ const visualFrameTotal = computed(() =>
   Math.max(visualFrames.value.length, completeVisualFrames.value.length)
 )
 const visualFrameIndex = ref(Math.max(0, visualFrames.value.length - 1))
+const followingVisualReveal = ref(true)
 const activeVisualFrame = computed(() => visualFrames.value[visualFrameIndex.value] ?? null)
 const canShowPreviousVisualFrame = computed(() => visualFrameIndex.value > 0)
 const canShowNextVisualFrame = computed(
   () => visualFrameIndex.value < visualFrames.value.length - 1
+)
+const completeActiveVisualFrame = computed(() => {
+  const active = activeVisualFrame.value
+  if (!active || active.messageId !== stories.pendingAssistantMessage?.id) return null
+  return completeVisualFrames.value.find((frame) => frame.id === active.id) ?? null
+})
+const isActiveVisualFrameRevealing = computed(() => {
+  const active = activeVisualFrame.value
+  const complete = completeActiveVisualFrame.value
+  return Boolean(active && complete && active.text !== complete.text)
+})
+const hasPendingNextVisualFrame = computed(
+  () => visualFrameIndex.value < completeVisualFrames.value.length - 1
+)
+const canAdvanceVisualFrame = computed(
+  () =>
+    isActiveVisualFrameRevealing.value ||
+    canShowNextVisualFrame.value ||
+    hasPendingNextVisualFrame.value
 )
 const visualBackground = computed(() => ({
   id: activeVisualFrame.value?.backgroundId ?? stories.activeStory?.initialBackgroundId ?? null,
@@ -474,22 +496,56 @@ watch(
       visualFrameIndex.value,
       previousLength,
       length,
-      settings.settings.visualNovelManualAdvance
+      settings.settings.visualNovelManualAdvance || !followingVisualReveal.value
     )
   }
 )
 
 function showPreviousVisualFrame() {
-  if (canShowPreviousVisualFrame.value) visualFrameIndex.value -= 1
+  if (!canShowPreviousVisualFrame.value) return false
+  visualFrameIndex.value -= 1
+  followingVisualReveal.value = false
+  return true
 }
 
-function showNextVisualFrame() {
-  if (canShowNextVisualFrame.value) visualFrameIndex.value += 1
+function navigateNextVisualFrame() {
+  if (!canShowNextVisualFrame.value) return false
+  visualFrameIndex.value += 1
+  followingVisualReveal.value = visualFrameIndex.value === visualFrames.value.length - 1
+  return true
+}
+
+function completeActiveVisualReveal() {
+  if (!isActiveVisualFrameRevealing.value) return false
+  followingVisualReveal.value = true
+  return stories.completeCurrentRevealLine()
+}
+
+function revealAndShowPendingVisualFrame() {
+  if (!hasPendingNextVisualFrame.value) return false
+  const targetIndex = visualFrameIndex.value + 1
+  while (
+    visualFrames.value.length <= targetIndex &&
+    stories.completeCurrentRevealLine()
+  ) {
+    // Puede haber directivas de fondo o sonido sin frase visible.
+  }
+  if (visualFrames.value.length <= targetIndex) return false
+  visualFrameIndex.value = targetIndex
+  followingVisualReveal.value = visualFrameIndex.value === visualFrames.value.length - 1
+  return true
+}
+
+function advanceVisualFrame() {
+  if (completeActiveVisualReveal()) return true
+  if (navigateNextVisualFrame()) return true
+  return revealAndShowPendingVisualFrame()
 }
 
 async function showStoryStart() {
   if (stories.activeStory?.visualMode) {
     visualFrameIndex.value = 0
+    followingVisualReveal.value = visualFrames.value.length <= 1
     return
   }
   scrollToTop()
@@ -498,21 +554,24 @@ async function showStoryStart() {
 async function showStoryEnd() {
   if (stories.activeStory?.visualMode) {
     visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
+    followingVisualReveal.value = true
     return
   }
   await resumeFollowingBottom()
 }
 
 function onVisualFrameClick(event: MouseEvent) {
-  if (stories.completeCurrentRevealLine()) return
-  if (window.innerWidth >= 640) return
+  if (window.innerWidth >= 640) {
+    completeActiveVisualReveal()
+    return
+  }
   const target = event.currentTarget
   if (!(target instanceof HTMLElement)) return
   const bounds = target.getBoundingClientRect()
   if (event.clientX < bounds.left + bounds.width / 2) {
     showPreviousVisualFrame()
   } else {
-    showNextVisualFrame()
+    advanceVisualFrame()
   }
 }
 
@@ -524,16 +583,10 @@ function onVisualNovelKeydown(event: KeyboardEvent) {
     (target.isContentEditable || target.matches('input, textarea, select, [contenteditable="true"]'))
   ) return
 
-  if (event.key === 'ArrowLeft' && canShowPreviousVisualFrame.value) {
-    event.preventDefault()
-    showPreviousVisualFrame()
+  if (event.key === 'ArrowLeft') {
+    if (showPreviousVisualFrame()) event.preventDefault()
   } else if (event.key === 'ArrowRight') {
-    if (stories.completeCurrentRevealLine()) {
-      event.preventDefault()
-    } else if (canShowNextVisualFrame.value) {
-      event.preventDefault()
-      showNextVisualFrame()
-    }
+    if (advanceVisualFrame()) event.preventDefault()
   }
 }
 
@@ -787,8 +840,8 @@ onBeforeUnmount(() => {
                 data-testid="visual-novel-next"
                 aria-label="Frase siguiente"
                 title="Frase siguiente"
-                :disabled="!canShowNextVisualFrame"
-                @click="showNextVisualFrame"
+                :disabled="!canAdvanceVisualFrame"
+                @click="advanceVisualFrame"
               >
                 <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="m9 18 6-6-6-6" />
