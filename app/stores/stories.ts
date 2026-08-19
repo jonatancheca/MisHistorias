@@ -103,6 +103,7 @@ export const useStoriesStore = defineStore('stories', () => {
   const debugTraces = ref<LlmDebugTrace[]>([])
   const generating = ref(false)
   const waitingForResponse = ref(false)
+  const pendingAssistantMessage = ref<Message | null>(null)
   const error = ref<string | null>(null)
 
   let controller: AbortController | null = null
@@ -119,6 +120,7 @@ export const useStoriesStore = defineStore('stories', () => {
     activeStory.value = null
     messages.value = []
     debugTraces.value = []
+    pendingAssistantMessage.value = null
     error.value = null
   }
 
@@ -396,6 +398,7 @@ export const useStoriesStore = defineStore('stories', () => {
     waitingForResponse.value = false
     cancelAnimation()
     animationDraft = null
+    pendingAssistantMessage.value = null
 
     try {
       if (draft?.raw.trim()) {
@@ -656,7 +659,22 @@ export const useStoriesStore = defineStore('stories', () => {
 
       if (raw.trim()) {
         if (requestController.signal.aborted) return
+        const segments = parseSegments(
+          raw,
+          storyCharacters,
+          backgroundsStore.backgrounds,
+          settingsStore.activeUserName,
+          charactersStore.images,
+          assistantMessage.id,
+          storySounds
+        )
+        const completedMessage: Message = {
+          ...assistantMessage,
+          raw,
+          segments
+        }
         if (settings.responseSpeed !== 'instant') {
+          pendingAssistantMessage.value = completedMessage
           const completed = await revealAssistantResponse(
             raw,
             assistantMessage,
@@ -669,23 +687,11 @@ export const useStoriesStore = defineStore('stories', () => {
           )
           if (!completed) return
         }
-        const segments = parseSegments(
-          raw,
-          storyCharacters,
-          backgroundsStore.backgrounds,
-          settingsStore.activeUserName,
-          charactersStore.images,
-          assistantMessage.id,
-          storySounds
-        )
         if (settings.responseSpeed === 'instant') {
           playNewSounds(segments, new Set<string>(), soundsStore)
         }
-        await persist({
-          ...assistantMessage,
-          raw,
-          segments
-        })
+        await persist(completedMessage)
+        pendingAssistantMessage.value = null
         if (requestController.signal.aborted) {
           await dbDeleteMessage(assistantMessage.id)
           messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
@@ -728,6 +734,9 @@ export const useStoriesStore = defineStore('stories', () => {
       }
     } finally {
       waitingForResponse.value = false
+      if (pendingAssistantMessage.value?.id === assistantMessage.id) {
+        pendingAssistantMessage.value = null
+      }
       if (generationModeInProgress === generationMode) generationModeInProgress = null
       if (controller === requestController) {
         generating.value = false
@@ -781,6 +790,7 @@ export const useStoriesStore = defineStore('stories', () => {
     debugTraces,
     generating,
     waitingForResponse,
+    pendingAssistantMessage,
     error,
     load,
     createStory,

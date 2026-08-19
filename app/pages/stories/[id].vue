@@ -7,7 +7,11 @@ import type {
 } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
 import { primaryTag } from '~/lib/tags'
-import { buildVisualNovelFrames, resolveVisualNovelFrameIndex } from '~/lib/visualNovelFrames'
+import {
+  buildVisualNovelFrames,
+  resolveVisualNovelFrameIndex,
+  withPendingAssistantMessage
+} from '~/lib/visualNovelFrames'
 
 const route = useRoute()
 const stories = useStoriesStore()
@@ -418,6 +422,19 @@ const visualFrames = computed(() =>
     resolveBackgroundId: (tag) => backgrounds.byTag(tag)?.id ?? null
   })
 )
+const completeVisualFrames = computed(() =>
+  buildVisualNovelFrames(
+    withPendingAssistantMessage(stories.messages, stories.pendingAssistantMessage),
+    {
+      initialBackgroundId: stories.activeStory?.initialBackgroundId ?? null,
+      initialBackgroundTag: primaryTag(initialBackground.value),
+      resolveBackgroundId: (tag) => backgrounds.byTag(tag)?.id ?? null
+    }
+  )
+)
+const visualFrameTotal = computed(() =>
+  Math.max(visualFrames.value.length, completeVisualFrames.value.length)
+)
 const visualFrameIndex = ref(Math.max(0, visualFrames.value.length - 1))
 const activeVisualFrame = computed(() => visualFrames.value[visualFrameIndex.value] ?? null)
 const canShowPreviousVisualFrame = computed(() => visualFrameIndex.value > 0)
@@ -636,7 +653,7 @@ onBeforeUnmount(() => {
             data-testid="visual-novel-counter"
             class="hidden h-10 shrink-0 items-center text-xs text-[var(--color-fg-muted)] sm:flex"
           >
-            {{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrames.length }}
+            {{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrameTotal }}
           </span>
           <button
             v-if="stories.activeStory.visualMode"

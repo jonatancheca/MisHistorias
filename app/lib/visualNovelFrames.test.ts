@@ -4,7 +4,8 @@ import type { Message } from '#shared/types'
 import {
   buildVisualNovelFrames,
   resolveVisualNovelFrameIndex,
-  visualNovelCharacterCapacity
+  visualNovelCharacterCapacity,
+  withPendingAssistantMessage
 } from './visualNovelFrames.ts'
 
 const messages: Message[] = [
@@ -103,6 +104,18 @@ describe('pasos de novela visual', () => {
       'bruno'
     ])
     assert.equal(frames[5]?.characterStates[1]?.imageId, 'bruno-serio')
+  })
+
+  it('sustituye solo el borrador por la respuesta completa pendiente', () => {
+    const draft = { ...messages[1]!, raw: 'Las ramas', segments: messages[1]!.segments.slice(0, 2) }
+    const visible = [messages[0]!, draft]
+
+    const combined = withPendingAssistantMessage(visible, messages[1]!)
+
+    assert.equal(combined.length, visible.length)
+    assert.equal(combined[0], messages[0])
+    assert.equal(combined[1], messages[1])
+    assert.equal(withPendingAssistantMessage(visible, null), visible)
   })
 
   it('reordena hablantes repetidos y conserva el reparto en mensajes del usuario', () => {

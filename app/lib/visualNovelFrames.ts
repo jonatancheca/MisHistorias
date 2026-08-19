@@ -54,6 +54,18 @@ export function resolveVisualNovelFrameIndex(
   return wasAtEnd ? length - 1 : safeCurrentIndex
 }
 
+export function withPendingAssistantMessage(
+  messages: Message[],
+  pending: Message | null
+) {
+  if (!pending) return messages
+  const index = messages.findIndex((message) => message.id === pending.id)
+  if (index < 0) return [...messages, pending]
+  return messages.map((message, messageIndex) =>
+    messageIndex === index ? pending : message
+  )
+}
+
 export function buildVisualNovelFrames(
   messages: Message[],
   options: BuildVisualNovelFramesOptions

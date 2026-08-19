@@ -398,6 +398,31 @@ test.describe('novela visual y responsive', () => {
     expect(seen.some((text) => text.includes('['))).toBe(false)
   })
 
+  test('anticipa el total completo y lo descarta al parar', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data, true)
+    await data.createMessage({ story, role: 'user', raw: 'Frase ya visible.' })
+    await data.patchSettings({ mockMode: true, responseSpeed: 'slow' })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('continue-button').click()
+    const counter = page.getByTestId('visual-novel-counter')
+    await expect.poll(async () => {
+      const [visible, total] = (await counter.innerText())
+        .split('/')
+        .map((value) => Number(value.trim()))
+      return total > visible
+    }, { timeout: 10_000 }).toBe(true)
+
+    const anticipatedTotal = Number((await counter.innerText()).split('/')[1]?.trim())
+    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeHidden()
+    const [visibleAfterStop, totalAfterStop] = (await counter.innerText())
+      .split('/')
+      .map((value) => Number(value.trim()))
+    expect(totalAfterStop).toBe(visibleAfterStop)
+    expect(totalAfterStop).toBeLessThan(anticipatedTotal)
+  })
+
   test('completa solo la intervención actual al pulsar el texto', async ({ page, data }) => {
     const { story } = await createStoryFixture(data, true)
     await data.patchSettings({ mockMode: true, responseSpeed: 'slow' })
