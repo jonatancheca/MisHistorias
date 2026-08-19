@@ -417,6 +417,64 @@ test.describe('novela visual y responsive', () => {
     await page.getByRole('button', { name: 'Parar', exact: true }).click()
   })
 
+  test('completa la intervención actual con flecha derecha antes de avanzar', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data, true)
+    await data.patchSettings({
+      mockMode: true,
+      responseSpeed: 'slow',
+      visualNovelManualAdvance: true
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('continue-button').click()
+    const frame = page.getByTestId('visual-novel-frame')
+    await expect.poll(async () => (await frame.innerText()).trim(), { timeout: 15_000 })
+      .not.toBe('La historia aún no ha empezado.')
+    const before = (await frame.innerText()).trim()
+
+    await page.keyboard.press('ArrowRight')
+    const after = (await frame.innerText()).trim()
+    expect(after.length).toBeGreaterThan(before.length + 5)
+    await page.waitForTimeout(300)
+    await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+  })
+
+  test('muestra el mensaje escrito aunque el avance manual esté activo', async ({ page, data }) => {
+    const { story, character, image } = await createStoryFixture(data, true)
+    await data.patchSettings({
+      mockMode: true,
+      responseSpeed: 'slow',
+      visualNovelManualAdvance: true
+    })
+    await data.createMessage({ story, role: 'user', raw: 'Mensaje anterior.' })
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Respuesta anterior.',
+      segments: [
+        {
+          type: 'dialogue',
+          characterId: character.id,
+          tag: 'feliz',
+          imageId: image.id,
+          text: 'Respuesta anterior.'
+        }
+      ]
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('visual-novel-previous').click()
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('Mensaje anterior.')
+
+    const submitted = data.unique('Nuevo-mensaje-manual')
+    await page.getByPlaceholder('Escribe lo que haces o dices…').fill(submitted)
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+    await expect(page.getByTestId('visual-novel-frame')).toContainText(submitted)
+    await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+  })
+
   test('adapta los hablantes visibles al ancho y los mantiene durante narración', async ({ page, data }) => {
     const first = await data.createCharacter({ name: data.unique('Primero') })
     const second = await data.createCharacter({ name: data.unique('Segundo') })

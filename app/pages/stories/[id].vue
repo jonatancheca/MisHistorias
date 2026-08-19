@@ -204,10 +204,19 @@ async function submit() {
   void sounds.unlock()
   const text = input.value
   if (!text.trim() || stories.generating) return
+  const showSubmittedVisualFrame = Boolean(
+    stories.activeStory?.visualMode && settings.settings.visualNovelManualAdvance
+  )
   followingBottom.value = true
   scheduleFollowBottom()
   input.value = ''
-  await stories.send(text)
+  const message = await stories.addUserMessage(text)
+  if (!message) return
+  if (showSubmittedVisualFrame) {
+    await nextTick()
+    visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
+  }
+  await stories.generate('normal')
 }
 
 async function generateOpening() {
@@ -501,9 +510,13 @@ function onVisualNovelKeydown(event: KeyboardEvent) {
   if (event.key === 'ArrowLeft' && canShowPreviousVisualFrame.value) {
     event.preventDefault()
     showPreviousVisualFrame()
-  } else if (event.key === 'ArrowRight' && canShowNextVisualFrame.value) {
-    event.preventDefault()
-    showNextVisualFrame()
+  } else if (event.key === 'ArrowRight') {
+    if (stories.completeCurrentRevealLine()) {
+      event.preventDefault()
+    } else if (canShowNextVisualFrame.value) {
+      event.preventDefault()
+      showNextVisualFrame()
+    }
   }
 }
 
