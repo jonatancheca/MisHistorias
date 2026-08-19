@@ -997,7 +997,14 @@ onBeforeRouteLeave(async () => {
               No hay releases publicadas todavía.
             </p>
             <p
-              v-if="appUpdate.info.value?.updateAvailable"
+              v-if="appUpdate.info.value?.currentVersion === 'dev'"
+              class="mt-2 text-[var(--color-fg-muted)]"
+              role="status"
+            >
+              Compilación de desarrollo; comparación desactivada.
+            </p>
+            <p
+              v-else-if="appUpdate.info.value?.updateAvailable"
               class="mt-2 font-semibold text-brand-600"
               role="status"
             >
