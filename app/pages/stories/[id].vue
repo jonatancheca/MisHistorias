@@ -443,6 +443,22 @@ function showNextVisualFrame() {
   if (canShowNextVisualFrame.value) visualFrameIndex.value += 1
 }
 
+async function showStoryStart() {
+  if (stories.activeStory?.visualMode) {
+    visualFrameIndex.value = 0
+    return
+  }
+  scrollToTop()
+}
+
+async function showStoryEnd() {
+  if (stories.activeStory?.visualMode) {
+    visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
+    return
+  }
+  await resumeFollowingBottom()
+}
+
 function onVisualFrameClick(event: MouseEvent) {
   if (stories.completeCurrentRevealLine()) return
   if (window.innerWidth >= 640) return
@@ -558,14 +574,14 @@ onBeforeUnmount(() => {
           </p>
         </div>
         <div class="flex shrink-0 gap-1 sm:gap-2">
-          <template v-if="!stories.activeStory.visualMode">
           <button
             type="button"
             class="btn-ghost h-10 w-10 shrink-0 px-0 py-0"
-            aria-label="Volver al principio"
-            title="Volver al principio"
-            :disabled="!canScrollToTop"
-            @click="scrollToTop"
+            data-testid="story-start-button"
+            :aria-label="stories.activeStory.visualMode ? 'Ir a la primera frase' : 'Volver al principio'"
+            :title="stories.activeStory.visualMode ? 'Ir a la primera frase' : 'Volver al principio'"
+            :disabled="stories.activeStory.visualMode ? !canShowPreviousVisualFrame : !canScrollToTop"
+            @click="showStoryStart"
           >
             <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 4h14M12 20V7m-5 5 5-5 5 5" />
@@ -574,20 +590,20 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="btn-ghost h-10 w-10 shrink-0 px-0 py-0"
-            aria-label="Volver al final"
-            title="Volver al final"
-            :disabled="!canScrollToBottom"
-            @click="resumeFollowingBottom"
+            data-testid="story-end-button"
+            :aria-label="stories.activeStory.visualMode ? 'Ir a la última frase' : 'Volver al final'"
+            :title="stories.activeStory.visualMode ? 'Ir a la última frase' : 'Volver al final'"
+            :disabled="stories.activeStory.visualMode ? !canShowNextVisualFrame : !canScrollToBottom"
+            @click="showStoryEnd"
           >
             <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 20h14M12 4v13m-5-5 5 5 5-5" />
             </svg>
           </button>
-          </template>
           <span
             v-if="stories.activeStory.visualMode"
             data-testid="visual-novel-counter"
-            class="flex h-10 shrink-0 items-center text-xs text-[var(--color-fg-muted)]"
+            class="hidden h-10 shrink-0 items-center text-xs text-[var(--color-fg-muted)] sm:flex"
           >
             {{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrames.length }}
           </span>
@@ -621,7 +637,7 @@ onBeforeUnmount(() => {
               <rect x="3" y="4" width="18" height="16" rx="2" />
               <path d="m3 15 5-5 4 4 3-3 6 6M8 8h.01" />
             </svg>
-            <span>{{ stories.activeStory.visualMode ? 'Chat' : 'Novela' }}</span>
+            <span class="hidden sm:inline">{{ stories.activeStory.visualMode ? 'Chat' : 'Novela' }}</span>
           </button>
           <button
             type="button"

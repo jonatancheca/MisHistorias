@@ -311,6 +311,35 @@ test.describe('novela visual y responsive', () => {
     expect((await settingsResponse.json()).visualNovelManualAdvance).toBe(true)
   })
 
+  test('los botones de inicio y fin saltan a la primera y última frase', async ({ page, data }) => {
+    const { story, character, image } = await createStoryFixture(data, true)
+    await data.createMessage({ story, role: 'user', raw: 'Primera frase.' })
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Narración. Diálogo.',
+      segments: [
+        { type: 'narration', characterId: null, tag: null, text: 'Frase intermedia.' },
+        {
+          type: 'dialogue',
+          characterId: character.id,
+          tag: 'feliz',
+          imageId: image.id,
+          text: 'Última frase.'
+        }
+      ]
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await expect(page.getByTestId('visual-novel-counter')).toHaveText('3 / 3')
+    await page.getByTestId('story-start-button').click()
+    await expect(page.getByTestId('visual-novel-counter')).toHaveText('1 / 3')
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('Primera frase.')
+    await page.getByTestId('story-end-button').click()
+    await expect(page.getByTestId('visual-novel-counter')).toHaveText('3 / 3')
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('Última frase.')
+  })
+
   test('no muestra prefijos de imagen mientras pinta una respuesta visual', async ({ page, data }) => {
     const { story } = await createStoryFixture(data, true)
     await data.patchSettings({ mockMode: true, responseSpeed: 'slow' })
@@ -431,6 +460,12 @@ test.describe('novela visual y responsive', () => {
       await expect(toggle).toHaveAttribute('aria-expanded', 'true')
       await expect(page.locator('#app-navigation')).toBeVisible()
       await expect(page.locator('#story-header')).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        .toBe(true)
+
+      await page.getByTestId('visual-mode-toggle').click()
+      await expect(page.getByTestId('story-start-button')).toBeVisible()
+      await expect(page.getByTestId('story-end-button')).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
         .toBe(true)
     })
