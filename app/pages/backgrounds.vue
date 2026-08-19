@@ -116,6 +116,7 @@ async function remove(id: string) {
             autocomplete="off"
             aria-label="Descripción del fondo"
             placeholder="Descripción"
+            @input="background.description = ($event.target as HTMLInputElement).value"
             @change="update(background.id, { description: ($event.target as HTMLInputElement).value })"
           >
           <SoundEditor :background-id="background.id" title="Sonidos del fondo" />

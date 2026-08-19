@@ -30,6 +30,7 @@ import {
   type StoredSound
 } from '~/lib/db'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
+import { DEFAULT_SOUND_VERSION } from '~/lib/defaultSounds'
 
 const TEST_TIME = Date.UTC(2026, 0, 15, 12, 0, 0)
 
@@ -106,7 +107,8 @@ function silentWavBlob() {
   return new Blob([bytes], { type: 'audio/wav' })
 }
 
-async function counts(): Promise<TestDataCounts> {
+export async function countNormalTestData(): Promise<TestDataCounts> {
+  assertDevelopmentNormalScope()
   const [characters, images, backgrounds, sounds, stories, presets] = await Promise.all([
     listCharacters(),
     listAllImages(),
@@ -411,7 +413,10 @@ export async function resetNormalTestData(seed: boolean): Promise<TestDataResetR
   if (seed) await seedNormalData()
 
   const activePresetId = seed ? TEST_DATA_IDS.presetNarrative : null
-  await writeSettings({ activePresetId })
+  await writeSettings({
+    activePresetId,
+    defaultSoundVersion: seed ? 0 : DEFAULT_SOUND_VERSION
+  })
 
-  return { counts: await counts(), activePresetId, seeded: seed }
+  return { counts: await countNormalTestData(), activePresetId, seeded: seed }
 }

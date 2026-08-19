@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TestDataResetResult } from '~/lib/testData'
+import { DEFAULT_SOUND_VERSION } from '~/lib/defaultSounds'
 
 if (!import.meta.dev) {
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
@@ -10,6 +11,7 @@ const settings = useSettingsStore()
 const stories = useStoriesStore()
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
+const sounds = useSoundsStore()
 const presets = usePresetsStore()
 
 const running = ref(false)
@@ -26,10 +28,12 @@ async function run(seed: boolean) {
     const { resetNormalTestData } = await import('~/lib/testData')
     const next = await resetNormalTestData(seed)
     settings.settings.activePresetId = next.activePresetId
+    settings.settings.defaultSoundVersion = seed ? 0 : DEFAULT_SOUND_VERSION
 
     await stories.resetForScope()
     characters.resetForScope()
     backgrounds.resetForScope()
+    sounds.resetForScope()
     presets.resetForScope()
 
     if (seed) {
@@ -37,8 +41,11 @@ async function run(seed: boolean) {
         stories.load(true),
         characters.load(true),
         backgrounds.load(true),
+        sounds.load(true),
         presets.load(true)
       ])
+      const { countNormalTestData } = await import('~/lib/testData')
+      next.counts = await countNormalTestData()
     }
     result.value = next
   } catch (caught) {

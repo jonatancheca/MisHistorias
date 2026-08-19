@@ -185,6 +185,9 @@ export interface AppSettings {
   /** Versión aplicada del prompt por defecto en cada colección. */
   defaultPresetVersion: number
   privateDefaultPresetVersion: number
+  /** Versión aplicada del pack de sonidos por defecto en cada colección. */
+  defaultSoundVersion: number
+  privateDefaultSoundVersion: number
   theme: Theme
   /** Velocidad de revelado visual de las respuestas del asistente */
   responseSpeed: ResponseSpeed

@@ -17,6 +17,8 @@ const DEFAULTS: AppSettings = {
   privateActivePresetId: null,
   defaultPresetVersion: 0,
   privateDefaultPresetVersion: 0,
+  defaultSoundVersion: 0,
+  privateDefaultSoundVersion: 0,
   theme: 'system',
   responseSpeed: 'high',
   visualNovelManualAdvance: false,
@@ -53,6 +55,7 @@ export const useSettingsStore = defineStore('settings', () => {
       : settings.value.protagonistPreferences
   )
   const loaded = ref(false)
+  let saveQueue: Promise<void> = Promise.resolve()
   let systemThemeMedia: MediaQueryList | null = null
 
   function getSystemThemeMedia() {
@@ -78,11 +81,23 @@ export const useSettingsStore = defineStore('settings', () => {
     applyTheme()
   }
 
-  async function save(patch: Partial<AppSettings>) {
+  async function persist(patch: Partial<AppSettings>) {
     const saved = await writeSettings(patch)
     settings.value = { ...DEFAULTS, ...settings.value, ...saved, apiKey: '' }
     if ('theme' in patch) applyTheme()
     return settings.value
+  }
+
+  function save(patch: Partial<AppSettings>) {
+    const result = saveQueue.then(
+      () => persist(patch),
+      () => persist(patch)
+    )
+    saveQueue = result.then(
+      () => undefined,
+      () => undefined
+    )
+    return result
   }
 
   function applyTheme() {

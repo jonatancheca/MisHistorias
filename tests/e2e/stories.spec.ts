@@ -401,7 +401,11 @@ test.describe('novela visual y responsive', () => {
   test('anticipa el total completo y lo descarta al parar', async ({ page, data }) => {
     const { story } = await createStoryFixture(data, true)
     await data.createMessage({ story, role: 'user', raw: 'Frase ya visible.' })
-    await data.patchSettings({ mockMode: true, responseSpeed: 'slow' })
+    await data.patchSettings({
+      mockMode: true,
+      responseSpeed: 'slow',
+      visualNovelManualAdvance: false
+    })
 
     await page.goto(`/stories/${story.id}`)
     await page.getByTestId('continue-button').click()

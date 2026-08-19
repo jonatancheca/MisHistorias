@@ -1,11 +1,19 @@
 import { defineStore } from 'pinia'
 import {
   deleteSound,
+  getActiveDataScope,
   listSounds,
   newId,
   putSound,
   type StoredSound
 } from '~/lib/db'
+import type { AppSettings } from '#shared/types'
+import {
+  DEFAULT_SOUNDS,
+  DEFAULT_SOUND_CREATED_AT,
+  DEFAULT_SOUND_VERSION,
+  planDefaultSoundSeeds
+} from '~/lib/defaultSounds'
 import { sanitizeTags, tagKey } from '~/lib/tags'
 
 const ALLOWED_TYPES = new Set([
@@ -45,7 +53,35 @@ export const useSoundsStore = defineStore('sounds', () => {
 
   async function load(force = false) {
     if (loaded.value && !force) return
-    sounds.value = await listSounds()
+    const settings = useSettingsStore()
+    await settings.load()
+    const all = await listSounds()
+    const versionKey = getActiveDataScope() === 'private'
+      ? ('privateDefaultSoundVersion' as const)
+      : ('defaultSoundVersion' as const)
+    const appliedVersion = settings.settings[versionKey]
+    if (appliedVersion < DEFAULT_SOUND_VERSION) {
+      const seeds = planDefaultSoundSeeds(all, appliedVersion)
+      for (const seed of seeds) {
+        const response = await fetch(`/sounds/default/${encodeURIComponent(seed.file)}`)
+        if (!response.ok) throw new Error(`No se pudo cargar el sonido ${seed.tags[0]}.`)
+        const sound: StoredSound = {
+          id: seed.id,
+          tags: seed.tags,
+          characterId: null,
+          backgroundId: null,
+          mimeType: 'audio/wav',
+          createdAt:
+            DEFAULT_SOUND_CREATED_AT +
+            DEFAULT_SOUNDS.findIndex((definition) => definition.id === seed.id),
+          blob: await response.blob()
+        }
+        await putSound(sound)
+        all.push(sound)
+      }
+      await settings.save({ [versionKey]: DEFAULT_SOUND_VERSION } as Partial<AppSettings>)
+    }
+    sounds.value = all
     syncUrls()
     loaded.value = true
   }

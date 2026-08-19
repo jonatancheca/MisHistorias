@@ -13,6 +13,8 @@ const ALLOWED_SETTINGS = new Set([
   'privateActivePresetId',
   'defaultPresetVersion',
   'privateDefaultPresetVersion',
+  'defaultSoundVersion',
+  'privateDefaultSoundVersion',
   'theme',
   'responseSpeed',
   'visualNovelManualAdvance',
@@ -47,6 +49,8 @@ function validSetting(key: string, value: unknown) {
       return value === null || typeof value === 'string'
     case 'defaultPresetVersion':
     case 'privateDefaultPresetVersion':
+    case 'defaultSoundVersion':
+    case 'privateDefaultSoundVersion':
       return Number.isInteger(value) && Number(value) >= 0
     case 'theme':
       return value === 'system' || value === 'light' || value === 'dark'
