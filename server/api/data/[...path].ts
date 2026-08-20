@@ -1,5 +1,10 @@
 import type { H3Event } from 'h3'
-import type { DataResource, DataScope } from '../../utils/storage'
+import type {
+  BinaryPayload,
+  CharacterImportPayload,
+  DataResource,
+  DataScope
+} from '../../utils/storage'
 import { getStorage } from '../../utils/storage'
 
 const RESOURCES = new Set<DataResource>([
@@ -14,6 +19,8 @@ const RESOURCES = new Set<DataResource>([
 ])
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_SOUND_BYTES = 10 * 1024 * 1024
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+const SOUND_TYPES = new Set(['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/ogg'])
 
 function asScope(value: unknown): DataScope {
   if (value === 'normal' || value === 'private') return value
@@ -200,6 +207,89 @@ async function readBinaryPayload(event: H3Event, resource: 'images' | 'backgroun
   return { metadata: asRecord(metadata), data: filePart.data }
 }
 
+function importAssets(
+  rawAssets: unknown,
+  parts: Awaited<ReturnType<typeof readMultipartFormData>>,
+  kind: 'images' | 'sounds'
+) {
+  if (!Array.isArray(rawAssets)) throw createError({ statusCode: 400, statusMessage: 'Archivos no válidos' })
+  const allowedTypes = kind === 'images' ? IMAGE_TYPES : SOUND_TYPES
+  const maximum = kind === 'images' ? MAX_IMAGE_BYTES : MAX_SOUND_BYTES
+  const seenFields = new Set<string>()
+  let defaultImages = 0
+  return rawAssets.map((rawAsset): BinaryPayload => {
+    const asset = asRecord(rawAsset)
+    const field = typeof asset.field === 'string' ? asset.field : ''
+    const mimeType = typeof asset.mimeType === 'string' ? asset.mimeType.toLocaleLowerCase() : ''
+    if (!field || seenFields.has(field) || !allowedTypes.has(mimeType) || !hasStringArray(asset, 'tags')) {
+      throw createError({ statusCode: 400, statusMessage: 'Archivos no válidos' })
+    }
+    if (kind === 'sounds' && asset.tags.length === 0) {
+      throw createError({ statusCode: 400, statusMessage: 'Cada sonido necesita etiquetas' })
+    }
+    if (
+      kind === 'images' &&
+      (!hasString(asset, 'description') || typeof asset.isDefault !== 'boolean')
+    ) {
+      throw createError({ statusCode: 400, statusMessage: 'Imágenes no válidas' })
+    }
+    if (kind === 'images' && asset.isDefault) defaultImages += 1
+    if (defaultImages > 1) {
+      throw createError({ statusCode: 400, statusMessage: 'Solo puede haber una imagen predeterminada' })
+    }
+    seenFields.add(field)
+    const file = parts?.find((part) => part.name === field)
+    if (!file || file.data.byteLength === 0 || file.data.byteLength > maximum) {
+      throw createError({ statusCode: 400, statusMessage: 'Archivo ausente o demasiado grande' })
+    }
+    return {
+      metadata: {
+        tags: asset.tags,
+        description: kind === 'images' ? asset.description : undefined,
+        isDefault: kind === 'images' ? asset.isDefault : undefined,
+        mimeType
+      },
+      data: file.data
+    }
+  })
+}
+
+async function readCharacterImport(event: H3Event) {
+  const parts = await readMultipartFormData(event)
+  const metadataPart = parts?.find((part) => part.name === 'metadata')
+  if (!metadataPart) throw createError({ statusCode: 400, statusMessage: 'Faltan metadatos' })
+  let rawMetadata: unknown
+  try {
+    rawMetadata = JSON.parse(metadataPart.data.toString('utf8'))
+  } catch {
+    throw createError({ statusCode: 400, statusMessage: 'Metadatos no válidos' })
+  }
+  const metadata = asRecord(rawMetadata)
+  const character = asRecord(metadata.character)
+  const name = typeof metadata.name === 'string' ? metadata.name.trim() : ''
+  if (
+    (metadata.mode !== 'new' && metadata.mode !== 'replace') ||
+    !name ||
+    !hasString(character, 'prompt') ||
+    !hasStringArray(character, 'tags') ||
+    !hasString(character, 'color') || !/^#[0-9a-f]{6}$/i.test(String(character.color)) ||
+    !hasString(character, 'imageGenerationPreset')
+  ) {
+    throw createError({ statusCode: 400, statusMessage: 'Personaje no válido' })
+  }
+  const targetId = metadata.mode === 'replace' ? asId(metadata.targetId) : null
+  const payload: CharacterImportPayload = {
+    name,
+    prompt: String(character.prompt),
+    tags: character.tags as string[],
+    color: String(character.color),
+    imageGenerationPreset: String(character.imageGenerationPreset),
+    images: importAssets(metadata.images, parts, 'images'),
+    sounds: importAssets(metadata.sounds, parts, 'sounds')
+  }
+  return { targetId, payload }
+}
+
 function mapStorageError(caught: unknown): never {
   if (caught && typeof caught === 'object' && 'statusCode' in caught) throw caught
   const error = caught as { code?: string; errcode?: number; message?: string }
@@ -243,6 +333,17 @@ export default defineEventHandler(async (event) => {
         : []
       storage.deleteMessages(scope, ids)
       return { ok: true }
+    }
+
+    if (
+      segments[0] === 'characters' &&
+      segments[1] === 'import' &&
+      event.method === 'POST'
+    ) {
+      const imported = await readCharacterImport(event)
+      const result = storage.importCharacter(scope, imported.targetId, imported.payload)
+      if (!result) throw createError({ statusCode: 404, statusMessage: 'Personaje no encontrado' })
+      return result
     }
 
     if (

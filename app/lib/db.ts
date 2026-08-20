@@ -123,6 +123,45 @@ export async function copyCharacter(
   )
 }
 
+export async function importCharacterArchive(input: {
+  mode: 'new' | 'replace'
+  targetId?: string
+  name: string
+  character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset'>
+  images: Array<Pick<StoredImage, 'tags' | 'description' | 'isDefault' | 'mimeType' | 'blob'>>
+  sounds: Array<Pick<StoredSound, 'tags' | 'mimeType' | 'blob'>>
+}) {
+  const form = new FormData()
+  const images = input.images.map((image, index) => {
+    const field = `image-${index}`
+    form.append(field, image.blob, field)
+    return {
+      field,
+      tags: image.tags,
+      description: image.description,
+      isDefault: image.isDefault,
+      mimeType: image.mimeType
+    }
+  })
+  const sounds = input.sounds.map((sound, index) => {
+    const field = `sound-${index}`
+    form.append(field, sound.blob, field)
+    return { field, tags: sound.tags, mimeType: sound.mimeType }
+  })
+  form.append('metadata', JSON.stringify({
+    mode: input.mode,
+    targetId: input.targetId,
+    name: input.name,
+    character: input.character,
+    images,
+    sounds
+  }))
+  return $fetch<{ character: Character; images: CharacterImage[]; sounds: Sound[] }>(
+    dataUrl('characters/import'),
+    { method: 'POST', body: form }
+  )
+}
+
 export async function deleteCharacter(id: string) {
   await deleteJson('characters', id)
 }

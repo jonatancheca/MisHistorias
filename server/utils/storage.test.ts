@@ -818,6 +818,114 @@ test('borra mensajes y trazas relacionadas dentro de transacción', () => {
   })
 })
 
+test('importa personaje nuevo con medios e IDs nuevos', () => {
+  withStorage((storage) => {
+    storage.putBinary('sounds', 'normal', 'existing-sound', {
+      metadata: {
+        tags: ['saludo'],
+        characterId: null,
+        backgroundId: null,
+        mimeType: 'audio/ogg',
+        createdAt: 1
+      },
+      data: new Uint8Array([9])
+    })
+    const imported = storage.importCharacter('normal', null, {
+      name: 'Importada',
+      prompt: 'Prompt importado',
+      tags: ['valiente'],
+      color: '#abcdef',
+      imageGenerationPreset: 'Retrato',
+      images: [{
+        metadata: {
+          tags: ['feliz'],
+          description: 'Sonríe',
+          isDefault: true,
+          mimeType: 'image/png'
+        },
+        data: new Uint8Array([1, 2, 3])
+      }],
+      sounds: [{
+        metadata: { tags: ['saludo'], mimeType: 'audio/ogg' },
+        data: new Uint8Array([4, 5])
+      }]
+    })!
+
+    assert.equal(imported.character.name, 'Importada')
+    assert.equal(imported.images.length, 1)
+    assert.notEqual(imported.images[0]!.id, 'image-exported')
+    assert.deepEqual(imported.sounds[0]!.tags, ['saludo-2'])
+    assert.deepEqual(
+      Array.from(storage.getBinary('images', 'normal', imported.images[0]!.id)!.data),
+      [1, 2, 3]
+    )
+  })
+})
+
+test('reemplaza personaje de forma atómica conservando su ID e historias', () => {
+  withStorage((storage) => {
+    storage.put('characters', 'normal', 'target', character('target'))
+    storage.put('stories', 'normal', 'story-target', {
+      ...story('story-target'),
+      characterIds: ['target'],
+      characterCustomizations: [{ characterId: 'target', prompt: 'Anterior', tags: ['antes'] }]
+    })
+    storage.putBinary('images', 'normal', 'old-image', {
+      metadata: {
+        tags: ['antes'], description: '', isDefault: true, characterId: 'target',
+        mimeType: 'image/png', createdAt: 1
+      },
+      data: new Uint8Array([8])
+    })
+    storage.putBinary('sounds', 'normal', 'old-sound', {
+      metadata: {
+        tags: ['voz'], characterId: 'target', backgroundId: null,
+        mimeType: 'audio/ogg', createdAt: 1
+      },
+      data: new Uint8Array([7])
+    })
+
+    const imported = storage.importCharacter('normal', 'target', {
+      name: 'Nuevo nombre',
+      prompt: 'Nuevo prompt',
+      tags: ['después'],
+      color: '#ffffff',
+      imageGenerationPreset: '',
+      images: [{
+        metadata: {
+          tags: ['después'], description: '', isDefault: true, mimeType: 'image/webp'
+        },
+        data: new Uint8Array([1])
+      }],
+      sounds: [{
+        metadata: { tags: ['nueva-voz'], mimeType: 'audio/ogg' },
+        data: new Uint8Array([2])
+      }]
+    })!
+
+    assert.equal(imported.character.id, 'target')
+    assert.equal(storage.get('images', 'normal', 'old-image'), null)
+    assert.equal(storage.get('sounds', 'normal', 'old-sound'), null)
+    assert.deepEqual(storage.get('stories', 'normal', 'story-target')?.characterIds, ['target'])
+
+    assert.throws(() => storage.importCharacter('normal', 'target', {
+      name: 'Fallará',
+      prompt: '',
+      tags: [],
+      color: '#000000',
+      imageGenerationPreset: '',
+      images: [1, 2].map(() => ({
+        metadata: { tags: [], description: '', isDefault: true, mimeType: 'image/png' },
+        data: new Uint8Array([3])
+      })),
+      sounds: []
+    }))
+    assert.equal(storage.get('characters', 'normal', 'target')?.name, 'Nuevo nombre')
+    assert.equal(storage.list('images', 'normal', { characterId: 'target' }).length, 1)
+    assert.equal(storage.list('sounds', 'normal').filter((item) => item.characterId === 'target').length, 1)
+  })
+})
+
 test('limpiar normal no toca privado ni ajustes', () => {
   withStorage((storage) => {
     storage.put('characters', 'normal', 'normal-1', character('normal-1'))

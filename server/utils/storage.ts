@@ -33,6 +33,16 @@ export interface BinaryPayload {
   data: Uint8Array
 }
 
+export interface CharacterImportPayload {
+  name: string
+  prompt: string
+  tags: string[]
+  color: string
+  imageGenerationPreset: string
+  images: BinaryPayload[]
+  sounds: BinaryPayload[]
+}
+
 interface SettingsRow {
   value: Record<string, unknown>
   apiKey: string
@@ -136,6 +146,20 @@ function rowToBackground(row: SqliteRow) {
     mimeType: text(row.mime_type, 'application/octet-stream'),
     createdAt: integer(row.created_at)
   }
+}
+
+function tagKey(value: string) {
+  return value.trim().toLocaleLowerCase()
+}
+
+function nextAvailableTag(base: string, used: Set<string>) {
+  let candidate = base
+  let suffix = 2
+  while (used.has(tagKey(candidate))) {
+    candidate = `${base}-${suffix}`
+    suffix += 1
+  }
+  return candidate
 }
 
 function rowToSound(row: SqliteRow) {
@@ -927,6 +951,100 @@ export class MisHistoriasStorage {
       return {
         character,
         images: this.list('images', scope, { characterId })
+      }
+    })
+  }
+
+  importCharacter(
+    scope: DataScope,
+    targetId: string | null,
+    payload: CharacterImportPayload
+  ) {
+    const existing = targetId ? this.get('characters', scope, targetId) : null
+    if (targetId && !existing) return null
+    const characterId = targetId ?? randomUUID()
+    const now = Date.now()
+
+    return this.transaction(() => {
+      if (targetId) {
+        this.database
+          .prepare('DELETE FROM images WHERE scope = ? AND character_id = ?')
+          .run(scope, characterId)
+        this.database
+          .prepare('DELETE FROM sounds WHERE scope = ? AND character_id = ?')
+          .run(scope, characterId)
+      }
+
+      const character = this.put('characters', scope, characterId, {
+        id: characterId,
+        name: payload.name,
+        prompt: payload.prompt,
+        tags: payload.tags,
+        color: payload.color,
+        imageGenerationPreset: payload.imageGenerationPreset,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now
+      })
+
+      const insertBlob = this.database.prepare(
+        'INSERT INTO image_blobs(scope, id, data) VALUES (?, ?, ?)'
+      )
+      const insertImage = this.database.prepare(`
+        INSERT INTO images(
+          scope, id, character_id, tags_json, description, is_default,
+          mime_type, created_at, blob_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      for (const [index, image] of payload.images.entries()) {
+        const imageId = randomUUID()
+        const imageTags = tags(image.metadata.tags)
+        if (imageTags.length === 0) imageTags.push('neutral')
+        insertBlob.run(scope, imageId, image.data)
+        insertImage.run(
+          scope,
+          imageId,
+          characterId,
+          json(imageTags),
+          text(image.metadata.description),
+          bool(image.metadata.isDefault),
+          text(image.metadata.mimeType),
+          now + index,
+          imageId
+        )
+      }
+
+      const usedSoundTags = new Set(
+        (this.list('sounds', scope) as Array<{ tags: string[] }>)
+          .flatMap((sound) => sound.tags)
+          .map(tagKey)
+      )
+      const insertSound = this.database.prepare(`
+        INSERT INTO sounds(
+          scope, id, tags_json, character_id, background_id, mime_type, created_at, data
+        ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
+      `)
+      for (const [index, sound] of payload.sounds.entries()) {
+        const soundTags = tags(sound.metadata.tags).map((base) => {
+          const available = nextAvailableTag(base, usedSoundTags)
+          usedSoundTags.add(tagKey(available))
+          return available
+        })
+        insertSound.run(
+          scope,
+          randomUUID(),
+          json(soundTags),
+          characterId,
+          text(sound.metadata.mimeType),
+          now + index,
+          sound.data
+        )
+      }
+
+      return {
+        character,
+        images: this.list('images', scope, { characterId }),
+        sounds: (this.list('sounds', scope) as Array<Record<string, unknown>>)
+          .filter((sound) => sound.characterId === characterId)
       }
     })
   }

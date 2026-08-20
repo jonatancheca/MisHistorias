@@ -1,5 +1,32 @@
-import type { Background, Character, CharacterImage } from '../../shared/types'
+import { readFile } from 'node:fs/promises'
+import JSZip from 'jszip'
+import type { Background, Character, CharacterImage, Sound } from '../../shared/types'
 import { expect, PNG_BYTES, test } from './fixtures'
+
+async function characterZip(name: string, prompt = 'Prompt desde ZIP') {
+  const zip = new JSZip()
+  zip.file('character.json', JSON.stringify({
+    version: 1,
+    character: {
+      name,
+      prompt,
+      tags: ['importado'],
+      color: '#123456',
+      imageGenerationPreset: 'Retrato'
+    },
+    images: [],
+    sounds: []
+  }))
+  return zip.generateAsync({ type: 'nodebuffer' })
+}
+
+async function uploadCharacterZip(page: import('@playwright/test').Page, buffer: Buffer) {
+  await page.locator('input[type="file"][accept*="zip"]').setInputFiles({
+    name: 'personaje.zip',
+    mimeType: 'application/zip',
+    buffer
+  })
+}
 
 test.describe('personajes', () => {
   test('crea personaje nuevo y persiste sus datos', async ({ page, data }) => {
@@ -68,6 +95,110 @@ test.describe('personajes', () => {
     await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar' }).click()
     await expect(card).toHaveCount(0)
     expect((await data.list<Character>('characters')).some((item) => item.id === character.id)).toBe(false)
+  })
+
+  test('exporta e importa ZIP con ficha, imagen y sonido', async ({ page, data }) => {
+    const source = await data.createCharacter({
+      name: data.unique('Exportable'),
+      prompt: 'Prompt exportado',
+      imageGenerationPreset: 'Retrato'
+    })
+    await data.createImage(source, ['feliz'])
+    await data.createSound(source, ['saludo-exportado'])
+    await page.goto('/characters')
+
+    const card = page.locator('li').filter({ hasText: source.name })
+    const downloadPromise = page.waitForEvent('download')
+    await card.getByRole('button', { name: 'Exportar' }).click()
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toMatch(/^personaje-.*\.zip$/)
+    const path = await download.path()
+    expect(path).not.toBeNull()
+    const zip = await JSZip.loadAsync(await readFile(path!))
+    const manifest = JSON.parse(await zip.file('character.json')!.async('string')) as {
+      character: { name: string; prompt: string; imageGenerationPreset: string }
+      images: Array<{ path: string; tags: string[] }>
+      sounds: Array<{ path: string; tags: string[] }>
+    }
+    expect(manifest.character).toMatchObject({
+      name: source.name,
+      prompt: 'Prompt exportado',
+      imageGenerationPreset: 'Retrato'
+    })
+    expect(manifest.images[0]).toMatchObject({ tags: ['feliz'] })
+    expect(manifest.sounds[0]).toMatchObject({ tags: ['saludo-exportado'] })
+    expect(zip.file(manifest.images[0]!.path)).not.toBeNull()
+    expect(zip.file(manifest.sounds[0]!.path)).not.toBeNull()
+
+    const importedName = data.unique('Importada')
+    manifest.character.name = importedName
+    zip.file('character.json', JSON.stringify(manifest))
+    await uploadCharacterZip(page, await zip.generateAsync({ type: 'nodebuffer' }))
+    await expect(page.getByRole('status').filter({ hasText: importedName }))
+      .toContainText(`«${importedName}» importado`)
+
+    const imported = (await data.list<Character>('characters')).find((item) => item.name === importedName)
+    expect(imported).toBeDefined()
+    expect(await data.list<CharacterImage>('images', 'normal', { characterId: imported!.id })).toHaveLength(1)
+    expect((await data.list<Sound>('sounds')).filter((item) => item.characterId === imported!.id))
+      .toHaveLength(1)
+  })
+
+  test('resuelve homónimos al cancelar, crear o reemplazar', async ({ page, data }) => {
+    const first = await data.createCharacter({ name: ' Ana ', prompt: 'Primera Ana' })
+    const second = await data.createCharacter({ name: 'ANA', prompt: 'Segunda Ana' })
+    const archive = await characterZip('ana')
+    await page.goto('/characters')
+
+    await uploadCharacterZip(page, archive)
+    let dialog = page.getByRole('dialog')
+    await expect(dialog).toContainText('Ya existe «ana»')
+    await page.setViewportSize({ width: 320, height: 800 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await dialog.getByRole('button', { name: 'Cancelar' }).click()
+    expect((await data.list<Character>('characters')).filter((item) => item.name.trim().toLowerCase() === 'ana'))
+      .toHaveLength(2)
+
+    await uploadCharacterZip(page, archive)
+    dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Crear nuevo' }).click()
+    await dialog.getByLabel('Nombre').fill('Ana')
+    await dialog.getByRole('button', { name: 'Importar' }).click()
+    await expect(page.getByRole('status').filter({ hasText: '«Ana»' })).toContainText('importado')
+    expect((await data.list<Character>('characters')).filter((item) => item.name.trim().toLowerCase() === 'ana'))
+      .toHaveLength(3)
+
+    await uploadCharacterZip(page, archive)
+    dialog = page.getByRole('dialog')
+    await page.setViewportSize({ width: 390, height: 800 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await dialog.getByRole('button', { name: 'Reemplazar' }).click()
+    await dialog.locator('label').filter({ hasText: first.prompt }).getByRole('radio').check()
+    await dialog.getByRole('button', { name: 'Continuar' }).click()
+    await expect(dialog).toContainText('Confirmar reemplazo')
+    await dialog.getByRole('button', { name: 'Reemplazar' }).click()
+    await expect(page.getByRole('status').filter({ hasText: 'reemplazado' })).toBeVisible()
+
+    expect((await data.get<Character>('characters', first.id)).prompt).toBe('Prompt desde ZIP')
+    expect((await data.get<Character>('characters', second.id)).prompt).toBe('Segunda Ana')
+  })
+
+  test('importa solo en colección privada activa', async ({ page, data }) => {
+    const name = data.unique('Aislado')
+    await data.createCharacter({ name, scope: 'normal' })
+    await page.goto('/settings')
+    const privateTrigger = page.getByRole('button', { name: 'Activar modo privado' })
+    await privateTrigger.click()
+    await privateTrigger.click()
+    await privateTrigger.click()
+    await page.getByRole('link', { name: 'Personajes' }).click()
+
+    await uploadCharacterZip(page, await characterZip(name))
+    await expect(page.getByRole('status').filter({ hasText: 'importado' })).toBeVisible()
+    expect((await data.list<Character>('characters', 'private')).filter((item) => item.name === name))
+      .toHaveLength(1)
+    expect((await data.list<Character>('characters', 'normal')).filter((item) => item.name === name))
+      .toHaveLength(1)
   })
 })
 

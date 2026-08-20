@@ -8,6 +8,7 @@ import type {
   CharacterImage,
   Message,
   PromptPreset,
+  Sound,
   Story
 } from '../../shared/types'
 
@@ -49,6 +50,7 @@ function createPng() {
 }
 
 export const PNG_BYTES = createPng()
+export const SOUND_BYTES = Buffer.from('OggS\u0000MisHistorias')
 
 interface CharacterInput {
   name?: string
@@ -99,6 +101,7 @@ export interface TestDataFactory {
   createPreset(input?: PresetInput): Promise<PromptPreset>
   createBackground(input?: BackgroundInput): Promise<Background>
   createImage(character: Character, tags?: string[], scope?: DataScope): Promise<CharacterImage>
+  createSound(character: Character, tags?: string[], scope?: DataScope): Promise<Sound>
   createStory(input: StoryInput): Promise<Story>
   createMessage(input: MessageInput): Promise<Message>
   patchSettings(patch: Partial<AppSettings>): Promise<AppSettings>
@@ -139,17 +142,18 @@ export const test = base.extend<{ data: TestDataFactory }>({
     }
 
     async function putBinary<T extends { id: string; mimeType: string }>(
-      resource: 'images' | 'backgrounds',
+      resource: 'images' | 'backgrounds' | 'sounds',
       value: T,
-      scope: DataScope
+      scope: DataScope,
+      buffer = PNG_BYTES
     ) {
       const response = await request.put(resourceUrl(`${resource}/${value.id}`, scope), {
         multipart: {
           metadata: JSON.stringify(value),
           file: {
-            name: `${value.id}.png`,
-            mimeType: 'image/png',
-            buffer: PNG_BYTES
+            name: `${value.id}.bin`,
+            mimeType: value.mimeType,
+            buffer
           }
         }
       })
@@ -206,6 +210,17 @@ export const test = base.extend<{ data: TestDataFactory }>({
           createdAt: Date.now()
         }
         return putBinary('images', image, scope)
+      },
+      async createSound(character, tags = [unique('sonido')], scope = 'normal') {
+        const sound: Sound = {
+          id: unique('sound'),
+          tags,
+          characterId: character.id,
+          backgroundId: null,
+          mimeType: 'audio/ogg',
+          createdAt: Date.now()
+        }
+        return putBinary('sounds', sound, scope, SOUND_BYTES)
       },
       async createStory(input) {
         const now = Date.now()

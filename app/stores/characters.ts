@@ -4,6 +4,7 @@ import {
   copyCharacter as copyStoredCharacter,
   deleteCharacter,
   deleteImage,
+  importCharacterArchive as importStoredCharacterArchive,
   listAllImages,
   listCharacters,
   newId,
@@ -11,6 +12,7 @@ import {
   putImage,
   type StoredImage
 } from '~/lib/db'
+import type { ImportedCharacterArchive } from '~/lib/characterArchive'
 import { normalizeImage } from '~/lib/images'
 import { sanitizeTags } from '~/lib/tags'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor, pickColor } from '~/lib/colors'
@@ -146,6 +148,25 @@ export const useCharactersStore = defineStore('characters', () => {
     syncUrls()
   }
 
+  async function importArchive(
+    archive: ImportedCharacterArchive,
+    name: string,
+    targetId?: string
+  ) {
+    const result = await importStoredCharacterArchive({
+      mode: targetId ? 'replace' : 'new',
+      targetId,
+      name,
+      character: archive.character,
+      images: archive.images,
+      sounds: archive.sounds
+    })
+    await load(true)
+    const soundsStore = useSoundsStore()
+    if (soundsStore.loaded) await soundsStore.load(true)
+    return result.character
+  }
+
   async function addImage(characterId: string, file: Blob, tags: string[]) {
     const { blob, mimeType } = await normalizeImage(file)
     const isFirst = imagesFor(characterId).length === 0
@@ -217,6 +238,7 @@ export const useCharactersStore = defineStore('characters', () => {
     urlFor,
     saveCharacter,
     copyCharacter,
+    importArchive,
     removeCharacter,
     addImage,
     updateImage,
