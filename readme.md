@@ -37,18 +37,25 @@ pnpm serve
 No hay autenticación ni HTTPS. Cualquier equipo con acceso a la dirección LAN puede leer,
 modificar o borrar los datos, incluida la colección privada.
 
+## Release portable para Windows
+
+Descarga `app.zip` desde la última release, extrae todo su contenido y ejecuta `start.bat`.
+La release incluye Node.js 24.15.0 para Windows x64: no necesita instalar Node.js ni pnpm.
+El navegador abre `http://localhost:3010` y los datos quedan en `install1\.data`.
+
 ## Actualizar instalación local
 
-Cada push a `main` crea una release con `app.zip`, su checksum SHA-256 y `update.ps1`.
-Descarga el actualizador desde la última release y ejecútalo:
+Cada push a `main` crea una release portable con `app.zip`, su checksum SHA-256 y `update.ps1`.
+Desde la carpeta extraída ejecuta:
 
 ```powershell
 PowerShell -ExecutionPolicy Bypass -File .\update.ps1
 ```
 
-Por defecto actualiza `C:\local\MisHistoriasInstall\install1`. Comprueba checksum, detiene solo
-el servidor Node de esa instalación, sustituye archivos mediante staging y reinicia `go.bat`.
-No modifica `C:\local\MisHistoriasInstall\.data` y conserva también `install1\.data` si existe.
+Por defecto actualiza la carpeta que contiene `update.ps1`. Comprueba checksum, detiene solo
+el servidor Node de esa instalación, sustituye archivos mediante staging y reinicia `start.bat`.
+Las instalaciones antiguas siguen usando `go.bat` y Node.js del sistema. Conserva
+`install1\.data` y no migra ni modifica su lanzador.
 Si la nueva versión no supera `/api/health`, restaura la instalación anterior.
 
 Para otra ubicación o para no reiniciar:

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [Parameter()]
-  [string]$InstallRoot = 'C:\local\MisHistoriasInstall',
+  [string]$InstallRoot = $PSScriptRoot,
 
   [Parameter()]
   [ValidateRange(1, 65535)]
@@ -113,8 +113,8 @@ function Stop-AppServer([string]$StartScript, [string]$RelativeScript, [int]$Loc
   return $true
 }
 
-function Start-AppServer([string]$GoBat, [string]$WorkingDirectory, [int]$LocalPort) {
-  Start-Process -FilePath $GoBat -WorkingDirectory $WorkingDirectory -WindowStyle Hidden | Out-Null
+function Start-AppServer([string]$LauncherBat, [string]$WorkingDirectory, [int]$LocalPort) {
+  Start-Process -FilePath $LauncherBat -WorkingDirectory $WorkingDirectory -WindowStyle Hidden | Out-Null
   $deadline = (Get-Date).AddSeconds(60)
   do {
     try {
@@ -146,14 +146,18 @@ if (!(Test-Path -LiteralPath $installRootPath -PathType Container)) {
 }
 
 $installDirectory = Assert-SafeChildPath (Join-Path $installRootPath 'install1') $installRootPath
+$startBat = Assert-SafeChildPath (Join-Path $installRootPath 'start.bat') $installRootPath
 $goBat = Assert-SafeChildPath (Join-Path $installRootPath 'go.bat') $installRootPath
 $startScript = Assert-SafeChildPath (Join-Path $installDirectory 'start-server.mjs') $installRootPath
 $relativeScript = 'install1\start-server.mjs'
+$launcherBat = if (Test-Path -LiteralPath $startBat -PathType Leaf) { $startBat } else { $goBat }
 
 if (!(Test-Path -LiteralPath $installDirectory -PathType Container)) {
   throw "No existe instalación: $installDirectory"
 }
-if (!(Test-Path -LiteralPath $goBat -PathType Leaf)) { throw "No existe $goBat" }
+if (!(Test-Path -LiteralPath $launcherBat -PathType Leaf)) {
+  throw "No existe start.bat ni go.bat en $installRootPath"
+}
 if (!(Test-Path -LiteralPath $startScript -PathType Leaf)) { throw "No existe $startScript" }
 Assert-NoReparsePoints $installDirectory
 
@@ -185,25 +189,35 @@ try {
   if ($actualHash -ne $expectedHash) { throw 'Checksum de app.zip no coincide.' }
 
   Expand-Archive -LiteralPath $archivePath -DestinationPath $stagingDirectory -Force
-  if (!(Test-Path -LiteralPath (Join-Path $stagingDirectory 'server\index.mjs') -PathType Leaf)) {
-    throw 'app.zip no contiene server/index.mjs.'
-  }
-  if (!(Test-Path -LiteralPath (Join-Path $stagingDirectory 'start-server.mjs') -PathType Leaf)) {
-    throw 'app.zip no contiene start-server.mjs.'
+  $requiredEntries = @(
+    'node.exe',
+    'start.bat',
+    'update.ps1',
+    'README.md',
+    'NODE-LICENSE.txt',
+    'install1\server\index.mjs',
+    'install1\start-server.mjs'
+  )
+  foreach ($requiredEntry in $requiredEntries) {
+    if (!(Test-Path -LiteralPath (Join-Path $stagingDirectory $requiredEntry) -PathType Leaf)) {
+      throw "app.zip no contiene $($requiredEntry.Replace('\', '/'))."
+    }
   }
   Assert-NoReparsePoints $stagingDirectory
 
+  $stagedInstallDirectory = Assert-SafeChildPath (Join-Path $stagingDirectory 'install1') $stagingDirectory
+
   $nestedData = Join-Path $installDirectory '.data'
   if (Test-Path -LiteralPath $nestedData) {
-    Copy-Item -LiteralPath $nestedData -Destination (Join-Path $stagingDirectory '.data') -Recurse -Force -ErrorAction Stop
+    Copy-Item -LiteralPath $nestedData -Destination (Join-Path $stagedInstallDirectory '.data') -Recurse -Force -ErrorAction Stop
   }
 
   $serverWasStopped = Stop-AppServer $startScript $relativeScript $Port
   Move-Item -LiteralPath $installDirectory -Destination $previousDirectory -ErrorAction Stop
   $oldMoved = $true
-  Move-Item -LiteralPath $stagingDirectory -Destination $installDirectory -ErrorAction Stop
+  Move-Item -LiteralPath $stagedInstallDirectory -Destination $installDirectory -ErrorAction Stop
 
-  if (!$NoRestart) { Start-AppServer $goBat $installRootPath $Port }
+  if (!$NoRestart) { Start-AppServer $launcherBat $installRootPath $Port }
 } catch {
   $originalError = $_
   if ($oldMoved) {
@@ -213,13 +227,13 @@ try {
         Move-Item -LiteralPath $installDirectory -Destination $failedDirectory -ErrorAction Stop
       }
       Move-Item -LiteralPath $previousDirectory -Destination $installDirectory -ErrorAction Stop
-      if (!$NoRestart) { Start-AppServer $goBat $installRootPath $Port }
+      if (!$NoRestart) { Start-AppServer $launcherBat $installRootPath $Port }
     } catch {
       throw "Actualización falló: $($originalError.Exception.Message) Rollback falló: $($_.Exception.Message)"
     }
   } elseif ($serverWasStopped -and !$NoRestart) {
     try {
-      Start-AppServer $goBat $installRootPath $Port
+      Start-AppServer $launcherBat $installRootPath $Port
     } catch {
       throw "Actualización falló: $($originalError.Exception.Message) Reinicio falló: $($_.Exception.Message)"
     }

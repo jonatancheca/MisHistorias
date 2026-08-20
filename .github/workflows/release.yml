@@ -1,5 +1,8 @@
 name: Release app
 
+env:
+  NODE_VERSION: 24.15.0
+
 on:
   push:
     branches:
@@ -26,7 +29,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - name: Prepare version
@@ -46,10 +49,48 @@ jobs:
       - name: Package release
         shell: bash
         run: |
-          mkdir release
-          (cd .output && zip -qr ../release/app.zip .)
+          node_archive="node-v${NODE_VERSION}-win-x64.zip"
+          node_directory="node-v${NODE_VERSION}-win-x64"
+
+          mkdir -p release/portable/install1 release/node
+          cp -a .output/. release/portable/install1/
+          cp scripts/start.bat release/portable/start.bat
+          cp scripts/update.ps1 release/portable/update.ps1
+          cp scripts/release-readme.md release/portable/README.md
+
+          curl --fail --location --retry 3 \
+            --output "release/node/$node_archive" \
+            "https://nodejs.org/dist/v${NODE_VERSION}/$node_archive"
+          curl --fail --location --retry 3 \
+            --output release/node/SHASUMS256.txt \
+            "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"
+
+          awk -v file="$node_archive" '$2 == file { print }' \
+            release/node/SHASUMS256.txt > release/node/node.sha256
+          test "$(wc -l < release/node/node.sha256)" -eq 1
+          (cd release/node && sha256sum --check node.sha256)
+          unzip -q "release/node/$node_archive" -d release/node
+
+          cp "release/node/$node_directory/node.exe" release/portable/node.exe
+          cp "release/node/$node_directory/LICENSE" release/portable/NODE-LICENSE.txt
+
+          (cd release/portable && zip -qr ../app.zip .)
           (cd release && sha256sum app.zip > app.zip.sha256)
           cp scripts/update.ps1 release/update.ps1
+
+          entries="$(unzip -Z1 release/app.zip)"
+          for required in \
+            node.exe \
+            start.bat \
+            update.ps1 \
+            README.md \
+            NODE-LICENSE.txt \
+            install1/server/index.mjs \
+            install1/start-server.mjs
+          do
+            grep -Fxq "$required" <<< "$entries"
+          done
+          (cd release && sha256sum --check app.zip.sha256)
 
       - name: Publish release
         shell: bash
