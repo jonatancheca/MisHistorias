@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [Parameter()]
-  [string]$InstallRoot = $PSScriptRoot,
+  [string]$InstallRoot,
 
   [Parameter()]
   [ValidateRange(1, 65535)]
@@ -134,6 +134,10 @@ function Get-ReleaseAssetUrl($Release, [string]$Name) {
     throw "Release no contiene exactamente un asset $Name."
   }
   return [string]$asset[0].browser_download_url
+}
+
+if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
+  $InstallRoot = $PSScriptRoot
 }
 
 $installRootPath = Get-FullPath $InstallRoot

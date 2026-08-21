@@ -106,6 +106,18 @@ try {
   & $installedUpdater -Port 49126 -NoRestart -ReleaseApi $defaultRelease.ReleasePath
   Assert-AppUpdated $defaultRoot
 
+  $windowsPowerShell = Get-Command 'powershell.exe' -ErrorAction SilentlyContinue
+  if ($windowsPowerShell) {
+    $desktopRoot = New-InstallFixture 'windows-powershell-default-root' 'portable'
+    $desktopRelease = New-PortableRelease 'windows-powershell-default-root'
+    $desktopUpdater = Join-Path $desktopRoot 'update.ps1'
+    Copy-Item -LiteralPath $updater -Destination $desktopUpdater
+    & $windowsPowerShell.Source -NoProfile -ExecutionPolicy Bypass -File $desktopUpdater `
+      -Port 49127 -NoRestart -ReleaseApi $desktopRelease.ReleasePath
+    Assert-Equal $LASTEXITCODE 0 'Windows PowerShell no pudo usar la carpeta del updater por defecto.'
+    Assert-AppUpdated $desktopRoot
+  }
+
   Set-Content -LiteralPath $portableRelease.ChecksumPath -Value "$('0' * 64)  app.zip"
   $checksumFailed = $false
   try {
