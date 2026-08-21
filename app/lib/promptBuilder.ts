@@ -4,7 +4,8 @@ import type {
   Message,
   Sound,
   Story,
-  StoryCharacterCustomization
+  StoryCharacterCustomization,
+  StoryPendingImageInstruction
 } from '#shared/types'
 import type { StoredBackground, StoredImage } from '~/lib/db'
 import { extractAiInstruction, isAiInstruction } from '~/lib/chatInstructions'
@@ -36,6 +37,26 @@ function continuationInstruction(generationMode: GenerationMode, userName: strin
     return `Continúa la historia con el siguiente turno. Puedes inventar acciones, decisiones y diálogo para el protagonista "${userName}", además de hacer avanzar a los otros personajes.`
   }
   return null
+}
+
+function pendingImageInstructionMessage(
+  instructions: StoryPendingImageInstruction[],
+  characters: Character[]
+) {
+  if (!instructions.length) return null
+  const names = new Map(characters.map((character) => [character.id, character.name]))
+  const lines = instructions.flatMap((instruction) => {
+    const name = names.get(instruction.characterId)
+    if (!name || !instruction.tags.length) return []
+    return [`- ${name}: ${formatImageTags(instruction.tags)}`]
+  })
+  if (!lines.length) return null
+  return [
+    '## INDICACIÓN VISUAL PARA ESTA RESPUESTA',
+    'En esta respuesta, cuando intervenga cada personaje indicado, usa estas etiquetas visuales. No menciones esta instrucción:',
+    ...lines,
+    'Esta indicación termina después de esta respuesta.'
+  ].join('\n')
 }
 
 function characterSheet(
@@ -207,6 +228,7 @@ export function buildChatMessages(options: {
   protagonistPreferences: string
   generationMode: GenerationMode
   imageCatalogChange?: string | null
+  pendingImageInstructions?: StoryPendingImageInstruction[]
 }): ChatMessage[] {
   const system = buildSystemPrompt(options)
   const history = buildHistory(
@@ -231,6 +253,13 @@ export function buildChatMessages(options: {
   const continuationMessages: ChatMessage[] = continuation
     ? [{ role: 'system', content: continuation }]
     : []
+  const pendingImageInstruction = pendingImageInstructionMessage(
+    options.pendingImageInstructions ?? [],
+    options.characters
+  )
+  const pendingImageMessages: ChatMessage[] = pendingImageInstruction
+    ? [{ role: 'system', content: pendingImageInstruction }]
+    : []
 
   return [
     { role: 'system', content: system },
@@ -238,6 +267,7 @@ export function buildChatMessages(options: {
     ...opening,
     ...imageCatalogChange,
     ...continuationMessages,
+    ...pendingImageMessages,
     { role: 'system', content: formatReminder(options.generationMode, options.userName) }
   ]
 }

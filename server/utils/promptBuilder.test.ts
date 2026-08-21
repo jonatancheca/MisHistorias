@@ -171,6 +171,34 @@ test('añade apertura, actualización de catálogo y reglas distintas para Sigue
   assert.match(automatic[0]?.content ?? '', /Puedes hablar y decidir por el protagonista/)
 })
 
+test('añade indicaciones visuales solo para la respuesta solicitada', () => {
+  const messages = buildChatMessages({
+    presetContent: 'Narra.',
+    story,
+    characters: [character],
+    images: [],
+    backgrounds: [],
+    sounds: [],
+    messages: [],
+    historyBudget: 1000,
+    userName: 'Vera',
+    protagonistPreferences: '',
+    generationMode: 'normal',
+    pendingImageInstructions: [{
+      characterId: character.id,
+      imageId: 'image-2',
+      tags: ['seria', 'armadura']
+    }]
+  })
+
+  const instruction = messages.find((message) =>
+    message.content.includes('INDICACIÓN VISUAL PARA ESTA RESPUESTA')
+  )
+  assert.equal(instruction?.role, 'system')
+  assert.match(instruction?.content ?? '', /Alicia: \[seria\]\[armadura\]/)
+  assert.match(instruction?.content ?? '', /termina después de esta respuesta/)
+})
+
 test('convierte mensajes IA en instrucciones ocultas del historial', () => {
   const history = buildHistory(
     [

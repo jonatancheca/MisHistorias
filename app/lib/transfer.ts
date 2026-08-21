@@ -70,6 +70,7 @@ interface ExportedStory {
   protagonistPreferencesMode?: 'append' | 'replace'
   characterIds: string[]
   characterCustomizations?: StoryCharacterCustomization[]
+  pendingImageInstructions?: Story['pendingImageInstructions']
   initialBackgroundId?: string | null
   presetId: string | null
   messages: Array<Pick<Message, 'role' | 'raw' | 'segments' | 'generationMode' | 'createdAt'>>
@@ -119,6 +120,7 @@ export async function exportBundle(): Promise<ExportBundle> {
       protagonistPreferencesMode: story.protagonistPreferencesMode ?? 'append',
       characterIds: story.characterIds,
       characterCustomizations: story.characterCustomizations,
+      pendingImageInstructions: story.pendingImageInstructions ?? [],
       initialBackgroundId: story.initialBackgroundId ?? null,
       presetId: story.presetId,
       messages: (await listMessages(story.id)).map((message) => ({
@@ -289,6 +291,12 @@ export async function importBundle(raw: string) {
         item.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
       characterIds: storyCharacterIds,
       characterCustomizations,
+      pendingImageInstructions: (item.pendingImageInstructions ?? []).flatMap((instruction) => {
+        const characterId = characterIdMap.get(String(instruction.characterId))
+        const imageId = imageIdMap.get(String(instruction.imageId))
+        if (!characterId || !imageId) return []
+        return [{ characterId, imageId, tags: sanitizeTags(instruction.tags) }]
+      }),
       initialBackgroundId: item.initialBackgroundId
         ? (backgroundIdMap.get(String(item.initialBackgroundId)) ?? null)
         : null,

@@ -44,6 +44,14 @@ const timelineContent = ref<HTMLElement | null>(null)
 const canScrollToTop = ref(false)
 const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
+interface ImagePickerTarget {
+  mode: 'replace' | 'queue'
+  characterId: string | null
+  messageId: string | null
+  segmentIndex: number | null
+  imageId: string | null
+}
+const imagePickerTarget = ref<ImagePickerTarget | null>(null)
 const storyPreferencesOpen = ref(false)
 const storyTitle = ref('')
 const storyPremise = ref('')
@@ -222,7 +230,7 @@ async function submit() {
     visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
     followingVisualReveal.value = true
   }
-  await stories.generate('normal')
+  await stories.generate('normal', { consumePendingImageInstructions: true })
 }
 
 async function generateOpening() {
@@ -237,7 +245,56 @@ async function generateContinuation(mode: Exclude<GenerationMode, 'normal'>) {
   if (stories.generating) return
   followingBottom.value = true
   scheduleFollowBottom()
-  await stories.generate(mode)
+  await stories.generate(mode, { consumePendingImageInstructions: true })
+}
+
+const visiblePendingImageInstructions = computed(() =>
+  (stories.activeStory?.pendingImageInstructions ?? []).flatMap((instruction) => {
+    const character = characters.byId(instruction.characterId)
+    const image = characters.images.find((candidate) => candidate.id === instruction.imageId)
+    return character && image?.characterId === character.id
+      ? [{ ...instruction, characterName: character.name }]
+      : []
+  })
+)
+
+function openImageReplacement(target: {
+  characterId: string
+  messageId?: string
+  segmentIndex?: number
+  sourceMessageId?: string
+  sourceSegmentIndex?: number
+  imageId: string | null
+}) {
+  imagePickerTarget.value = {
+    mode: 'replace',
+    characterId: target.characterId,
+    messageId: target.messageId ?? target.sourceMessageId ?? null,
+    segmentIndex: target.segmentIndex ?? target.sourceSegmentIndex ?? null,
+    imageId: target.imageId
+  }
+}
+
+function openPendingImagePicker() {
+  imagePickerTarget.value = {
+    mode: 'queue',
+    characterId: stories.activeStory?.characterIds.length === 1
+      ? stories.activeStory.characterIds[0]!
+      : null,
+    messageId: null,
+    segmentIndex: null,
+    imageId: null
+  }
+}
+
+async function applyImageSelection(selection: { imageId: string; queueForNextResponse: boolean }) {
+  const target = imagePickerTarget.value
+  if (!target) return
+  if (target.mode === 'replace' && target.messageId && target.segmentIndex !== null) {
+    await stories.replaceMessageSegmentImage(target.messageId, target.segmentIndex, selection.imageId)
+  }
+  if (selection.queueForNextResponse) await stories.setPendingImageInstruction(selection.imageId)
+  imagePickerTarget.value = null
 }
 
 const isEmpty = computed(() => timeline.value.length === 0 && !stories.generating)
@@ -769,6 +826,7 @@ onBeforeUnmount(() => {
               :character-states="visualCharacterStates"
               :background-id="visualBackground.id"
               :background-tag="visualBackground.tag"
+              @select-image="openImageReplacement"
             />
 
             <div
@@ -901,6 +959,7 @@ onBeforeUnmount(() => {
               @remove="removeMessage(item.message.id)"
               @regenerate="regenerateFrom(item.message.id)"
               @resend="resendFrom(item.message.id)"
+              @select-image="openImageReplacement"
             />
 
             <div v-else class="group flex min-w-0 items-start gap-2">
@@ -965,6 +1024,21 @@ onBeforeUnmount(() => {
       <footer
         class="border-t border-[var(--color-border-soft)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4"
       >
+        <div v-if="visiblePendingImageInstructions.length" class="mb-2 flex flex-wrap gap-2" data-testid="pending-image-instructions">
+          <span
+            v-for="instruction in visiblePendingImageInstructions"
+            :key="instruction.characterId"
+            class="inline-flex max-w-full items-center gap-2 rounded-full bg-brand-500/15 px-3 py-1 text-xs text-brand-700"
+          >
+            <span class="truncate">{{ instruction.characterName }} {{ instruction.tags.map((tag) => `[${tag}]`).join('') }}</span>
+            <button
+              type="button"
+              class="font-bold"
+              :aria-label="`Quitar imagen pendiente de ${instruction.characterName}`"
+              @click="stories.removePendingImageInstruction(instruction.characterId)"
+            >×</button>
+          </span>
+        </div>
         <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="submit">
           <textarea
             v-model="input"
@@ -974,8 +1048,18 @@ onBeforeUnmount(() => {
             placeholder="Escribe lo que haces o dices…"
             @keydown.enter.exact.prevent="submit"
           />
-          <div class="grid shrink-0 grid-cols-3 gap-2 sm:w-56">
+          <div class="grid shrink-0 grid-cols-4 gap-2 sm:w-72">
             <button type="submit" class="btn-primary" :disabled="stories.generating">Enviar</button>
+            <button
+              type="button"
+              class="btn-ghost"
+              data-testid="pending-image-button"
+              aria-label="Preparar imagen para la próxima respuesta"
+              :disabled="stories.generating || !stories.activeStory.characterIds.length"
+              @click="openPendingImagePicker"
+            >
+              Imagen
+            </button>
             <span class="group relative min-w-0">
               <button
                 type="button"
@@ -1019,7 +1103,7 @@ onBeforeUnmount(() => {
             <button
               v-if="stories.generating"
               type="button"
-              class="btn-ghost col-span-3"
+              class="btn-ghost col-span-4"
               @click="stories.stop({ preserveAutoResponse: true })"
             >
               Parar
@@ -1039,6 +1123,7 @@ onBeforeUnmount(() => {
         :active-tag="lastDialogue?.tag ?? null"
         :active-tags="lastDialogue?.tags ?? []"
         :active-image-id="lastDialogue?.imageId ?? null"
+        :active-image-id-override="lastDialogue?.imageIdOverride === true"
         :background-id="currentBackground.id"
         :background-tag="currentBackground.tag"
       />
@@ -1184,5 +1269,14 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <LlmDebugDialog :trace="selectedDebugTrace" @close="selectedDebugTrace = null" />
+    <StoryImagePickerDialog
+      :open="Boolean(imagePickerTarget)"
+      :mode="imagePickerTarget?.mode ?? 'queue'"
+      :character-ids="stories.activeStory.characterIds"
+      :initial-character-id="imagePickerTarget?.characterId"
+      :initial-image-id="imagePickerTarget?.imageId"
+      @close="imagePickerTarget = null"
+      @select="applyImageSelection"
+    />
   </div>
 </template>

@@ -7,6 +7,9 @@ interface CharacterVisualState {
   tag: string | null
   tags?: string[]
   imageId: string | null
+  imageIdOverride: boolean
+  sourceMessageId: string
+  sourceSegmentIndex: number
 }
 
 const props = defineProps<{
@@ -14,6 +17,9 @@ const props = defineProps<{
   characterStates: CharacterVisualState[]
   backgroundId: string | null
   backgroundTag: string | null
+}>()
+const emit = defineEmits<{
+  selectImage: [target: CharacterVisualState]
 }>()
 
 const characters = useCharactersStore()
@@ -33,11 +39,14 @@ const resolvedCast = computed(() =>
     const image = characters.resolveImage(
       characterId,
       state?.tags?.length ? state.tags : state?.tag ?? null,
-      state?.imageId ?? null
+      state?.imageId ?? null,
+      '',
+      state?.imageIdOverride === true
     )
     return [
       {
         character,
+        state,
         imageUrl: characters.urlFor(image?.id),
         tag: primaryTag(image) ?? state?.tag ?? null
       }
@@ -94,12 +103,19 @@ onBeforeUnmount(() => stageResizeObserver?.disconnect())
         class="flex h-full min-w-0 flex-1 items-end justify-center"
         :aria-label="`${item.character.name}${item.tag ? `, ${item.tag}` : ''}`"
       >
-        <img
+        <button
           v-if="item.imageUrl"
-          :src="item.imageUrl"
-          :alt="item.character.name"
-          class="max-h-full min-h-0 w-full object-contain object-bottom drop-shadow-[0_10px_14px_rgba(0,0,0,0.65)]"
+          type="button"
+          class="flex h-full min-h-0 w-full items-end justify-center focus:outline-none focus:ring-2 focus:ring-brand-400"
+          :aria-label="`Cambiar imagen de ${item.character.name}`"
+          @click="item.state && emit('selectImage', item.state)"
         >
+          <img
+            :src="item.imageUrl"
+            :alt="item.character.name"
+            class="max-h-full min-h-0 w-full object-contain object-bottom drop-shadow-[0_10px_14px_rgba(0,0,0,0.65)]"
+          >
+        </button>
         <div
           v-else
           class="mb-4 flex aspect-[3/4] max-h-[80%] w-full max-w-48 flex-col items-center justify-center rounded-t-full border border-white/30 bg-black/45 p-2 text-center text-white shadow-xl"

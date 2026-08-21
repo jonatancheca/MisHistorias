@@ -61,6 +61,13 @@ export interface StoryCharacterCustomization {
   tags: string[]
 }
 
+export interface StoryPendingImageInstruction {
+  characterId: string
+  imageId: string
+  /** Copia de las etiquetas que se enviará una sola vez al modelo. */
+  tags: string[]
+}
+
 export interface Story {
   id: string
   title: string
@@ -79,6 +86,8 @@ export interface Story {
   presetId: string | null
   /** Catálogo de imágenes comunicado en la última llamada válida al modelo. */
   imageCatalogSnapshot?: StoryImageCatalogEntry[]
+  /** Indicaciones visuales pendientes para la próxima respuesta nueva. */
+  pendingImageInstructions?: StoryPendingImageInstruction[]
   createdAt: number
   updatedAt: number
 }
@@ -111,6 +120,8 @@ export interface MessageSegment {
   tags?: string[]
   /** Imagen de personaje elegida para este segmento; queda estable al recargar. */
   imageId?: string | null
+  /** La imagen fue elegida manualmente y prevalece sobre las etiquetas del segmento. */
+  imageIdOverride?: boolean
   text: string
 }
 

@@ -78,9 +78,14 @@ export const useCharactersStore = defineStore('characters', () => {
     characterId: string,
     requestedTags: RequestedImageTags,
     preferredImageId?: string | null,
-    selectionSeed = ''
+    selectionSeed = '',
+    forcePreferred = false
   ) {
     const own = imagesFor(characterId)
+    if (forcePreferred && preferredImageId) {
+      const preferred = own.find((image) => image.id === preferredImageId)
+      if (preferred) return preferred
+    }
     return selectCharacterImage(
       own,
       characterId,

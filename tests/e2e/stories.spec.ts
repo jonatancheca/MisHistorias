@@ -697,3 +697,126 @@ test.describe('novela visual y responsive', () => {
     })
   }
 })
+
+test.describe('selección de imágenes durante la historia', () => {
+  test('cambia una imagen enviada en Chat y Novela sin alterar texto ni etiquetas', async ({ page, data }) => {
+    const character = await data.createCharacter({ name: data.unique('Alicia') })
+    const first = await data.createImage(character, ['feliz'])
+    const second = await data.createImage(character, ['seria', 'capa'])
+    const story = await data.createStory({ characters: [character] })
+    const message = await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: `${character.name} [feliz]: Hola.`,
+      segments: [
+        {
+          type: 'dialogue',
+          characterId: character.id,
+          tag: 'feliz',
+          tags: ['feliz'],
+          imageId: first.id,
+          text: 'Hola.'
+        },
+        { type: 'narration', characterId: null, tag: null, text: 'Pasa un instante.' }
+      ]
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByRole('button', { name: new RegExp(`Cambiar ${character.name}`) }).click()
+    let dialog = page.getByRole('dialog', { name: 'Cambiar imagen' })
+    await dialog.getByRole('button', { name: 'Seleccionar imagen [seria][capa]' }).click()
+    await dialog.getByRole('button', { name: 'Cambiar', exact: true }).click()
+
+    let stored = await data.get<Message>('messages', message.id)
+    expect(stored.raw).toBe(message.raw)
+    expect(stored.segments[0]).toMatchObject({
+      imageId: second.id,
+      imageIdOverride: true,
+      tag: 'feliz',
+      tags: ['feliz'],
+      text: 'Hola.'
+    })
+    await expect(page.getByText(`${character.name} · seria`, { exact: true })).toBeVisible()
+
+    await page.getByTestId('visual-mode-toggle').click()
+    await page.getByRole('button', { name: `Cambiar imagen de ${character.name}` }).click()
+    dialog = page.getByRole('dialog', { name: 'Cambiar imagen' })
+    await dialog.getByRole('button', { name: 'Seleccionar imagen [feliz]' }).click()
+    await dialog.getByRole('button', { name: 'Cambiar', exact: true }).click()
+    stored = await data.get<Message>('messages', message.id)
+    expect(stored.segments[0]?.imageId).toBe(first.id)
+
+    await page.reload()
+    await expect(page.getByRole('button', { name: `Cambiar imagen de ${character.name}` })).toBeVisible()
+  })
+
+  test('persiste indicación, la conserva tras fallo y la consume tras respuesta válida', async ({ page, data }) => {
+    const firstCharacter = await data.createCharacter({ name: data.unique('Alicia') })
+    const secondCharacter = await data.createCharacter({ name: data.unique('Bruno') })
+    await data.createImage(firstCharacter, ['neutral'])
+    const requested = await data.createImage(firstCharacter, ['seria', 'capa'])
+    await data.createImage(secondCharacter, ['alerta'])
+    const preset = await data.createPreset()
+    const story = await data.createStory({ characters: [firstCharacter, secondCharacter], preset })
+    await data.patchSettings({
+      mockMode: false,
+      model: '',
+      responseSpeed: 'instant',
+      useChromeLlm: true,
+      privateUseChromeLlm: null
+    })
+    await page.addInitScript((response) => {
+      type PromptMessage = { role: string; content: string }
+      type ChromeWindow = Window & {
+        __chromeFail?: boolean
+        __chromePrompts?: PromptMessage[][]
+      }
+      ;(window as ChromeWindow).__chromeFail = true
+      ;(window as ChromeWindow).__chromePrompts = []
+
+      class FakeLanguageModel {
+        static async availability() { return 'available' }
+        static async create() { return new FakeLanguageModel() }
+        async prompt(messages: PromptMessage[]) {
+          const target = window as ChromeWindow
+          target.__chromePrompts?.push(messages)
+          if (target.__chromeFail) throw new Error('fallo visual simulado')
+          return response
+        }
+        destroy() {}
+      }
+      Object.defineProperty(globalThis, 'LanguageModel', { configurable: true, value: FakeLanguageModel })
+    }, `${firstCharacter.name} [seria][capa]: Estoy lista.`)
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('pending-image-button').click()
+    const dialog = page.getByRole('dialog', { name: 'Imagen para la próxima respuesta' })
+    await dialog.getByLabel('Personaje para la imagen').selectOption(firstCharacter.id)
+    await dialog.getByRole('button', { name: 'Seleccionar imagen [seria][capa]' }).click()
+    await dialog.getByRole('button', { name: 'Preparar' }).click()
+    await expect(page.getByTestId('pending-image-instructions')).toContainText('[seria][capa]')
+    expect((await data.get<Story>('stories', story.id)).pendingImageInstructions).toEqual([
+      { characterId: firstCharacter.id, imageId: requested.id, tags: ['seria', 'capa'] }
+    ])
+
+    await page.reload()
+    await expect(page.getByTestId('pending-image-instructions')).toContainText('[seria][capa]')
+    await page.getByTestId('continue-button').click()
+    await expect(page.getByRole('alert')).toContainText('fallo visual simulado')
+    expect((await data.get<Story>('stories', story.id)).pendingImageInstructions).toHaveLength(1)
+
+    await page.evaluate(() => {
+      ;(window as Window & { __chromeFail?: boolean }).__chromeFail = false
+    })
+    await page.getByTestId('continue-button').click()
+    await expect(page.getByText('Estoy lista.', { exact: true })).toBeVisible()
+    expect((await data.get<Story>('stories', story.id)).pendingImageInstructions).toEqual([])
+    const prompts = await page.evaluate(() =>
+      (window as Window & { __chromePrompts?: Array<Array<{ content: string }>> }).__chromePrompts
+    )
+    expect(prompts?.at(-1)?.some((message) =>
+      message.content.includes('INDICACIÓN VISUAL PARA ESTA RESPUESTA') &&
+      message.content.includes(`${firstCharacter.name}: [seria][capa]`)
+    )).toBe(true)
+  })
+})

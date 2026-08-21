@@ -54,7 +54,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 6
+const SCHEMA_VERSION = 7
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -191,6 +191,7 @@ function rowToStory(row: SqliteRow) {
       row.image_catalog_snapshot_json === null
         ? undefined
         : parseJson(row.image_catalog_snapshot_json, undefined),
+    pendingImageInstructions: parseJson(row.pending_image_instructions_json, []),
     createdAt: integer(row.created_at),
     updatedAt: integer(row.updated_at)
   }
@@ -561,6 +562,7 @@ export class MisHistoriasStorage {
           initial_background_id TEXT,
           preset_id TEXT,
           image_catalog_snapshot_json TEXT,
+          pending_image_instructions_json TEXT NOT NULL DEFAULT '[]',
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
           PRIMARY KEY (scope, id)
@@ -729,6 +731,17 @@ export class MisHistoriasStorage {
         if (!settingsColumns.some((column) => column.name === 'swarm_auth_token')) {
           this.database.exec(
             "ALTER TABLE settings ADD COLUMN swarm_auth_token TEXT NOT NULL DEFAULT ''"
+          )
+        }
+      }
+
+      if (version.user_version < 7) {
+        const storyColumns = this.database
+          .prepare('PRAGMA table_info(stories)')
+          .all() as Array<{ name: string }>
+        if (!storyColumns.some((column) => column.name === 'pending_image_instructions_json')) {
+          this.database.exec(
+            "ALTER TABLE stories ADD COLUMN pending_image_instructions_json TEXT NOT NULL DEFAULT '[]'"
           )
         }
       }
@@ -1091,8 +1104,9 @@ export class MisHistoriasStorage {
             INSERT INTO stories(
               scope, id, title, premise, visual_mode, protagonist_preferences,
               protagonist_preferences_mode, character_ids_json, character_customizations_json,
-              initial_background_id, preset_id, image_catalog_snapshot_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              initial_background_id, preset_id, image_catalog_snapshot_json,
+              pending_image_instructions_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
@@ -1104,6 +1118,7 @@ export class MisHistoriasStorage {
               initial_background_id = excluded.initial_background_id,
               preset_id = excluded.preset_id,
               image_catalog_snapshot_json = excluded.image_catalog_snapshot_json,
+              pending_image_instructions_json = excluded.pending_image_instructions_json,
               created_at = excluded.created_at,
               updated_at = excluded.updated_at
           `)
@@ -1120,6 +1135,7 @@ export class MisHistoriasStorage {
             typeof value.initialBackgroundId === 'string' ? value.initialBackgroundId : null,
             typeof value.presetId === 'string' ? value.presetId : null,
             value.imageCatalogSnapshot === undefined ? null : json(value.imageCatalogSnapshot),
+            json(Array.isArray(value.pendingImageInstructions) ? value.pendingImageInstructions : []),
             integer(value.createdAt),
             integer(value.updatedAt)
           )

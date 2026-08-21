@@ -16,6 +16,7 @@ const emit = defineEmits<{
   regenerate: []
   resend: []
   debug: [LlmDebugTrace]
+  selectImage: [target: { characterId: string; messageId: string; segmentIndex: number; imageId: string | null }]
 }>()
 
 const characters = useCharactersStore()
@@ -40,6 +41,8 @@ interface FlowRow {
   imageUrl: string | null
   characterId: string | null
   soundUrl: string | null
+  segmentIndex?: number
+  imageId?: string | null
 }
 
 function galleryItems(characterId: string | null) {
@@ -127,7 +130,13 @@ const rows = computed<FlowRow[]>(() => {
     }
 
     const requestedTags = segment.tags?.length ? segment.tags : segment.tag ? [segment.tag] : []
-    const image = characters.resolveImage(segment.characterId, requestedTags, segment.imageId)
+    const image = characters.resolveImage(
+      segment.characterId,
+      requestedTags,
+      segment.imageId,
+      '',
+      segment.imageIdOverride === true
+    )
     const isNewImage = Boolean(image) && image!.id !== lastImageId
     if (image) lastImageId = image.id
 
@@ -142,7 +151,9 @@ const rows = computed<FlowRow[]>(() => {
       tag: primaryTag(image) ?? requestedTags[0] ?? null,
       imageUrl: isNewImage ? characters.urlFor(image!.id) : null,
       characterId: segment.characterId,
-      soundUrl: null
+      soundUrl: null,
+      segmentIndex: index,
+      imageId: image?.id ?? null
     }
   }).filter((row) => !props.visualMode || !row.background)
 })
@@ -298,6 +309,8 @@ function confirmEdit() {
                   image-class="h-auto w-40 rounded-xl object-contain object-top"
                   :image-style="{ border: `2px solid ${row.color}` }"
                   :gallery-items="galleryItems(row.characterId)"
+                  selectable
+                  @select="row.characterId && row.segmentIndex !== undefined && emit('selectImage', { characterId: row.characterId, messageId: message.id, segmentIndex: row.segmentIndex, imageId: row.imageId ?? null })"
                 />
                 <figcaption class="mt-1 text-xs text-[var(--color-fg-muted)]">
                   {{ row.name }}<span v-if="row.tag"> · {{ row.tag }}</span>

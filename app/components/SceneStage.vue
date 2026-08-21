@@ -7,6 +7,7 @@ const props = defineProps<{
   activeTag: string | null
   activeTags?: string[]
   activeImageId: string | null
+  activeImageIdOverride?: boolean
   backgroundId: string | null
   backgroundTag: string | null
 }>()
@@ -26,7 +27,7 @@ function imageUrl(characterId: string) {
     ? props.activeTags?.length ? props.activeTags : props.activeTag
     : null
   const imageId = characterId === props.activeCharacterId ? props.activeImageId : null
-  const image = characters.resolveImage(characterId, tags, imageId)
+  const image = characters.resolveImage(characterId, tags, imageId, '', props.activeImageIdOverride === true)
   return characters.urlFor(image?.id)
 }
 
@@ -35,7 +36,9 @@ function currentTag(characterId: string) {
     ? props.activeTags?.length ? props.activeTags : props.activeTag
     : null
   const imageId = characterId === props.activeCharacterId ? props.activeImageId : null
-  return primaryTag(characters.resolveImage(characterId, tags, imageId))
+  return primaryTag(
+    characters.resolveImage(characterId, tags, imageId, '', props.activeImageIdOverride === true)
+  )
 }
 
 function galleryItems(characterId: string) {

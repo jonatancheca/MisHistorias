@@ -240,6 +240,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
           initialBackgroundId: input.background?.id ?? null,
           presetId: input.preset?.id ?? null,
           imageCatalogSnapshot: [],
+          pendingImageInstructions: [],
           createdAt: now,
           updatedAt: now
         }

@@ -76,4 +76,24 @@ describe('LLM simulado', () => {
       Math.random = originalRandom
     }
   })
+
+  it('respeta etiquetas visuales pendientes en la primera intervención', () => {
+    const originalRandom = Math.random
+    Math.random = () => 0
+    try {
+      const response = buildMockResponse(
+        [character],
+        [image],
+        [],
+        [],
+        null,
+        'continue',
+        'Vera',
+        [{ characterId: character.id, imageId: 'image-2', tags: ['seria', 'capa'] }]
+      )
+      assert.match(response, /Alicia \[seria\]\[capa\]:/)
+    } finally {
+      Math.random = originalRandom
+    }
+  })
 })

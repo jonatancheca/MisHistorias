@@ -11,7 +11,8 @@ import type {
   ProtagonistPreferencesMode,
   ResponseSpeed,
   Story,
-  StoryCharacterCustomization
+  StoryCharacterCustomization,
+  StoryPendingImageInstruction
 } from '#shared/types'
 import {
   deleteMessage as dbDeleteMessage,
@@ -78,6 +79,22 @@ function splitGraphemes(value: string) {
     new Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
     ({ segment }) => segment
   )
+}
+
+function validPendingImageInstructions(
+  story: Story,
+  images: CharacterImage[]
+): StoryPendingImageInstruction[] {
+  const storyCharacters = new Set(story.characterIds)
+  const imagesById = new Map(images.map((image) => [image.id, image]))
+  return (story.pendingImageInstructions ?? []).filter((instruction) => {
+    const image = imagesById.get(instruction.imageId)
+    return Boolean(
+      storyCharacters.has(instruction.characterId) &&
+      image?.characterId === instruction.characterId &&
+      instruction.tags.length
+    )
+  })
 }
 
 function playNewSounds(
@@ -164,6 +181,7 @@ export const useStoriesStore = defineStore('stories', () => {
         charactersStore.characters,
         charactersStore.images
       ),
+      pendingImageInstructions: [],
       createdAt: now,
       updatedAt: now
     }
@@ -237,6 +255,12 @@ export const useStoriesStore = defineStore('stories', () => {
     else messages.value.push(message)
   }
 
+  async function persistStoryState(updated: Story) {
+    await putStory(updated)
+    if (activeStory.value?.id === updated.id) activeStory.value = updated
+    stories.value = stories.value.map((story) => (story.id === updated.id ? updated : story))
+  }
+
   async function addUserMessage(text: string) {
     if (!activeStory.value) return null
     const message: Message = {
@@ -280,6 +304,67 @@ export const useStoriesStore = defineStore('stories', () => {
     await persist(updated)
   }
 
+  async function replaceMessageSegmentImage(messageId: string, segmentIndex: number, imageId: string) {
+    const current = messages.value.find((message) => message.id === messageId)
+    const segment = current?.segments[segmentIndex]
+    if (!current || current.role !== 'assistant' || segment?.type !== 'dialogue' || !segment.characterId) {
+      return false
+    }
+    const charactersStore = useCharactersStore()
+    await charactersStore.load()
+    const image = charactersStore.images.find((candidate) => candidate.id === imageId)
+    if (!image || image.characterId !== segment.characterId) return false
+    const updated: Message = {
+      ...current,
+      segments: current.segments.map((candidate, index) =>
+        index === segmentIndex ? { ...candidate, imageId, imageIdOverride: true } : candidate
+      )
+    }
+    await persist(updated)
+    return true
+  }
+
+  async function setPendingImageInstruction(imageId: string) {
+    if (!activeStory.value) return false
+    const charactersStore = useCharactersStore()
+    await charactersStore.load()
+    const image = charactersStore.images.find((candidate) => candidate.id === imageId)
+    if (!image || !activeStory.value.characterIds.includes(image.characterId)) return false
+    const pending = validPendingImageInstructions(activeStory.value, charactersStore.images)
+      .filter((instruction) => instruction.characterId !== image.characterId)
+    pending.push({ characterId: image.characterId, imageId: image.id, tags: [...image.tags] })
+    await persistStoryState({
+      ...activeStory.value,
+      pendingImageInstructions: pending,
+      updatedAt: Date.now()
+    })
+    return true
+  }
+
+  async function removePendingImageInstruction(characterId: string) {
+    if (!activeStory.value) return
+    const current = activeStory.value.pendingImageInstructions ?? []
+    const pending = current.filter((instruction) => instruction.characterId !== characterId)
+    if (pending.length === current.length) return
+    await persistStoryState({
+      ...activeStory.value,
+      pendingImageInstructions: pending,
+      updatedAt: Date.now()
+    })
+  }
+
+  async function consumePendingImageInstructions(consumed: StoryPendingImageInstruction[]) {
+    if (!activeStory.value || !consumed.length) return
+    const keys = new Set(consumed.map((instruction) => `${instruction.characterId}:${instruction.imageId}`))
+    const pending = (activeStory.value.pendingImageInstructions ?? [])
+      .filter((instruction) => !keys.has(`${instruction.characterId}:${instruction.imageId}`))
+    await persistStoryState({
+      ...activeStory.value,
+      pendingImageInstructions: pending,
+      updatedAt: Date.now()
+    })
+  }
+
   async function removeMessage(id: string) {
     await dbDeleteMessage(id)
     messages.value = messages.value.filter((message) => message.id !== id)
@@ -309,7 +394,8 @@ export const useStoriesStore = defineStore('stories', () => {
   async function persistImageCatalogSnapshot(story: Story, snapshot: Story['imageCatalogSnapshot']) {
     if (!snapshot) return false
     try {
-      const updated = { ...story, imageCatalogSnapshot: snapshot }
+      const source = activeStory.value?.id === story.id ? activeStory.value : story
+      const updated = { ...source, imageCatalogSnapshot: snapshot }
       await putStory(updated)
       if (activeStory.value?.id === story.id) activeStory.value = updated
       stories.value = stories.value.map((item) => (item.id === story.id ? updated : item))
@@ -355,6 +441,8 @@ export const useStoriesStore = defineStore('stories', () => {
         charactersStore.characters,
         characterCustomizations
       ),
+      pendingImageInstructions: (activeStory.value.pendingImageInstructions ?? [])
+        .filter((instruction) => characterIds.includes(instruction.characterId)),
       updatedAt: Date.now()
     }
     await putStory(updated)
@@ -503,7 +591,10 @@ export const useStoriesStore = defineStore('stories', () => {
     })
   }
 
-  async function generate(generationMode: GenerationMode = 'normal') {
+  async function generate(
+    generationMode: GenerationMode = 'normal',
+    options: { consumePendingImageInstructions?: boolean } = {}
+  ) {
     if (!activeStory.value || generating.value) return
     const story = activeStory.value
     const settingsStore = useSettingsStore()
@@ -531,6 +622,19 @@ export const useStoriesStore = defineStore('stories', () => {
     const storyCharacters = charactersStore.characters.filter((character) =>
       story.characterIds.includes(character.id)
     )
+    const pendingForRequest = options.consumePendingImageInstructions
+      ? validPendingImageInstructions(story, charactersStore.images)
+      : []
+    if (
+      options.consumePendingImageInstructions &&
+      pendingForRequest.length !== (story.pendingImageInstructions ?? []).length
+    ) {
+      await persistStoryState({
+        ...story,
+        pendingImageInstructions: pendingForRequest,
+        updatedAt: Date.now()
+      })
+    }
     const storySounds = soundsStore.sounds.filter(
       (sound) =>
         (!sound.characterId && !sound.backgroundId) ||
@@ -592,7 +696,8 @@ export const useStoriesStore = defineStore('stories', () => {
           storySounds,
           story.initialBackgroundId ?? null,
           generationMode,
-          settingsStore.activeUserName
+          settingsStore.activeUserName,
+          pendingForRequest
         )
       } else {
         const payload = buildChatMessages({
@@ -613,7 +718,8 @@ export const useStoriesStore = defineStore('stories', () => {
           generationMode,
           imageCatalogChange: imageCatalogChange
             ? formatStoryImageCatalogChange(imageCatalogChange)
-            : null
+            : null,
+          pendingImageInstructions: pendingForRequest
         })
 
         debugRequest = {
@@ -700,7 +806,8 @@ export const useStoriesStore = defineStore('stories', () => {
           messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
           return
         }
-        await touchStory()
+        if (pendingForRequest.length) await consumePendingImageInstructions(pendingForRequest)
+        else await touchStory()
         if (requestController.signal.aborted) {
           await dbDeleteMessage(assistantMessage.id)
           messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
@@ -751,7 +858,7 @@ export const useStoriesStore = defineStore('stories', () => {
   async function send(text: string) {
     if (!text.trim() || generating.value) return
     await addUserMessage(text)
-    await generate('normal')
+    await generate('normal', { consumePendingImageInstructions: true })
   }
 
   async function regenerateFrom(id: string) {
@@ -803,6 +910,9 @@ export const useStoriesStore = defineStore('stories', () => {
     openStory,
     addUserMessage,
     updateMessage,
+    replaceMessageSegmentImage,
+    setPendingImageInstruction,
+    removePendingImageInstruction,
     removeMessage,
     send,
     generate,

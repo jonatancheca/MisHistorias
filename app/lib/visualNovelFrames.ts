@@ -6,6 +6,9 @@ export interface VisualNovelCharacterState {
   tag: string | null
   tags?: string[]
   imageId: string | null
+  imageIdOverride: boolean
+  sourceMessageId: string
+  sourceSegmentIndex: number
 }
 
 export interface VisualNovelFrame {
@@ -109,7 +112,10 @@ export function buildVisualNovelFrames(
           characterId: segment.characterId,
           tag: segment.tag,
           tags: segment.tags?.length ? [...segment.tags] : segment.tag ? [segment.tag] : [],
-          imageId: segment.imageId ?? null
+          imageId: segment.imageId ?? null,
+          imageIdOverride: segment.imageIdOverride === true,
+          sourceMessageId: message.id,
+          sourceSegmentIndex: segmentIndex
         }
         characterStates = [
           ...characterStates.filter((state) => state.characterId !== segment.characterId),

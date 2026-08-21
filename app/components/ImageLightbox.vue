@@ -14,15 +14,19 @@ const props = withDefaults(
     imageStyle?: Record<string, string>
     downloadName?: string
     galleryItems?: GalleryItem[]
+    selectable?: boolean
   }>(),
   {
     imageClass: '',
     containerClass: '',
     imageStyle: undefined,
     downloadName: undefined,
-    galleryItems: undefined
+    galleryItems: undefined,
+    selectable: false
   }
 )
+
+const emit = defineEmits<{ select: [] }>()
 
 const open = ref(false)
 const activeIndex = ref(0)
@@ -38,6 +42,11 @@ function show() {
   const index = items.value.findIndex((item) => item.src === props.src)
   activeIndex.value = index >= 0 ? index : 0
   open.value = true
+}
+
+function activate() {
+  if (props.selectable) emit('select')
+  else show()
 }
 
 function close() {
@@ -69,8 +78,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   <button
     type="button"
     :class="['block max-w-full cursor-zoom-in rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500', containerClass]"
-    :aria-label="`Ampliar ${alt || 'imagen'}`"
-    @click="show"
+    :aria-label="`${selectable ? 'Cambiar' : 'Ampliar'} ${alt || 'imagen'}`"
+    @click="activate"
   >
     <img :src="props.src" :alt="props.alt" :class="props.imageClass" :style="props.imageStyle">
   </button>

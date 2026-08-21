@@ -104,6 +104,8 @@ describe('pasos de novela visual', () => {
       'bruno'
     ])
     assert.equal(frames[5]?.characterStates[1]?.imageId, 'bruno-serio')
+    assert.equal(frames[5]?.characterStates[0]?.sourceMessageId, 'assistant-1')
+    assert.equal(frames[5]?.characterStates[0]?.sourceSegmentIndex, 2)
   })
 
   it('sustituye solo el borrador por la respuesta completa pendiente', () => {

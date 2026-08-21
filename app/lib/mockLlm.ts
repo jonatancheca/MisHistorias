@@ -1,4 +1,9 @@
-import type { Character, GenerationMode, Sound } from '#shared/types'
+import type {
+  Character,
+  GenerationMode,
+  Sound,
+  StoryPendingImageInstruction
+} from '#shared/types'
 import type { StoredBackground, StoredImage } from '~/lib/db'
 
 const NARRATION_LINES = [
@@ -66,7 +71,8 @@ export function buildMockResponse(
   sounds: Sound[],
   initialBackgroundId: string | null,
   generationMode: GenerationMode,
-  userName: string
+  userName: string,
+  pendingImageInstructions: StoryPendingImageInstruction[] = []
 ): string {
   const lines: string[] = []
 
@@ -81,11 +87,21 @@ export function buildMockResponse(
     lines.push(`Sonido [${pick(sound.tags)}]:`)
   }
 
-  const speakers = shuffle(characters).slice(0, randomInt(1, Math.min(3, characters.length || 1)))
+  const forcedCharacterIds = new Set(
+    pendingImageInstructions.map((instruction) => instruction.characterId)
+  )
+  const forcedSpeakers = characters.filter((character) => forcedCharacterIds.has(character.id))
+  const randomSpeakers = shuffle(
+    characters.filter((character) => !forcedCharacterIds.has(character.id))
+  ).slice(0, Math.max(0, randomInt(1, Math.min(3, characters.length || 1)) - forcedSpeakers.length))
+  const speakers = [...forcedSpeakers, ...randomSpeakers]
   for (const speaker of speakers) {
     const tagGroups = tagGroupsOf(speaker.id, images)
+    const forcedTags = pendingImageInstructions.find(
+      (instruction) => instruction.characterId === speaker.id
+    )?.tags
     for (let turn = 0; turn < randomInt(1, 3); turn += 1) {
-      const tags = pick(tagGroups)
+      const tags = turn === 0 && forcedTags?.length ? forcedTags : pick(tagGroups)
       lines.push(`${speaker.name} ${tags.map((tag) => `[${tag}]`).join('')}: ${pick(DIALOGUE_LINES)}`)
     }
   }
