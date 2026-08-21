@@ -35,7 +35,10 @@ import { hideIncompleteVisualDirectivePrefix, parseSegments } from '~/lib/stream
 import { selectCharacterImage } from '~/lib/imageSelection'
 import { sanitizeTags } from '~/lib/tags'
 import { responseCharactersPerSecond } from '~/lib/responseSpeed'
-import { currentRevealLineEnd } from '~/lib/progressiveReveal'
+import {
+  currentRevealLine,
+  isHiddenVisualRevealLine
+} from '~/lib/progressiveReveal'
 import { replaceFollowingMatchingDialogueImages } from '~/lib/messageImages'
 import {
   buildStoryImageCatalog,
@@ -122,12 +125,17 @@ export const useStoriesStore = defineStore('stories', () => {
   const generating = ref(false)
   const waitingForResponse = ref(false)
   const pendingAssistantMessage = ref<Message | null>(null)
+  const visualRevealWaitingForAdvance = ref(false)
+  const visualRevealNavigationPaused = ref(false)
   const error = ref<string | null>(null)
 
   let controller: AbortController | null = null
   let animationFrame: number | null = null
   let finishAnimation: ((completed: boolean) => void) | null = null
   let completeRevealLine: (() => boolean) | null = null
+  let setRevealNavigationPaused: ((paused: boolean) => boolean) | null = null
+  let setRevealManualAdvance: ((enabled: boolean) => boolean) | null = null
+  let startNextRevealLine: (() => boolean) | null = null
   let animationDraft: Message | null = null
   let generationModeInProgress: GenerationMode | null = null
 
@@ -139,6 +147,8 @@ export const useStoriesStore = defineStore('stories', () => {
     messages.value = []
     debugTraces.value = []
     pendingAssistantMessage.value = null
+    visualRevealWaitingForAdvance.value = false
+    visualRevealNavigationPaused.value = false
     error.value = null
   }
 
@@ -203,6 +213,8 @@ export const useStoriesStore = defineStore('stories', () => {
 
   async function openStory(id: string) {
     await load()
+    visualRevealNavigationPaused.value = false
+    visualRevealWaitingForAdvance.value = false
     activeStory.value = stories.value.find((story) => story.id === id) ?? null
     const [storedMessages, storedTraces] = activeStory.value
       ? await Promise.all([listMessages(id), listLlmDebugTraces(id)])
@@ -461,6 +473,10 @@ export const useStoriesStore = defineStore('stories', () => {
     if (animationFrame !== null) cancelAnimationFrame(animationFrame)
     animationFrame = null
     completeRevealLine = null
+    setRevealNavigationPaused = null
+    setRevealManualAdvance = null
+    startNextRevealLine = null
+    visualRevealWaitingForAdvance.value = false
     const finish = finishAnimation
     finishAnimation = null
     finish?.(false)
@@ -468,8 +484,25 @@ export const useStoriesStore = defineStore('stories', () => {
 
   function completeCurrentRevealLine() {
     if (!completeRevealLine) return false
-    completeRevealLine()
-    return true
+    return completeRevealLine()
+  }
+
+  function pauseVisualReveal() {
+    visualRevealNavigationPaused.value = true
+    return setRevealNavigationPaused?.(true) ?? false
+  }
+
+  function resumeVisualReveal() {
+    visualRevealNavigationPaused.value = false
+    return setRevealNavigationPaused?.(false) ?? false
+  }
+
+  function setVisualRevealManualAdvance(enabled: boolean) {
+    return setRevealManualAdvance?.(enabled) ?? false
+  }
+
+  function startNextVisualReveal() {
+    return startNextRevealLine?.() ?? false
   }
 
   async function stop(options: { preserveAutoResponse?: boolean } = {}) {
@@ -507,29 +540,52 @@ export const useStoriesStore = defineStore('stories', () => {
     storyImages: CharacterImage[],
     storySounds: Sound[],
     userName: string,
-    speed: Exclude<ResponseSpeed, 'instant'>
+    speed: Exclude<ResponseSpeed, 'instant'>,
+    initialManualAdvance: boolean
   ) {
     const graphemes = splitGraphemes(raw)
+    const visualMode = activeStory.value?.visualMode === true
     const charactersPerSecond = responseCharactersPerSecond(
       speed,
-      activeStory.value?.visualMode === true
+      visualMode
     )
     let startedAt = performance.now()
     let startCount = 0
     let visibleCount = 0
+    let manualAdvance = visualMode && initialManualAdvance
     const soundsStore = useSoundsStore()
     const playedSounds = new Set<string>()
+    const pauseReasons = new Set<'manual' | 'navigation'>(
+      visualMode && visualRevealNavigationPaused.value ? ['navigation'] : []
+    )
 
     replaceDraft(assistantMessage)
 
     return new Promise<boolean>((resolve) => {
       finishAnimation = resolve
 
+      const clearRevealControls = () => {
+        completeRevealLine = null
+        setRevealNavigationPaused = null
+        setRevealManualAdvance = null
+        startNextRevealLine = null
+        visualRevealWaitingForAdvance.value = false
+      }
+
+      const finishReveal = () => {
+        if (animationFrame !== null) cancelAnimationFrame(animationFrame)
+        animationFrame = null
+        finishAnimation = null
+        animationDraft = null
+        clearRevealControls()
+        resolve(true)
+      }
+
       const applyVisibleCount = (nextCount: number) => {
         if (nextCount <= visibleCount) return
         visibleCount = Math.min(nextCount, graphemes.length)
         const visibleRaw = graphemes.slice(0, visibleCount).join('')
-        const parseableRaw = activeStory.value?.visualMode
+        const parseableRaw = visualMode
           ? hideIncompleteVisualDirectivePrefix(
               visibleRaw,
               raw,
@@ -554,20 +610,91 @@ export const useStoriesStore = defineStore('stories', () => {
         })
       }
 
-      completeRevealLine = () => {
-        const nextVisibleCount = currentRevealLineEnd(graphemes, visibleCount)
-        if (nextVisibleCount <= visibleCount) return false
-        applyVisibleCount(nextVisibleCount)
+      const visibleTextSignature = () => JSON.stringify(
+        (animationDraft?.segments ?? [])
+          .filter((segment) => segment.type !== 'background' && segment.type !== 'sound')
+          .map((segment) => [segment.type, segment.characterId, segment.text])
+      )
+
+      const requestRevealFrame = () => {
+        if (animationFrame !== null || pauseReasons.size || visibleCount >= graphemes.length) {
+          return false
+        }
         startCount = visibleCount
         startedAt = performance.now()
+        animationFrame = requestAnimationFrame(revealFrame)
         return true
       }
 
-      const revealFrame = (now: number) => {
+      const pauseAtManualBoundary = (lineText: string) => {
+        if (!manualAdvance || isHiddenVisualRevealLine(lineText)) return false
+        pauseReasons.add('manual')
+        visualRevealWaitingForAdvance.value = true
+        return true
+      }
+
+      completeRevealLine = () => {
+        if (visibleCount >= graphemes.length || pauseReasons.has('navigation')) return false
+        const line = currentRevealLine(graphemes, visibleCount)
+        if (line.end <= visibleCount) return false
+        if (animationFrame !== null) cancelAnimationFrame(animationFrame)
+        animationFrame = null
+        applyVisibleCount(line.end)
+        if (visibleCount >= graphemes.length) {
+          finishReveal()
+        } else if (!pauseAtManualBoundary(line.text)) {
+          requestRevealFrame()
+        }
+        return true
+      }
+
+      setRevealNavigationPaused = (paused) => {
+        visualRevealNavigationPaused.value = paused
+        if (paused) {
+          pauseReasons.add('navigation')
+          if (animationFrame !== null) cancelAnimationFrame(animationFrame)
+          animationFrame = null
+        } else {
+          pauseReasons.delete('navigation')
+          requestRevealFrame()
+        }
+        return true
+      }
+
+      setRevealManualAdvance = (enabled) => {
+        manualAdvance = visualMode && enabled
+        if (!manualAdvance) {
+          pauseReasons.delete('manual')
+          visualRevealWaitingForAdvance.value = false
+          requestRevealFrame()
+        }
+        return true
+      }
+
+      startNextRevealLine = () => {
+        if (!pauseReasons.has('manual') || pauseReasons.has('navigation')) return false
+        pauseReasons.delete('manual')
+        visualRevealWaitingForAdvance.value = false
+        const previousSignature = visibleTextSignature()
+        while (
+          visibleCount < graphemes.length &&
+          visibleTextSignature() === previousSignature
+        ) {
+          applyVisibleCount(visibleCount + 1)
+        }
+        if (visibleCount >= graphemes.length) finishReveal()
+        else requestRevealFrame()
+        return true
+      }
+
+      function revealFrame(now: number) {
+        animationFrame = null
+        const line = currentRevealLine(graphemes, visibleCount)
         const targetCount = Math.min(
           graphemes.length,
+          line.end,
           Math.max(
-            1,
+            startCount + 1,
             startCount + Math.floor(((now - startedAt) * charactersPerSecond) / 1000) + 1
           )
         )
@@ -575,18 +702,19 @@ export const useStoriesStore = defineStore('stories', () => {
         applyVisibleCount(targetCount)
 
         if (visibleCount >= graphemes.length) {
-          animationFrame = null
-          finishAnimation = null
-          completeRevealLine = null
-          animationDraft = null
-          resolve(true)
+          finishReveal()
           return
         }
 
+        if (visibleCount >= line.end) {
+          if (pauseAtManualBoundary(line.text)) return
+          startCount = visibleCount
+          startedAt = now
+        }
         animationFrame = requestAnimationFrame(revealFrame)
       }
 
-      animationFrame = requestAnimationFrame(revealFrame)
+      requestRevealFrame()
     })
   }
 
@@ -791,7 +919,8 @@ export const useStoriesStore = defineStore('stories', () => {
             charactersStore.images,
             storySounds,
             settingsStore.activeUserName,
-            settings.responseSpeed
+            settings.responseSpeed,
+            settings.visualNovelManualAdvance
           )
           if (!completed) return
         }
@@ -900,6 +1029,7 @@ export const useStoriesStore = defineStore('stories', () => {
     generating,
     waitingForResponse,
     pendingAssistantMessage,
+    visualRevealWaitingForAdvance,
     error,
     load,
     createStory,
@@ -919,6 +1049,10 @@ export const useStoriesStore = defineStore('stories', () => {
     resendFrom,
     stop,
     completeCurrentRevealLine,
+    pauseVisualReveal,
+    resumeVisualReveal,
+    setVisualRevealManualAdvance,
+    startNextVisualReveal,
     resetForScope
   }
 })

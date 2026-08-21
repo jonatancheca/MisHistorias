@@ -203,14 +203,17 @@ async function toggleVisualMode() {
     visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
     followingVisualReveal.value = true
   } else {
+    stories.resumeVisualReveal()
     await resumeFollowingBottom()
   }
 }
 
 async function toggleVisualNovelManualAdvance() {
+  const manualAdvance = !settings.settings.visualNovelManualAdvance
   await settings.save({
-    visualNovelManualAdvance: !settings.settings.visualNovelManualAdvance
+    visualNovelManualAdvance: manualAdvance
   })
+  stories.setVisualRevealManualAdvance(manualAdvance)
 }
 
 async function submit() {
@@ -229,6 +232,7 @@ async function submit() {
     await nextTick()
     visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
     followingVisualReveal.value = true
+    stories.resumeVisualReveal()
   }
   await stories.generate('normal', { consumePendingImageInstructions: true })
 }
@@ -514,10 +518,15 @@ const isActiveVisualFrameRevealing = computed(() => {
 const hasPendingNextVisualFrame = computed(
   () => visualFrameIndex.value < completeVisualFrames.value.length - 1
 )
+const isViewingCurrentVisualReveal = computed(() =>
+  followingVisualReveal.value &&
+  visualFrameIndex.value === visualFrames.value.length - 1
+)
 const canAdvanceVisualFrame = computed(
   () =>
     isActiveVisualFrameRevealing.value ||
     canShowNextVisualFrame.value ||
+    (isViewingCurrentVisualReveal.value && stories.visualRevealWaitingForAdvance) ||
     hasPendingNextVisualFrame.value
 )
 const visualBackground = computed(() => ({
@@ -562,6 +571,7 @@ function showPreviousVisualFrame() {
   if (!canShowPreviousVisualFrame.value) return false
   visualFrameIndex.value -= 1
   followingVisualReveal.value = false
+  stories.pauseVisualReveal()
   return true
 }
 
@@ -569,26 +579,27 @@ function navigateNextVisualFrame() {
   if (!canShowNextVisualFrame.value) return false
   visualFrameIndex.value += 1
   followingVisualReveal.value = visualFrameIndex.value === visualFrames.value.length - 1
+  if (followingVisualReveal.value) stories.resumeVisualReveal()
   return true
 }
 
 function completeActiveVisualReveal() {
-  if (!isActiveVisualFrameRevealing.value) return false
+  if (
+    !isActiveVisualFrameRevealing.value ||
+    stories.visualRevealWaitingForAdvance
+  ) return false
   followingVisualReveal.value = true
   return stories.completeCurrentRevealLine()
 }
 
 function revealAndShowPendingVisualFrame() {
-  if (!hasPendingNextVisualFrame.value) return false
+  if (
+    !isViewingCurrentVisualReveal.value ||
+    !stories.visualRevealWaitingForAdvance
+  ) return false
   const targetIndex = visualFrameIndex.value + 1
-  while (
-    visualFrames.value.length <= targetIndex &&
-    stories.completeCurrentRevealLine()
-  ) {
-    // Puede haber directivas de fondo o sonido sin frase visible.
-  }
-  if (visualFrames.value.length <= targetIndex) return false
-  visualFrameIndex.value = targetIndex
+  if (!stories.startNextVisualReveal()) return false
+  visualFrameIndex.value = Math.min(targetIndex, Math.max(0, visualFrames.value.length - 1))
   followingVisualReveal.value = visualFrameIndex.value === visualFrames.value.length - 1
   return true
 }
@@ -603,6 +614,8 @@ async function showStoryStart() {
   if (stories.activeStory?.visualMode) {
     visualFrameIndex.value = 0
     followingVisualReveal.value = visualFrames.value.length <= 1
+    if (followingVisualReveal.value) stories.resumeVisualReveal()
+    else stories.pauseVisualReveal()
     return
   }
   scrollToTop()
@@ -612,6 +625,7 @@ async function showStoryEnd() {
   if (stories.activeStory?.visualMode) {
     visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
     followingVisualReveal.value = true
+    stories.resumeVisualReveal()
     return
   }
   await resumeFollowingBottom()
@@ -619,7 +633,7 @@ async function showStoryEnd() {
 
 function onVisualFrameClick(event: MouseEvent) {
   if (window.innerWidth >= 640) {
-    completeActiveVisualReveal()
+    advanceVisualFrame()
     return
   }
   const target = event.currentTarget
@@ -634,15 +648,23 @@ function onVisualFrameClick(event: MouseEvent) {
 
 function onVisualNovelKeydown(event: KeyboardEvent) {
   if (!stories.activeStory?.visualMode) return
+  if (
+    event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+    storyPreferencesOpen.value || selectedDebugTrace.value || imagePickerTarget.value ||
+    confirmDialog.dialog
+  ) return
   const target = event.target
   if (
     target instanceof HTMLElement &&
-    (target.isContentEditable || target.matches('input, textarea, select, [contenteditable="true"]'))
+    (
+      target.isContentEditable ||
+      target.closest('input, textarea, select, button, a, [contenteditable="true"], [role="dialog"], [role="alertdialog"]')
+    )
   ) return
 
   if (event.key === 'ArrowLeft') {
     if (showPreviousVisualFrame()) event.preventDefault()
-  } else if (event.key === 'ArrowRight') {
+  } else if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Enter') {
     if (advanceVisualFrame()) event.preventDefault()
   }
 }

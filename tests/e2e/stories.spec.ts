@@ -474,7 +474,7 @@ test.describe('novela visual y responsive', () => {
     await data.patchSettings({
       mockMode: true,
       responseSpeed: 'slow',
-      visualNovelManualAdvance: false
+      visualNovelManualAdvance: true
     })
 
     await page.goto(`/stories/${story.id}`)
@@ -529,11 +529,15 @@ test.describe('novela visual y responsive', () => {
     await page.getByTestId('continue-button').click()
     const frame = page.getByTestId('visual-novel-frame')
     await expect(frame).not.toContainText('Última frase anterior.', { timeout: 15_000 })
+    const revealingText = (await frame.innerText()).trim()
     await page.getByTestId('visual-novel-previous').click()
     await expect(frame).toContainText('Última frase anterior.')
 
     await page.waitForTimeout(4_000)
     await expect(frame).toContainText('Última frase anterior.')
+    await page.keyboard.press('ArrowRight')
+    await expect(frame).not.toContainText('Última frase anterior.')
+    expect((await frame.innerText()).trim().length).toBeLessThanOrEqual(revealingText.length + 5)
     await page.getByRole('button', { name: 'Parar', exact: true }).click()
   })
 
@@ -571,6 +575,55 @@ test.describe('novela visual y responsive', () => {
     await page.keyboard.press('ArrowRight')
     await expect(frame).not.toContainText('Última frase anterior.')
     expect((await frame.innerText()).trim().length).toBeLessThanOrEqual(revealingText.length + 2)
+
+    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+  })
+
+  test('espacio y Enter controlan una frase manual sin dobles avances', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data, true)
+    await data.patchSettings({
+      mockMode: true,
+      responseSpeed: 'slow',
+      visualNovelManualAdvance: true
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.evaluate(() => {
+      Math.random = () => 0
+    })
+    await page.getByTestId('continue-button').click()
+    const frame = page.getByTestId('visual-novel-frame')
+    const counter = page.getByTestId('visual-novel-counter')
+    await expect.poll(async () => (await frame.innerText()).trim(), { timeout: 15_000 })
+      .not.toBe('La historia aún no ha empezado.')
+
+    await page.keyboard.press('Space')
+    const completedText = (await frame.innerText()).trim()
+    const completedIndex = Number((await counter.innerText()).split('/')[0]?.trim())
+    await page.waitForTimeout(500)
+    await expect(frame).toHaveText(completedText)
+
+    await page.evaluate(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: ' ',
+        repeat: true,
+        bubbles: true
+      }))
+    })
+    await expect(frame).toHaveText(completedText)
+
+    const input = page.getByPlaceholder('Escribe lo que haces o dices…')
+    await input.press('Enter')
+    await expect(frame).toHaveText(completedText)
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+
+    await page.keyboard.press('Enter')
+    await expect.poll(async () =>
+      Number((await counter.innerText()).split('/')[0]?.trim())
+    ).toBeGreaterThan(completedIndex)
+    const startedText = (await frame.innerText()).trim()
+    await page.waitForTimeout(500)
+    expect((await frame.innerText()).trim().length).toBeGreaterThan(startedText.length)
 
     await page.getByRole('button', { name: 'Parar', exact: true }).click()
   })
@@ -671,6 +724,38 @@ test.describe('novela visual y responsive', () => {
     await expect(page.getByTestId('visual-novel-frame')).toContainText('Pausa entre ambos.')
     await expect(cast.nth(0)).toHaveAttribute('data-character-id', first.id)
     await expect(cast.nth(1)).toHaveAttribute('data-character-id', second.id)
+  })
+
+  test('mantiene navegación por mitades en el texto móvil', async ({ page, data }) => {
+    const { story, character, image } = await createStoryFixture(data, true)
+    await data.createMessage({ story, role: 'user', raw: 'Primera frase móvil.' })
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Segunda frase móvil.',
+      segments: [{
+        type: 'dialogue',
+        characterId: character.id,
+        tag: 'feliz',
+        imageId: image.id,
+        text: 'Segunda frase móvil.'
+      }]
+    })
+    await page.setViewportSize({ width: 390, height: 760 })
+    await page.goto(`/stories/${story.id}`)
+
+    const frame = page.getByTestId('visual-novel-frame')
+    const size = await frame.boundingBox()
+    expect(size).not.toBeNull()
+    await frame.click({ position: { x: 4, y: Math.max(4, (size?.height ?? 8) / 2) } })
+    await expect(frame).toContainText('Primera frase móvil.')
+    await frame.click({
+      position: {
+        x: Math.max(4, (size?.width ?? 8) - 4),
+        y: Math.max(4, (size?.height ?? 8) / 2)
+      }
+    })
+    await expect(frame).toContainText('Segunda frase móvil.')
   })
 
   for (const width of [320, 390]) {
