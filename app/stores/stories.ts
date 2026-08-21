@@ -36,6 +36,7 @@ import { selectCharacterImage } from '~/lib/imageSelection'
 import { sanitizeTags } from '~/lib/tags'
 import { responseCharactersPerSecond } from '~/lib/responseSpeed'
 import { currentRevealLineEnd } from '~/lib/progressiveReveal'
+import { replaceFollowingMatchingDialogueImages } from '~/lib/messageImages'
 import {
   buildStoryImageCatalog,
   compareStoryImageCatalogs,
@@ -316,9 +317,7 @@ export const useStoriesStore = defineStore('stories', () => {
     if (!image || image.characterId !== segment.characterId) return false
     const updated: Message = {
       ...current,
-      segments: current.segments.map((candidate, index) =>
-        index === segmentIndex ? { ...candidate, imageId, imageIdOverride: true } : candidate
-      )
+      segments: replaceFollowingMatchingDialogueImages(current.segments, segmentIndex, imageId)
     }
     await persist(updated)
     return true

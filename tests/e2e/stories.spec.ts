@@ -1,4 +1,4 @@
-import type { LlmDebugTrace, Message, Story } from '../../shared/types'
+import type { CharacterImage, LlmDebugTrace, Message, Story } from '../../shared/types'
 import { expect, test, type TestDataFactory } from './fixtures'
 
 async function createStoryFixture(data: TestDataFactory, visualMode = false) {
@@ -701,9 +701,11 @@ test.describe('novela visual y responsive', () => {
 test.describe('selección de imágenes durante la historia', () => {
   test('cambia una imagen enviada en Chat y Novela sin alterar texto ni etiquetas', async ({ page, data }) => {
     const character = await data.createCharacter({ name: data.unique('Alicia') })
+    const otherCharacter = await data.createCharacter({ name: data.unique('Bruno') })
     const first = await data.createImage(character, ['feliz'])
     const second = await data.createImage(character, ['seria', 'capa'])
-    const story = await data.createStory({ characters: [character] })
+    await data.createImage(otherCharacter, ['alerta'])
+    const story = await data.createStory({ characters: [character, otherCharacter] })
     const message = await data.createMessage({
       story,
       role: 'assistant',
@@ -724,8 +726,12 @@ test.describe('selección de imágenes durante la historia', () => {
     await page.goto(`/stories/${story.id}`)
     await page.getByRole('button', { name: new RegExp(`Cambiar ${character.name}`) }).click()
     let dialog = page.getByRole('dialog', { name: 'Cambiar imagen' })
-    await dialog.getByRole('button', { name: 'Seleccionar imagen [seria][capa]' }).click()
-    await dialog.getByRole('button', { name: 'Cambiar', exact: true }).click()
+    await expect(dialog.getByLabel('Personaje para la imagen')).toHaveCount(0)
+    await expect(dialog.getByText(`Personaje: ${character.name}`, { exact: true })).toBeVisible()
+    await expect(dialog.getByText(`Personaje: ${otherCharacter.name}`, { exact: true })).toHaveCount(0)
+    await expect(dialog.getByRole('checkbox', { name: /Indicar a la IA/ })).toBeChecked()
+    await dialog.getByRole('button', { name: 'Seleccionar imagen [seria][capa]' }).dblclick()
+    await expect(dialog).toBeHidden()
 
     let stored = await data.get<Message>('messages', message.id)
     expect(stored.raw).toBe(message.raw)
@@ -741,13 +747,127 @@ test.describe('selección de imágenes durante la historia', () => {
     await page.getByTestId('visual-mode-toggle').click()
     await page.getByRole('button', { name: `Cambiar imagen de ${character.name}` }).click()
     dialog = page.getByRole('dialog', { name: 'Cambiar imagen' })
-    await dialog.getByRole('button', { name: 'Seleccionar imagen [feliz]' }).click()
-    await dialog.getByRole('button', { name: 'Cambiar', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Seleccionar imagen [feliz]' }).dblclick()
+    await expect(dialog).toBeHidden()
     stored = await data.get<Message>('messages', message.id)
     expect(stored.segments[0]?.imageId).toBe(first.id)
 
     await page.reload()
     await expect(page.getByRole('button', { name: `Cambiar imagen de ${character.name}` })).toBeVisible()
+  })
+
+  test('propaga el cambio a imágenes siguientes con mismo personaje y etiquetas', async ({ page, data }) => {
+    const character = await data.createCharacter({ name: data.unique('Alicia') })
+    const otherCharacter = await data.createCharacter({ name: data.unique('Bruno') })
+    const previous = await data.createImage(character, ['feliz', 'capa'])
+    const origin = await data.createImage(character, ['feliz', 'capa'])
+    const following = await data.createImage(character, ['feliz', 'capa'])
+    const different = await data.createImage(character, ['seria'])
+    const selected = await data.createImage(character, ['seleccionada'])
+    const other = await data.createImage(otherCharacter, ['feliz', 'capa'])
+    const story = await data.createStory({ characters: [character, otherCharacter] })
+    const message = await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Respuesta con varias imágenes.',
+      segments: [
+        {
+          type: 'dialogue',
+          characterId: character.id,
+          tag: 'feliz',
+          tags: ['feliz', 'capa'],
+          imageId: previous.id,
+          text: 'Anterior.'
+        },
+        { type: 'narration', characterId: null, tag: null, text: 'Pausa.' },
+        {
+          type: 'dialogue',
+          characterId: character.id,
+          tag: 'feliz',
+          tags: ['feliz', 'capa'],
+          imageId: origin.id,
+          text: 'Origen.'
+        },
+        {
+          type: 'dialogue',
+          characterId: character.id,
+          tag: 'feliz',
+          tags: ['capa', 'FELIZ'],
+          imageId: following.id,
+          text: 'Siguiente.'
+        },
+        {
+          type: 'dialogue',
+          characterId: character.id,
+          tag: 'seria',
+          tags: ['seria'],
+          imageId: different.id,
+          text: 'Distinta.'
+        },
+        {
+          type: 'dialogue',
+          characterId: otherCharacter.id,
+          tag: 'feliz',
+          tags: ['feliz', 'capa'],
+          imageId: other.id,
+          text: 'Otro personaje.'
+        }
+      ]
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByRole('button', { name: new RegExp(`Cambiar ${character.name}`) }).nth(1).click()
+    const dialog = page.getByRole('dialog', { name: 'Cambiar imagen' })
+    await dialog.getByRole('button', { name: 'Seleccionar imagen [seleccionada]' }).dblclick()
+
+    const stored = await data.get<Message>('messages', message.id)
+    expect(stored.segments.map((segment) => segment.imageId)).toEqual([
+      previous.id,
+      undefined,
+      selected.id,
+      selected.id,
+      different.id,
+      other.id
+    ])
+    expect(stored.segments[2]?.imageIdOverride).toBe(true)
+    expect(stored.segments[3]?.imageIdOverride).toBe(true)
+    expect(stored.segments[0]?.imageIdOverride).toBeUndefined()
+    expect(stored.raw).toBe(message.raw)
+  })
+
+  test('aprovecha monitores anchos para mostrar más imágenes', async ({ page, data }) => {
+    const character = await data.createCharacter({ name: data.unique('Alicia') })
+    const images: CharacterImage[] = []
+    for (let index = 0; index < 8; index += 1) {
+      images.push(await data.createImage(character, [`imagen-${index}`]))
+    }
+    const story = await data.createStory({ characters: [character] })
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Imagen inicial.',
+      segments: [{
+        type: 'dialogue',
+        characterId: character.id,
+        tag: 'imagen-0',
+        tags: ['imagen-0'],
+        imageId: images[0]!.id,
+        text: 'Imagen inicial.'
+      }]
+    })
+
+    await page.setViewportSize({ width: 1600, height: 900 })
+    await page.goto(`/stories/${story.id}`)
+    await page.getByRole('button', { name: new RegExp(`Cambiar ${character.name}`) }).click()
+    const dialog = page.getByRole('dialog', { name: 'Cambiar imagen' })
+    const panelBox = await dialog.locator('section').boundingBox()
+    expect(panelBox?.width).toBeGreaterThan(1100)
+    const thumbnails = dialog.getByRole('button', { name: /^Seleccionar imagen/ })
+    await expect(thumbnails).toHaveCount(8)
+    const firstRowTop = (await thumbnails.nth(0).boundingBox())?.y
+    for (let index = 1; index < 6; index += 1) {
+      expect((await thumbnails.nth(index).boundingBox())?.y).toBe(firstRowTop)
+    }
   })
 
   test('persiste indicación, la conserva tras fallo y la consume tras respuesta válida', async ({ page, data }) => {

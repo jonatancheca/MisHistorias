@@ -18,10 +18,13 @@ const emit = defineEmits<{
 const characters = useCharactersStore()
 const selectedCharacterId = ref('')
 const selectedImageId = ref('')
-const queueForNextResponse = ref(false)
+const queueForNextResponse = ref(true)
 
 const availableCharacters = computed(() =>
-  props.characterIds.flatMap((id) => {
+  (props.mode === 'replace' && props.initialCharacterId
+    ? [props.initialCharacterId]
+    : props.characterIds
+  ).flatMap((id) => {
     const character = characters.byId(id)
     return character ? [character] : []
   })
@@ -42,7 +45,7 @@ function selectCharacter(characterId: string) {
 
 function initialize() {
   if (!props.open) return
-  queueForNextResponse.value = false
+  queueForNextResponse.value = true
   const requested = props.initialCharacterId && props.characterIds.includes(props.initialCharacterId)
     ? props.initialCharacterId
     : props.characterIds.length === 1
@@ -51,12 +54,18 @@ function initialize() {
   selectCharacter(requested)
 }
 
-function confirm() {
-  if (!selectedImage.value) return
+function confirm(imageId = selectedImageId.value) {
+  const image = availableImages.value.find((candidate) => candidate.id === imageId)
+  if (!image) return
   emit('select', {
-    imageId: selectedImage.value.id,
+    imageId: image.id,
     queueForNextResponse: props.mode === 'queue' || queueForNextResponse.value
   })
+}
+
+function selectAndConfirm(imageId: string) {
+  selectedImageId.value = imageId
+  confirm(imageId)
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -78,7 +87,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       aria-labelledby="story-image-picker-title"
       @click.self="emit('close')"
     >
-      <section class="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-[var(--color-surface)] shadow-2xl">
+      <section class="flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-[var(--color-surface)] shadow-2xl">
         <header class="flex items-center justify-between border-b border-[var(--color-border-soft)] px-4 py-3">
           <h2 id="story-image-picker-title" class="font-semibold">
             {{ mode === 'replace' ? 'Cambiar imagen' : 'Imagen para la próxima respuesta' }}
@@ -87,7 +96,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         </header>
 
         <div class="min-h-0 flex-1 overflow-y-auto p-4">
-          <label v-if="availableCharacters.length > 1" class="mb-4 block text-sm font-medium">
+          <label v-if="mode === 'replace'" class="mb-4 flex items-start gap-2 text-sm">
+            <input v-model="queueForNextResponse" type="checkbox" class="mt-0.5 h-4 w-4">
+            <span>Indicar a la IA que use estas etiquetas en su próxima respuesta.</span>
+          </label>
+
+          <p v-if="mode === 'replace' && availableCharacters[0]" class="mb-4 text-sm font-medium">
+            Personaje: {{ availableCharacters[0].name }}
+          </p>
+
+          <label v-else-if="availableCharacters.length > 1" class="mb-4 block text-sm font-medium">
             Personaje
             <select
               :value="selectedCharacterId"
@@ -108,7 +126,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <p v-else-if="!selectedCharacterId" class="text-sm text-[var(--color-fg-muted)]">
             Elige qué personaje quieres cambiar.
           </p>
-          <div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             <button
               v-for="image in availableImages"
               :key="image.id"
@@ -118,21 +136,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               :aria-label="`Seleccionar imagen [${image.tags.join('][')}]`"
               :aria-pressed="image.id === selectedImageId"
               @click="selectedImageId = image.id"
+              @dblclick="selectAndConfirm(image.id)"
             >
               <img :src="characters.urlFor(image.id)!" alt="" class="aspect-square w-full rounded-lg object-contain object-top">
               <span class="mt-2 block text-xs text-[var(--color-fg-muted)]">{{ image.tags.map((tag) => `[${tag}]`).join('') }}</span>
             </button>
           </div>
 
-          <label v-if="mode === 'replace' && selectedImage" class="mt-4 flex items-start gap-2 text-sm">
-            <input v-model="queueForNextResponse" type="checkbox" class="mt-0.5 h-4 w-4">
-            <span>Indicar a la IA que use estas etiquetas en su próxima respuesta.</span>
-          </label>
         </div>
 
         <footer class="flex justify-end gap-2 border-t border-[var(--color-border-soft)] px-4 py-3">
           <button type="button" class="btn-ghost" @click="emit('close')">Cancelar</button>
-          <button type="button" class="btn-primary" :disabled="!selectedImage" @click="confirm">
+          <button type="button" class="btn-primary" :disabled="!selectedImage" @click="confirm()">
             {{ mode === 'replace' ? 'Cambiar' : 'Preparar' }}
           </button>
         </footer>
