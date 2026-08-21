@@ -78,18 +78,62 @@ test('mock envelope valida contra el schema Story', () => {
 })
 
 test('rechaza actorId desconocido y exclusiones', () => {
-  const bad = buildMockEnvelope(session, { kind: 'speak', text: 'hola' })
-  bad.visibleUnits.push({ type: 'dialogue', actorId: 'fantasma', text: 'no existo' })
-  const result = parseAndValidateEnvelope(bad, {
+  const envelope = buildMockEnvelope(session, { kind: 'act', text: 'te acercas' })
+  envelope.visibleUnits.push({
+    type: 'dialogue',
+    actorId: 'desconocido',
+    text: 'violencia extrema aquí'
+  })
+  const result = parseAndValidateEnvelope(envelope, {
     format: 'story',
     cast: session.cast,
     exclusions: session.exclusions
   })
   assert.equal(result.ok, false)
-  assert.ok(result.errors.some((error) => error.includes('actorId')))
+  assert.ok(result.errors.some((item) => item.includes('actorId')))
 })
 
-test('extractJsonObject recupera JSON embebido', () => {
+test('normaliza unidades narration/dialogue sueltas del modelo', () => {
+  const result = parseAndValidateEnvelope(
+    {
+      schemaVersion: 1,
+      language: 'es-ES',
+      format: 'chat',
+      visibleUnits: [
+        { narration: 'La luz mortecina del pasillo.' },
+        {
+          dialogue: {
+            actorId: 'companion',
+            text: '¿Te has quedado en el umbral?',
+            speech: '¿Te has quedado en el umbral?'
+          }
+        }
+      ],
+      visualCues: { backgroundId: null },
+      soundCues: [{ type: 'ambient', description: 'Silencio' }],
+      choices: [
+        { text: '"No sabía si vendrías."', targetBeatId: 'x' },
+        { text: '(Acercarte sin decir nada)', targetBeatId: 'y' }
+      ],
+      stateDelta: {
+        worldState: { location: 'Habitación', mood: 'tensión', flags: { puerta: true } }
+      },
+      planPatch: { mutablePlan: { version: 1 } },
+      stopReason: 'choice_required'
+    },
+    { format: 'chat', cast: session.cast, exclusions: [] }
+  )
+  assert.equal(result.ok, true, result.errors.join('; '))
+  assert.equal(result.envelope?.visibleUnits[0]?.type, 'narration')
+  assert.equal(result.envelope?.visibleUnits[1]?.type, 'dialogue')
+  assert.equal(result.envelope?.choices.length, 2)
+  assert.equal(result.envelope?.stopReason, 'choice_required')
+  assert.ok(result.envelope?.stateDelta.some((op) => op.op === 'set_location'))
+})
+
+test('extractJsonObject recupera JSON embebido y quita fences', () => {
   const payload = extractJsonObject('basura {"schemaVersion":1,"language":"es-ES"} cola')
   assert.deepEqual(payload, { schemaVersion: 1, language: 'es-ES' })
+  const fenced = extractJsonObject('```json\n{"schemaVersion":1,"language":"es-ES"}\n```')
+  assert.deepEqual(fenced, { schemaVersion: 1, language: 'es-ES' })
 })

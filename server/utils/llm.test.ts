@@ -50,7 +50,48 @@ test('proxy envía JSON no streaming y conserva finishReason', async () => {
     assert.equal(result.content, 'Respuesta')
     assert.equal(result.finishReason, 'stop')
     assert.equal(received?.stream, false)
+    assert.equal(received?.reasoning_effort, 'none')
     assert.equal(authorization, 'Bearer token')
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    )
+  }
+})
+
+test('proxy usa reasoning_content si content llega vacío', async () => {
+  const server = createServer((_request, response) => {
+    response.setHeader('content-type', 'application/json')
+    response.end(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: '',
+              reasoning_content: '{"schemaVersion":1,"visibleUnits":[]}'
+            },
+            finish_reason: 'length'
+          }
+        ]
+      })
+    )
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('Puerto de prueba no disponible')
+
+  try {
+    const result = await fetchProxyChat(
+      { baseUrl: `http://127.0.0.1:${address.port}`, apiKey: '' },
+      {
+        model: 'modelo',
+        messages: [{ role: 'user', content: 'Hola' }],
+        temperature: 0.8,
+        maxTokens: 100
+      }
+    )
+    assert.equal(result.content, '{"schemaVersion":1,"visibleUnits":[]}')
+    assert.equal(result.finishReason, 'length')
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve()))

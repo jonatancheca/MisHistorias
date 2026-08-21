@@ -18,7 +18,9 @@ export default defineEventHandler(async (event) => {
     sessionId: id,
     ownerUserId: user.id,
     input,
-    modelAlias: typeof body.modelAlias === 'string' ? body.modelAlias : '',
+    modelAlias:
+      (typeof body.modelAlias === 'string' && body.modelAlias.trim()) ||
+      '',
     generationProfile: (typeof body.generationProfile === 'string'
       ? body.generationProfile
       : 'quick') as GenerationProfile

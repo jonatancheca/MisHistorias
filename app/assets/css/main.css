@@ -365,6 +365,197 @@
   line-height: 1;
 }
 
+.nsfw-session-sheet__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.35rem;
+  border: 1px solid var(--nsfw-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--nsfw-raised) 80%, transparent);
+  padding: 0.3rem 0.85rem;
+  color: var(--nsfw-muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+.nsfw-session-sheet__trigger:hover,
+.nsfw-session-sheet__trigger[aria-expanded='true'] {
+  border-color: color-mix(in srgb, var(--nsfw-gold) 45%, var(--nsfw-line));
+  color: var(--nsfw-ink);
+  background: color-mix(in srgb, var(--nsfw-soft) 70%, transparent);
+}
+
+.nsfw-session-sheet__trigger.is-compact .nsfw-session-sheet__trigger-label {
+  display: none;
+}
+
+.nsfw-session-sheet__root {
+  position: fixed;
+  inset: 0;
+  /* Por debajo del rail (z-50) para que la navegación lateral siga respondiendo. */
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.nsfw-session-sheet__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(8, 6, 7, 0.55);
+  backdrop-filter: blur(2px);
+  pointer-events: auto;
+}
+
+.nsfw-session-sheet__panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: min(100vw, 28rem);
+  height: 100%;
+  flex-direction: column;
+  border-left: 1px solid var(--nsfw-line);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--nsfw-raised) 88%, #2a1c1f), var(--nsfw-surface));
+  box-shadow: -18px 0 48px rgba(0, 0, 0, 0.35);
+  animation: nsfw-sheet-in 180ms ease-out;
+  pointer-events: auto;
+}
+
+@keyframes nsfw-sheet-in {
+  from {
+    transform: translateX(1.25rem);
+    opacity: 0.6;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.nsfw-session-sheet__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.1rem 1.1rem 0.75rem;
+  border-bottom: 1px solid var(--nsfw-line);
+}
+
+.nsfw-session-sheet__eyebrow {
+  margin-bottom: 0.2rem;
+  color: var(--nsfw-faint);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.nsfw-session-sheet__header h2 {
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 1.25rem;
+  line-height: 1.25;
+}
+
+.nsfw-session-sheet__tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--nsfw-line);
+  overflow-x: auto;
+}
+
+.nsfw-session-sheet__tabs button {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  padding: 0.4rem 0.75rem;
+  color: var(--nsfw-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.nsfw-session-sheet__tabs button.is-active {
+  background: color-mix(in srgb, var(--nsfw-accent) 16%, transparent);
+  color: var(--nsfw-ink);
+}
+
+.nsfw-session-sheet__status {
+  margin: 0.75rem 1.1rem 0;
+  font-size: 0.82rem;
+}
+
+.nsfw-session-sheet__status.is-ok {
+  color: var(--nsfw-success);
+}
+
+.nsfw-session-sheet__status.is-err {
+  color: var(--nsfw-danger);
+}
+
+.nsfw-session-sheet__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.1rem 1.5rem;
+}
+
+.nsfw-session-sheet__label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--nsfw-faint);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nsfw-session-sheet__readonly {
+  border: 1px solid var(--nsfw-line);
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--nsfw-soft) 35%, transparent);
+  padding: 0.85rem 0.95rem;
+}
+
+.nsfw-session-sheet__readonly > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.nsfw-session-sheet__readonly span {
+  color: var(--nsfw-faint);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nsfw-session-sheet__readonly strong {
+  color: var(--nsfw-ink);
+  font-weight: 500;
+}
+
+.nsfw-session-sheet__readonly p {
+  margin-top: 0.35rem;
+  color: var(--nsfw-muted);
+  font-size: 0.78rem;
+}
+
+.nsfw-loading-pulse {
+  animation: nsfw-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes nsfw-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .nsfw-scope .term-matrix {
   max-height: 22rem;
   overflow: auto;

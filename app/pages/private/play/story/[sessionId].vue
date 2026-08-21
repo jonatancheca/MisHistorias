@@ -13,29 +13,40 @@ const modelAlias = ref('')
 const compareModelAlias = ref('')
 const generationProfile = ref<GenerationProfile>('quick')
 const localError = ref<string | null>(null)
-const bibleEntity = ref('')
-const bibleText = ref('')
-const directorOpen = ref(false)
-const planSummaryDraft = ref('')
+const toolsOpen = ref(false)
 
 await sessions.loadModels()
 await sessions.loadPlay(sessionId.value)
 
-watchEffect(() => {
-  const current = sessions.play?.session
-  if (!current) return
-  if (!modelAlias.value) modelAlias.value = current.modelAlias
-  if (!compareModelAlias.value && sessions.models[1]) {
-    compareModelAlias.value = sessions.models[1].alias
-  }
-  generationProfile.value = current.generationProfile
-  if (!planSummaryDraft.value) planSummaryDraft.value = current.plan.summary
-})
+watch(
+  () => sessions.play?.session,
+  (current) => {
+    if (!current) return
+    modelAlias.value = current.modelAlias
+    generationProfile.value = current.generationProfile
+  },
+  { immediate: true }
+)
+
+watch(
+  () => sessions.models.map((model) => model.alias).join('|'),
+  () => {
+    if (!compareModelAlias.value && sessions.models[1]) {
+      compareModelAlias.value = sessions.models[1].alias
+    }
+  },
+  { immediate: true }
+)
 
 const beats = computed(() => sessions.play?.beats ?? [])
 const attempt = computed(() => sessions.play?.activeAttempt ?? null)
 const siblings = computed(() => sessions.play?.siblingAttempts ?? [])
 const session = computed(() => sessions.play?.session ?? null)
+const busy = computed(
+  () =>
+    sessions.loading ||
+    Boolean(attempt.value && ['requested', 'streaming', 'validating'].includes(attempt.value.state))
+)
 
 const lastChoices = computed(() => {
   const last = beats.value[beats.value.length - 1]
@@ -46,9 +57,14 @@ function unitLabel(actorId: string) {
   return session.value?.cast.find((member) => member.actorId === actorId)?.name || actorId
 }
 
+function looksLikeJson(value: string) {
+  const trimmed = value.trim()
+  return trimmed.startsWith('{') || trimmed.startsWith('```') || trimmed.startsWith('[')
+}
+
 async function submit(kind: PlayerInput['kind'] = inputKind.value, text = draft.value, choiceId?: string) {
   localError.value = null
-  if (!session.value) return
+  if (!session.value || busy.value) return
   if (attempt.value && ['requested', 'streaming', 'validating', 'ready'].includes(attempt.value.state)) {
     localError.value = 'Hay una generación en curso o pendiente de aceptar'
     return
@@ -110,24 +126,6 @@ async function onSelectSibling(id: string) {
   await sessions.selectSibling(sessionId.value, id)
 }
 
-async function toggleHeart() {
-  if (!session.value) return
-  await $fetch(`/api/private/sessions/${sessionId.value}/escalation`, {
-    method: 'POST',
-    body: { value: !session.value.escalationHeart }
-  })
-  await sessions.loadPlay(sessionId.value)
-}
-
-async function savePlan() {
-  if (!session.value) return
-  await $fetch(`/api/private/sessions/${sessionId.value}/plan`, {
-    method: 'PATCH',
-    body: { summary: planSummaryDraft.value }
-  })
-  await sessions.loadPlay(sessionId.value)
-}
-
 async function onFork(beatId: string) {
   localError.value = null
   try {
@@ -140,6 +138,7 @@ async function onFork(beatId: string) {
 
 async function onFinalize() {
   await sessions.finalize(sessionId.value)
+  toolsOpen.value = false
 }
 
 async function onSequel() {
@@ -152,61 +151,6 @@ async function onArchive() {
   await navigateTo('/private/library')
 }
 
-const castDrafts = ref<Record<string, { name: string; characterization: string; personality: string }>>({})
-const castMessage = ref<string | null>(null)
-
-watchEffect(() => {
-  const members = session.value?.cast || []
-  for (const member of members) {
-    if (castDrafts.value[member.actorId]) continue
-    castDrafts.value[member.actorId] = {
-      name: member.overrideName || member.name,
-      personality: member.personality || '',
-      characterization: member.characterization || ''
-    }
-  }
-})
-
-async function saveCast(actorId: string) {
-  const draft = castDrafts.value[actorId]
-  if (!draft) return
-  castMessage.value = null
-  await $fetch(`/api/private/sessions/${sessionId.value}/cast/${actorId}`, {
-    method: 'POST',
-    body: {
-      name: draft.name,
-      overrideName: draft.name,
-      personality: draft.personality,
-      characterization: draft.characterization
-    }
-  })
-  await sessions.loadPlay(sessionId.value)
-  castMessage.value = 'Caracterización guardada (Personaje fuente intacto)'
-}
-
-async function cloneCast(actorId: string) {
-  const draft = castDrafts.value[actorId]
-  const result = await $fetch<{ character: { id: string; name: string } }>(
-    `/api/private/sessions/${sessionId.value}/cast/${actorId}`,
-    {
-      method: 'POST',
-      body: { action: 'clone', name: draft?.name }
-    }
-  )
-  castMessage.value = `Clone privado creado: ${result.character.name}`
-}
-
-async function onAddFact() {
-  if (!bibleEntity.value.trim() || !bibleText.value.trim()) return
-  await sessions.addBibleFact(sessionId.value, {
-    entity: bibleEntity.value,
-    text: bibleText.value,
-    knownByProtagonist: true
-  })
-  bibleEntity.value = ''
-  bibleText.value = ''
-}
-
 function useChoice(choiceId: string, label: string, kind: 'speak' | 'act' | 'choice') {
   return submit(kind === 'choice' ? 'choice' : kind, label, choiceId)
 }
@@ -214,36 +158,54 @@ function useChoice(choiceId: string, label: string, kind: 'speak' | 'act' | 'cho
 
 <template>
   <div class="nsfw-page mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6 sm:px-6">
-    <header>
-      <p class="text-xs uppercase tracking-[0.2em] text-[var(--nsfw-faint)]">
-        Story
-        <span v-if="session?.branchLabel"> · {{ session.branchLabel }}</span>
-        <span v-if="session?.finalizedAt"> · Finalizada</span>
-      </p>
-      <h1 class="font-serif text-3xl">{{ session?.title || 'Historia' }}</h1>
-      <p class="mt-2 rounded-xl border border-[var(--nsfw-line)] bg-[var(--nsfw-raised)] px-3 py-2 text-sm text-[var(--nsfw-muted)]">
-        Historia privada. No se publica ni aparece en el Hub salvo que lo autorices más adelante.
-      </p>
-      <div class="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="nsfw-btn-ghost"
-          :class="session?.escalationHeart ? 'text-[var(--nsfw-accent)]' : ''"
-          title="Corazón de escalada"
-          @click="toggleHeart"
-        >
-          ♥ Escalada
-        </button>
-        <button
-          v-if="!session?.finalizedAt"
-          type="button"
-          class="nsfw-btn-ghost"
-          @click="onFinalize"
-        >
-          Finalizar
-        </button>
-        <button type="button" class="nsfw-btn-ghost" @click="onSequel">Secuela</button>
-        <button type="button" class="nsfw-btn-ghost" @click="onArchive">Archivar</button>
+    <header class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <p class="text-xs uppercase tracking-[0.2em] text-[var(--nsfw-faint)]">
+          Story
+          <span v-if="session?.branchLabel"> · {{ session.branchLabel }}</span>
+          <span v-if="session?.finalizedAt"> · Finalizada</span>
+        </p>
+        <h1 class="font-serif text-3xl">{{ session?.title || 'Historia' }}</h1>
+      </div>
+      <div class="flex shrink-0 items-center gap-2">
+        <div class="relative">
+          <button
+            type="button"
+            class="nsfw-btn-ghost"
+            :aria-expanded="toolsOpen"
+            @click="toolsOpen = !toolsOpen"
+          >
+            Acciones
+          </button>
+          <div
+            v-if="toolsOpen"
+            class="absolute right-0 z-20 mt-2 min-w-40 rounded-xl border border-[var(--nsfw-line)] bg-[var(--nsfw-raised)] p-1 shadow-lg"
+          >
+            <button
+              v-if="!session?.finalizedAt"
+              type="button"
+              class="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--nsfw-soft)]"
+              @click="onFinalize"
+            >
+              Finalizar
+            </button>
+            <button
+              type="button"
+              class="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--nsfw-soft)]"
+              @click="onSequel"
+            >
+              Secuela
+            </button>
+            <button
+              type="button"
+              class="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--nsfw-soft)]"
+              @click="onArchive"
+            >
+              Archivar
+            </button>
+          </div>
+        </div>
+        <NsfwSessionSheet :session-id="sessionId" />
       </div>
     </header>
 
@@ -251,7 +213,11 @@ function useChoice(choiceId: string, label: string, kind: 'speak' | 'act' | 'cho
       <p v-if="beats.length === 0" class="text-[var(--nsfw-muted)]">
         Aún no hay beats aceptados. Habla, actúa o deja que la escena empiece.
       </p>
-      <div v-for="beat in beats" :key="beat.id" class="space-y-3 border-b border-[var(--nsfw-line)] pb-4 last:border-0">
+      <div
+        v-for="beat in beats"
+        :key="beat.id"
+        class="space-y-3 border-b border-[var(--nsfw-line)] pb-4 last:border-0"
+      >
         <div v-for="(unit, index) in beat.envelope.visibleUnits" :key="`${beat.id}-${index}`">
           <p v-if="unit.type === 'narration'">{{ unit.text }}</p>
           <p v-else>
@@ -265,15 +231,25 @@ function useChoice(choiceId: string, label: string, kind: 'speak' | 'act' | 'cho
       </div>
 
       <div
-        v-if="attempt && ['streaming', 'validating', 'ready'].includes(attempt.state)"
+        v-if="busy || (attempt && ['streaming', 'validating', 'ready'].includes(attempt.state))"
         class="rounded-xl border border-dashed border-[var(--nsfw-line)] bg-[var(--nsfw-soft)]/60 p-4 text-[var(--nsfw-muted)]"
         aria-live="polite"
       >
         <p class="mb-2 text-xs uppercase tracking-wide text-[var(--nsfw-faint)]">
-          {{ attempt.state === 'ready' ? 'Listo para aceptar' : 'Provisional' }}
-          · {{ attempt.modelAlias }}
+          <template v-if="busy && attempt?.state !== 'ready'">Generando…</template>
+          <template v-else-if="attempt?.state === 'ready'">Listo para aceptar</template>
+          <template v-else>Provisional</template>
+          <span v-if="attempt?.modelAlias"> · {{ attempt.modelAlias }}</span>
         </p>
-        <p class="whitespace-pre-wrap">{{ attempt.provisionalText || 'Generando…' }}</p>
+        <p v-if="busy && (!attempt?.provisionalText || looksLikeJson(attempt.provisionalText))" class="nsfw-loading-pulse">
+          Esperando respuesta del modelo…
+        </p>
+        <p
+          v-else-if="attempt?.provisionalText && !looksLikeJson(attempt.provisionalText)"
+          class="whitespace-pre-wrap"
+        >
+          {{ attempt.provisionalText }}
+        </p>
       </div>
     </article>
 
@@ -344,31 +320,43 @@ function useChoice(choiceId: string, label: string, kind: 'speak' | 'act' | 'cho
     </section>
 
     <section class="nsfw-card space-y-3">
-      <div class="grid gap-3 sm:grid-cols-2">
-        <label class="block">
-          <span class="mb-1 block text-xs text-[var(--nsfw-faint)]">Modelo</span>
-          <select v-model="modelAlias" class="nsfw-input w-full">
-            <option v-for="model in sessions.models" :key="model.alias" :value="model.alias">
-              {{ model.alias }}
-            </option>
-          </select>
-        </label>
-        <label class="block">
-          <span class="mb-1 block text-xs text-[var(--nsfw-faint)]">Comparar con</span>
-          <select v-model="compareModelAlias" class="nsfw-input w-full">
-            <option v-for="model in sessions.models" :key="`cmp-${model.alias}`" :value="model.alias">
-              {{ model.alias }}
-            </option>
-          </select>
-        </label>
-        <label class="block sm:col-span-2">
-          <span class="mb-1 block text-xs text-[var(--nsfw-faint)]">Perfil</span>
-          <select v-model="generationProfile" class="nsfw-input w-full">
-            <option value="quick">Quick</option>
-            <option value="quality">Quality</option>
-          </select>
-        </label>
-      </div>
+      <details class="group">
+        <summary class="cursor-pointer list-none text-xs uppercase tracking-[0.14em] text-[var(--nsfw-faint)]">
+          Modelo · perfil
+          <span class="ml-2 normal-case tracking-normal text-[var(--nsfw-muted)]">
+            {{ modelAlias || '—' }} · {{ generationProfile }}
+          </span>
+        </summary>
+        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <label class="block">
+            <span class="mb-1 block text-xs text-[var(--nsfw-faint)]">Modelo</span>
+            <select v-model="modelAlias" class="nsfw-input w-full">
+              <option v-for="model in sessions.models" :key="model.alias" :value="model.alias">
+                {{ model.alias }}
+              </option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-xs text-[var(--nsfw-faint)]">Comparar con</span>
+            <select v-model="compareModelAlias" class="nsfw-input w-full">
+              <option
+                v-for="model in sessions.models"
+                :key="`cmp-${model.alias}`"
+                :value="model.alias"
+              >
+                {{ model.alias }}
+              </option>
+            </select>
+          </label>
+          <label class="block sm:col-span-2">
+            <span class="mb-1 block text-xs text-[var(--nsfw-faint)]">Perfil</span>
+            <select v-model="generationProfile" class="nsfw-input w-full">
+              <option value="quick">Quick</option>
+              <option value="quality">Quality</option>
+            </select>
+          </label>
+        </div>
+      </details>
 
       <div class="flex flex-wrap gap-2">
         <button
@@ -408,90 +396,11 @@ function useChoice(choiceId: string, label: string, kind: 'speak' | 'act' | 'cho
       <button
         type="button"
         class="nsfw-btn-primary"
-        :disabled="sessions.loading || Boolean(attempt && ['ready', 'streaming', 'validating'].includes(attempt.state)) || Boolean(session?.finalizedAt)"
+        :disabled="busy || Boolean(attempt && ['ready', 'streaming', 'validating'].includes(attempt.state)) || Boolean(session?.finalizedAt)"
         @click="submit()"
       >
-        {{ sessions.loading ? 'Generando…' : 'Enviar' }}
+        {{ busy ? 'Generando…' : 'Enviar' }}
       </button>
-    </section>
-
-    <section class="nsfw-card space-y-3">
-      <h2 class="text-sm font-medium text-[var(--nsfw-muted)]">Caracterización</h2>
-      <p class="text-xs text-[var(--nsfw-faint)]">
-        Override local de la sesión. No muta el Personaje fuente. Clone = copia privada explícita.
-      </p>
-      <p v-if="castMessage" class="text-sm text-[var(--nsfw-success)]">{{ castMessage }}</p>
-      <div
-        v-for="member in session?.cast || []"
-        :key="member.actorId"
-        class="space-y-2 border-t border-[var(--nsfw-line)] pt-3 first:border-0 first:pt-0"
-      >
-        <p class="text-xs uppercase tracking-wide text-[var(--nsfw-faint)]">
-          {{ member.role }} · {{ member.actorId }}
-          <span v-if="member.isSelfInsert"> · self-insert</span>
-        </p>
-        <input
-          v-if="castDrafts[member.actorId]"
-          v-model="castDrafts[member.actorId].name"
-          class="nsfw-input w-full"
-          placeholder="Nombre en esta historia"
-        >
-        <input
-          v-if="castDrafts[member.actorId]"
-          v-model="castDrafts[member.actorId].personality"
-          class="nsfw-input w-full"
-          placeholder="Énfasis de personalidad"
-        >
-        <textarea
-          v-if="castDrafts[member.actorId]"
-          v-model="castDrafts[member.actorId].characterization"
-          class="nsfw-input min-h-20 w-full"
-          placeholder="Caracterización de sesión"
-        />
-        <div class="flex flex-wrap gap-2">
-          <button type="button" class="nsfw-btn-primary" @click="saveCast(member.actorId)">
-            Guardar override
-          </button>
-          <button type="button" class="nsfw-btn-ghost" @click="cloneCast(member.actorId)">
-            Guardar como Clone
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <section class="nsfw-card space-y-3">
-      <div class="flex items-center justify-between gap-2">
-        <h2 class="text-sm font-medium text-[var(--nsfw-muted)]">Director View</h2>
-        <button type="button" class="nsfw-btn-ghost" @click="directorOpen = !directorOpen">
-          {{ directorOpen ? 'Ocultar' : 'Mostrar' }}
-        </button>
-      </div>
-      <div v-if="directorOpen" class="space-y-3">
-        <p class="text-xs text-[var(--nsfw-faint)]">
-          Plan mutable. No reescribe beats aceptados. Sin spoilers extra.
-        </p>
-        <textarea v-model="planSummaryDraft" class="nsfw-input min-h-20 w-full" />
-        <ul class="space-y-1 text-sm text-[var(--nsfw-muted)]">
-          <li v-for="beat in session?.plan.nextBeats || []" :key="beat.id">
-            {{ beat.status }} · {{ beat.intent }}
-          </li>
-        </ul>
-        <button type="button" class="nsfw-btn-primary" @click="savePlan">Guardar plan</button>
-      </div>
-    </section>
-
-    <section class="nsfw-card space-y-3">
-      <h2 class="text-sm font-medium text-[var(--nsfw-muted)]">Bible · corrección factual</h2>
-      <ul v-if="session?.bible.facts.length" class="space-y-1 text-sm text-[var(--nsfw-muted)]">
-        <li v-for="fact in session.bible.facts" :key="fact.id">
-          <span class="text-[var(--nsfw-ink)]">{{ fact.entity }}:</span> {{ fact.text }}
-        </li>
-      </ul>
-      <div class="grid gap-2 sm:grid-cols-2">
-        <input v-model="bibleEntity" class="nsfw-input" placeholder="Entidad">
-        <input v-model="bibleText" class="nsfw-input" placeholder="Hecho">
-      </div>
-      <button type="button" class="nsfw-btn-ghost" @click="onAddFact">Guardar hecho</button>
     </section>
   </div>
 </template>

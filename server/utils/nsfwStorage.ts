@@ -20,6 +20,15 @@ import type {
   InteractionPolicy,
   NsfwStoryFormat
 } from '../../shared/types/nsfw/session.ts'
+import {
+  coherentConfiguration,
+  mapPerspectiveToSession,
+  mapToneToSession,
+  type CreatorFormat,
+  type NarrativePerspective,
+  type NarrativeTone,
+  type StoryDuration
+} from '../../shared/lib/nsfwCreatorConfig.ts'
 import { getStorage } from '../utils/storage.ts'
 
 function db() {
@@ -808,6 +817,95 @@ export function updateStoryPlan(
     `)
     .run(json(next), Date.now(), sessionId)
   return getStorySession(sessionId, ownerUserId)!
+}
+
+export function updateStorySessionConfig(
+  sessionId: string,
+  ownerUserId: string,
+  patch: {
+    title?: string
+    premise?: string
+    duration?: string
+    tone?: string
+    perspective?: string
+    interactionPolicy?: InteractionPolicy
+    generationProfile?: GenerationProfile
+    modelAlias?: string
+    interests?: string[]
+    exclusions?: string[]
+  }
+) {
+  const session = getStorySession(sessionId, ownerUserId)
+  if (!session) throw createError({ statusCode: 404, statusMessage: 'Sesión no encontrada' })
+  if (session.finalizedAt) {
+    throw createError({ statusCode: 409, statusMessage: 'Sesión finalizada' })
+  }
+
+  const format = session.format as CreatorFormat
+  const coherent = coherentConfiguration({
+    format,
+    profile: (patch.generationProfile || session.generationProfile) as GenerationProfile,
+    tone: sessionToneToCreator(patch.tone ?? session.tone),
+    perspective: sessionPerspectiveToCreator(patch.perspective ?? session.perspective),
+    duration: (patch.duration || session.duration) as StoryDuration,
+    interactionPolicy: (patch.interactionPolicy ||
+      session.interactionPolicy) as InteractionPolicy
+  })
+
+  const title = typeof patch.title === 'string' ? patch.title.trim() || session.title : session.title
+  const premise =
+    typeof patch.premise === 'string' ? patch.premise.trim() || session.premise : session.premise
+  const interests = Array.isArray(patch.interests)
+    ? patch.interests.map((item) => item.trim()).filter(Boolean).slice(0, 5)
+    : session.interests
+  const exclusions = Array.isArray(patch.exclusions)
+    ? patch.exclusions.map((item) => item.trim()).filter(Boolean)
+    : session.exclusions
+  const modelAlias =
+    typeof patch.modelAlias === 'string' && patch.modelAlias.trim()
+      ? patch.modelAlias.trim()
+      : session.modelAlias
+
+  db()
+    .prepare(`
+      UPDATE nsfw_story_sessions
+      SET title = ?, premise = ?, duration = ?, tone = ?, perspective = ?,
+          interaction_policy = ?, generation_profile = ?, model_alias = ?,
+          interests_json = ?, exclusions_json = ?,
+          revision = revision + 1, updated_at = ?
+      WHERE id = ? AND owner_user_id = ?
+    `)
+    .run(
+      title,
+      premise,
+      coherent.duration,
+      mapToneToSession(coherent.tone),
+      mapPerspectiveToSession(coherent.perspective),
+      coherent.interactionPolicy,
+      coherent.profile,
+      modelAlias,
+      json(interests),
+      json(exclusions),
+      Date.now(),
+      sessionId,
+      ownerUserId
+    )
+
+  return getStorySession(sessionId, ownerUserId)!
+}
+
+function sessionToneToCreator(tone: string): NarrativeTone {
+  if (tone === 'romantic') return 'romantic'
+  if (tone === 'explicit' || tone === 'hardcore') return 'hardcore'
+  if (tone === 'dark') return 'dark'
+  return 'neutral'
+}
+
+function sessionPerspectiveToCreator(perspective: string): NarrativePerspective {
+  if (perspective === 'first') return 'first'
+  if (perspective === 'third') return 'third'
+  if (perspective === 'narrative') return 'narrative'
+  return 'second'
 }
 
 export function syncBibleFact(

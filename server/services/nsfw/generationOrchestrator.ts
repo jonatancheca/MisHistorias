@@ -14,7 +14,8 @@ import { resolveModelByAlias } from './modelCatalog.ts'
 import {
   envelopeToProse,
   extractJsonObject,
-  parseAndValidateEnvelope
+  parseAndValidateEnvelope,
+  prosePreviewFromRaw
 } from './envelopeValidator.ts'
 import type {
   GenerationProfile,
@@ -36,9 +37,13 @@ export async function runGeneration(params: {
     throw createError({ statusCode: 400, statusMessage: 'Formato no soportado' })
   }
 
-  const model = resolveModelByAlias(params.modelAlias)
+  const requestedAlias = params.modelAlias.trim() || session.modelAlias
+  const model = resolveModelByAlias(requestedAlias)
   if (!model || !model.enabled) {
-    throw createError({ statusCode: 400, statusMessage: 'Modelo no configurado' })
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Modelo no configurado: ${requestedAlias || '(vacío)'}`
+    })
   }
 
   const input =
@@ -171,7 +176,7 @@ async function executeAttempt(attemptId: string, ownerUserId: string, mockMode: 
               { role: 'user', content: bundle.messages[1]?.content || session.premise }
             ],
             temperature: 0.3,
-            maxTokens: 256
+            maxTokens: 1024
           }
         )
         usage.passes!.push({
@@ -191,14 +196,16 @@ async function executeAttempt(attemptId: string, ownerUserId: string, mockMode: 
           model: attempt.modelId,
           messages: bundle.messages,
           temperature: sampling?.temperature ?? 0.9,
-          maxTokens: sampling?.maxTokens ?? 512
+          maxTokens: sampling?.maxTokens ?? 2048
         }
       )
+      rawEnvelope = extractJsonObject(result.content)
+      const preview =
+        prosePreviewFromRaw(rawEnvelope, session.format) || 'Validando respuesta…'
       updateAttempt(attemptId, {
         state: 'validating',
-        provisionalText: result.content.slice(0, 4000)
+        provisionalText: preview.slice(0, 4000)
       })
-      rawEnvelope = extractJsonObject(result.content)
       usage.promptTokens = Math.ceil(
         bundle.messages.reduce((sum, message) => sum + message.content.length, 0) / 4
       )
@@ -220,7 +227,11 @@ async function executeAttempt(attemptId: string, ownerUserId: string, mockMode: 
 
     if (!validated.ok && attempt.retryCount < 1 && !mockMode) {
       updateAttempt(attemptId, { retryCount: attempt.retryCount + 1 })
-      const repair = await repairEnvelope(session, attempt, String(rawEnvelope))
+      const previousJson =
+        typeof rawEnvelope === 'string'
+          ? rawEnvelope
+          : JSON.stringify(rawEnvelope ?? {}, null, 2)
+      const repair = await repairEnvelope(session, attempt, previousJson, validated.errors)
       validated = parseAndValidateEnvelope(repair, {
         format: session.format,
         cast: session.cast,
@@ -273,7 +284,8 @@ async function executeAttempt(attemptId: string, ownerUserId: string, mockMode: 
 async function repairEnvelope(
   session: NsfwStorySession,
   attempt: NsfwGenerationAttempt,
-  previous: string
+  previous: string,
+  errors: string[]
 ) {
   const settings = getStorage().readSettings()
   const result = await fetchProxyChat(
@@ -284,18 +296,28 @@ async function repairEnvelope(
     {
       model: attempt.modelId,
       temperature: 0.2,
-      maxTokens: 512,
+      maxTokens: 2048,
       messages: [
         {
           role: 'system',
-          content:
-            'Corrige el JSON para que cumpla Generation Envelope v1. Responde solo JSON válido.'
+          content: [
+            'Corrige el JSON para Generation Envelope v1.',
+            'Responde SOLO JSON válido (sin markdown).',
+            'visibleUnits: array de {type:"narration",text} o {type:"dialogue",actorId,text}.',
+            'visualCues/soundCues/choices/stateDelta/planPatch: arrays (pueden ir vacíos).',
+            'stateDelta ops: set_location|set_mood|set_present|set_flag|add_relationship_note.',
+            'schemaVersion:1, language:"es-ES", stopReason válido.'
+          ].join(' ')
         },
         {
           role: 'user',
-          content: `Formato=${session.format}. Reparto=${session.cast
-            .map((member) => member.actorId)
-            .join(',')}. JSON previo:\n${previous.slice(0, 6000)}`
+          content: [
+            `Formato=${session.format}.`,
+            `Reparto actorIds=${session.cast.map((member) => member.actorId).join(',')}.`,
+            `Errores: ${errors.join('; ') || '(sin detalle)'}.`,
+            'JSON previo:',
+            previous.slice(0, 6000)
+          ].join('\n')
         }
       ]
     }

@@ -67,7 +67,10 @@
         class="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-[var(--nsfw-line)] bg-[var(--nsfw-surface)] p-3 sm:p-4 landscape:w-[min(100%,18rem)] landscape:border-t-0 landscape:border-l lg:w-80 lg:border-t-0 lg:border-l"
       >
         <p class="text-xs uppercase tracking-[0.2em] text-[var(--nsfw-faint)]">VN · {{ session?.title }}</p>
-        <p class="text-xs text-[var(--nsfw-muted)]">Historia privada</p>
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-xs text-[var(--nsfw-muted)]">Historia privada</p>
+          <NsfwSessionSheet :session-id="sessionId" compact />
+        </div>
 
         <div class="flex flex-wrap gap-2">
           <button type="button" class="nsfw-btn-ghost" @click="backlogOpen = !backlogOpen">Backlog</button>
@@ -95,20 +98,65 @@
           <p v-for="cg in seenCgs" :key="String(cg.id)">{{ cg.title }}</p>
         </div>
 
+        <div v-if="busy" class="rounded-xl border border-dashed border-[var(--nsfw-line)] p-3 text-sm text-[var(--nsfw-muted)]" aria-live="polite">
+          <p class="nsfw-loading-pulse text-xs uppercase tracking-wide text-[var(--nsfw-faint)]">
+            Generando…
+          </p>
+          <p class="mt-1 text-sm">Esperando respuesta del modelo…</p>
+        </div>
+
         <div v-if="attempt?.state === 'ready'" class="space-y-2">
           <p class="text-xs text-[var(--nsfw-faint)]">Provisional listo</p>
           <p class="text-sm text-[var(--nsfw-muted)]">{{ attempt.provisionalText }}</p>
-          <button type="button" class="nsfw-btn-primary w-full" @click="onAccept">Aceptar</button>
+          <button type="button" class="nsfw-btn-primary w-full" :disabled="busy" @click="onAccept">
+            Aceptar
+          </button>
         </div>
 
         <p v-if="localError" class="text-sm text-[var(--nsfw-danger)]">{{ localError }}</p>
 
         <NsfwAudioAffordances />
 
-        <input v-model="draft" class="nsfw-input w-full" placeholder="Speak / Act…">
+        <details class="text-xs">
+          <summary class="cursor-pointer list-none uppercase tracking-[0.12em] text-[var(--nsfw-faint)]">
+            Modelo · {{ modelAlias || '—' }} · {{ generationProfile }}
+          </summary>
+          <div class="mt-2 grid gap-2">
+            <select v-model="modelAlias" class="nsfw-input w-full" :disabled="busy">
+              <option v-for="model in sessions.models" :key="model.alias" :value="model.alias">
+                {{ model.alias }}
+              </option>
+            </select>
+            <select v-model="generationProfile" class="nsfw-input w-full" :disabled="busy">
+              <option value="quick">Quick</option>
+              <option value="quality">Quality</option>
+            </select>
+          </div>
+        </details>
+
+        <input
+          v-model="draft"
+          class="nsfw-input w-full"
+          :disabled="busy"
+          placeholder="Speak / Act…"
+        >
         <div class="flex gap-2">
-          <button type="button" class="nsfw-btn-ghost flex-1" @click="submit('speak', draft)">Speak</button>
-          <button type="button" class="nsfw-btn-ghost flex-1" @click="submit('act', draft)">Act</button>
+          <button
+            type="button"
+            class="nsfw-btn-ghost flex-1"
+            :disabled="busy"
+            @click="submit('speak', draft)"
+          >
+            Speak
+          </button>
+          <button
+            type="button"
+            class="nsfw-btn-ghost flex-1"
+            :disabled="busy"
+            @click="submit('act', draft)"
+          >
+            Act
+          </button>
         </div>
 
         <div class="text-xs text-[var(--nsfw-faint)]">
@@ -154,13 +202,26 @@ watchEffect(() => {
   if (currentSession.format !== 'vn') {
     void navigateTo(`/private/play/${currentSession.format === 'chat' ? 'chat' : 'story'}/${currentSession.id}`)
   }
-  if (!modelAlias.value) modelAlias.value = currentSession.modelAlias
-  generationProfile.value = currentSession.generationProfile
 })
+
+watch(
+  () => sessions.play?.session,
+  (current) => {
+    if (!current) return
+    modelAlias.value = current.modelAlias
+    generationProfile.value = current.generationProfile
+  },
+  { immediate: true }
+)
 
 const beats = computed(() => sessions.play?.beats ?? [])
 const attempt = computed(() => sessions.play?.activeAttempt ?? null)
 const session = computed(() => sessions.play?.session ?? null)
+const busy = computed(
+  () =>
+    sessions.loading ||
+    Boolean(attempt.value && ['requested', 'streaming', 'validating'].includes(attempt.value.state))
+)
 
 const flatUnits = computed(() =>
   beats.value.flatMap((beat) =>
@@ -286,8 +347,10 @@ async function advance() {
 
 async function submit(kind: PlayerInput['kind'] = 'free', text = draft.value) {
   localError.value = null
-  if (!session.value) return
-  if (attempt.value && ['ready', 'streaming', 'validating'].includes(attempt.value.state)) return
+  if (!session.value || busy.value) return
+  if (attempt.value && ['ready', 'streaming', 'validating', 'requested'].includes(attempt.value.state)) {
+    return
+  }
   try {
     await sessions.generate(sessionId.value, {
       input: { kind, text: text.trim() },

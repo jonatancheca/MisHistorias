@@ -6,24 +6,24 @@ const DEFAULT_MODELS: NarrativeModelConfig[] = [
     lmStudioModelId: 'gemma-4-26b-a4b-heretic-styletune-v2-head-i1',
     enabled: true,
     contextBudget: 8192,
-    quickDefaults: { temperature: 0.9, topP: 0.95, maxTokens: 512 },
-    qualityDefaults: { temperature: 0.75, topP: 0.9, maxTokens: 1024 }
+    quickDefaults: { temperature: 0.9, topP: 0.95, maxTokens: 2048 },
+    qualityDefaults: { temperature: 0.75, topP: 0.9, maxTokens: 3072 }
   },
   {
     alias: 'Gemma 4 · StyleTune 31B',
     lmStudioModelId: 'gemma-4-31b-styletune-heretic-ara-i1',
     enabled: true,
     contextBudget: 8192,
-    quickDefaults: { temperature: 0.9, topP: 0.95, maxTokens: 512 },
-    qualityDefaults: { temperature: 0.75, topP: 0.9, maxTokens: 1024 }
+    quickDefaults: { temperature: 0.9, topP: 0.95, maxTokens: 2048 },
+    qualityDefaults: { temperature: 0.75, topP: 0.9, maxTokens: 3072 }
   },
   {
     alias: 'G4 · Moonlight Dusk',
     lmStudioModelId: 'g4-moonlight-dusk-26b-a4b-heretic-i1',
     enabled: true,
     contextBudget: 8192,
-    quickDefaults: { temperature: 0.9, topP: 0.95, maxTokens: 512 },
-    qualityDefaults: { temperature: 0.75, topP: 0.9, maxTokens: 1024 }
+    quickDefaults: { temperature: 0.9, topP: 0.95, maxTokens: 2048 },
+    qualityDefaults: { temperature: 0.75, topP: 0.9, maxTokens: 3072 }
   }
 ]
 
@@ -81,9 +81,16 @@ async function fetchLmStudioModelIds(baseUrl: string) {
 
 export function resolveModelByAlias(alias: string) {
   const catalog = listNarrativeModelCatalog()
-  return (
-    catalog.find((model) => model.alias === alias) ||
-    catalog.find((model) => normalizeModelId(model.lmStudioModelId) === normalizeModelId(alias)) ||
-    null
-  )
+  const needle = normalizeModelId(alias)
+  if (!needle) return null
+  const exact =
+    catalog.find((model) => normalizeModelId(model.alias) === needle) ||
+    catalog.find((model) => normalizeModelId(model.lmStudioModelId) === needle)
+  if (exact) return exact
+  // Solo fuzzy si hay un único candidato (evita caer siempre en el primero del catálogo).
+  const fuzzy = catalog.filter((model) => {
+    const id = normalizeModelId(model.lmStudioModelId)
+    return id.includes(needle) || needle.includes(id)
+  })
+  return fuzzy.length === 1 ? fuzzy[0]! : null
 }

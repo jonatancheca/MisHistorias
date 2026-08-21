@@ -552,12 +552,24 @@ if (typeof route.query.experience === 'string' && route.query.experience) {
               {{ choiceList(DURATION_CHOICES, configuration.duration).label }} ·
               {{ choiceList(TONE_CHOICES, configuration.tone).label }}
             </p>
+            <label class="mt-3 block">
+              <span class="mb-1 block text-xs text-[var(--nsfw-faint)]">Modelo LM Studio</span>
+              <select v-model="modelAlias" class="nsfw-input w-full">
+                <option v-for="model in sessions.models" :key="model.alias" :value="model.alias">
+                  {{ model.alias }}
+                  {{ model.available ? '' : '(no detectado)' }}
+                </option>
+              </select>
+              <small class="mt-1 block text-xs text-[var(--nsfw-faint)]">
+                {{ sessions.models.find((item) => item.alias === modelAlias)?.lmStudioModelId || '' }}
+              </small>
+            </label>
           </div>
           <div class="flex flex-wrap gap-2">
             <button
               type="button"
               class="nsfw-btn-primary"
-              :disabled="sessions.loading"
+              :disabled="sessions.loading || !modelAlias"
               @click="start(true)"
             >
               Empezar ahora

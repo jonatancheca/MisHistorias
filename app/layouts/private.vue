@@ -28,7 +28,22 @@ const adminLinks = [
 
 function isActive(to: string) {
   if (to === '/private') return route.path === '/private'
-  return route.path.startsWith(to)
+  return route.path === to || route.path.startsWith(`${to}/`)
+}
+
+async function go(to: string, event?: Event) {
+  event?.preventDefault()
+
+  if (route.path === to && !route.fullPath.includes('?')) {
+    const main = document.querySelector('.nsfw-shell main')
+    main?.scrollTo({ top: 0, behavior: 'smooth' })
+    return
+  }
+
+  await navigateTo(to)
+  await nextTick()
+  const main = document.querySelector('.nsfw-shell main')
+  main?.scrollTo({ top: 0 })
 }
 
 async function onLogout() {
@@ -48,62 +63,85 @@ onBeforeUnmount(() => {
 <template>
   <div class="nsfw-shell flex min-h-dvh bg-[var(--nsfw-canvas)] text-[var(--nsfw-ink)]">
     <aside
-      class="hidden w-[260px] shrink-0 flex-col border-r border-[var(--nsfw-line)] bg-[var(--nsfw-surface)] p-4 lg:flex"
+      class="nsfw-rail relative z-50 hidden w-[260px] shrink-0 flex-col border-r border-[var(--nsfw-line)] bg-[var(--nsfw-surface)] p-4 lg:flex"
     >
-      <NuxtLink to="/private" class="mb-8 font-serif text-xl tracking-tight text-[var(--nsfw-ink)]">
+      <a
+        href="/private"
+        class="mb-8 font-serif text-xl tracking-tight text-[var(--nsfw-ink)]"
+        @click="go('/private', $event)"
+      >
         Mis historias
-      </NuxtLink>
+      </a>
 
       <nav class="flex flex-1 flex-col gap-1">
-        <NuxtLink
+        <a
           v-for="link in links"
           :key="link.to"
-          :to="link.to"
+          :href="link.to"
           class="rounded-xl px-3 py-2 text-sm transition"
           :class="
             isActive(link.to)
               ? 'bg-[var(--nsfw-soft)] text-[var(--nsfw-accent)]'
               : 'text-[var(--nsfw-muted)] hover:bg-[var(--nsfw-soft)] hover:text-[var(--nsfw-ink)]'
           "
+          @click="go(link.to, $event)"
         >
           {{ link.label }}
-        </NuxtLink>
+        </a>
       </nav>
 
       <div class="mb-4 border-t border-[var(--nsfw-line)] pt-4">
         <p class="mb-2 text-xs uppercase tracking-wide text-[var(--nsfw-faint)]">Cuenta</p>
-        <NuxtLink
+        <a
           v-for="link in accountLinks"
           :key="link.to"
-          :to="link.to"
-          class="block rounded-xl px-3 py-2 text-sm text-[var(--nsfw-muted)] hover:bg-[var(--nsfw-soft)] hover:text-[var(--nsfw-ink)]"
+          :href="link.to"
+          class="block rounded-xl px-3 py-2 text-sm transition"
+          :class="
+            isActive(link.to)
+              ? 'bg-[var(--nsfw-soft)] text-[var(--nsfw-accent)]'
+              : 'text-[var(--nsfw-muted)] hover:bg-[var(--nsfw-soft)] hover:text-[var(--nsfw-ink)]'
+          "
+          @click="go(link.to, $event)"
         >
           {{ link.label }}
-        </NuxtLink>
+        </a>
       </div>
 
       <div class="mb-4 border-t border-[var(--nsfw-line)] pt-4">
         <p class="mb-2 text-xs uppercase tracking-wide text-[var(--nsfw-faint)]">Studio</p>
-        <NuxtLink
+        <a
           v-for="link in studioLinks"
           :key="link.to"
-          :to="link.to"
-          class="block rounded-xl px-3 py-2 text-sm text-[var(--nsfw-muted)] hover:bg-[var(--nsfw-soft)] hover:text-[var(--nsfw-ink)]"
+          :href="link.to"
+          class="block rounded-xl px-3 py-2 text-sm transition"
+          :class="
+            isActive(link.to)
+              ? 'bg-[var(--nsfw-soft)] text-[var(--nsfw-accent)]'
+              : 'text-[var(--nsfw-muted)] hover:bg-[var(--nsfw-soft)] hover:text-[var(--nsfw-ink)]'
+          "
+          @click="go(link.to, $event)"
         >
           {{ link.label }}
-        </NuxtLink>
+        </a>
       </div>
 
       <div v-if="auth.isAdmin" class="mb-4 border-t border-[var(--nsfw-line)] pt-4">
         <p class="mb-2 text-xs uppercase tracking-wide text-[var(--nsfw-faint)]">Admin</p>
-        <NuxtLink
+        <a
           v-for="link in adminLinks"
           :key="link.to"
-          :to="link.to"
-          class="block rounded-xl px-3 py-2 text-sm text-[var(--nsfw-muted)] hover:bg-[var(--nsfw-soft)] hover:text-[var(--nsfw-ink)]"
+          :href="link.to"
+          class="block rounded-xl px-3 py-2 text-sm transition"
+          :class="
+            isActive(link.to)
+              ? 'bg-[var(--nsfw-soft)] text-[var(--nsfw-accent)]'
+              : 'text-[var(--nsfw-muted)] hover:bg-[var(--nsfw-soft)] hover:text-[var(--nsfw-ink)]'
+          "
+          @click="go(link.to, $event)"
         >
           {{ link.label }}
-        </NuxtLink>
+        </a>
       </div>
 
       <div class="border-t border-[var(--nsfw-line)] pt-4 text-sm">
@@ -112,27 +150,31 @@ onBeforeUnmount(() => {
       </div>
     </aside>
 
-    <div class="flex min-w-0 flex-1 flex-col">
+    <div class="relative z-0 flex min-w-0 flex-1 flex-col">
       <header
-        class="flex items-center justify-between gap-2 border-b border-[var(--nsfw-line)] px-3 py-2 lg:hidden"
+        class="relative z-40 flex items-center justify-between gap-2 border-b border-[var(--nsfw-line)] bg-[var(--nsfw-surface)] px-3 py-2 lg:hidden"
       >
-        <NuxtLink to="/private" class="font-serif text-lg">Mis historias</NuxtLink>
+        <a href="/private" class="font-serif text-lg" @click="go('/private', $event)">
+          Mis historias
+        </a>
         <div class="flex flex-wrap items-center gap-1">
-          <NuxtLink
+          <a
             v-for="link in accountLinks"
             :key="`m-acc-${link.to}`"
-            :to="link.to"
+            :href="link.to"
             class="nsfw-btn-ghost px-2 text-xs"
+            @click="go(link.to, $event)"
           >
             {{ link.label }}
-          </NuxtLink>
-          <NuxtLink
+          </a>
+          <a
             v-if="auth.isAdmin"
-            to="/private/admin/users"
+            href="/private/admin/users"
             class="nsfw-btn-ghost px-2 text-xs"
+            @click="go('/private/admin/users', $event)"
           >
             Usuarios
-          </NuxtLink>
+          </a>
           <button type="button" class="nsfw-btn-ghost px-2 text-xs" @click="onLogout">
             Salir
           </button>
@@ -144,21 +186,18 @@ onBeforeUnmount(() => {
       </main>
 
       <nav
-        class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 gap-1 border-t border-[var(--nsfw-line)] bg-[var(--nsfw-surface)] px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden"
+        class="nsfw-mobile-rail fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 gap-1 border-t border-[var(--nsfw-line)] bg-[var(--nsfw-surface)] px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden"
       >
-        <NuxtLink
+        <a
           v-for="link in links"
           :key="`mobile-${link.to}`"
-          :to="link.to"
+          :href="link.to"
           class="rounded-xl px-2 py-2 text-center text-xs"
-          :class="
-            isActive(link.to)
-              ? 'text-[var(--nsfw-accent)]'
-              : 'text-[var(--nsfw-muted)]'
-          "
+          :class="isActive(link.to) ? 'text-[var(--nsfw-accent)]' : 'text-[var(--nsfw-muted)]'"
+          @click="go(link.to, $event)"
         >
           {{ link.label }}
-        </NuxtLink>
+        </a>
       </nav>
     </div>
   </div>

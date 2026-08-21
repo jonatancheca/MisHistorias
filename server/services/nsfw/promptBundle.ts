@@ -80,15 +80,23 @@ function publicBibleFacts(session: NsfwStorySession) {
     }))
 }
 
-function recentUnits(beats: NsfwNarrativeBeat[]) {
-  return beats.slice(-6).map((beat) => ({
-    sequence: beat.sequence,
-    units: beat.envelope.visibleUnits.map((unit) =>
-      unit.type === 'dialogue'
-        ? { type: unit.type, actorId: unit.actorId, text: unit.text }
-        : { type: unit.type, text: unit.text }
+function recentProseDigest(beats: NsfwNarrativeBeat[], cast: NsfwStorySession['cast'], maxChars = 6000) {
+  const nameOf = (actorId: string) =>
+    cast.find((member) => member.actorId === actorId)?.overrideName ||
+    cast.find((member) => member.actorId === actorId)?.name ||
+    actorId
+  const chunks: string[] = []
+  let used = 0
+  for (const beat of [...beats].slice(-12).reverse()) {
+    const lines = beat.envelope.visibleUnits.map((unit) =>
+      unit.type === 'dialogue' ? `${nameOf(unit.actorId)}: ${unit.text}` : unit.text
     )
-  }))
+    const block = `Beat ${beat.sequence}:\n${lines.join('\n')}`
+    if (used + block.length + 2 > maxChars && chunks.length) break
+    chunks.push(block)
+    used += block.length + 2
+  }
+  return chunks.reverse().join('\n\n')
 }
 
 export function buildStoryPromptBundle(
@@ -139,13 +147,20 @@ export function buildStoryPromptBundle(
     ...Object.values(pins.characterSprites)
   ].filter((id): id is string => Boolean(id))
 
+  const recentBeats = options.recentBeats || []
+  const recentDigest = recentProseDigest(recentBeats, session.cast)
+
   const system = [
     'Eres el motor narrativo privado de Mis Historias.',
     'Escribe directamente en castellano de España; no traduzcas desde inglés.',
+    'IMPORTANTE: la respuesta final debe ser SOLO JSON Generation Envelope en el campo content. No dejes content vacío. No uses herramientas. No escribas prosa fuera del JSON.',
     `Contrato de formato: ${session.format}. ${FORMAT_CONTRACTS[formatKey]}`,
     `Interacción efectiva: ${effectiveInteraction}. ${INTERACTION_CONTRACTS[effectiveInteraction] || INTERACTION_CONTRACTS.pause} Tono: ${toneKey}. Perspectiva solicitada: ${session.perspective}.`,
     `Duración: ${durationKey}. ${DURATION_CONTRACTS[durationKey] || DURATION_CONTRACTS.medium}`,
     agencyInstruction,
+    recentBeats.length
+      ? `CONTINUIDAD OBLIGATORIA: ya hay ${recentBeats.length} beat(s) aceptado(s). Continúa desde el último estado y la prosa reciente. No reinicies la historia, no resumas lo anterior como si fuera nuevo, no contradigas hechos de la Bible ni del worldState, y no ignores relaciones o ubicación actuales.`
+      : 'Este es el primer beat: establece escena y tono sin precipitar el arco.',
     'No aceleres una relación o escena adulta solo porque esté permitida. Mantén consentimiento, continuidad y ritmo.',
     'Los intereses principales pueden reaparecer sin dominarlo todo; las exclusiones no deben aparecer ni sugerirse.',
     `Exclusiones (prohibidas): ${session.exclusions.join(', ') || '(ninguna)'}.`,
@@ -193,13 +208,30 @@ export function buildStoryPromptBundle(
     sceneState: session.sceneState,
     mutablePlan: session.plan,
     storyBible: publicBibleFacts(session),
-    recentUnits: recentUnits(options.recentBeats || []),
-    playerInput: input,
+    acceptedBeatCount: recentBeats.length,
     title: session.title,
     premise: session.premise
   }
 
-  const user = ['CONTEXTO AUTORIZADO:', compactJson(context)].join('\n')
+  // Continuidad y entrada del jugador al final: si el contexto se trunca, sobreviven.
+  const user = [
+    'CONTEXTO AUTORIZADO (JSON):',
+    compactJson(context),
+    recentDigest
+      ? [
+          '',
+          'PROSA ACEPTADA RECIENTE (fuente de continuidad; no la reescribas ni la resumas como beat nuevo):',
+          recentDigest
+        ].join('\n')
+      : '',
+    '',
+    `Entrada del jugador (${input.kind}): ${input.text.trim() || '(continuar)'}`,
+    recentBeats.length
+      ? 'Escribe SOLO el siguiente beat en JSON, coherente con la prosa reciente y con worldState/sceneState/plan.'
+      : 'Escribe SOLO el primer beat en JSON.'
+  ]
+    .filter(Boolean)
+    .join('\n')
 
   return {
     messages: [
