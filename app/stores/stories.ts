@@ -616,6 +616,16 @@ export const useStoriesStore = defineStore('stories', () => {
           .map((segment) => [segment.type, segment.characterId, segment.text])
       )
 
+      const revealNextVisibleStart = () => {
+        const previousSignature = visibleTextSignature()
+        while (
+          visibleCount < graphemes.length &&
+          visibleTextSignature() === previousSignature
+        ) {
+          applyVisibleCount(visibleCount + 1)
+        }
+      }
+
       const requestRevealFrame = () => {
         if (animationFrame !== null || pauseReasons.size || visibleCount >= graphemes.length) {
           return false
@@ -675,13 +685,7 @@ export const useStoriesStore = defineStore('stories', () => {
         if (!pauseReasons.has('manual') || pauseReasons.has('navigation')) return false
         pauseReasons.delete('manual')
         visualRevealWaitingForAdvance.value = false
-        const previousSignature = visibleTextSignature()
-        while (
-          visibleCount < graphemes.length &&
-          visibleTextSignature() === previousSignature
-        ) {
-          applyVisibleCount(visibleCount + 1)
-        }
+        revealNextVisibleStart()
         if (visibleCount >= graphemes.length) finishReveal()
         else requestRevealFrame()
         return true
@@ -714,7 +718,9 @@ export const useStoriesStore = defineStore('stories', () => {
         animationFrame = requestAnimationFrame(revealFrame)
       }
 
-      requestRevealFrame()
+      if (visualMode && !pauseReasons.has('navigation')) revealNextVisibleStart()
+      if (visibleCount >= graphemes.length) finishReveal()
+      else requestRevealFrame()
     })
   }
 

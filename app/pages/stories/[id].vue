@@ -558,6 +558,28 @@ const visualSpeaker = computed(() => {
 watch(
   () => visualFrames.value.length,
   (length, previousLength) => {
+    const firstNewFrame = visualFrames.value[previousLength]
+    const previousFrame = visualFrames.value[previousLength - 1]
+    const firstNewMessage = firstNewFrame
+      ? stories.messages.find((message) => message.id === firstNewFrame.messageId)
+      : null
+    const isNewAssistantFrame = Boolean(
+      firstNewFrame &&
+      (
+        firstNewFrame.messageId === stories.pendingAssistantMessage?.id ||
+        firstNewMessage?.role === 'assistant'
+      )
+    )
+    const shouldShowFirstNewAssistantFrame = Boolean(
+      firstNewFrame &&
+      isNewAssistantFrame &&
+      firstNewFrame.messageId !== previousFrame?.messageId &&
+      (previousLength === 0 || visualFrameIndex.value === previousLength - 1)
+    )
+    if (shouldShowFirstNewAssistantFrame) {
+      visualFrameIndex.value = previousLength
+      return
+    }
     visualFrameIndex.value = resolveVisualNovelFrameIndex(
       visualFrameIndex.value,
       previousLength,

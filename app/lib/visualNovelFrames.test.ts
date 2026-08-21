@@ -228,6 +228,33 @@ describe('pasos de novela visual', () => {
     assert.deepEqual(frames[0]?.characterStates.map((state) => state.characterId), ['alicia'])
   })
 
+  it('crea el paso del protagonista antes de empezar a pintar su texto', () => {
+    const frames = buildVisualNovelFrames([
+      {
+        id: 'assistant-protagonist-prefix',
+        storyId: 'story-1',
+        role: 'assistant',
+        raw: 'Vera:',
+        segments: [
+          {
+            type: 'protagonist-dialogue',
+            characterId: null,
+            tag: null,
+            text: ''
+          }
+        ],
+        createdAt: 6
+      }
+    ], {
+      initialBackgroundId: null,
+      initialBackgroundTag: null
+    })
+
+    assert.equal(frames.length, 1)
+    assert.equal(frames[0]?.kind, 'protagonist-dialogue')
+    assert.equal(frames[0]?.text, '')
+  })
+
   it('resuelve fondos antiguos por etiqueta sin mostrar la directiva', () => {
     const legacy: Message[] = [
       {

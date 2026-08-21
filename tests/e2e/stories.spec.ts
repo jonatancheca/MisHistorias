@@ -628,6 +628,57 @@ test.describe('novela visual y responsive', () => {
     await page.getByRole('button', { name: 'Parar', exact: true }).click()
   })
 
+  test('salta a la primera frase nueva y pinta al protagonista progresivamente', async ({ page, data }) => {
+    const { story, character, image } = await createStoryFixture(data, true)
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Frase anterior.',
+      segments: [{
+        type: 'dialogue',
+        characterId: character.id,
+        tag: 'feliz',
+        imageId: image.id,
+        text: 'Frase anterior.'
+      }]
+    })
+    await data.patchSettings({
+      mockMode: true,
+      responseSpeed: 'slow',
+      visualNovelManualAdvance: true,
+      userName: 'Vera'
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.evaluate(() => {
+      Math.random = () => 0
+    })
+    const frame = page.getByTestId('visual-novel-frame')
+    const counter = page.getByTestId('visual-novel-counter')
+    await expect(counter).toHaveText('1 / 1')
+    await page.getByTestId('auto-button').click()
+
+    await expect.poll(async () =>
+      Number((await counter.innerText()).split('/')[0]?.trim())
+    ).toBe(2)
+    await expect(frame).not.toContainText('Frase anterior.')
+    const firstStartedText = (await frame.innerText()).trim()
+    await page.waitForTimeout(500)
+    expect((await frame.innerText()).trim().length).toBeGreaterThan(firstStartedText.length)
+
+    await page.keyboard.press('Space')
+    await page.keyboard.press('Space')
+    await expect.poll(async () =>
+      Number((await counter.innerText()).split('/')[0]?.trim())
+    ).toBe(3)
+    await expect(frame).toContainText('Vera:')
+    const protagonistStartedText = (await frame.innerText()).trim()
+    await page.waitForTimeout(500)
+    expect((await frame.innerText()).trim().length).toBeGreaterThan(protagonistStartedText.length)
+
+    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+  })
+
   test('muestra el mensaje escrito aunque el avance manual esté activo', async ({ page, data }) => {
     const { story, character, image } = await createStoryFixture(data, true)
     await data.patchSettings({

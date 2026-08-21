@@ -125,7 +125,10 @@ export function buildVisualNovelFrames(
         kind = 'narration'
       }
 
-      const isRecognizedDialogue = segment.type === 'dialogue' && Boolean(segment.characterId)
+      const isRecognizedDialogue = (
+        (segment.type === 'dialogue' && Boolean(segment.characterId)) ||
+        segment.type === 'protagonist-dialogue'
+      )
       if (!segment.text.trim() && !isRecognizedDialogue) return
 
       frames.push({
