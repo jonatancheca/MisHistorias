@@ -2,7 +2,7 @@
 import type { LlmDebugTrace, Message } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
 import { isAiInstruction } from '~/lib/chatInstructions'
-import { primaryTag } from '~/lib/tags'
+import { primaryTag, tagKey } from '~/lib/tags'
 
 const props = defineProps<{
   message: Message
@@ -25,6 +25,7 @@ const sounds = useSoundsStore()
 const settings = useSettingsStore()
 const editing = ref(false)
 const buffer = ref('')
+const expandedImageTags = ref<Record<string, boolean>>({})
 
 const userName = computed(() => settings.activeUserName)
 const userColor = computed(() => normalizeColor(settings.settings.userColor, DEFAULT_USER_COLOR))
@@ -38,6 +39,8 @@ interface FlowRow {
   name: string
   color: string
   tag: string | null
+  imageTags: string[]
+  requestedTags: string[]
   imageUrl: string | null
   characterId: string | null
   soundUrl: string | null
@@ -52,6 +55,19 @@ function galleryItems(characterId: string | null) {
     src: characters.urlFor(image.id)!,
     alt: `${characterName} ${primaryTag(image) ?? ''}`.trim()
   }))
+}
+
+function sameTags(left: string[], right: string[]) {
+  const leftKeys = new Set(left.map(tagKey).filter(Boolean))
+  const rightKeys = new Set(right.map(tagKey).filter(Boolean))
+  return leftKeys.size === rightKeys.size && [...leftKeys].every((key) => rightKeys.has(key))
+}
+
+function toggleImageTags(rowKey: string) {
+  expandedImageTags.value = {
+    ...expandedImageTags.value,
+    [rowKey]: !expandedImageTags.value[rowKey]
+  }
 }
 
 /**
@@ -74,6 +90,8 @@ const rows = computed<FlowRow[]>(() => {
         name: 'Fondo',
         color: '',
         tag: primaryTag(background) ?? segment.tag,
+        imageTags: [],
+        requestedTags: [],
         imageUrl: backgrounds.urlFor(background?.id),
         characterId: null,
         soundUrl: null
@@ -92,7 +110,8 @@ const rows = computed<FlowRow[]>(() => {
         name: 'Sonido',
         color: '',
         tag: sound?.tags[0] ?? segment.tag,
-        inlineTag: null,
+        imageTags: [],
+        requestedTags: [],
         imageUrl: null,
         characterId: null,
         soundUrl: sounds.urlFor(sound?.id)
@@ -108,6 +127,8 @@ const rows = computed<FlowRow[]>(() => {
         name: userName.value,
         color: userColor.value,
         tag: null,
+        imageTags: [],
+        requestedTags: [],
         imageUrl: null,
         characterId: null,
         soundUrl: null
@@ -123,6 +144,8 @@ const rows = computed<FlowRow[]>(() => {
         name: '',
         color: '',
         tag: null,
+        imageTags: [],
+        requestedTags: [],
         imageUrl: null,
         characterId: null,
         soundUrl: null
@@ -149,6 +172,8 @@ const rows = computed<FlowRow[]>(() => {
       name: characters.byId(segment.characterId)?.name ?? 'Personaje',
       color: characters.colorOf(segment.characterId),
       tag: primaryTag(image) ?? requestedTags[0] ?? null,
+      imageTags: image?.tags ? [...image.tags] : [],
+      requestedTags: [...requestedTags],
       imageUrl: isNewImage ? characters.urlFor(image!.id) : null,
       characterId: segment.characterId,
       soundUrl: null,
@@ -173,7 +198,7 @@ function confirmEdit() {
   <div v-if="!isAiInstruction(message.raw)" class="group flex min-w-0 items-start gap-2">
     <div
       v-if="!editing && (editable || debugTrace)"
-      class="flex w-8 shrink-0 flex-col gap-1 text-[var(--color-fg-muted)] opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+      class="flex w-8 shrink-0 flex-col gap-1 text-[var(--color-fg-muted)] opacity-100 transition max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
     >
       <button
         v-if="debugTrace"
@@ -301,7 +326,7 @@ function confirmEdit() {
                 <span class="font-semibold" :style="{ color: row.color }">:</span>
                 <span class="ml-1 whitespace-pre-wrap" :style="{ color: row.color }">{{ row.text }}</span>
               </p>
-              <figure v-if="row.imageUrl && !visualMode" class="mt-2 mb-3 w-40">
+              <figure v-if="row.imageUrl && !visualMode" class="group/image mt-2 mb-3 w-40">
                 <ImageLightbox
                   :src="row.imageUrl"
                   :alt="`${row.name} ${row.tag ?? ''}`"
@@ -312,8 +337,24 @@ function confirmEdit() {
                   selectable
                   @select="row.characterId && row.segmentIndex !== undefined && emit('selectImage', { characterId: row.characterId, messageId: message.id, segmentIndex: row.segmentIndex, imageId: row.imageId ?? null })"
                 />
-                <figcaption class="mt-1 text-xs text-[var(--color-fg-muted)]">
-                  {{ row.name }}<span v-if="row.tag"> · {{ row.tag }}</span>
+                <figcaption
+                  class="mt-1 text-xs text-[var(--color-fg-muted)] opacity-100 transition sm:opacity-0 sm:group-hover/image:opacity-100 sm:group-focus-within/image:opacity-100"
+                >
+                  <button
+                    type="button"
+                    class="text-left hover:text-[var(--color-fg)] focus:outline-none focus-visible:underline"
+                    :aria-expanded="expandedImageTags[row.key] === true"
+                    :aria-label="`Ver tags LLM de ${row.name}`"
+                    @click="row.requestedTags.length && !sameTags(row.imageTags, row.requestedTags) && toggleImageTags(row.key)"
+                  >
+                    {{ row.name }}<span v-if="row.imageTags.length"> · {{ row.imageTags.join(' · ') }}</span>
+                    <span
+                      v-if="row.requestedTags.length && !sameTags(row.imageTags, row.requestedTags)"
+                      :class="expandedImageTags[row.key] ? 'inline' : 'hidden sm:inline'"
+                    >
+                      · LLM: {{ row.requestedTags.join(' · ') }}
+                    </span>
+                  </button>
                 </figcaption>
               </figure>
             </template>

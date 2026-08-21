@@ -1008,7 +1008,7 @@ onBeforeUnmount(() => {
 
             <div v-else class="group flex min-w-0 items-start gap-2">
               <div
-                class="flex w-8 shrink-0 text-red-500 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                class="flex w-8 shrink-0 text-red-500 opacity-100 transition max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
               >
                 <button
                   type="button"

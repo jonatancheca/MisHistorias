@@ -256,6 +256,108 @@ test.describe('chat', () => {
     })).length).toBe(1)
   })
 
+  test('muestra controles móviles y tags de imagen solicitados por el LLM', async ({ page, data }) => {
+    const firstCharacter = await data.createCharacter({ name: data.unique('Alicia') })
+    const secondCharacter = await data.createCharacter({ name: data.unique('Bruno') })
+    const firstImage = await data.createImage(firstCharacter, ['feliz', 'armadura'])
+    const secondImage = await data.createImage(secondCharacter, ['seria'])
+    const story = await data.createStory({ characters: [firstCharacter, secondCharacter] })
+    const userMessage = await data.createMessage({ story, role: 'user', raw: 'Miro la escena.' })
+    const assistantMessage = await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Respuesta con dos imágenes.',
+      segments: [
+        {
+          type: 'dialogue',
+          characterId: firstCharacter.id,
+          tag: 'FELIZ',
+          tags: ['FELIZ', 'ARMADURA'],
+          imageId: firstImage.id,
+          text: 'Primera intervención.'
+        },
+        {
+          type: 'dialogue',
+          characterId: secondCharacter.id,
+          tag: 'seria',
+          tags: ['seria', 'capa'],
+          imageId: secondImage.id,
+          text: 'Segunda intervención.'
+        }
+      ]
+    })
+    const trace: LlmDebugTrace = {
+      id: data.unique('trace'),
+      storyId: story.id,
+      requestMessageId: userMessage.id,
+      responseMessageId: assistantMessage.id,
+      status: 'success',
+      request: {
+        provider: 'lmstudio',
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'Miro la escena.' }],
+        temperature: 0.7,
+        max_tokens: 100,
+        stream: false
+      },
+      response: { content: assistantMessage.raw, finishReason: 'stop' },
+      createdAt: Date.now()
+    }
+    const traceResponse = await page.request.put(`/api/data/llmDebugTraces/${trace.id}?scope=normal`, {
+      data: trace
+    })
+    await expect(traceResponse).toBeOK()
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 760 })
+      await page.goto(`/stories/${story.id}`)
+
+      await expect(page.getByRole('button', { name: 'Ver datos de debug de la llamada LLM' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Editar mensaje' }).first()).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Borrar mensaje' }).first()).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Regenerar desde este mensaje' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Reenviar este mensaje' })).toBeVisible()
+
+      const debugButton = page.getByRole('button', { name: 'Ver datos de debug de la llamada LLM' })
+      await debugButton.click()
+      await expect(page.getByRole('dialog', { name: 'Debug LLM' })).toBeVisible()
+      await page.getByRole('button', { name: 'Cerrar debug LLM' }).click()
+
+      const editButton = page.getByRole('button', { name: 'Editar mensaje' }).first()
+      await editButton.click()
+      await page.getByRole('button', { name: 'Cancelar' }).click()
+
+      const equalCaption = page.getByRole('button', { name: `Ver tags LLM de ${firstCharacter.name}` })
+      const differentCaption = page.getByRole('button', { name: `Ver tags LLM de ${secondCharacter.name}` })
+      const differentTagLine = differentCaption.locator('span').filter({ hasText: 'LLM:' })
+      await expect(equalCaption).toContainText(`${firstCharacter.name} · feliz · armadura`)
+      await expect(equalCaption).not.toContainText('LLM:')
+      await expect(differentCaption).toContainText(`${secondCharacter.name} · seria`)
+      await expect(differentTagLine).toBeHidden()
+      await differentCaption.click()
+      await expect(differentCaption).toHaveAttribute('aria-expanded', 'true')
+      await expect(differentTagLine).toBeVisible()
+      await expect(differentCaption).toContainText('LLM: seria · capa')
+
+      await page.reload()
+      await expect(page.getByRole('button', { name: `Ver tags LLM de ${firstCharacter.name}` })).toContainText(
+        `${firstCharacter.name} · feliz · armadura`
+      )
+      await expect(page.getByRole('button', { name: `Ver tags LLM de ${secondCharacter.name}` })).toContainText(
+        `${secondCharacter.name} · seria`
+      )
+    }
+
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto(`/stories/${story.id}`)
+    const desktopCaption = page.getByRole('button', { name: `Ver tags LLM de ${secondCharacter.name}` })
+    const desktopFigure = desktopCaption.locator('xpath=../..')
+    await expect(desktopCaption.locator('..')).toHaveCSS('opacity', '0')
+    await desktopFigure.hover()
+    await expect(desktopCaption.locator('..')).toHaveCSS('opacity', '1')
+    await expect(desktopCaption).toContainText('LLM: seria · capa')
+  })
+
   test('Sigue continúa sin decidir por protagonista', async ({ page, data }) => {
     const { story } = await createStoryFixture(data)
     await data.patchSettings({ mockMode: true, responseSpeed: 'instant', userName: 'Vera' })
@@ -878,7 +980,9 @@ test.describe('selección de imágenes durante la historia', () => {
       tags: ['feliz'],
       text: 'Hola.'
     })
-    await expect(page.getByText(`${character.name} · seria`, { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: `Ver tags LLM de ${character.name}` })).toContainText(
+      `${character.name} · seria · capa`
+    )
 
     await page.getByTestId('visual-mode-toggle').click()
     await page.getByRole('button', { name: `Cambiar imagen de ${character.name}` }).click()
