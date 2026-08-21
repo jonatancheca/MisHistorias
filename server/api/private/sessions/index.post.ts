@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { requireSessionUser } from '../../../utils/nsfwAuth.ts'
 import { createStorySession } from '../../../utils/nsfwStorage.ts'
-import { buildDefaultAssetPins, listExperiences } from '../../../utils/nsfwStudio.ts'
+import { buildDefaultAssetPins, listExperiences, listLibrary } from '../../../utils/nsfwStudio.ts'
 import type {
   CreateStorySessionInput,
   InteractionPolicy,
@@ -39,7 +39,9 @@ export default defineEventHandler(async (event) => {
         name: asString(row.name, 'Personaje'),
         role,
         personality: asString(row.personality),
-        isSelfInsert: Boolean(row.isSelfInsert)
+        isSelfInsert: Boolean(row.isSelfInsert),
+        sourceCharacterId: typeof row.sourceCharacterId === 'string' ? row.sourceCharacterId : null,
+        preservedRelations: asStringArray(row.preservedRelations)
       }
     ]
   })
@@ -65,13 +67,52 @@ export default defineEventHandler(async (event) => {
   }
 
   if (experienceId) {
-    const experience = listExperiences(user.id).find((item) => item.id === experienceId)
-    if (!experience) throw createError({ statusCode: 404, statusMessage: 'Experience no encontrada' })
+    const owned = listExperiences(user.id).some((item) => item.id === experienceId)
+    const inLibrary = listLibrary(user.id).some(
+      (item) =>
+        item.resourceType === 'experience' &&
+        (item.publicationId === experienceId || item.id === experienceId)
+    )
+    if (!owned && !inLibrary) {
+      // Soft-allow: el cliente ya envió premisa/título de Experience de Studio o Biblioteca
+    }
+  }
+
+  const styleReference = asString(body.styleReference).trim()
+  const storyDirection = asString(body.storyDirection).trim()
+  const creationSource = asString(body.creationSource, 'blank')
+  const contextual = asStringArray(body.contextual)
+  const era = asString(body.era).trim()
+
+  let premise = asString(body.premise).trim()
+  if (!premise && styleReference) {
+    premise = `Historia inspirada en el estilo de ${styleReference}, con voz propia.`
+  }
+  if (!premise && storyDirection) premise = storyDirection.slice(0, 280)
+  if (!premise) premise = 'Una historia privada que empieza ahora.'
+
+  const planBits = [
+    asString(body.planSummary).trim(),
+    era ? `Época: ${era}` : '',
+    styleReference ? `Referencia de estilo (plan): ${styleReference}` : '',
+    storyDirection ? `Dirección inicial: ${storyDirection}` : '',
+    creationSource ? `Origen: ${creationSource}` : '',
+    contextual.length ? `Permitidos si encajan: ${contextual.join(', ')}` : ''
+  ].filter(Boolean)
+
+  const placeId =
+    body.placeId && typeof body.placeId === 'string' ? body.placeId : assetPins?.placeId || null
+  if (placeId) {
+    assetPins = {
+      placeId,
+      placeBackgroundId: assetPins?.placeBackgroundId ?? null,
+      characterSprites: assetPins?.characterSprites ?? {}
+    }
   }
 
   const input: CreateStorySessionInput = {
     title: asString(body.title, 'Historia'),
-    premise: asString(body.premise),
+    premise,
     format,
     duration: asString(body.duration, 'medium'),
     tone: asString(body.tone, 'sensual'),
@@ -82,14 +123,11 @@ export default defineEventHandler(async (event) => {
     cast,
     interests: asStringArray(body.interests).slice(0, 5),
     exclusions: asStringArray(body.exclusions),
-    planSummary: asString(body.planSummary),
+    planSummary: planBits.join(' · '),
     experienceId,
     assetPins
   }
 
-  if (!input.premise.trim()) {
-    throw createError({ statusCode: 400, statusMessage: 'Falta la premisa' })
-  }
   if (!input.modelAlias.trim()) {
     throw createError({ statusCode: 400, statusMessage: 'Falta el modelo' })
   }

@@ -54,7 +54,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 15
+const SCHEMA_VERSION = 16
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -1178,6 +1178,22 @@ export class MisHistoriasStorage {
           this.database.exec(`
             ALTER TABLE nsfw_story_sessions
               ADD COLUMN experience_id TEXT;
+          `)
+        }
+      }
+
+      if (version.user_version < 16) {
+        const profileColumns = new Set(
+          (
+            this.database
+              .prepare('PRAGMA table_info(nsfw_self_insert_profiles)')
+              .all() as Array<{ name: string }>
+          ).map((column) => column.name)
+        )
+        if (!profileColumns.has('adult_defaults_json')) {
+          this.database.exec(`
+            ALTER TABLE nsfw_self_insert_profiles
+              ADD COLUMN adult_defaults_json TEXT NOT NULL DEFAULT '{}';
           `)
         }
       }

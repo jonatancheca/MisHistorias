@@ -223,21 +223,61 @@ export function listAllTaxonomy() {
   }
 }
 
+export type AdultDefaults = {
+  primary: string[]
+  excluded: string[]
+  contextual: string[]
+}
+
+function parseAdultDefaults(raw: unknown): AdultDefaults {
+  try {
+    const value = typeof raw === 'string' ? JSON.parse(raw) : raw
+    if (!value || typeof value !== 'object') return { primary: [], excluded: [], contextual: [] }
+    const record = value as Record<string, unknown>
+    const list = (key: string) =>
+      Array.isArray(record[key])
+        ? record[key].filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        : []
+    return {
+      primary: list('primary').slice(0, 5),
+      excluded: list('excluded'),
+      contextual: list('contextual')
+    }
+  } catch {
+    return { primary: [], excluded: [], contextual: [] }
+  }
+}
+
 export function upsertSelfInsertProfile(
   userId: string,
-  input: { displayName: string; pronouns: string; appearance: string; boundaries?: string[] }
+  input: {
+    displayName: string
+    pronouns: string
+    appearance: string
+    boundaries?: string[]
+    adultDefaults?: AdultDefaults
+  }
 ) {
   const now = Date.now()
+  const adultDefaults = input.adultDefaults
+    ? {
+        primary: input.adultDefaults.primary.map((item) => item.trim()).filter(Boolean).slice(0, 5),
+        excluded: input.adultDefaults.excluded.map((item) => item.trim()).filter(Boolean),
+        contextual: input.adultDefaults.contextual.map((item) => item.trim()).filter(Boolean)
+      }
+    : getSelfInsertProfile(userId)?.adultDefaults || { primary: [], excluded: [], contextual: [] }
+
   db()
     .prepare(`
       INSERT INTO nsfw_self_insert_profiles(
-        user_id, display_name, pronouns, appearance, boundaries_json, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?)
+        user_id, display_name, pronouns, appearance, boundaries_json, adult_defaults_json, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
         display_name = excluded.display_name,
         pronouns = excluded.pronouns,
         appearance = excluded.appearance,
         boundaries_json = excluded.boundaries_json,
+        adult_defaults_json = excluded.adult_defaults_json,
         updated_at = excluded.updated_at
     `)
     .run(
@@ -246,6 +286,7 @@ export function upsertSelfInsertProfile(
       input.pronouns.trim() || 'elle/elle',
       input.appearance.trim(),
       JSON.stringify(input.boundaries ?? []),
+      JSON.stringify(adultDefaults),
       now
     )
   return getSelfInsertProfile(userId)
@@ -268,6 +309,14 @@ export function getSelfInsertProfile(userId: string) {
         return []
       }
     })(),
+    adultDefaults: parseAdultDefaults(row.adult_defaults_json),
     updatedAt: Number(row.updated_at)
   }
+}
+
+export function countUserRatings(userId: string) {
+  const row = db()
+    .prepare('SELECT COUNT(*) AS total FROM nsfw_ratings WHERE user_id = ?')
+    .get(userId) as { total: number }
+  return Number(row?.total || 0)
 }

@@ -90,6 +90,12 @@ export interface CreateStorySessionInput {
   planSummary?: string
   experienceId?: string | null
   assetPins?: SessionAssetPins
+  styleReference?: string
+  storyDirection?: string
+  creationSource?: string
+  contextual?: string[]
+  era?: string
+  placeId?: string | null
 }
 
 export interface NsfwStorySession {

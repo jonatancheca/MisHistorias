@@ -70,6 +70,9 @@
   --nsfw-azure: #72b5d0;
   --nsfw-danger: #e05a5a;
   --nsfw-success: #6db88a;
+  --nsfw-positive: #efb079;
+  --nsfw-negative: #ef8f9a;
+  --nsfw-contextual: #81c6dc;
 }
 
 .nsfw-scope body,
@@ -110,7 +113,360 @@
 }
 
 @utility nsfw-card {
-  @apply rounded-2xl border border-[var(--nsfw-line)] bg-[var(--nsfw-raised)] p-4;
+  @apply rounded-2xl border border-[var(--nsfw-line)] bg-[var(--nsfw-raised)] p-4 sm:p-5;
+}
+
+.nsfw-scope label > span:first-child,
+.nsfw-scope .label-hint {
+  letter-spacing: 0.02em;
+}
+
+.nsfw-scope .create-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.nsfw-scope .create-progress-step {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--nsfw-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--nsfw-muted);
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.nsfw-scope .create-progress-step span {
+  display: inline-grid;
+  width: 1.45rem;
+  height: 1.45rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--nsfw-soft);
+  font-size: 0.75rem;
+}
+
+.nsfw-scope .create-progress-step.current {
+  border-color: color-mix(in srgb, var(--nsfw-accent) 55%, var(--nsfw-line));
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .create-progress-step.current span {
+  background: var(--nsfw-accent);
+  color: var(--nsfw-canvas);
+}
+
+.nsfw-scope .create-progress-step.complete {
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .source-grid,
+.nsfw-scope .preset-grid,
+.nsfw-scope .model-choice-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .nsfw-scope .source-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nsfw-scope .preset-grid,
+  .nsfw-scope .model-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.nsfw-scope .source-card,
+.nsfw-scope .preset-card,
+.nsfw-scope .library-choice,
+.nsfw-scope .model-choice {
+  display: grid;
+  gap: 0.35rem;
+  min-height: 5.5rem;
+  border: 1px solid var(--nsfw-line);
+  border-radius: 1.1rem;
+  background: var(--nsfw-raised);
+  padding: 1rem;
+  text-align: left;
+  color: var(--nsfw-ink);
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.nsfw-scope .source-card:hover,
+.nsfw-scope .preset-card:hover,
+.nsfw-scope .library-choice:hover,
+.nsfw-scope .model-choice:hover {
+  border-color: color-mix(in srgb, var(--nsfw-accent) 45%, var(--nsfw-line));
+}
+
+.nsfw-scope .source-card.selected,
+.nsfw-scope .preset-card.selected,
+.nsfw-scope .library-choice.selected,
+.nsfw-scope .model-choice.selected {
+  border-color: var(--nsfw-accent);
+  background: color-mix(in srgb, var(--nsfw-accent) 12%, var(--nsfw-raised));
+}
+
+.nsfw-scope .source-card.disabled,
+.nsfw-scope .source-card:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.nsfw-scope .source-card strong,
+.nsfw-scope .preset-card strong,
+.nsfw-scope .library-choice strong,
+.nsfw-scope .model-choice strong {
+  font-family: ui-serif, Georgia, serif;
+  font-size: 1.05rem;
+}
+
+.nsfw-scope .source-card span,
+.nsfw-scope .preset-card span,
+.nsfw-scope .library-choice span {
+  color: var(--nsfw-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.nsfw-scope .source-detail,
+.nsfw-scope .configuration-card,
+.nsfw-scope .quick-preset-block {
+  border: 1px solid var(--nsfw-line);
+  border-radius: 1.25rem;
+  background: var(--nsfw-raised);
+  padding: 1rem;
+}
+
+@media (min-width: 640px) {
+  .nsfw-scope .source-detail,
+  .nsfw-scope .configuration-card,
+  .nsfw-scope .quick-preset-block {
+    padding: 1.25rem;
+  }
+}
+
+.nsfw-scope .eyebrow {
+  margin-bottom: 0.35rem;
+  color: var(--nsfw-faint);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.nsfw-scope .experience-picker {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.nsfw-scope .instant-start {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  border-top: 1px solid var(--nsfw-line);
+  padding-top: 1rem;
+}
+
+.nsfw-scope .recommendation-stamp {
+  border: 1px solid color-mix(in srgb, var(--nsfw-gold) 40%, var(--nsfw-line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--nsfw-gold) 10%, transparent);
+  padding: 0.55rem 0.9rem;
+  color: var(--nsfw-muted);
+  font-size: 0.82rem;
+}
+
+.nsfw-scope .choice-fieldset {
+  display: grid;
+  gap: 0.55rem;
+  border: 0;
+  padding: 0;
+}
+
+.nsfw-scope .choice-fieldset legend {
+  margin-bottom: 0.15rem;
+  color: var(--nsfw-muted);
+  font-size: 0.78rem;
+}
+
+.nsfw-scope .choice-pills,
+.nsfw-scope .asset-pills,
+.nsfw-scope .custom-pills,
+.nsfw-scope .interest-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.nsfw-scope .choice-pill,
+.nsfw-scope .asset-pill,
+.nsfw-scope .pill,
+.nsfw-scope .term-action {
+  min-height: 2.5rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  padding: 0.35rem 0.8rem;
+  color: var(--nsfw-muted);
+  font-size: 0.82rem;
+}
+
+.nsfw-scope .choice-pill.selected,
+.nsfw-scope .asset-pill.selected {
+  border-color: var(--nsfw-accent);
+  background: color-mix(in srgb, var(--nsfw-accent) 16%, transparent);
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .choice-description,
+.nsfw-scope .asset-description,
+.nsfw-scope .contextual-explainer {
+  color: var(--nsfw-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.nsfw-scope .interest-legend .positive,
+.nsfw-scope .term-action.positive,
+.nsfw-scope .pill.positive {
+  color: var(--nsfw-positive);
+}
+
+.nsfw-scope .interest-legend .negative,
+.nsfw-scope .term-action.negative,
+.nsfw-scope .pill.negative {
+  color: var(--nsfw-negative);
+}
+
+.nsfw-scope .interest-legend .contextual,
+.nsfw-scope .term-action.contextual,
+.nsfw-scope .pill.contextual {
+  color: var(--nsfw-contextual);
+}
+
+.nsfw-scope .term-action.selected {
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.nsfw-scope .term-matrix {
+  max-height: 22rem;
+  overflow: auto;
+  border-top: 1px solid var(--nsfw-line);
+}
+
+.nsfw-scope .term-matrix article {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--nsfw-line) 80%, transparent);
+  padding: 0.65rem 0;
+}
+
+.nsfw-scope .term-matrix strong {
+  display: block;
+  font-size: 0.85rem;
+}
+
+.nsfw-scope .term-matrix small {
+  color: var(--nsfw-faint);
+  font-size: 0.7rem;
+}
+
+.nsfw-scope .term-matrix article > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.nsfw-scope .custom-interest-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .nsfw-scope .custom-interest-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.nsfw-scope .custom-interest-grid label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--nsfw-muted);
+  font-size: 0.78rem;
+}
+
+.nsfw-scope .custom-interest-grid label > span {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.nsfw-scope .custom-interest-grid .nsfw-input {
+  min-width: 0;
+  flex: 1;
+}
+
+.nsfw-scope .relationship-toggle {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  border: 1px solid var(--nsfw-line);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.nsfw-scope .relationship-toggle strong {
+  display: block;
+}
+
+.nsfw-scope .relationship-toggle small {
+  color: var(--nsfw-faint);
+  font-size: 0.75rem;
+}
+
+.nsfw-scope .creator-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.nsfw-scope .model-choice code {
+  overflow-wrap: anywhere;
+  color: var(--nsfw-faint);
+  font-size: 0.68rem;
+}
+
+.nsfw-scope .preset-card.coral.selected {
+  border-color: var(--nsfw-accent);
+}
+
+.nsfw-scope .preset-card.gold.selected {
+  border-color: var(--nsfw-gold);
+}
+
+.nsfw-scope .preset-card.azure.selected {
+  border-color: var(--nsfw-azure);
+}
+
+.nsfw-scope .nsfw-gate input,
+.nsfw-scope .nsfw-card input,
+.nsfw-scope .nsfw-card textarea,
+.nsfw-scope .nsfw-card select {
+  width: 100%;
 }
 
 html,

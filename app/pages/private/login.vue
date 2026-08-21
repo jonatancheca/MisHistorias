@@ -54,11 +54,11 @@ onBeforeUnmount(() => {
     <div class="w-full max-w-[28rem] rounded-2xl border border-[var(--nsfw-line)] bg-[var(--nsfw-raised)] p-6 shadow-2xl">
       <p class="mb-2 text-xs uppercase tracking-[0.2em] text-[var(--nsfw-faint)]">Acceso privado</p>
       <h1 class="mb-2 font-serif text-3xl text-[var(--nsfw-ink)]">{{ title }}</h1>
-      <p class="mb-6 text-sm text-[var(--nsfw-muted)]">
+      <p class="mb-6 text-sm leading-relaxed text-[var(--nsfw-muted)]">
         {{
           isBootstrap
             ? 'No hay usuarios todavía. Crea la cuenta de administrador.'
-            : 'Introduce tus credenciales para continuar.'
+            : 'Introduce usuario o email y contraseña para continuar.'
         }}
       </p>
 
