@@ -484,6 +484,189 @@ export function listTaxonomy(status: 'approved' | 'proposed' | 'discarded' = 'ap
     .all(status) as Array<Record<string, unknown>>
 }
 
+function normalizeTermLabel(label: string) {
+  return label.trim().replace(/\s+/g, ' ')
+}
+
+export type PrivateTerm = {
+  id: string
+  ownerUserId: string
+  label: string
+  kind: string
+  private: true
+  createdAt: number
+}
+
+export function listPrivateTerms(ownerUserId: string): PrivateTerm[] {
+  const rows = db()
+    .prepare(`
+      SELECT id, owner_user_id, label, kind, created_at
+      FROM nsfw_private_terms
+      WHERE owner_user_id = ?
+      ORDER BY label COLLATE NOCASE ASC
+    `)
+    .all(ownerUserId) as Array<Record<string, unknown>>
+  return rows.map((row) => ({
+    id: String(row.id),
+    ownerUserId: String(row.owner_user_id),
+    label: text(row.label),
+    kind: text(row.kind) || 'interest',
+    private: true as const,
+    createdAt: Number(row.created_at)
+  }))
+}
+
+export function findApprovedPublicTerm(label: string) {
+  const normalized = normalizeTermLabel(label)
+  if (!normalized) return null
+  return (
+    (db()
+      .prepare(`
+        SELECT id, label, kind, status
+        FROM nsfw_taxonomy_terms
+        WHERE status = 'approved' AND label = ? COLLATE NOCASE
+        LIMIT 1
+      `)
+      .get(normalized) as Record<string, unknown> | undefined) || null
+  )
+}
+
+export function createPrivateTerm(
+  ownerUserId: string,
+  input: { label: string; kind?: string }
+): PrivateTerm {
+  const label = normalizeTermLabel(input.label)
+  if (!label || label.length > 80) {
+    throw createError({ statusCode: 400, statusMessage: 'Etiqueta no válida' })
+  }
+  if (findApprovedPublicTerm(label)) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Ya existe un término público con ese nombre'
+    })
+  }
+  const existing = db()
+    .prepare(`
+      SELECT id FROM nsfw_private_terms
+      WHERE owner_user_id = ? AND label = ? COLLATE NOCASE
+    `)
+    .get(ownerUserId, label) as { id: string } | undefined
+  if (existing) {
+    return listPrivateTerms(ownerUserId).find((term) => term.id === existing.id)!
+  }
+
+  const id = randomUUID()
+  const now = Date.now()
+  db()
+    .prepare(`
+      INSERT INTO nsfw_private_terms(id, owner_user_id, label, kind, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `)
+    .run(id, ownerUserId, label, input.kind || 'interest', now)
+  return {
+    id,
+    ownerUserId,
+    label,
+    kind: input.kind || 'interest',
+    private: true,
+    createdAt: now
+  }
+}
+
+export function deletePrivateTerm(ownerUserId: string, termId: string) {
+  const row = db()
+    .prepare(`
+      SELECT id, label FROM nsfw_private_terms
+      WHERE id = ? AND owner_user_id = ?
+    `)
+    .get(termId, ownerUserId) as { id: string; label: string } | undefined
+  if (!row) throw createError({ statusCode: 404, statusMessage: 'Término privado no encontrado' })
+  db().prepare('DELETE FROM nsfw_private_terms WHERE id = ? AND owner_user_id = ?').run(termId, ownerUserId)
+  return { ok: true, label: row.label }
+}
+
+export function listInterestCatalog(ownerUserId: string) {
+  const publicTerms = listTaxonomy('approved').map((row) => ({
+    id: String(row.id),
+    label: text(row.label),
+    facet: text(row.kind) || 'interés',
+    private: false as const
+  }))
+  const privateTerms = listPrivateTerms(ownerUserId).map((term) => ({
+    id: term.id,
+    label: term.label,
+    facet: 'privado',
+    private: true as const
+  }))
+  const publicLabels = new Set(publicTerms.map((term) => term.label.toLocaleLowerCase('es-ES')))
+  const filteredPrivate = privateTerms.filter(
+    (term) => !publicLabels.has(term.label.toLocaleLowerCase('es-ES'))
+  )
+  return [...publicTerms, ...filteredPrivate].sort((a, b) =>
+    a.label.localeCompare(b.label, 'es', { sensitivity: 'base' })
+  )
+}
+
+export type DedupedPrivateTerm = {
+  label: string
+  kind: string
+  userCount: number
+  sampleUserIds: string[]
+}
+
+export function listDedupedPrivateTermsMissingPublic(): DedupedPrivateTerm[] {
+  const rows = db()
+    .prepare(`
+      SELECT p.label AS label, p.kind AS kind,
+             COUNT(DISTINCT p.owner_user_id) AS userCount,
+             GROUP_CONCAT(DISTINCT p.owner_user_id) AS userIds
+      FROM nsfw_private_terms p
+      WHERE NOT EXISTS (
+        SELECT 1 FROM nsfw_taxonomy_terms t
+        WHERE t.status = 'approved' AND t.label = p.label COLLATE NOCASE
+      )
+      GROUP BY p.label COLLATE NOCASE
+      ORDER BY p.label COLLATE NOCASE ASC
+    `)
+    .all() as Array<Record<string, unknown>>
+
+  return rows.map((row) => ({
+    label: text(row.label),
+    kind: text(row.kind) || 'interest',
+    userCount: Number(row.userCount || 0),
+    sampleUserIds: String(row.userIds || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .slice(0, 8)
+  }))
+}
+
+export function promotePrivateLabelToPublic(labelInput: string, kind = 'interest') {
+  const label = normalizeTermLabel(labelInput)
+  if (!label) throw createError({ statusCode: 400, statusMessage: 'Falta la etiqueta' })
+  const existing = findApprovedPublicTerm(label)
+  if (existing) {
+    return { term: existing, created: false, removedPrivate: 0 }
+  }
+  const id = randomUUID()
+  const now = Date.now()
+  db()
+    .prepare(`
+      INSERT INTO nsfw_taxonomy_terms(id, label, kind, status, proposed_by, created_at)
+      VALUES (?, ?, ?, 'approved', NULL, ?)
+    `)
+    .run(id, label, kind || 'interest', now)
+  const removed = db()
+    .prepare('DELETE FROM nsfw_private_terms WHERE label = ? COLLATE NOCASE')
+    .run(label)
+  return {
+    term: { id, label, kind: kind || 'interest', status: 'approved' },
+    created: true,
+    removedPrivate: Number(removed.changes || 0)
+  }
+}
+
 export function proposeTaxonomyTerm(
   userId: string,
   input: { label: string; kind?: string }

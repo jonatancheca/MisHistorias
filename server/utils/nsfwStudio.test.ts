@@ -14,9 +14,15 @@ import {
   createCollection,
   createExperience,
   createPlace,
+  createPrivateTerm,
+  deletePrivateTerm,
   getPublicationRatingSummary,
   listComments,
+  listDedupedPrivateTermsMissingPublic,
   listHub,
+  listInterestCatalog,
+  listPrivateTerms,
+  promotePrivateLabelToPublic,
   publishResource,
   ratePublication
 } from '../utils/nsfwStudio.ts'
@@ -76,5 +82,56 @@ test('studio publish y hub add conservan snapshot inmutable', () => {
     addComment(ownerId, publication.id, 'Buena ficha')
     assert.equal(getPublicationRatingSummary(publication.id).count, 1)
     assert.equal(listComments(publication.id).length, 1)
+  })
+})
+
+test('términos privados por usuario, sin duplicar públicos, y promoción admin', () => {
+  withDb((ownerId) => {
+    const storage = getStorage()
+    storage.database
+      .prepare(`
+        INSERT INTO nsfw_taxonomy_terms(id, label, kind, status, proposed_by, created_at)
+        VALUES ('pub-1', 'Romance', 'interest', 'approved', NULL, ?)
+      `)
+      .run(Date.now())
+
+    assert.throws(() => createPrivateTerm(ownerId, { label: 'romance' }), /público/i)
+
+    const privateTerm = createPrivateTerm(ownerId, { label: 'Teasing lento' })
+    assert.equal(privateTerm.private, true)
+    assert.equal(listPrivateTerms(ownerId).length, 1)
+
+    const again = createPrivateTerm(ownerId, { label: 'teasing lento' })
+    assert.equal(again.id, privateTerm.id)
+
+    const catalog = listInterestCatalog(ownerId)
+    assert.ok(catalog.some((term) => term.label === 'Romance' && !term.private))
+    assert.ok(catalog.some((term) => term.label === 'Teasing lento' && term.private))
+
+    const otherId = 'other-m4'
+    storage.database
+      .prepare(`
+        INSERT INTO nsfw_users(
+          id, username, password_hash, role, active, avatar_asset_id, created_at, updated_at, last_login_at
+        ) VALUES (?, 'other', ?, 'user', 1, NULL, ?, ?, NULL)
+      `)
+      .run(otherId, hashPassword('password-12345'), Date.now(), Date.now())
+    createPrivateTerm(otherId, { label: 'Teasing lento' })
+
+    const candidates = listDedupedPrivateTermsMissingPublic()
+    const teasing = candidates.find((item) => item.label.toLowerCase() === 'teasing lento')
+    assert.ok(teasing)
+    assert.equal(teasing!.userCount, 2)
+
+    const promoted = promotePrivateLabelToPublic('Teasing lento')
+    assert.equal(promoted.created, true)
+    assert.equal(promoted.removedPrivate, 2)
+    assert.equal(listPrivateTerms(ownerId).length, 0)
+    assert.equal(listDedupedPrivateTermsMissingPublic().length, 0)
+    assert.ok(listInterestCatalog(ownerId).some((term) => term.label === 'Teasing lento' && !term.private))
+
+    const leftover = createPrivateTerm(ownerId, { label: 'Solo mío' })
+    deletePrivateTerm(ownerId, leftover.id)
+    assert.equal(listPrivateTerms(ownerId).length, 0)
   })
 })

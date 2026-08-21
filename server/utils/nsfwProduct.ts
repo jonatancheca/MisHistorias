@@ -320,3 +320,22 @@ export function countUserRatings(userId: string) {
     .get(userId) as { total: number }
   return Number(row?.total || 0)
 }
+
+export function removeLabelFromAdultDefaults(userId: string, label: string) {
+  const profile = getSelfInsertProfile(userId)
+  if (!profile) return null
+  const needle = label.trim().toLocaleLowerCase('es-ES')
+  const filter = (values: string[]) =>
+    values.filter((item) => item.trim().toLocaleLowerCase('es-ES') !== needle)
+  return upsertSelfInsertProfile(userId, {
+    displayName: profile.displayName,
+    pronouns: profile.pronouns,
+    appearance: profile.appearance,
+    boundaries: profile.boundaries,
+    adultDefaults: {
+      primary: filter(profile.adultDefaults.primary),
+      excluded: filter(profile.adultDefaults.excluded),
+      contextual: filter(profile.adultDefaults.contextual)
+    }
+  })
+}

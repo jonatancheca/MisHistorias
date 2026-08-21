@@ -12,6 +12,12 @@ type ConsoleData = {
     proposed: Array<Record<string, unknown>>
     discarded: Array<Record<string, unknown>>
   }
+  privateCandidates?: Array<{
+    label: string
+    kind: string
+    userCount: number
+    sampleUserIds: string[]
+  }>
   feedback?: Array<Record<string, unknown>>
   generations?: Array<Record<string, unknown>>
   publications?: Array<Record<string, unknown>>
@@ -33,6 +39,21 @@ async function setTerm(termId: string, status: 'approved' | 'discarded') {
     body: { action: 'taxonomy', termId, status }
   })
   message.value = `Término ${status}`
+  await refresh()
+}
+
+async function promotePrivate(label: string, kind: string) {
+  const result = await $fetch<{
+    term: { label: string }
+    created: boolean
+    removedPrivate: number
+  }>('/api/private/admin/console', {
+    method: 'POST',
+    body: { action: 'promote-private', label, kind }
+  })
+  message.value = result.created
+    ? `«${result.term.label}» promovido a público (${result.removedPrivate} privados eliminados)`
+    : `«${result.term.label}» ya era público`
   await refresh()
 }
 
@@ -74,6 +95,38 @@ async function withdraw(publicationId: string) {
         </li>
         <li v-if="!(data.taxonomy?.proposed || []).length" class="text-sm text-[var(--nsfw-muted)]">
           Sin propuestas.
+        </li>
+      </ul>
+    </section>
+
+    <section class="nsfw-card mb-6">
+      <h2 class="mb-3 text-lg">Privados candidatos a público</h2>
+      <p class="mb-3 text-sm text-[var(--nsfw-muted)]">
+        Lista deduplicada de etiquetas privadas que aún no existen como término público aprobado.
+        Al promover, se crea el público y se eliminan los privados homónimos.
+      </p>
+      <ul class="grid gap-2">
+        <li
+          v-for="term in data.privateCandidates || []"
+          :key="term.label"
+          class="flex flex-wrap items-center gap-2 border-b border-[var(--nsfw-line)] py-2"
+        >
+          <span class="flex-1">
+            {{ term.label }}
+            <span class="text-sm text-[var(--nsfw-muted)]">
+              · {{ term.kind }} · {{ term.userCount }} usuario(s)
+            </span>
+          </span>
+          <button
+            type="button"
+            class="nsfw-btn-ghost"
+            @click="promotePrivate(term.label, term.kind)"
+          >
+            Promover a público
+          </button>
+        </li>
+        <li v-if="!(data.privateCandidates || []).length" class="text-sm text-[var(--nsfw-muted)]">
+          Sin candidatos.
         </li>
       </ul>
     </section>

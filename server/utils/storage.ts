@@ -54,7 +54,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 16
+const SCHEMA_VERSION = 17
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -1196,6 +1196,23 @@ export class MisHistoriasStorage {
               ADD COLUMN adult_defaults_json TEXT NOT NULL DEFAULT '{}';
           `)
         }
+      }
+
+      if (version.user_version < 17) {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS nsfw_private_terms (
+            id TEXT PRIMARY KEY,
+            owner_user_id TEXT NOT NULL,
+            label TEXT NOT NULL COLLATE NOCASE,
+            kind TEXT NOT NULL DEFAULT 'interest'
+              CHECK (kind IN ('interest', 'exclusion', 'setting', 'era', 'other')),
+            created_at INTEGER NOT NULL,
+            UNIQUE (owner_user_id, label COLLATE NOCASE),
+            FOREIGN KEY (owner_user_id) REFERENCES nsfw_users(id) ON DELETE CASCADE
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_private_terms_by_owner
+            ON nsfw_private_terms(owner_user_id, label COLLATE NOCASE);
+        `)
       }
 
       this.database.exec(`

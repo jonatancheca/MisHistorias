@@ -5,13 +5,21 @@ const displayName = ref('')
 const pronouns = ref('')
 const appearance = ref('')
 const boundaries = ref('')
-const primaryText = ref('')
-const excludedText = ref('')
-const contextualText = ref('')
+const primary = ref<string[]>([])
+const excluded = ref<string[]>([])
+const contextual = ref<string[]>([])
+const customLabel = ref('')
+const termFilter = ref('')
 const message = ref<string | null>(null)
+const termError = ref<string | null>(null)
 const ratingsCount = ref(0)
 const tasteUnlocked = ref(false)
 const minTaste = ref(3)
+
+type CatalogTerm = { id: string; label: string; facet: string; private: boolean }
+
+const catalog = ref<CatalogTerm[]>([])
+const privateTerms = ref<Array<{ id: string; label: string }>>([])
 
 const payload = await $fetch<{
   profile: {
@@ -31,19 +39,106 @@ if (payload.profile) {
   pronouns.value = payload.profile.pronouns
   appearance.value = payload.profile.appearance
   boundaries.value = payload.profile.boundaries.join(', ')
-  primaryText.value = (payload.profile.adultDefaults?.primary || []).join(', ')
-  excludedText.value = (payload.profile.adultDefaults?.excluded || []).join(', ')
-  contextualText.value = (payload.profile.adultDefaults?.contextual || []).join(', ')
+  primary.value = [...(payload.profile.adultDefaults?.primary || [])]
+  excluded.value = [...(payload.profile.adultDefaults?.excluded || [])]
+  contextual.value = [...(payload.profile.adultDefaults?.contextual || [])]
 }
 ratingsCount.value = payload.ratingsCount
 tasteUnlocked.value = payload.tasteUnlocked
 minTaste.value = payload.minTasteRatings
+
+async function refreshTerms() {
+  const result = await $fetch<{
+    catalog: CatalogTerm[]
+    privateTerms: Array<{ id: string; label: string }>
+  }>('/api/private/terms')
+  catalog.value = result.catalog
+  privateTerms.value = result.privateTerms
+}
+
+await refreshTerms()
+
+const filteredTerms = computed(() => {
+  const q = termFilter.value.trim().toLocaleLowerCase('es-ES')
+  return catalog.value
+    .filter((term) => !q || `${term.label} ${term.facet}`.toLocaleLowerCase('es-ES').includes(q))
+    .slice(0, 80)
+})
 
 function splitList(value: string) {
   return value
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function unique(values: string[]) {
+  return [...new Set(values.map((item) => item.trim()).filter(Boolean))]
+}
+
+function classify(label: string, kind: 'primary' | 'excluded' | 'contextual') {
+  primary.value = primary.value.filter((item) => item !== label)
+  excluded.value = excluded.value.filter((item) => item !== label)
+  contextual.value = contextual.value.filter((item) => item !== label)
+  if (kind === 'primary') {
+    if (primary.value.length >= 5) return
+    primary.value = unique([...primary.value, label]).slice(0, 5)
+  } else if (kind === 'excluded') {
+    excluded.value = unique([...excluded.value, label])
+  } else {
+    contextual.value = unique([...contextual.value, label])
+  }
+}
+
+function clearClassification(label: string) {
+  primary.value = primary.value.filter((item) => item !== label)
+  excluded.value = excluded.value.filter((item) => item !== label)
+  contextual.value = contextual.value.filter((item) => item !== label)
+}
+
+async function createPrivate() {
+  const label = customLabel.value.trim().replace(/\s+/g, ' ')
+  if (!label) return
+  termError.value = null
+  try {
+    const result = await $fetch<{
+      catalog: CatalogTerm[]
+      privateTerms: Array<{ id: string; label: string }>
+      term: { label: string }
+    }>('/api/private/terms', {
+      method: 'POST',
+      body: { label }
+    })
+    catalog.value = result.catalog
+    privateTerms.value = result.privateTerms
+    customLabel.value = ''
+    message.value = `Privado creado: ${result.term.label}`
+  } catch (caught) {
+    termError.value =
+      caught && typeof caught === 'object' && 'data' in caught
+        ? String((caught as { data?: { statusMessage?: string } }).data?.statusMessage || 'Error')
+        : 'No se pudo crear'
+  }
+}
+
+async function removePrivate(termId: string, label: string) {
+  termError.value = null
+  try {
+    const result = await $fetch<{
+      catalog: CatalogTerm[]
+      privateTerms: Array<{ id: string; label: string }>
+    }>(`/api/private/terms?id=${encodeURIComponent(termId)}`, {
+      method: 'DELETE'
+    })
+    catalog.value = result.catalog
+    privateTerms.value = result.privateTerms
+    clearClassification(label)
+  } catch (caught) {
+    termError.value =
+      caught && typeof caught === 'object' && 'data' in caught
+        ? String((caught as { data?: { statusMessage?: string } }).data?.statusMessage || 'Error')
+        : 'No se pudo borrar'
+  }
 }
 
 async function save() {
@@ -55,9 +150,9 @@ async function save() {
       appearance: appearance.value,
       boundaries: splitList(boundaries.value),
       adultDefaults: {
-        primary: splitList(primaryText.value).slice(0, 5),
-        excluded: splitList(excludedText.value),
-        contextual: splitList(contextualText.value)
+        primary: primary.value.slice(0, 5),
+        excluded: excluded.value,
+        contextual: contextual.value
       }
     }
   })
@@ -66,7 +161,7 @@ async function save() {
 </script>
 
 <template>
-  <div class="nsfw-page mx-auto max-w-2xl px-3 py-8 sm:px-6">
+  <div class="nsfw-page mx-auto max-w-3xl px-3 py-8 sm:px-6">
     <header class="mb-6">
       <h1 class="font-serif text-3xl">Self-insert y preferencias</h1>
       <p class="mt-2 text-sm text-[var(--nsfw-muted)]">
@@ -74,6 +169,8 @@ async function save() {
       </p>
     </header>
     <p v-if="message" class="mb-4 text-sm text-[var(--nsfw-success)]" role="status">{{ message }}</p>
+    <p v-if="termError" class="mb-4 text-sm text-[var(--nsfw-danger)]">{{ termError }}</p>
+
     <form class="nsfw-card space-y-4" @submit.prevent="save">
       <label class="block">
         <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Nombre en escena</span>
@@ -95,21 +192,77 @@ async function save() {
       <div class="border-t border-[var(--nsfw-line)] pt-4">
         <h2 class="mb-2 font-serif text-xl">Defaults adultos</h2>
         <p class="mb-3 text-sm text-[var(--nsfw-muted)]">
-          Se precargan al crear historia. Predominantes máx. 5; exclusiones nunca aparecen;
-          contextuales = permitidos si encajan.
+          Predominantes máx. 5; exclusiones nunca; contextuales = permitidos si encajan.
+          Las etiquetas <em>privado</em> son solo tuyas y permanecen en el catálogo.
         </p>
+        <div class="interest-legend mb-3">
+          <span class="positive">Predominante</span>
+          <span class="negative">Excluir</span>
+          <span class="contextual">Permitido si encaja</span>
+        </div>
         <label class="mb-3 block">
-          <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Predominantes</span>
-          <input v-model="primaryText" class="nsfw-input w-full" placeholder="romance, tensión…">
+          <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Buscar</span>
+          <input v-model="termFilter" class="nsfw-input w-full" placeholder="Filtra">
         </label>
-        <label class="mb-3 block">
-          <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Exclusiones</span>
-          <input v-model="excludedText" class="nsfw-input w-full">
-        </label>
+        <div class="term-matrix mb-4">
+          <article v-for="term in filteredTerms" :key="term.id">
+            <div>
+              <strong>{{ term.label }}</strong>
+              <small>{{ term.private ? 'privado' : term.facet }}</small>
+            </div>
+            <div>
+              <button
+                type="button"
+                class="term-action positive"
+                :class="primary.includes(term.label) ? 'selected' : ''"
+                @click="classify(term.label, 'primary')"
+              >
+                Preferir
+              </button>
+              <button
+                type="button"
+                class="term-action negative"
+                :class="excluded.includes(term.label) ? 'selected' : ''"
+                @click="classify(term.label, 'excluded')"
+              >
+                Excluir
+              </button>
+              <button
+                type="button"
+                class="term-action contextual"
+                :class="contextual.includes(term.label) ? 'selected' : ''"
+                @click="classify(term.label, 'contextual')"
+              >
+                Permitir
+              </button>
+              <button
+                v-if="term.private"
+                type="button"
+                class="term-action delete"
+                title="Eliminar privado"
+                @click="removePrivate(term.id, term.label)"
+              >
+                ×
+              </button>
+            </div>
+          </article>
+        </div>
         <label class="block">
-          <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Permitidos si encajan</span>
-          <input v-model="contextualText" class="nsfw-input w-full">
+          <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Nuevo término privado</span>
+          <span class="flex gap-2">
+            <input
+              v-model="customLabel"
+              class="nsfw-input flex-1"
+              maxlength="80"
+              placeholder="Solo para ti; no duplica públicos"
+              @keydown.enter.prevent="createPrivate"
+            >
+            <button type="button" class="nsfw-btn-ghost" @click="createPrivate">Crear</button>
+          </span>
         </label>
+        <p v-if="privateTerms.length" class="mt-2 text-xs text-[var(--nsfw-muted)]">
+          {{ privateTerms.length }} etiqueta(s) privada(s) en tu catálogo.
+        </p>
       </div>
 
       <p class="text-xs text-[var(--nsfw-faint)]">

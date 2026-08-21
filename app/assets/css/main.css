@@ -357,6 +357,14 @@
   background: color-mix(in srgb, currentColor 18%, transparent);
 }
 
+.nsfw-scope .term-action.delete {
+  min-width: 2.5rem;
+  padding-inline: 0.55rem;
+  color: var(--nsfw-danger);
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .nsfw-scope .term-matrix {
   max-height: 22rem;
   overflow: auto;

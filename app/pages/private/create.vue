@@ -48,7 +48,10 @@ const customContextual = ref('')
 const termFilter = ref('')
 const tasteUnlocked = ref(false)
 const ratingsCount = ref(0)
-const taxonomyTerms = ref<Array<{ id: string; label: string; facet: string }>>([])
+const taxonomyTerms = ref<
+  Array<{ id: string; label: string; facet: string; private?: boolean }>
+>([])
+const termError = ref<string | null>(null)
 
 await Promise.all([
   sessions.loadModels(),
@@ -76,30 +79,33 @@ excluded.value = [...(profilePayload.profile?.adultDefaults?.excluded || [])]
 contextual.value = [...(profilePayload.profile?.adultDefaults?.contextual || [])]
 const protagonistName = ref(profilePayload.profile?.displayName || 'Tú')
 
-try {
-  const tax = await $fetch<{ terms: Array<{ id: string; label: string; kind?: string }> }>(
-    '/api/private/studio/taxonomy'
-  )
-  taxonomyTerms.value = tax.terms.map((term) => ({
-    id: term.id,
-    label: term.label,
-    facet: term.kind || 'interés'
-  }))
-} catch {
-  taxonomyTerms.value = []
+async function refreshTerms() {
+  try {
+    const result = await $fetch<{
+      catalog: Array<{ id: string; label: string; facet: string; private: boolean }>
+    }>('/api/private/terms')
+    taxonomyTerms.value = result.catalog
+  } catch {
+    taxonomyTerms.value = DEFAULT_INTEREST_TERMS.map((term) => ({
+      ...term,
+      facet: term.facet,
+      private: false
+    }))
+  }
 }
 
+await refreshTerms()
+
 const interestCatalog = computed(() => {
-  const fromTax = taxonomyTerms.value
-  if (fromTax.length) return fromTax
-  return DEFAULT_INTEREST_TERMS
+  if (taxonomyTerms.value.length) return taxonomyTerms.value
+  return DEFAULT_INTEREST_TERMS.map((term) => ({ ...term, private: false }))
 })
 
 const filteredTerms = computed(() => {
   const q = termFilter.value.trim().toLocaleLowerCase('es-ES')
   return interestCatalog.value
     .filter((term) => !q || `${term.label} ${term.facet}`.toLocaleLowerCase('es-ES').includes(q))
-    .slice(0, 48)
+    .slice(0, 60)
 })
 
 type ExperienceOption = {
@@ -211,7 +217,13 @@ function classify(label: string, kind: 'primary' | 'excluded' | 'contextual') {
   }
 }
 
-function addCustom(kind: 'primary' | 'excluded' | 'contextual') {
+function clearClassification(label: string) {
+  primary.value = primary.value.filter((item) => item !== label)
+  excluded.value = excluded.value.filter((item) => item !== label)
+  contextual.value = contextual.value.filter((item) => item !== label)
+}
+
+async function addCustom(kind: 'primary' | 'excluded' | 'contextual') {
   const raw =
     kind === 'primary'
       ? customPrimary.value
@@ -220,10 +232,54 @@ function addCustom(kind: 'primary' | 'excluded' | 'contextual') {
         : customContextual.value
   const label = raw.trim().replace(/\s+/g, ' ')
   if (!label) return
-  classify(label, kind)
-  if (kind === 'primary') customPrimary.value = ''
-  if (kind === 'excluded') customExcluded.value = ''
-  if (kind === 'contextual') customContextual.value = ''
+  termError.value = null
+  const existing = interestCatalog.value.find(
+    (term) => term.label.toLocaleLowerCase('es-ES') === label.toLocaleLowerCase('es-ES')
+  )
+  if (existing) {
+    classify(existing.label, kind)
+    if (kind === 'primary') customPrimary.value = ''
+    if (kind === 'excluded') customExcluded.value = ''
+    if (kind === 'contextual') customContextual.value = ''
+    return
+  }
+  try {
+    const result = await $fetch<{
+      term: { id: string; label: string }
+      catalog: Array<{ id: string; label: string; facet: string; private: boolean }>
+    }>('/api/private/terms', {
+      method: 'POST',
+      body: { label, kind: 'interest' }
+    })
+    taxonomyTerms.value = result.catalog
+    classify(result.term.label, kind)
+    if (kind === 'primary') customPrimary.value = ''
+    if (kind === 'excluded') customExcluded.value = ''
+    if (kind === 'contextual') customContextual.value = ''
+  } catch (caught) {
+    termError.value =
+      caught && typeof caught === 'object' && 'data' in caught
+        ? String((caught as { data?: { statusMessage?: string } }).data?.statusMessage || 'No se pudo crear')
+        : 'No se pudo crear el término privado'
+  }
+}
+
+async function removePrivateTerm(termId: string, label: string) {
+  termError.value = null
+  try {
+    const result = await $fetch<{
+      catalog: Array<{ id: string; label: string; facet: string; private: boolean }>
+    }>(`/api/private/terms?id=${encodeURIComponent(termId)}`, {
+      method: 'DELETE'
+    })
+    taxonomyTerms.value = result.catalog
+    clearClassification(label)
+  } catch (caught) {
+    termError.value =
+      caught && typeof caught === 'object' && 'data' in caught
+        ? String((caught as { data?: { statusMessage?: string } }).data?.statusMessage || 'No se pudo borrar')
+        : 'No se pudo borrar el término privado'
+  }
 }
 
 function toggleCharacter(id: string) {
@@ -819,7 +875,7 @@ if (typeof route.query.experience === 'string' && route.query.experience) {
           <article v-for="term in filteredTerms" :key="term.id">
             <div>
               <strong>{{ term.label }}</strong>
-              <small>{{ term.facet }}</small>
+              <small>{{ term.private ? 'privado' : term.facet }}</small>
             </div>
             <div>
               <button
@@ -849,29 +905,40 @@ if (typeof route.query.experience === 'string' && route.query.experience) {
               >
                 Permitir
               </button>
+              <button
+                v-if="term.private"
+                type="button"
+                class="term-action delete"
+                title="Eliminar término privado"
+                @click="removePrivateTerm(term.id, term.label)"
+              >
+                ×
+              </button>
             </div>
           </article>
         </div>
+        <p v-if="termError" class="text-sm text-[var(--nsfw-danger)]">{{ termError }}</p>
         <p class="contextual-explainer">
           <strong>¿Qué significa “permitido si encaja”?</strong>
           No pide a la IA que lo incluya. Solo indica que puede aparecer cuando resulte natural.
-          “Privado” = etiqueta tuya para esta sesión / perfil, no publicada en taxonomía.
+          Al crear una etiqueta nueva queda como <em>privado</em> (solo tú) y se suma a la lista permanente.
         </p>
         <div class="custom-interest-grid">
           <label>
-            Crear predominante
+            Crear predominante privado
             <span>
               <input
                 v-model="customPrimary"
                 class="nsfw-input"
                 maxlength="80"
+                placeholder="Etiqueta solo tuya"
                 @keydown.enter.prevent="addCustom('primary')"
               >
               <button type="button" class="nsfw-btn-ghost" @click="addCustom('primary')">+</button>
             </span>
           </label>
           <label>
-            Crear exclusión
+            Crear exclusión privada
             <span>
               <input
                 v-model="customExcluded"
@@ -883,7 +950,7 @@ if (typeof route.query.experience === 'string' && route.query.experience) {
             </span>
           </label>
           <label>
-            Crear permitido
+            Crear permitido privado
             <span>
               <input
                 v-model="customContextual"
