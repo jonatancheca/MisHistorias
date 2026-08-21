@@ -60,6 +60,7 @@ const characterCustomizations = ref<Record<string, StoryCharacterCustomization>>
         character.id,
         {
           characterId: character.id,
+          name: copied?.name ?? character.name,
           prompt: copied?.prompt ?? character.prompt,
           tags: [...(copied?.tags ?? character.tags)]
         }
@@ -211,6 +212,15 @@ async function submit() {
         >
           <h2 class="font-semibold">{{ character.name }}</h2>
           <div class="mt-3 grid gap-3">
+            <div>
+              <label class="label" :for="`story-character-name-${character.id}`">Nombre en esta historia</label>
+              <input
+                :id="`story-character-name-${character.id}`"
+                v-model="customizationFor(character.id).name"
+                autocomplete="off"
+                class="field"
+              >
+            </div>
             <div>
               <label class="label" :for="`story-character-prompt-${character.id}`">Prompt</label>
               <textarea

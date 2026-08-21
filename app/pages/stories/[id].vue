@@ -71,6 +71,14 @@ const availableStoryCharacters = computed(() =>
 const characterTagSuggestions = computed(() =>
   characters.characters.flatMap((character) => character.tags ?? [])
 )
+const storyCharacterNames = computed<Record<string, string>>(() =>
+  Object.fromEntries(
+    (stories.activeStory?.characterCustomizations ?? []).map((customization) => [
+      customization.characterId,
+      customization.name?.trim() || characters.byId(customization.characterId)?.name || 'Personaje'
+    ])
+  )
+)
 const followingBottom = ref(true)
 let lastScrollTop = 0
 let autoScrollTarget: number | null = null
@@ -352,6 +360,7 @@ function openStoryPreferences() {
       ? [
           {
             characterId,
+            name: source.name?.trim() || characters.byId(characterId)?.name || '',
             prompt: source.prompt,
             tags: [...source.tags]
           }
@@ -368,6 +377,7 @@ function addStoryCharacter(characterId: string) {
   storyCharacterIds.value.push(characterId)
   storyCharacterCustomizations.value.push({
     characterId,
+    name: character.name,
     prompt: character.prompt,
     tags: [...character.tags]
   })
@@ -545,7 +555,7 @@ const visualSpeaker = computed(() => {
   const speakerState = frame.characterStates[frame.characterStates.length - 1]
   if (frame.kind === 'dialogue' && speakerState) {
     return {
-      name: characters.byId(speakerState.characterId)?.name ?? 'Personaje',
+      name: storyCharacterNames.value[speakerState.characterId] ?? 'Personaje',
       color: characters.colorOf(speakerState.characterId)
     }
   }
@@ -874,6 +884,17 @@ onBeforeUnmount(() => {
             />
 
             <div
+              v-if="isEmpty"
+              class="absolute inset-x-0 top-4 z-10 px-4 text-center text-sm text-slate-200"
+            >
+              <span>La historia aún no ha empezado. </span>
+              <button type="button" class="text-brand-300 underline" @click="generateOpening">
+                Deja que el narrador abra la escena
+              </button>
+              <span> o escribe tú el primer movimiento.</span>
+            </div>
+
+            <div
               v-if="stories.waitingForResponse"
               data-testid="visual-thinking-indicator"
               class="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center px-4"
@@ -883,7 +904,7 @@ onBeforeUnmount(() => {
               <div
                 class="flex items-center gap-3 rounded-full border border-white/25 bg-slate-950/85 px-4 py-2 text-sm text-white shadow-lg backdrop-blur-sm"
               >
-                <span>La IA está pensando…</span>
+                <span>El Narrador está pensando…</span>
                 <span class="flex items-center gap-1" aria-hidden="true">
                   <span class="h-2 w-2 animate-bounce rounded-full bg-brand-400 motion-reduce:animate-none" />
                   <span
@@ -995,6 +1016,7 @@ onBeforeUnmount(() => {
             <MessageBubble
               v-if="item.kind === 'message'"
               :message="item.message"
+              :character-names="storyCharacterNames"
               :debug-trace="debugForMessage(item.message.id)"
               :editable="!stories.generating"
               :visual-mode="stories.activeStory.visualMode"
@@ -1040,7 +1062,7 @@ onBeforeUnmount(() => {
             role="status"
             aria-live="polite"
           >
-            <span>La IA está pensando…</span>
+            <span>El Narrador está pensando…</span>
             <span class="flex items-center gap-1" aria-hidden="true">
               <span class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none" />
               <span
@@ -1262,9 +1284,23 @@ onBeforeUnmount(() => {
                 class="rounded-xl border border-[var(--color-border-soft)] p-4"
               >
                 <h3 class="font-semibold">
-                  {{ row.character?.name ?? 'Personaje no disponible' }}
+                  {{ row.customization.name?.trim() || row.character?.name || 'Personaje no disponible' }}
                 </h3>
                 <div class="mt-3 grid gap-3">
+                  <div>
+                    <label
+                      class="label"
+                      :for="`story-settings-character-name-${row.customization.characterId}`"
+                    >
+                      Nombre en esta historia
+                    </label>
+                    <input
+                      :id="`story-settings-character-name-${row.customization.characterId}`"
+                      v-model="row.customization.name"
+                      autocomplete="off"
+                      class="field"
+                    >
+                  </div>
                   <div>
                     <label
                       class="label"

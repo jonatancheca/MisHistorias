@@ -24,6 +24,7 @@ test.describe('historias', () => {
     const premise = data.unique('Planteamiento')
     const storyPrompt = data.unique('Prompt-historia')
     const storyTag = data.unique('etiqueta-historia')
+    const storyCharacterName = data.unique('Nombre-historia')
 
     await page.goto('/stories/new')
     await page.getByLabel('Título').fill(title)
@@ -31,6 +32,7 @@ test.describe('historias', () => {
     await page.getByLabel('Preferencias del protagonista').fill('Ser prudente.')
     await page.getByLabel('Combinar con globales').selectOption('replace')
     await page.getByRole('button', { name: new RegExp(character.name) }).click()
+    await page.locator(`#story-character-name-${character.id}`).fill(storyCharacterName)
     await page.locator(`#story-character-prompt-${character.id}`).fill(storyPrompt)
     await page.locator(`#story-character-tags-${character.id}`).fill(storyTag)
     await page.locator(`#story-character-tags-${character.id}`).press('Enter')
@@ -52,20 +54,24 @@ test.describe('historias', () => {
       presetId: preset.id
     })
     expect(stored.characterCustomizations[0]?.prompt).toBe(storyPrompt)
+    expect(stored.characterCustomizations[0]?.name).toBe(storyCharacterName)
     expect(stored.characterCustomizations[0]?.tags).toContain(storyTag)
 
     const updatedPremise = data.unique('Planteamiento-editado')
     const updatedTitle = data.unique('Historia-editada')
+    const updatedCharacterName = data.unique('Nombre-editado')
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     const form = page.getByRole('heading', { name: 'Ajustes de la historia' }).locator('..')
     await form.getByLabel('Título').fill(updatedTitle)
     await form.getByLabel('Planteamiento').fill(updatedPremise)
+    await form.locator(`#story-settings-character-name-${character.id}`).fill(updatedCharacterName)
     await form.getByRole('button', { name: 'Guardar' }).click()
     await expect(page.getByRole('heading', { name: updatedTitle })).toBeVisible()
     await expect(page.getByText(updatedPremise)).toBeVisible()
     await expect.poll(async () => await data.get<Story>('stories', storyId)).toMatchObject({
       title: updatedTitle,
-      premise: updatedPremise
+      premise: updatedPremise,
+      characterCustomizations: [{ characterId: character.id, name: updatedCharacterName }]
     })
   })
 

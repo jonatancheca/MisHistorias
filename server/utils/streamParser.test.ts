@@ -122,6 +122,14 @@ describe('parser de etiquetas visuales', () => {
     assert.equal(missing[0]?.imageId, 'neutral')
   })
 
+  it('reconoce y conserva nombre personalizado de la historia', () => {
+    const customized = [{ ...characters[0]!, name: 'Lia' }]
+    const segments = parseSegments('Lia [feliz]: Hola.', customized, [], '', images, 'alias')
+
+    assert.equal(segments[0]?.characterId, 'alicia')
+    assert.equal(serializeSegments(segments, customized), 'Lia [feliz]: Hola.')
+  })
+
   it('mantiene formato antiguo de una etiqueta y fondos sin cambios', () => {
     const segments = parseSegments(
       'Fondo [bosque]:\nAlicia [neutral]: Hola.',

@@ -43,6 +43,7 @@ const story: Story = {
   characterCustomizations: [
     {
       characterId: character.id,
+      name: 'Lia',
       prompt: 'Prompt exclusivo de la historia',
       tags: ['misteriosa']
     }
@@ -87,6 +88,7 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
   })
 
   assert.match(prompt, /Prompt exclusivo de la historia/)
+  assert.match(prompt, /### Lia/)
   assert.doesNotMatch(prompt, /Prompt global que no debe aparecer/)
   assert.match(prompt, /Etiquetas descriptivas[^\n]*misteriosa/)
   assert.doesNotMatch(prompt, /Etiquetas descriptivas[^\n]*global/)

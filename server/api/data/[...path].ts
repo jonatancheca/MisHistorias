@@ -66,6 +66,7 @@ function hasCharacterCustomizations(value: Record<string, unknown>) {
       const customization = item as Record<string, unknown>
       return (
         typeof customization.characterId === 'string' &&
+        (customization.name === undefined || typeof customization.name === 'string') &&
         typeof customization.prompt === 'string' &&
         Array.isArray(customization.tags) &&
         customization.tags.every((tag) => typeof tag === 'string')

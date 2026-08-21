@@ -76,7 +76,7 @@ function characterSheet(
     : '  - (sin imágenes; usa [neutral])'
 
   return [
-    `### ${character.name}`,
+    `### ${customization?.name?.trim() || character.name}`,
     (customization?.prompt ?? character.prompt).trim() || '(sin descripción)',
     `Etiquetas descriptivas del personaje (no son etiquetas de imagen): ${(customization?.tags ?? character.tags ?? []).join(', ') || '(ninguna)'}`,
     'Etiquetas de imagen disponibles:',

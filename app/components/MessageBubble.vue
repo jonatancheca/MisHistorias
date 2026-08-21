@@ -9,6 +9,7 @@ const props = defineProps<{
   editable?: boolean
   debugTrace?: LlmDebugTrace | null
   visualMode?: boolean
+  characterNames?: Record<string, string>
 }>()
 const emit = defineEmits<{
   edit: [string]
@@ -50,7 +51,7 @@ interface FlowRow {
 
 function galleryItems(characterId: string | null) {
   if (!characterId) return undefined
-  const characterName = characters.byId(characterId)?.name ?? 'Personaje'
+  const characterName = props.characterNames?.[characterId] ?? characters.byId(characterId)?.name ?? 'Personaje'
   return characters.imagesFor(characterId).map((image) => ({
     src: characters.urlFor(image.id)!,
     alt: `${characterName} ${primaryTag(image) ?? ''}`.trim()
@@ -169,7 +170,7 @@ const rows = computed<FlowRow[]>(() => {
       sound: false,
       narration: false,
       text: segment.text,
-      name: characters.byId(segment.characterId)?.name ?? 'Personaje',
+      name: props.characterNames?.[segment.characterId] ?? characters.byId(segment.characterId)?.name ?? 'Personaje',
       color: characters.colorOf(segment.characterId),
       tag: primaryTag(image) ?? requestedTags[0] ?? null,
       imageTags: image?.tags ? [...image.tags] : [],

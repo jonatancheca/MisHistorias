@@ -55,6 +55,8 @@ export interface Sound {
 
 export interface StoryCharacterCustomization {
   characterId: string
+  /** Nombre usado solo dentro de esta historia. */
+  name?: string
   /** Copia independiente del prompt global para esta historia. */
   prompt: string
   /** Copia independiente de etiquetas descriptivas; nunca incluye etiquetas de imagen. */

@@ -59,12 +59,25 @@ function normalizeCharacterCustomizations(
       ? [
           {
             characterId,
+            name: source.name?.trim() || available.get(characterId)?.name || '',
             prompt: source.prompt,
             tags: sanitizeTags(source.tags)
           }
         ]
       : []
   })
+}
+
+function storyCharactersWithCustomNames(story: Story, characters: Character[]) {
+  const customizations = new Map(
+    (story.characterCustomizations ?? []).map((item) => [item.characterId, item])
+  )
+  return characters
+    .filter((character) => story.characterIds.includes(character.id))
+    .map((character) => ({
+      ...character,
+      name: customizations.get(character.id)?.name?.trim() || character.name
+    }))
 }
 
 interface GraphemeSegment {
@@ -295,9 +308,9 @@ export const useStoriesStore = defineStore('stories', () => {
     const backgrounds = useBackgroundsStore()
     const sounds = useSoundsStore()
     const settings = useSettingsStore()
-    const storyCharacters = characters.characters.filter((character) =>
-      activeStory.value?.characterIds.includes(character.id)
-    )
+    const storyCharacters = activeStory.value
+      ? storyCharactersWithCustomNames(activeStory.value, characters.characters)
+      : []
     const updated: Message = {
       ...current,
       raw,
@@ -752,9 +765,7 @@ export const useStoriesStore = defineStore('stories', () => {
       return
     }
 
-    const storyCharacters = charactersStore.characters.filter((character) =>
-      story.characterIds.includes(character.id)
-    )
+    const storyCharacters = storyCharactersWithCustomNames(story, charactersStore.characters)
     const pendingForRequest = options.consumePendingImageInstructions
       ? validPendingImageInstructions(story, charactersStore.images)
       : []

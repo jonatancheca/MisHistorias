@@ -276,6 +276,7 @@ export async function importBundle(raw: string) {
       return [
         {
           characterId,
+          name: String(source?.name ?? character?.name ?? '').trim() || String(character?.name ?? ''),
           prompt: String(source?.prompt ?? character?.prompt ?? ''),
           tags: sanitizeTags(source?.tags ?? character?.tags)
         }
