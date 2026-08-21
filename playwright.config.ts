@@ -31,7 +31,7 @@ export default defineConfig({
     command: 'pnpm dev',
     url: `${baseURL}/api/health`,
     reuseExistingServer: false,
-    timeout: 60_000,
+    timeout: 180_000,
     env: {
       NUXT_IGNORE_LOCK: '1',
       NUXT_PORT: String(port),

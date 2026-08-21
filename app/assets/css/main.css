@@ -56,6 +56,63 @@
   --color-fg-muted: #b697a7;
 }
 
+.nsfw-scope {
+  --nsfw-ink: #f2ece4;
+  --nsfw-muted: #aca49d;
+  --nsfw-faint: #746d68;
+  --nsfw-canvas: #100d0e;
+  --nsfw-surface: #171315;
+  --nsfw-raised: #211b1d;
+  --nsfw-soft: #2b2224;
+  --nsfw-line: rgba(235, 220, 208, 0.16);
+  --nsfw-accent: #ff755f;
+  --nsfw-gold: #e0b46a;
+  --nsfw-azure: #72b5d0;
+  --nsfw-danger: #e05a5a;
+  --nsfw-success: #6db88a;
+}
+
+.nsfw-scope body,
+.nsfw-scope #__nuxt {
+  background-color: var(--nsfw-canvas);
+  color: var(--nsfw-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nsfw-scope *,
+  .nsfw-scope *::before,
+  .nsfw-scope *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@utility nsfw-input {
+  @apply min-h-11 rounded-xl border border-[var(--nsfw-line)] bg-[var(--nsfw-soft)] px-3 py-2 text-sm text-[var(--nsfw-ink)] outline-none placeholder:text-[var(--nsfw-faint)] focus:border-[var(--nsfw-accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--nsfw-accent)_35%,transparent)];
+}
+
+@utility nsfw-btn {
+  @apply inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--nsfw-accent)] disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility nsfw-btn-primary {
+  @apply nsfw-btn bg-[var(--nsfw-accent)] text-[var(--nsfw-canvas)] hover:brightness-110;
+}
+
+@utility nsfw-btn-ghost {
+  @apply nsfw-btn border border-[var(--nsfw-line)] text-[var(--nsfw-ink)] hover:bg-[var(--nsfw-soft)];
+}
+
+@utility nsfw-page {
+  @apply w-full max-w-full overflow-x-hidden;
+}
+
+@utility nsfw-card {
+  @apply rounded-2xl border border-[var(--nsfw-line)] bg-[var(--nsfw-raised)] p-4;
+}
+
 html,
 body,
 #__nuxt {

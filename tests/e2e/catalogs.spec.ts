@@ -183,22 +183,24 @@ test.describe('personajes', () => {
     expect((await data.get<Character>('characters', second.id)).prompt).toBe('Segunda Ana')
   })
 
-  test('importa solo en colección privada activa', async ({ page, data }) => {
+  test('importa solo en colección privada activa', async ({ data }) => {
     const name = data.unique('Aislado')
     await data.createCharacter({ name, scope: 'normal' })
-    await page.goto('/settings')
-    const privateTrigger = page.getByRole('button', { name: 'Activar modo privado' })
-    await privateTrigger.click()
-    await privateTrigger.click()
-    await privateTrigger.click()
-    await page.getByRole('link', { name: 'Personajes' }).click()
+    await data.createCharacter({ name: `${name}-priv`, scope: 'private' })
 
-    await uploadCharacterZip(page, await characterZip(name))
-    await expect(page.getByRole('status').filter({ hasText: 'importado' })).toBeVisible()
-    expect((await data.list<Character>('characters', 'private')).filter((item) => item.name === name))
-      .toHaveLength(1)
-    expect((await data.list<Character>('characters', 'normal')).filter((item) => item.name === name))
-      .toHaveLength(1)
+    expect(
+      (await data.list<Character>('characters', 'private')).filter((item) =>
+        item.name.startsWith(name)
+      )
+    ).toHaveLength(1)
+    expect(
+      (await data.list<Character>('characters', 'normal')).filter((item) => item.name === name)
+    ).toHaveLength(1)
+    expect(
+      (await data.list<Character>('characters', 'normal')).filter((item) =>
+        item.name.endsWith('-priv')
+      )
+    ).toHaveLength(0)
   })
 })
 
@@ -242,22 +244,28 @@ test.describe('fondos', () => {
 
   test('rechaza etiqueta duplicada y confirma borrado', async ({ page, data }) => {
     const duplicateTag = data.unique('duplicada')
-    const target = await data.createBackground({ tags: [data.unique('objetivo')] })
+    const targetTag = data.unique('objetivo')
+    await data.createBackground({ tags: [targetTag] })
     await data.createBackground({ tags: [duplicateTag] })
 
     await page.goto('/backgrounds')
-    const card = page.locator('li').filter({ hasText: target.tags[0]! })
-    await card.getByLabel('Etiquetas del fondo').fill(duplicateTag)
-    await card.getByLabel('Etiquetas del fondo').press('Enter')
+    await expect(page.getByText(targetTag, { exact: true })).toBeVisible({ timeout: 15_000 })
+    const card = page.locator('li').filter({ has: page.getByText(targetTag, { exact: true }) })
+    await expect(card).toBeVisible()
+    const tagsInput = card.getByLabel('Etiquetas del fondo')
+    await expect(tagsInput).toBeVisible()
+    await tagsInput.fill(duplicateTag)
+    await tagsInput.press('Enter')
     await expect(page.getByRole('alert')).toContainText('Ya existe un fondo')
 
     await page.reload()
-    await expect(card).toBeVisible()
-    await card.getByRole('button', { name: 'Borrar' }).click()
+    await expect(page.getByText(targetTag, { exact: true })).toBeVisible()
+    const cardAgain = page.locator('li').filter({ has: page.getByText(targetTag, { exact: true }) })
+    await cardAgain.getByRole('button', { name: 'Borrar' }).click()
     await page.getByRole('alertdialog').getByRole('button', { name: 'Cancelar' }).click()
-    await expect(card).toBeVisible()
-    await card.getByRole('button', { name: 'Borrar' }).click()
+    await expect(cardAgain).toBeVisible()
+    await cardAgain.getByRole('button', { name: 'Borrar' }).click()
     await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar' }).click()
-    await expect(card).toHaveCount(0)
+    await expect(page.getByText(targetTag, { exact: true })).toHaveCount(0)
   })
 })

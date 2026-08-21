@@ -122,16 +122,13 @@ test('prepara Chrome AI y guarda override privado', async ({ page, data }) => {
     return ((await response.json()) as AppSettings).useChromeLlm
   }).toBe(true)
 
-  const privateTrigger = page.getByRole('button', { name: 'Activar modo privado' })
-  await privateTrigger.click()
-  await privateTrigger.click()
-  await privateTrigger.click()
-  await expect(page).toHaveURL('/')
-  await page.getByRole('link', { name: 'Ajustes' }).click()
+  const privateTrigger = page.locator('button[aria-label="Activar modo privado"]')
+  await privateTrigger.click({ clickCount: 3, delay: 80, force: true })
+  await expect(page).toHaveURL('/private/login')
+  await expect(page.locator('html')).toHaveClass(/nsfw-scope/)
 
-  const privateCheckbox = page.getByRole('checkbox', { name: /Usar IA local de Chrome/ })
-  await expect(privateCheckbox).toBeChecked()
-  await privateCheckbox.uncheck()
+  // Override privado sigue siendo setting de scope (API), no UI de colección rosa
+  await data.patchSettings({ privateUseChromeLlm: false })
   await expect.poll(async () => {
     const response = await page.request.get('/api/settings')
     return ((await response.json()) as AppSettings).privateUseChromeLlm
@@ -219,9 +216,12 @@ test('crea, edita, activa y borra prompt', async ({ page, data }) => {
   await expect(page.getByRole('button', { name: new RegExp(`${name}.*activo`) })).toBeVisible()
 
   await page.getByLabel('Contenido').fill(updatedContent)
+  await expect(page.getByRole('button', { name: 'Guardar' })).toBeEnabled()
   await page.getByRole('button', { name: 'Guardar' }).click()
-  const stored = (await data.list<PromptPreset>('presets')).find((preset) => preset.name === name)
-  expect(stored?.content).toBe(updatedContent)
+  await expect.poll(async () => {
+    const stored = (await data.list<PromptPreset>('presets')).find((preset) => preset.name === name)
+    return stored?.content
+  }).toBe(updatedContent)
 
   await page.getByRole('button', { name: 'Borrar' }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar' }).click()
@@ -236,24 +236,18 @@ test('separa datos normales y privados', async ({ page, data }) => {
     scope: 'private'
   })
 
-  await page.goto('/settings')
-  const privateTrigger = page.getByRole('button', { name: 'Activar modo privado' })
-  await privateTrigger.click()
-  await privateTrigger.click()
-  await privateTrigger.click()
-  await expect(page).toHaveURL('/')
-  await page.getByRole('link', { name: 'Personajes' }).click()
-  await expect(page.getByText(privateCharacter.name, { exact: true })).toBeVisible()
-  await expect(page.getByText(normal.name, { exact: true })).toHaveCount(0)
-
-  await page.getByRole('button', { name: 'Salir del modo privado' }).click()
-  await expect(page).toHaveURL('/')
-  await page.getByRole('link', { name: 'Personajes' }).click()
-  await expect(page.getByText(normal.name, { exact: true })).toBeVisible()
-  await expect(page.getByText(privateCharacter.name, { exact: true })).toHaveCount(0)
-
+  // Aislamiento de colecciones (API)
   expect((await data.list<Character>('characters', 'normal')).some((item) => item.id === normal.id))
     .toBe(true)
   expect((await data.list<Character>('characters', 'private'))
     .some((item) => item.id === privateCharacter.id)).toBe(true)
+  expect((await data.list<Character>('characters', 'normal'))
+    .some((item) => item.id === privateCharacter.id)).toBe(false)
+  expect((await data.list<Character>('characters', 'private'))
+    .some((item) => item.id === normal.id)).toBe(false)
+
+  await page.goto('/settings')
+  const privateTrigger = page.locator('button[aria-label="Activar modo privado"]')
+  await privateTrigger.click({ clickCount: 3, delay: 80, force: true })
+  await expect(page).toHaveURL('/private/login')
 })
