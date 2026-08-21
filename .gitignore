@@ -26,3 +26,4 @@ logs
 playwright-report
 test-results
 .pnpm-store
+*.zip
