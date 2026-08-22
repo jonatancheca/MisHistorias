@@ -53,6 +53,13 @@ const protagonistId = computed(
 
 const partner = computed(() => session.value?.cast.find((member) => !member.isSelfInsert) || null)
 
+/** Un solo v-for con clave estable: los fragmentos anidados se descolocaban al aceptar un beat. */
+const timeline = computed(() =>
+  beats.value.flatMap((beat) =>
+    beat.envelope.visibleUnits.map((unit, index) => ({ key: `${beat.id}:${index}`, unit }))
+  )
+)
+
 const lastChoices = computed(() => {
   const last = beats.value[beats.value.length - 1]
   return last?.envelope.choices ?? []
@@ -135,37 +142,35 @@ async function toggleHeart() {
           Todavía no hay nada. Habla, actúa o deja que empiece.
         </p>
 
-        <template v-for="beat in beats" :key="beat.id">
-          <template v-for="(unit, index) in beat.envelope.visibleUnits" :key="`${beat.id}-${index}`">
-            <!-- Narración: centrada, en cursiva, sin caja. -->
-            <p
-              v-if="unit.type === 'narration'"
-              class="mx-auto max-w-[46ch] text-center font-serif text-[1.05rem] italic leading-relaxed text-[var(--nsfw-faint)]"
-            >
-              {{ unit.text }}
-            </p>
+        <div v-for="item in timeline" :key="item.key">
+          <!-- Narración: centrada, en cursiva, sin caja. -->
+          <p
+            v-if="item.unit.type === 'narration'"
+            class="mx-auto max-w-[46ch] text-center font-serif text-[1.05rem] italic leading-relaxed text-[var(--nsfw-faint)]"
+          >
+            {{ item.unit.text }}
+          </p>
 
-            <!-- Lo que dices tú: burbuja coral a la derecha. -->
-            <div v-else-if="unit.actorId === protagonistId" class="flex justify-end">
-              <p
-                class="max-w-[34ch] rounded-[18px_18px_4px_18px] border border-[color-mix(in_srgb,var(--nsfw-accent)_20%,transparent)] bg-[color-mix(in_srgb,var(--nsfw-accent)_11%,transparent)] px-4 py-3 font-serif text-[1.05rem] leading-snug text-[var(--nsfw-ink)]"
-              >
-                {{ unit.text }}
+          <!-- Lo que dices tú: burbuja coral a la derecha. -->
+          <div v-else-if="item.unit.actorId === protagonistId" class="flex justify-end">
+            <p
+              class="max-w-[34ch] rounded-[18px_18px_4px_18px] border border-[color-mix(in_srgb,var(--nsfw-accent)_20%,transparent)] bg-[color-mix(in_srgb,var(--nsfw-accent)_11%,transparent)] px-4 py-3 font-serif text-[1.05rem] leading-snug text-[var(--nsfw-ink)]"
+            >
+              {{ item.unit.text }}
+            </p>
+          </div>
+
+          <!-- El personaje: avatar, nombre en oro y prosa desnuda. -->
+          <div v-else class="flex gap-3.5">
+            <span class="nsfw-avatar is-gold mt-0.5">{{ actorName(item.unit.actorId).slice(0, 1) }}</span>
+            <div class="min-w-0 flex-1">
+              <p class="nsfw-speaker">{{ actorName(item.unit.actorId) }}</p>
+              <p class="font-serif text-[1.1rem] leading-relaxed text-[var(--nsfw-prose)]">
+                {{ item.unit.text }}
               </p>
             </div>
-
-            <!-- El personaje: avatar, nombre en oro y prosa desnuda. -->
-            <div v-else class="flex gap-3.5">
-              <span class="nsfw-avatar is-gold mt-0.5">{{ actorName(unit.actorId).slice(0, 1) }}</span>
-              <div class="min-w-0 flex-1">
-                <p class="nsfw-speaker">{{ actorName(unit.actorId) }}</p>
-                <p class="font-serif text-[1.1rem] leading-relaxed text-[var(--nsfw-prose)]">
-                  {{ unit.text }}
-                </p>
-              </div>
-            </div>
-          </template>
-        </template>
+          </div>
+        </div>
 
         <div
           v-if="busy || (attempt && ['streaming', 'validating', 'ready'].includes(attempt.state))"
