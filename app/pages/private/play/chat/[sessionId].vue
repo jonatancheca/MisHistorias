@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { GenerationProfile, PlayerInput } from '../../../../../shared/types/nsfw/session.ts'
+import type {
+  GenerationProfile,
+  PlayerInput,
+  SessionSheetTab
+} from '../../../../../shared/types/nsfw/session.ts'
 
 definePageMeta({ layout: 'private' })
 
@@ -7,10 +11,11 @@ const route = useRoute()
 const sessions = useNsfwSessionsStore()
 const sessionId = computed(() => String(route.params.sessionId || ''))
 const draft = ref('')
-const inputKind = ref<'speak' | 'act' | 'free'>('free')
+const inputKind = ref<'speak' | 'act' | 'free'>('speak')
 const modelAlias = ref('')
 const generationProfile = ref<GenerationProfile>('quick')
 const localError = ref<string | null>(null)
+const sheet = ref<{ openSheet: (tab?: SessionSheetTab) => void } | null>(null)
 
 await sessions.loadModels()
 await sessions.loadPlay(sessionId.value)
@@ -42,6 +47,21 @@ const busy = computed(
     Boolean(attempt.value && ['requested', 'streaming', 'validating'].includes(attempt.value.state))
 )
 
+const protagonistId = computed(
+  () => session.value?.cast.find((member) => member.isSelfInsert)?.actorId || 'protagonist'
+)
+
+const partner = computed(() => session.value?.cast.find((member) => !member.isSelfInsert) || null)
+
+const lastChoices = computed(() => {
+  const last = beats.value[beats.value.length - 1]
+  return last?.envelope.choices ?? []
+})
+
+const modelAvailable = computed(
+  () => sessions.models.find((model) => model.alias === modelAlias.value)?.available ?? false
+)
+
 function actorName(actorId: string) {
   return session.value?.cast.find((member) => member.actorId === actorId)?.name || actorId
 }
@@ -51,7 +71,7 @@ function looksLikeJson(value: string) {
   return trimmed.startsWith('{') || trimmed.startsWith('```') || trimmed.startsWith('[')
 }
 
-async function submit(kind: PlayerInput['kind'] = inputKind.value, text = draft.value) {
+async function submit(kind: PlayerInput['kind'] = inputKind.value, text = draft.value, choiceId?: string) {
   localError.value = null
   if (!session.value || busy.value) return
   if (attempt.value && ['ready', 'streaming', 'validating', 'requested'].includes(attempt.value.state)) {
@@ -60,7 +80,7 @@ async function submit(kind: PlayerInput['kind'] = inputKind.value, text = draft.
   }
   try {
     await sessions.generate(sessionId.value, {
-      input: { kind, text: text.trim() },
+      input: { kind, text: text.trim(), choiceId },
       modelAlias: modelAlias.value || session.value.modelAlias,
       generationProfile: generationProfile.value
     })
@@ -69,178 +89,233 @@ async function submit(kind: PlayerInput['kind'] = inputKind.value, text = draft.
     localError.value = (caught as Error).message || 'Error'
   }
 }
+
+async function toggleHeart() {
+  if (!session.value) return
+  await $fetch(`/api/private/sessions/${sessionId.value}/escalation`, {
+    method: 'POST',
+    body: { value: !session.value.escalationHeart }
+  })
+  await sessions.loadPlay(sessionId.value)
+}
 </script>
 
 <template>
-  <div class="nsfw-page mx-auto flex w-full max-w-[48rem] flex-col gap-4 px-4 py-6">
-    <header class="flex items-start justify-between gap-3">
-      <div class="min-w-0">
-        <p class="text-xs uppercase tracking-[0.2em] text-[var(--nsfw-faint)]">Chat</p>
-        <h1 class="text-2xl font-medium">{{ session?.title }}</h1>
+  <div class="nsfw-page relative flex min-h-full flex-col">
+    <div class="nsfw-topbar">
+      <div class="flex min-w-0 items-center gap-3">
+        <span class="nsfw-avatar is-gold h-8 w-8">{{ (partner?.name || '·').slice(0, 1) }}</span>
+        <div class="min-w-0">
+          <p class="truncate font-serif text-[1.05rem]">{{ partner?.name || session?.title }}</p>
+          <p class="truncate text-[0.7rem] text-[var(--nsfw-dim)]">
+            {{ session?.title }} · beat {{ beats.length }}
+          </p>
+        </div>
       </div>
-      <NsfwSessionSheet :session-id="sessionId" />
-    </header>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <button type="button" class="nsfw-btn-text" @click="sheet?.openSheet('bible')">
+          Biblia
+        </button>
+        <button type="button" class="nsfw-btn-text" @click="sheet?.openSheet('direction')">
+          Director
+        </button>
+        <button type="button" class="nsfw-btn-text" @click="sheet?.openSheet('usage')">
+          <span
+            class="h-1 w-1 rounded-full"
+            :style="{ background: modelAvailable ? 'var(--nsfw-success)' : 'var(--nsfw-gold)' }"
+          />
+          {{ generationProfile === 'quick' ? 'rápido' : 'calidad' }}
+        </button>
+      </div>
+    </div>
 
-    <div class="nsfw-card flex min-h-[50vh] flex-col gap-3">
-      <template v-for="beat in beats" :key="beat.id">
-        <div
-          v-for="(unit, index) in beat.envelope.visibleUnits"
-          :key="`${beat.id}-${index}`"
-          class="flex gap-3"
-        >
-          <div
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--nsfw-soft)] text-xs text-[var(--nsfw-gold)]"
-          >
-            {{ unit.type === 'dialogue' ? actorName(unit.actorId).slice(0, 2) : '··' }}
-          </div>
-          <div class="min-w-0 flex-1">
-            <p v-if="unit.type === 'dialogue'" class="text-xs text-[var(--nsfw-gold)]">
-              {{ actorName(unit.actorId) }}
-            </p>
+    <div class="flex-1 px-6 pt-2 pb-8">
+      <div class="mx-auto flex max-w-3xl flex-col gap-5">
+        <p v-if="!beats.length" class="text-center text-sm text-[var(--nsfw-muted)]">
+          Todavía no hay nada. Habla, actúa o deja que empiece.
+        </p>
+
+        <template v-for="beat in beats" :key="beat.id">
+          <template v-for="(unit, index) in beat.envelope.visibleUnits" :key="`${beat.id}-${index}`">
+            <!-- Narración: centrada, en cursiva, sin caja. -->
             <p
-              class="text-sm leading-relaxed"
-              :class="unit.type === 'narration' ? 'italic text-[var(--nsfw-muted)]' : ''"
+              v-if="unit.type === 'narration'"
+              class="mx-auto max-w-[46ch] text-center font-serif text-[1.05rem] italic leading-relaxed text-[var(--nsfw-faint)]"
             >
               {{ unit.text }}
             </p>
+
+            <!-- Lo que dices tú: burbuja coral a la derecha. -->
+            <div v-else-if="unit.actorId === protagonistId" class="flex justify-end">
+              <p
+                class="max-w-[34ch] rounded-[18px_18px_4px_18px] border border-[color-mix(in_srgb,var(--nsfw-accent)_20%,transparent)] bg-[color-mix(in_srgb,var(--nsfw-accent)_11%,transparent)] px-4 py-3 font-serif text-[1.05rem] leading-snug text-[var(--nsfw-ink)]"
+              >
+                {{ unit.text }}
+              </p>
+            </div>
+
+            <!-- El personaje: avatar, nombre en oro y prosa desnuda. -->
+            <div v-else class="flex gap-3.5">
+              <span class="nsfw-avatar is-gold mt-0.5">{{ actorName(unit.actorId).slice(0, 1) }}</span>
+              <div class="min-w-0 flex-1">
+                <p class="nsfw-speaker">{{ actorName(unit.actorId) }}</p>
+                <p class="font-serif text-[1.1rem] leading-relaxed text-[var(--nsfw-prose)]">
+                  {{ unit.text }}
+                </p>
+              </div>
+            </div>
+          </template>
+        </template>
+
+        <div
+          v-if="busy || (attempt && ['streaming', 'validating', 'ready'].includes(attempt.state))"
+          class="flex gap-3.5"
+          aria-live="polite"
+        >
+          <span class="nsfw-avatar mt-0.5 opacity-50" />
+          <div class="min-w-0 flex-1">
+            <p class="nsfw-eyebrow">
+              <template v-if="busy && attempt?.state !== 'ready'">Generando…</template>
+              <template v-else-if="attempt?.state === 'ready'">Listo</template>
+              <template v-else>Provisional</template>
+            </p>
+            <div
+              v-if="busy && (!attempt?.provisionalText || looksLikeJson(attempt.provisionalText))"
+              class="nsfw-loading-pulse flex gap-1.5"
+            >
+              <span v-for="n in 3" :key="n" class="h-1.5 w-1.5 rounded-full bg-[var(--nsfw-faint)]" />
+            </div>
+            <p
+              v-else-if="attempt?.provisionalText && !looksLikeJson(attempt.provisionalText)"
+              class="whitespace-pre-wrap font-serif text-[1.1rem] leading-relaxed text-[var(--nsfw-prose)]"
+            >
+              {{ attempt.provisionalText }}
+            </p>
           </div>
         </div>
-      </template>
 
-      <div
-        v-if="busy || (attempt && ['streaming', 'validating', 'ready'].includes(attempt.state))"
-        class="rounded-xl border border-dashed border-[var(--nsfw-line)] p-3 text-sm text-[var(--nsfw-muted)]"
-        aria-live="polite"
-      >
-        <p class="mb-1 text-xs uppercase text-[var(--nsfw-faint)]">
-          <template v-if="busy && attempt?.state !== 'ready'">Generando…</template>
-          <template v-else-if="attempt?.state === 'ready'">Listo</template>
-          <template v-else>Provisional</template>
+        <p v-if="attempt?.state === 'failed'" class="text-sm text-[var(--nsfw-danger)]">
+          {{ attempt.errorMessage || 'Falló la generación' }}
         </p>
-        <p v-if="busy && (!attempt?.provisionalText || looksLikeJson(attempt.provisionalText))" class="nsfw-loading-pulse">
-          Esperando respuesta del modelo…
-        </p>
-        <p
-          v-else-if="attempt?.provisionalText && !looksLikeJson(attempt.provisionalText)"
-          class="whitespace-pre-wrap"
-        >
-          {{ attempt.provisionalText }}
-        </p>
-      </div>
-    </div>
+        <p v-if="localError" class="text-sm text-[var(--nsfw-danger)]">{{ localError }}</p>
 
-    <p v-if="attempt?.state === 'failed'" class="text-sm text-[var(--nsfw-danger)]">
-      {{ attempt.errorMessage || 'Falló la generación' }}
-    </p>
-    <p v-if="localError" class="text-sm text-[var(--nsfw-danger)]">{{ localError }}</p>
-
-    <div v-if="attempt?.state === 'ready'" class="flex gap-2">
-      <button
-        type="button"
-        class="nsfw-btn-primary"
-        :disabled="busy"
-        @click="sessions.accept(sessionId, attempt.id)"
-      >
-        Aceptar
-      </button>
-      <button
-        type="button"
-        class="nsfw-btn-ghost"
-        :disabled="busy"
-        @click="sessions.discard(sessionId, attempt.id)"
-      >
-        Descartar
-      </button>
-      <button
-        type="button"
-        class="nsfw-btn-ghost"
-        :disabled="busy"
-        @click="sessions.reroll(sessionId, attempt.id, { modelAlias, generationProfile })"
-      >
-        Re-roll
-      </button>
-    </div>
-
-    <NsfwFeedbackStrip
-      :session-id="sessionId"
-      :attempt-id="attempt?.id"
-      :beat-count="beats.length"
-    />
-    <NsfwAudioAffordances />
-
-    <section class="nsfw-card space-y-3">
-      <details>
-        <summary class="cursor-pointer list-none text-xs uppercase tracking-[0.14em] text-[var(--nsfw-faint)]">
-          Modelo · perfil
-          <span class="ml-2 normal-case tracking-normal text-[var(--nsfw-muted)]">
-            {{ modelAlias || '—' }} · {{ generationProfile }}
-          </span>
-        </summary>
-        <div class="mt-3 grid gap-3 sm:grid-cols-2">
-          <label class="block">
-            <span class="mb-1 block text-xs text-[var(--nsfw-faint)]">Modelo</span>
-            <select v-model="modelAlias" class="nsfw-input w-full">
-              <option v-for="model in sessions.models" :key="model.alias" :value="model.alias">
-                {{ model.alias }}
-              </option>
-            </select>
-            <small class="mt-1 block break-all text-[10px] text-[var(--nsfw-faint)]">
-              LM Studio id:
-              {{
-                sessions.models.find((item) => item.alias === modelAlias)?.lmStudioModelId ||
-                  session?.modelAlias ||
-                  '—'
-              }}
-            </small>
-          </label>
-          <label class="block">
-            <span class="mb-1 block text-xs text-[var(--nsfw-faint)]">Perfil</span>
-            <select v-model="generationProfile" class="nsfw-input w-full">
-              <option value="quick">Quick</option>
-              <option value="quality">Quality</option>
-            </select>
-          </label>
+        <div class="mt-4 flex flex-col gap-4">
+          <NsfwFeedbackStrip
+            :session-id="sessionId"
+            :attempt-id="attempt?.id"
+            :beat-count="beats.length"
+          />
+          <NsfwAudioAffordances />
         </div>
-      </details>
-
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="nsfw-btn-ghost"
-          :class="inputKind === 'speak' ? 'text-[var(--nsfw-accent)]' : ''"
-          :disabled="busy"
-          @click="inputKind = 'speak'"
-        >
-          Speak
-        </button>
-        <button
-          type="button"
-          class="nsfw-btn-ghost"
-          :class="inputKind === 'act' ? 'text-[var(--nsfw-accent)]' : ''"
-          :disabled="busy"
-          @click="inputKind = 'act'"
-        >
-          Act
-        </button>
-        <button
-          type="button"
-          class="nsfw-btn-ghost"
-          :disabled="busy"
-          @click="submit('continue', '')"
-        >
-          Continuar
-        </button>
       </div>
-      <input
-        v-model="draft"
-        class="nsfw-input w-full"
-        :disabled="busy"
-        :placeholder="inputKind === 'speak' ? 'Dices…' : 'Haces…'"
-        @keydown.enter.prevent="submit()"
-      >
-      <button type="button" class="nsfw-btn-primary" :disabled="busy" @click="submit()">
-        {{ busy ? 'Generando…' : 'Enviar' }}
-      </button>
-    </section>
+    </div>
+
+    <div class="nsfw-dock">
+      <div class="mx-auto max-w-3xl">
+        <div v-if="attempt?.state === 'ready'" class="mb-3 flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            class="nsfw-btn-primary"
+            :disabled="busy"
+            @click="sessions.accept(sessionId, attempt.id)"
+          >
+            Aceptar
+          </button>
+          <button
+            type="button"
+            class="nsfw-btn-text"
+            :disabled="busy"
+            @click="sessions.reroll(sessionId, attempt.id, { modelAlias, generationProfile })"
+          >
+            Otra versión
+          </button>
+          <button
+            type="button"
+            class="nsfw-btn-text"
+            :disabled="busy"
+            @click="sessions.discard(sessionId, attempt.id)"
+          >
+            Descartar
+          </button>
+        </div>
+
+        <div v-else-if="lastChoices.length" class="mb-3 flex flex-wrap gap-2">
+          <button
+            v-for="choice in lastChoices"
+            :key="choice.id"
+            type="button"
+            class="nsfw-choice"
+            :class="choice.prominence === 'primary' ? 'is-primary' : ''"
+            @click="submit(choice.kind === 'choice' ? 'choice' : choice.kind, choice.label, choice.id)"
+          >
+            {{ choice.label }}
+          </button>
+        </div>
+
+        <div
+          class="flex items-center gap-2.5 rounded-full border border-[var(--nsfw-line-strong)] bg-[color-mix(in_srgb,var(--nsfw-raised)_92%,transparent)] py-1.5 pr-1.5 pl-5 backdrop-blur"
+        >
+          <label class="min-w-0 flex-1">
+            <span class="sr-only">Tu turno</span>
+            <input
+              v-model="draft"
+              class="w-full border-0 bg-transparent font-serif text-[1.05rem] text-[var(--nsfw-ink)] outline-none placeholder:italic placeholder:text-[var(--nsfw-dim)]"
+              :disabled="busy"
+              :placeholder="inputKind === 'act' ? 'Haces…' : 'Dices…'"
+              @keydown.enter.prevent="submit()"
+            >
+          </label>
+          <button
+            type="button"
+            class="nsfw-btn-text shrink-0"
+            :class="inputKind === 'act' ? '!text-[var(--nsfw-ink)]' : ''"
+            :disabled="busy"
+            @click="inputKind = inputKind === 'act' ? 'speak' : 'act'"
+          >
+            Actuar
+          </button>
+          <button
+            type="button"
+            class="nsfw-btn-text shrink-0"
+            :disabled="busy"
+            @click="submit('continue', '')"
+          >
+            Narrador
+          </button>
+          <button
+            type="button"
+            class="nsfw-heat-btn shrink-0"
+            :aria-pressed="Boolean(session?.escalationHeart)"
+            title="Subir la temperatura de la escena"
+            @click="toggleHeart"
+          >
+            <span aria-hidden="true">♥</span>
+          </button>
+          <button
+            type="button"
+            class="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--nsfw-accent)] text-[var(--nsfw-canvas)] transition hover:brightness-110 disabled:opacity-50"
+            :disabled="busy"
+            :aria-label="busy ? 'Generando' : 'Enviar'"
+            @click="submit()"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 19V5M6 11l6-6 6 6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <NsfwSessionSheet ref="sheet" :session-id="sessionId" hide-trigger />
   </div>
 </template>

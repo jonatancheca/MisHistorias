@@ -116,6 +116,21 @@ export const useNsfwStudioStore = defineStore('nsfwStudio', () => {
     return result.entry
   }
 
+  /** Copia a tu Studio un recurso publicado para poder usarlo al crear. */
+  async function importFromHub(publicationId: string) {
+    const result = await $fetch<{
+      resourceType: 'character' | 'place' | 'experience'
+      character?: NsfwStudioCharacter
+      place?: NsfwStudioPlace
+      experience?: NsfwStudioExperience
+    }>('/api/private/studio/import', { method: 'POST', body: { publicationId } })
+    if (result.resourceType === 'character') await loadCharacters()
+    if (result.resourceType === 'place') await loadPlaces()
+    if (result.resourceType === 'experience') await loadExperiences()
+    await loadLibraryEntries()
+    return result
+  }
+
   async function loadLibraryEntries() {
     const result = await $fetch<{ entries: NsfwLibraryEntry[] }>('/api/private/library/entries')
     libraryEntries.value = result.entries
@@ -141,6 +156,7 @@ export const useNsfwStudioStore = defineStore('nsfwStudio', () => {
     publish,
     loadHub,
     addFromHub,
+    importFromHub,
     loadLibraryEntries
   }
 })

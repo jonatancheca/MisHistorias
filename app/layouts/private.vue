@@ -10,8 +10,8 @@ const links = [
 ]
 
 const accountLinks = [
-  { to: '/private/usage', label: 'Usage' },
   { to: '/private/profile', label: 'Perfil' },
+  { to: '/private/usage', label: 'Uso y latencia' },
   { to: '/private/legacy', label: 'Legado' }
 ]
 
@@ -25,6 +25,12 @@ const adminLinks = [
   { to: '/private/admin/users', label: 'Usuarios' },
   { to: '/private/admin/console', label: 'Consola' }
 ]
+
+/** En el player el chrome se retira: el rail colapsa a 64 px. */
+const collapsed = computed(() => route.path.startsWith('/private/play/'))
+
+const initial = computed(() => (auth.user?.username || '?').slice(0, 1).toLocaleUpperCase('es-ES'))
+const roleLabel = computed(() => (auth.isAdmin ? 'Administrador' : 'Lector'))
 
 function isActive(to: string) {
   if (to === '/private') return route.path === '/private'
@@ -51,118 +57,151 @@ async function onLogout() {
   await navigateTo('/private/login')
 }
 
-onMounted(() => {
-  document.documentElement.classList.add('nsfw-scope')
-})
-
-onBeforeUnmount(() => {
-  document.documentElement.classList.remove('nsfw-scope')
-})
+useNsfwScope()
 </script>
 
 <template>
   <div class="nsfw-shell flex min-h-dvh bg-[var(--nsfw-canvas)] text-[var(--nsfw-ink)]">
     <aside
-      class="nsfw-rail relative z-50 hidden w-[260px] shrink-0 flex-col border-r border-[var(--nsfw-line)] bg-[var(--nsfw-surface)] p-4 lg:flex"
+      class="nsfw-rail relative z-50 hidden shrink-0 flex-col border-r border-[var(--nsfw-hair)] pt-7 pb-5 lg:flex"
+      :class="collapsed ? 'w-16 items-center gap-6' : 'w-[252px]'"
     >
-      <a
-        href="/private"
-        class="mb-8 font-serif text-xl tracking-tight text-[var(--nsfw-ink)]"
-        @click="go('/private', $event)"
-      >
-        Mis historias
-      </a>
-
-      <nav class="flex flex-1 flex-col gap-1">
+      <template v-if="collapsed">
+        <a href="/private" aria-label="Inicio" @click="go('/private', $event)">
+          <span class="block h-[5px] w-[5px] rounded-full bg-[var(--nsfw-accent)]" />
+        </a>
+        <span class="h-px w-5 bg-[var(--nsfw-line)]" />
         <a
-          v-for="link in links"
-          :key="link.to"
+          v-for="link in links.filter((item) => item.to !== '/private/create')"
+          :key="`c-${link.to}`"
           :href="link.to"
-          class="rounded-xl px-3 py-2 text-sm transition"
-          :class="
-            isActive(link.to)
-              ? 'bg-[var(--nsfw-soft)] text-[var(--nsfw-accent)]'
-              : 'text-[var(--nsfw-muted)] hover:bg-[var(--nsfw-soft)] hover:text-[var(--nsfw-ink)]'
-          "
+          class="text-[0.66rem] uppercase tracking-[0.22em] text-[var(--nsfw-faint)] transition hover:text-[var(--nsfw-ink)] [writing-mode:vertical-rl]"
           @click="go(link.to, $event)"
         >
           {{ link.label }}
         </a>
-      </nav>
-
-      <div class="mb-4 border-t border-[var(--nsfw-line)] pt-4">
-        <p class="mb-2 text-xs uppercase tracking-wide text-[var(--nsfw-faint)]">Cuenta</p>
+        <span class="flex-1" />
         <a
-          v-for="link in accountLinks"
-          :key="link.to"
-          :href="link.to"
-          class="block rounded-xl px-3 py-2 text-sm transition"
-          :class="
-            isActive(link.to)
-              ? 'bg-[var(--nsfw-soft)] text-[var(--nsfw-accent)]'
-              : 'text-[var(--nsfw-muted)] hover:bg-[var(--nsfw-soft)] hover:text-[var(--nsfw-ink)]'
-          "
-          @click="go(link.to, $event)"
+          href="/private/profile"
+          class="nsfw-avatar is-gold h-7 w-7 text-xs"
+          :title="auth.user?.username"
+          @click="go('/private/profile', $event)"
         >
-          {{ link.label }}
+          {{ initial }}
         </a>
-      </div>
+      </template>
 
-      <div class="mb-4 border-t border-[var(--nsfw-line)] pt-4">
-        <p class="mb-2 text-xs uppercase tracking-wide text-[var(--nsfw-faint)]">Studio</p>
+      <template v-else>
         <a
-          v-for="link in studioLinks"
-          :key="link.to"
-          :href="link.to"
-          class="block rounded-xl px-3 py-2 text-sm transition"
-          :class="
-            isActive(link.to)
-              ? 'bg-[var(--nsfw-soft)] text-[var(--nsfw-accent)]'
-              : 'text-[var(--nsfw-muted)] hover:bg-[var(--nsfw-soft)] hover:text-[var(--nsfw-ink)]'
-          "
-          @click="go(link.to, $event)"
+          href="/private"
+          class="mb-7 flex items-center gap-2.5 px-6"
+          @click="go('/private', $event)"
         >
-          {{ link.label }}
+          <span class="h-[5px] w-[5px] shrink-0 rounded-full bg-[var(--nsfw-accent)]" />
+          <span class="font-serif text-xs uppercase tracking-[0.3em] text-[var(--nsfw-muted)]">
+            Mis historias
+          </span>
         </a>
-      </div>
 
-      <div v-if="auth.isAdmin" class="mb-4 border-t border-[var(--nsfw-line)] pt-4">
-        <p class="mb-2 text-xs uppercase tracking-wide text-[var(--nsfw-faint)]">Admin</p>
-        <a
-          v-for="link in adminLinks"
-          :key="link.to"
-          :href="link.to"
-          class="block rounded-xl px-3 py-2 text-sm transition"
-          :class="
-            isActive(link.to)
-              ? 'bg-[var(--nsfw-soft)] text-[var(--nsfw-accent)]'
-              : 'text-[var(--nsfw-muted)] hover:bg-[var(--nsfw-soft)] hover:text-[var(--nsfw-ink)]'
-          "
-          @click="go(link.to, $event)"
+        <nav class="flex flex-col">
+          <a
+            v-for="link in links"
+            :key="link.to"
+            :href="link.to"
+            class="nsfw-nav-link"
+            :class="isActive(link.to) ? 'is-active' : ''"
+            :aria-current="isActive(link.to) ? 'page' : undefined"
+            @click="go(link.to, $event)"
+          >
+            {{ link.label }}
+          </a>
+        </nav>
+
+        <div class="mt-8">
+          <p class="nsfw-nav-group">Studio</p>
+          <a
+            v-for="link in studioLinks"
+            :key="link.to"
+            :href="link.to"
+            class="nsfw-nav-sub"
+            :class="isActive(link.to) ? 'is-active' : ''"
+            @click="go(link.to, $event)"
+          >
+            {{ link.label }}
+          </a>
+        </div>
+
+        <div class="mt-6">
+          <p class="nsfw-nav-group">Cuenta</p>
+          <a
+            v-for="link in accountLinks"
+            :key="link.to"
+            :href="link.to"
+            class="nsfw-nav-sub"
+            :class="isActive(link.to) ? 'is-active' : ''"
+            @click="go(link.to, $event)"
+          >
+            {{ link.label }}
+          </a>
+        </div>
+
+        <div v-if="auth.isAdmin" class="mt-6">
+          <p class="nsfw-nav-group">Administrar</p>
+          <a
+            v-for="link in adminLinks"
+            :key="link.to"
+            :href="link.to"
+            class="nsfw-nav-sub"
+            :class="isActive(link.to) ? 'is-active' : ''"
+            @click="go(link.to, $event)"
+          >
+            {{ link.label }}
+          </a>
+        </div>
+
+        <div class="flex-1" />
+
+        <div
+          class="mx-4 flex items-center gap-3 border-t border-[var(--nsfw-hair)] px-2 pt-4"
         >
-          {{ link.label }}
-        </a>
-      </div>
-
-      <div class="border-t border-[var(--nsfw-line)] pt-4 text-sm">
-        <p class="truncate text-[var(--nsfw-muted)]">{{ auth.user?.username }}</p>
-        <button type="button" class="nsfw-btn-ghost mt-2 w-full" @click="onLogout">Salir</button>
-      </div>
+          <a
+            href="/private/profile"
+            class="nsfw-avatar is-gold"
+            @click="go('/private/profile', $event)"
+          >
+            {{ initial }}
+          </a>
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-[0.8rem] text-[var(--nsfw-ink)]">{{ auth.user?.username }}</p>
+            <p class="text-[0.7rem] text-[var(--nsfw-faint)]">{{ roleLabel }}</p>
+          </div>
+          <button
+            type="button"
+            class="nsfw-btn-text text-[0.72rem] hover:text-[var(--nsfw-accent)]"
+            @click="onLogout"
+          >
+            Salir
+          </button>
+        </div>
+      </template>
     </aside>
 
     <div class="relative z-0 flex min-w-0 flex-1 flex-col">
       <header
-        class="relative z-40 flex items-center justify-between gap-2 border-b border-[var(--nsfw-line)] bg-[var(--nsfw-surface)] px-3 py-2 lg:hidden"
+        class="relative z-40 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--nsfw-hair)] px-4 py-3 lg:hidden"
       >
-        <a href="/private" class="font-serif text-lg" @click="go('/private', $event)">
-          Mis historias
+        <a href="/private" class="flex items-center gap-2" @click="go('/private', $event)">
+          <span class="h-[5px] w-[5px] rounded-full bg-[var(--nsfw-accent)]" />
+          <span class="font-serif text-[0.7rem] uppercase tracking-[0.28em] text-[var(--nsfw-muted)]">
+            Mis historias
+          </span>
         </a>
-        <div class="flex flex-wrap items-center gap-1">
+        <div class="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
           <a
             v-for="link in accountLinks"
             :key="`m-acc-${link.to}`"
             :href="link.to"
-            class="nsfw-btn-ghost px-2 text-xs"
+            class="nsfw-btn-text"
             @click="go(link.to, $event)"
           >
             {{ link.label }}
@@ -170,29 +209,36 @@ onBeforeUnmount(() => {
           <a
             v-if="auth.isAdmin"
             href="/private/admin/users"
-            class="nsfw-btn-ghost px-2 text-xs"
+            class="nsfw-btn-text"
             @click="go('/private/admin/users', $event)"
           >
             Usuarios
           </a>
-          <button type="button" class="nsfw-btn-ghost px-2 text-xs" @click="onLogout">
-            Salir
-          </button>
+          <a
+            v-for="link in studioLinks"
+            :key="`m-studio-${link.to}`"
+            :href="link.to"
+            class="nsfw-btn-text"
+            @click="go(link.to, $event)"
+          >
+            {{ link.label }}
+          </a>
+          <button type="button" class="nsfw-btn-text" @click="onLogout">Salir</button>
         </div>
       </header>
 
-      <main class="min-h-0 flex-1 overflow-y-auto pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">
+      <main class="min-h-0 flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0">
         <slot />
       </main>
 
       <nav
-        class="nsfw-mobile-rail fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 gap-1 border-t border-[var(--nsfw-line)] bg-[var(--nsfw-surface)] px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden"
+        class="nsfw-mobile-rail fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-[var(--nsfw-hair)] bg-[var(--nsfw-canvas)] px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden"
       >
         <a
           v-for="link in links"
           :key="`mobile-${link.to}`"
           :href="link.to"
-          class="rounded-xl px-2 py-2 text-center text-xs"
+          class="rounded-lg py-2 text-center font-serif text-sm transition"
           :class="isActive(link.to) ? 'text-[var(--nsfw-accent)]' : 'text-[var(--nsfw-muted)]'"
           @click="go(link.to, $event)"
         >

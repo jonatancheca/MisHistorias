@@ -14,6 +14,9 @@ export type AttemptState =
 
 export type PlayerInputKind = 'speak' | 'act' | 'free' | 'choice' | 'continue'
 
+/** Pestañas del panel Director, compartidas entre el panel y los players. */
+export type SessionSheetTab = 'direction' | 'bible' | 'plan' | 'state' | 'cast' | 'usage'
+
 export interface StoryBibleFact {
   id: string
   entity: string

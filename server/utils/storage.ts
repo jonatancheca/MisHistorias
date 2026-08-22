@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { DatabaseBackup, DatabaseBackupKind } from '../../shared/types/index.ts'
+import { NSFW_SEED_TAXONOMY } from '../services/nsfw/seedCatalog.ts'
 
 export type DataScope = 'normal' | 'private'
 export type DataResource =
@@ -54,7 +55,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 17
+const SCHEMA_VERSION = 18
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -1213,6 +1214,18 @@ export class MisHistoriasStorage {
           CREATE INDEX IF NOT EXISTS nsfw_private_terms_by_owner
             ON nsfw_private_terms(owner_user_id, label COLLATE NOCASE);
         `)
+      }
+
+      if (version.user_version < 18) {
+        // Catálogo público de intereses y límites: sin él solo se verían las etiquetas privadas.
+        const insertTerm = this.database.prepare(`
+          INSERT OR IGNORE INTO nsfw_taxonomy_terms(id, label, kind, status, proposed_by, created_at)
+          VALUES (?, ?, ?, 'approved', NULL, ?)
+        `)
+        const seededAt = Date.now()
+        for (const term of NSFW_SEED_TAXONOMY) {
+          insertTerm.run(randomUUID(), term.label, term.kind, seededAt)
+        }
       }
 
       this.database.exec(`

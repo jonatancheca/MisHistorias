@@ -5,7 +5,7 @@ import {
   upsertSelfInsertProfile,
   type AdultDefaults
 } from '../../../utils/nsfwProduct.ts'
-import { MIN_TASTE_RATINGS } from '../../../../shared/lib/nsfwCreatorConfig.ts'
+import { MAX_PRIMARY_INTERESTS, MIN_TASTE_RATINGS } from '../../../../shared/lib/nsfwCreatorConfig.ts'
 
 function asStringList(value: unknown) {
   return Array.isArray(value)
@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
       : null
   const adultDefaults: AdultDefaults | undefined = adultRaw
     ? {
-        primary: asStringList(adultRaw.primary).slice(0, 5),
+        primary: asStringList(adultRaw.primary).slice(0, MAX_PRIMARY_INTERESTS),
         excluded: asStringList(adultRaw.excluded),
         contextual: asStringList(adultRaw.contextual)
       }

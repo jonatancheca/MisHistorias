@@ -50,13 +50,14 @@ async function checkpoint(value: number) {
 </script>
 
 <template>
-  <div class="space-y-2 text-sm">
-    <div class="flex flex-wrap items-center gap-2">
+  <div class="flex flex-col gap-3">
+    <div class="flex flex-wrap items-center gap-3">
       <button
         v-if="attemptId"
         type="button"
-        class="nsfw-btn-ghost"
+        class="nsfw-icon-btn"
         title="Me gusta"
+        aria-label="Me gusta"
         @click="thumb('up')"
       >
         ↑
@@ -64,31 +65,31 @@ async function checkpoint(value: number) {
       <button
         v-if="attemptId"
         type="button"
-        class="nsfw-btn-ghost"
+        class="nsfw-icon-btn"
         title="No me gusta"
+        aria-label="No me gusta"
         @click="thumb('down')"
       >
         ↓
       </button>
-      <button type="button" class="nsfw-btn-ghost" @click="open = !open">Feedback</button>
-      <span class="text-xs text-[var(--nsfw-faint)]">Audio: Próximamente</span>
+      <button type="button" class="nsfw-btn-text" @click="open = !open">Feedback</button>
       <span v-if="sent" class="text-xs text-[var(--nsfw-success)]">{{ sent }}</span>
     </div>
 
-    <div v-if="showCheckpoint" class="nsfw-card flex flex-wrap items-center gap-2">
-      <span class="text-[var(--nsfw-muted)]">¿Cómo va? (≈1/10 beats)</span>
+    <div v-if="showCheckpoint" class="flex flex-wrap items-center gap-2.5">
+      <span class="text-xs text-[var(--nsfw-faint)]">¿Cómo va?</span>
       <button
         v-for="n in 5"
         :key="n"
         type="button"
-        class="nsfw-btn-ghost"
+        class="nsfw-icon-btn h-7 w-7 text-xs"
         @click="checkpoint(n)"
       >
         {{ n }}
       </button>
     </div>
 
-    <form v-if="open" class="nsfw-card space-y-2" @submit.prevent="submit">
+    <form v-if="open" class="flex flex-col gap-2.5" @submit.prevent="submit">
       <select v-model="kind" class="nsfw-input w-full">
         <option value="suggestion">Sugerencia</option>
         <option value="bug">Bug</option>
@@ -103,7 +104,7 @@ async function checkpoint(value: number) {
         class="nsfw-input w-full"
       >
       <textarea v-model="body" class="nsfw-input min-h-20 w-full" placeholder="Opcional" />
-      <button type="submit" class="nsfw-btn-primary">Enviar</button>
+      <button type="submit" class="nsfw-btn-ghost">Enviar</button>
     </form>
   </div>
 </template>

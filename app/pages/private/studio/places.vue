@@ -7,19 +7,29 @@ const setting = ref('Interior')
 const era = ref('Contemporánea')
 const message = ref<string | null>(null)
 const selectedId = ref<string | null>(null)
+const creating = ref(false)
 
 await studio.loadPlaces()
+selectedId.value = studio.places[0]?.id || null
+
+const selected = computed(() => studio.places.find((item) => item.id === selectedId.value) || null)
 
 async function create() {
-  await studio.createPlace({ name: name.value, setting: setting.value, era: era.value })
+  const place = await studio.createPlace({
+    name: name.value,
+    setting: setting.value,
+    era: era.value
+  })
   name.value = ''
+  selectedId.value = place.id
+  creating.value = false
   message.value = 'Lugar creado'
 }
 
 async function publish(id: string) {
   await studio.publish({ resourceType: 'place', resourceId: id })
   await studio.loadPlaces()
-  message.value = 'Publicado'
+  message.value = 'Publicado en el Hub'
 }
 
 async function fileToBase64(file: File) {
@@ -43,49 +53,109 @@ async function onBackground(event: Event) {
 </script>
 
 <template>
-  <div class="nsfw-page mx-auto max-w-4xl px-4 py-8 sm:px-6">
-    <header class="mb-6">
-      <p class="text-xs uppercase tracking-[0.2em] text-[var(--nsfw-faint)]">Studio</p>
-      <h1 class="font-serif text-3xl">Lugares</h1>
-      <p class="text-sm text-[var(--nsfw-muted)]">Una escena, un fondo versionado. Sin Zone.</p>
-    </header>
-    <p v-if="message" class="mb-4 text-sm text-[var(--nsfw-success)]">{{ message }}</p>
+  <div class="nsfw-page nsfw-studio">
+    <div class="nsfw-studio-rail">
+      <p class="nsfw-eyebrow px-6">Studio</p>
+      <h1 class="mb-5 px-6 font-serif text-3xl">Lugares</h1>
 
-    <section class="nsfw-card mb-6 grid gap-3 md:grid-cols-4">
-      <input v-model="name" class="nsfw-input" placeholder="Nombre">
-      <input v-model="setting" class="nsfw-input" placeholder="Setting">
-      <input v-model="era" class="nsfw-input" placeholder="Era">
-      <button type="button" class="nsfw-btn-primary" @click="create">Crear</button>
-    </section>
-
-    <ul class="mb-6 grid gap-3">
-      <li v-for="place in studio.places" :key="place.id" class="nsfw-card flex flex-wrap items-center gap-3">
-        <button type="button" class="min-w-0 flex-1 text-left" @click="selectedId = place.id">
-          <p class="text-lg">{{ place.name }}</p>
-          <p class="text-sm text-[var(--nsfw-muted)]">{{ place.setting }} · {{ place.era }}</p>
-        </button>
-        <button
-          v-if="!place.published"
-          type="button"
-          class="nsfw-btn-ghost"
-          @click="publish(place.id)"
-        >
-          Publicar
-        </button>
-      </li>
-    </ul>
-
-    <section v-if="selectedId" class="nsfw-card space-y-3">
-      <h2 class="text-sm text-[var(--nsfw-muted)]">Fondo del lugar seleccionado</h2>
-      <input
-        class="nsfw-input w-full"
-        type="file"
-        accept="image/png,image/webp,image/jpeg"
-        @change="onBackground"
+      <button
+        v-for="place in studio.places"
+        :key="place.id"
+        type="button"
+        class="nsfw-studio-item"
+        :class="selectedId === place.id && !creating ? 'is-active' : ''"
+        @click="selectedId = place.id; creating = false"
       >
-      <p class="text-xs text-[var(--nsfw-faint)]">
-        PNG/WebP/JPEG. Reemplaza el fondo activo con versión nueva.
-      </p>
-    </section>
+        <span class="min-w-0">
+          <strong class="truncate">{{ place.name }}</strong>
+          <small>{{ place.published ? 'publicado' : 'privado' }} · {{ place.setting }}</small>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="nsfw-studio-item text-[var(--nsfw-dim)]"
+        :class="creating ? 'is-active' : ''"
+        @click="creating = true"
+      >
+        <span class="text-base leading-none">+</span> Nuevo lugar
+      </button>
+
+      <div class="flex-1" />
+
+      <div class="mx-4 flex flex-col gap-2.5 border-t border-[var(--nsfw-hair)] px-2 pt-4">
+        <NuxtLink to="/private/studio/characters" class="nsfw-btn-text">Personajes</NuxtLink>
+        <NuxtLink to="/private/studio/experiences" class="nsfw-btn-text">Experiences</NuxtLink>
+      </div>
+    </div>
+
+    <div class="nsfw-studio-detail">
+      <p v-if="message" class="mb-4 text-sm text-[var(--nsfw-success)]" role="status">{{ message }}</p>
+
+      <section v-if="creating || !selected" class="max-w-lg">
+        <h2 class="mb-2 font-serif text-3xl">Nuevo lugar</h2>
+        <p class="mb-7 font-serif text-base italic text-[var(--nsfw-muted)]">
+          Una escena, un fondo versionado. Sin zonas.
+        </p>
+        <div class="grid gap-6">
+          <label class="block">
+            <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Nombre</span>
+            <input v-model="name" class="nsfw-underline" placeholder="Planta catorce">
+          </label>
+          <label class="block">
+            <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Setting</span>
+            <input v-model="setting" class="nsfw-underline" placeholder="Oficina abierta, interior">
+          </label>
+          <label class="block">
+            <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Época</span>
+            <input v-model="era" class="nsfw-underline">
+          </label>
+          <div>
+            <button type="button" class="nsfw-btn-primary" @click="create">Crear</button>
+          </div>
+        </div>
+      </section>
+
+      <section v-else class="max-w-2xl">
+        <div class="mb-7 flex flex-wrap items-start justify-between gap-5">
+          <div>
+            <h2 class="mb-1 font-serif text-3xl">{{ selected.name }}</h2>
+            <p class="text-xs text-[var(--nsfw-dim)]">
+              {{ selected.setting }} · {{ selected.era }}
+            </p>
+          </div>
+          <div class="flex items-center gap-5">
+            <span class="text-xs text-[var(--nsfw-faint)]">
+              {{ selected.published ? 'Publicado en el Hub' : 'Privado' }}
+            </span>
+            <button
+              v-if="!selected.published"
+              type="button"
+              class="nsfw-btn-text !text-[var(--nsfw-accent)]"
+              @click="publish(selected.id)"
+            >
+              Publicar al Hub
+            </button>
+          </div>
+        </div>
+
+        <div class="nsfw-section-head">
+          <h3>Fondo del lugar</h3>
+        </div>
+        <label class="block max-w-md">
+          <span class="sr-only">Subir fondo</span>
+          <input
+            class="nsfw-input w-full"
+            type="file"
+            accept="image/png,image/webp,image/jpeg"
+            @change="onBackground"
+          >
+        </label>
+        <p class="mt-3 text-xs leading-relaxed text-[var(--nsfw-dim)]">
+          PNG, WebP o JPEG. Reemplaza el fondo activo con una versión nueva; las anteriores se
+          conservan.
+        </p>
+      </section>
+    </div>
   </div>
 </template>

@@ -5,11 +5,17 @@ const studio = useNsfwStudioStore()
 const name = ref('')
 const tags = ref('neutral, standing')
 const selectedId = ref<string | null>(null)
+const creating = ref(false)
 const spriteLabel = ref('Base')
 const spriteFacets = ref('neutral, standing, clothed')
 const message = ref<string | null>(null)
+const spriteFile = ref<File | null>(null)
+const sprites = ref<Array<{ id: string; label: string; mimeType: string }>>([])
 
 await studio.loadCharacters()
+selectedId.value = studio.characters[0]?.id || null
+
+const selected = computed(() => studio.characters.find((item) => item.id === selectedId.value) || null)
 
 async function create() {
   message.value = null
@@ -19,11 +25,9 @@ async function create() {
   })
   name.value = ''
   selectedId.value = character.id
+  creating.value = false
   message.value = 'Personaje creado'
 }
-
-const spriteFile = ref<File | null>(null)
-const sprites = ref<Array<{ id: string; label: string; mimeType: string }>>([])
 
 async function fileToBase64(file: File) {
   const buffer = await file.arrayBuffer()
@@ -43,7 +47,7 @@ async function refreshSprites() {
 
 watch(selectedId, () => {
   void refreshSprites()
-})
+}, { immediate: true })
 
 async function addSprite() {
   if (!selectedId.value) return
@@ -77,73 +81,153 @@ async function seed() {
     totals: { characters: number; places: number; experiences: number }
   }>('/api/private/studio/seed', { method: 'POST' })
   await studio.loadCharacters()
+  selectedId.value = selectedId.value || studio.characters[0]?.id || null
   message.value = `Semilla: ${result.totals.characters} pers. / ${result.totals.places} lugares / ${result.totals.experiences} exp.`
 }
 </script>
 
 <template>
-  <div class="nsfw-page mx-auto max-w-4xl px-4 py-8 sm:px-6">
-    <header class="mb-6">
-      <p class="text-xs uppercase tracking-[0.2em] text-[var(--nsfw-faint)]">Studio</p>
-      <h1 class="font-serif text-3xl">Personajes</h1>
-      <p class="text-sm text-[var(--nsfw-muted)]">Sin biografía canónica. Sprites con facetas.</p>
-    </header>
-    <p v-if="message" class="mb-4 text-sm text-[var(--nsfw-success)]">{{ message }}</p>
+  <div class="nsfw-page nsfw-studio">
+    <div class="nsfw-studio-rail">
+      <p class="nsfw-eyebrow px-6">Studio</p>
+      <h1 class="mb-5 px-6 font-serif text-3xl">Personajes</h1>
 
-    <section class="nsfw-card mb-6 grid gap-3 md:grid-cols-4">
-      <input v-model="name" class="nsfw-input" placeholder="Nombre">
-      <input v-model="tags" class="nsfw-input" placeholder="Tags">
-      <button type="button" class="nsfw-btn-primary" @click="create">Crear</button>
-      <button type="button" class="nsfw-btn-ghost" @click="seed">Sembrar catálogo</button>
-    </section>
-
-    <ul class="mb-8 grid gap-3">
-      <li
+      <button
         v-for="character in studio.characters"
         :key="character.id"
-        class="nsfw-card flex flex-wrap items-center gap-3"
+        type="button"
+        class="nsfw-studio-item"
+        :class="selectedId === character.id && !creating ? 'is-active' : ''"
+        @click="selectedId = character.id; creating = false"
       >
-        <button type="button" class="min-w-0 flex-1 text-left" @click="selectedId = character.id">
-          <p class="text-lg">{{ character.name }}</p>
-          <p class="text-sm text-[var(--nsfw-muted)]">{{ character.tags.join(', ') || 'sin tags' }}</p>
-        </button>
-        <span class="text-xs text-[var(--nsfw-faint)]">
-          {{ character.published ? 'Publicado' : 'Privado' }}
+        <span
+          class="h-11 w-9 shrink-0 rounded-t-full rounded-b bg-gradient-to-b from-[rgba(58,45,48,0.3)] to-[rgba(58,45,48,0.85)]"
+          :class="character.published ? 'border border-[color-mix(in_srgb,var(--nsfw-gold)_25%,transparent)]' : 'border border-[var(--nsfw-hair)]'"
+        />
+        <span class="min-w-0">
+          <strong class="truncate">{{ character.name }}</strong>
+          <small>{{ character.published ? 'publicado' : 'privado' }}</small>
         </span>
-        <button
-          v-if="!character.published"
-          type="button"
-          class="nsfw-btn-ghost"
-          @click="publish(character.id)"
-        >
-          Publicar
-        </button>
-      </li>
-    </ul>
-
-    <section v-if="selectedId" class="nsfw-card grid gap-3 md:grid-cols-3">
-      <h2 class="md:col-span-3 text-sm text-[var(--nsfw-muted)]">Sprite para personaje seleccionado</h2>
-      <input v-model="spriteLabel" class="nsfw-input" placeholder="Etiqueta">
-      <input v-model="spriteFacets" class="nsfw-input" placeholder="Facets">
-      <input
-        class="nsfw-input"
-        type="file"
-        accept="image/png,image/webp,image/jpeg,image/svg+xml"
-        @change="spriteFile = ($event.target as HTMLInputElement).files?.[0] || null"
-      >
-      <button type="button" class="nsfw-btn-primary md:col-span-3" @click="addSprite">
-        Añadir sprite
       </button>
-      <ul v-if="sprites.length" class="md:col-span-3 flex flex-wrap gap-3">
-        <li v-for="sprite in sprites" :key="sprite.id" class="text-center text-xs">
-          <img
-            :src="`/api/private/studio/sprites/${sprite.id}`"
-            :alt="sprite.label"
-            class="mx-auto h-24 w-auto object-contain"
-          >
-          <p>{{ sprite.label }} · {{ sprite.mimeType }}</p>
-        </li>
-      </ul>
-    </section>
+
+      <button
+        type="button"
+        class="nsfw-studio-item text-[var(--nsfw-dim)]"
+        :class="creating ? 'is-active' : ''"
+        @click="creating = true"
+      >
+        <span class="text-base leading-none">+</span> Crear personaje
+      </button>
+
+      <div class="flex-1" />
+
+      <div class="mx-4 flex flex-col gap-2.5 border-t border-[var(--nsfw-hair)] px-2 pt-4">
+        <NuxtLink to="/private/studio/places" class="nsfw-btn-text">Lugares</NuxtLink>
+        <NuxtLink to="/private/studio/experiences" class="nsfw-btn-text">Experiences</NuxtLink>
+        <button type="button" class="nsfw-btn-text" @click="seed">Sembrar catálogo</button>
+      </div>
+    </div>
+
+    <div class="nsfw-studio-detail">
+      <p v-if="message" class="mb-4 text-sm text-[var(--nsfw-success)]" role="status">{{ message }}</p>
+
+      <section v-if="creating || !selected" class="max-w-lg">
+        <h2 class="mb-2 font-serif text-3xl">Crear personaje</h2>
+        <p class="mb-7 font-serif text-base italic text-[var(--nsfw-muted)]">
+          Sin biografía canónica. Cada historia inventa su pasado.
+        </p>
+        <div class="grid gap-6">
+          <label class="block">
+            <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Nombre</span>
+            <input v-model="name" class="nsfw-underline" placeholder="Irene Sanz">
+          </label>
+          <label class="block">
+            <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Etiquetas de personalidad</span>
+            <input v-model="tags" class="nsfw-underline" placeholder="dominante, verbal, irónica">
+          </label>
+          <div>
+            <button type="button" class="nsfw-btn-primary" @click="create">Crear</button>
+          </div>
+        </div>
+      </section>
+
+      <section v-else>
+        <div class="mb-7 flex flex-wrap items-start justify-between gap-5">
+          <div>
+            <h2 class="mb-1 font-serif text-3xl">{{ selected.name }}</h2>
+            <p class="text-xs text-[var(--nsfw-dim)]">
+              Sin biografía canónica. Cada historia inventa su pasado.
+            </p>
+          </div>
+          <div class="flex items-center gap-5">
+            <span class="text-xs text-[var(--nsfw-faint)]">
+              {{ selected.published ? 'Publicado en el Hub' : 'Privado' }}
+            </span>
+            <button
+              v-if="!selected.published"
+              type="button"
+              class="nsfw-btn-text !text-[var(--nsfw-accent)]"
+              @click="publish(selected.id)"
+            >
+              Publicar al Hub
+            </button>
+          </div>
+        </div>
+
+        <div class="mb-9">
+          <p class="nsfw-eyebrow nsfw-eyebrow--dim">Etiquetas de personalidad</p>
+          <div class="custom-pills">
+            <span v-for="tag in selected.tags" :key="tag" class="pill !min-h-8 !py-1 !text-xs">
+              {{ tag }}
+            </span>
+            <span v-if="!selected.tags.length" class="text-xs text-[var(--nsfw-dim)]">Sin tags.</span>
+          </div>
+        </div>
+
+        <div class="nsfw-section-head">
+          <h3>Sprites y facetas</h3>
+          <span class="text-xs text-[var(--nsfw-dim)]">{{ sprites.length }} en el catálogo</span>
+        </div>
+
+        <div class="mb-8 flex flex-wrap gap-4">
+          <figure v-for="sprite in sprites" :key="sprite.id" class="w-20 text-center">
+            <img
+              :src="`/api/private/studio/sprites/${sprite.id}`"
+              :alt="sprite.label"
+              class="mx-auto h-24 w-full rounded-t-2xl border border-[var(--nsfw-hair)] object-contain"
+            >
+            <figcaption class="mt-1.5 truncate text-[0.66rem] text-[var(--nsfw-faint)]">
+              {{ sprite.label }}
+            </figcaption>
+          </figure>
+          <p v-if="!sprites.length" class="text-sm text-[var(--nsfw-muted)]">
+            Sin sprites: la VN usará el fallback neutral.
+          </p>
+        </div>
+
+        <div class="grid max-w-2xl gap-5 sm:grid-cols-2">
+          <label class="block">
+            <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Etiqueta</span>
+            <input v-model="spriteLabel" class="nsfw-underline">
+          </label>
+          <label class="block">
+            <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Facetas</span>
+            <input v-model="spriteFacets" class="nsfw-underline">
+          </label>
+          <label class="block sm:col-span-2">
+            <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Archivo</span>
+            <input
+              class="nsfw-input w-full"
+              type="file"
+              accept="image/png,image/webp,image/jpeg,image/svg+xml"
+              @change="spriteFile = ($event.target as HTMLInputElement).files?.[0] || null"
+            >
+          </label>
+          <div class="sm:col-span-2">
+            <button type="button" class="nsfw-btn-primary" @click="addSprite">Añadir sprite</button>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 </template>

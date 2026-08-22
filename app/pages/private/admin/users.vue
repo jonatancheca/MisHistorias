@@ -90,93 +90,102 @@ async function onSaveEdit() {
 
 function formatDate(value: number | null) {
   if (!value) return '—'
-  return new Date(value).toLocaleString()
+  return new Date(value).toLocaleString('es-ES')
 }
 </script>
 
 <template>
-  <div class="nsfw-page mx-auto max-w-5xl px-4 py-8 sm:px-6">
-    <header class="mb-6">
-      <h1 class="font-serif text-3xl">Usuarios</h1>
-      <p class="text-sm text-[var(--nsfw-muted)]">Crear, editar, resetear contraseña y activar/desactivar.</p>
+  <div class="nsfw-page mx-auto max-w-[58rem] px-5 py-10 sm:px-12 sm:py-14">
+    <header class="mb-9">
+      <h1 class="font-serif text-4xl">Usuarios</h1>
+      <p class="mt-1 text-xs text-[var(--nsfw-faint)]">
+        Crear, editar, resetear contraseña y activar o desactivar.
+      </p>
     </header>
 
-    <p v-if="message" class="mb-4 text-sm text-[var(--nsfw-success)]" aria-live="polite">{{ message }}</p>
+    <p v-if="message" class="mb-4 text-sm text-[var(--nsfw-success)]" aria-live="polite">
+      {{ message }}
+    </p>
     <p v-if="error" class="mb-4 text-sm text-[var(--nsfw-danger)]" aria-live="polite">{{ error }}</p>
 
-    <section class="nsfw-card mb-8">
-      <h2 class="mb-4 text-lg font-medium">Nuevo usuario</h2>
-      <form class="grid gap-4 md:grid-cols-4" @submit.prevent="onCreate">
-        <input
-          v-model="createForm.username"
-          class="nsfw-input"
-          placeholder="Usuario"
-          required
-        >
-        <input
-          v-model="createForm.password"
-          type="password"
-          class="nsfw-input"
-          placeholder="Contraseña"
-          required
-        >
-        <select v-model="createForm.role" class="nsfw-input">
-          <option value="user">Usuario</option>
-          <option value="admin">Admin</option>
-        </select>
+    <section class="mb-11">
+      <div class="nsfw-section-head">
+        <h3>Nuevo usuario</h3>
+      </div>
+      <form class="grid items-end gap-6 md:grid-cols-4" @submit.prevent="onCreate">
+        <label class="block">
+          <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Usuario</span>
+          <input v-model="createForm.username" class="nsfw-underline" placeholder="Usuario" required>
+        </label>
+        <label class="block">
+          <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Contraseña</span>
+          <input
+            v-model="createForm.password"
+            type="password"
+            class="nsfw-underline"
+            placeholder="Contraseña"
+            required
+          >
+        </label>
+        <label class="block">
+          <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Rol</span>
+          <select v-model="createForm.role" class="nsfw-underline !text-base">
+            <option value="user">Usuario</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
         <button type="submit" class="nsfw-btn-primary">Crear</button>
       </form>
     </section>
 
-    <section class="nsfw-card overflow-x-auto">
-      <table class="min-w-full text-left text-sm">
-        <thead class="text-[var(--nsfw-faint)]">
-          <tr>
-            <th class="px-2 py-2">Usuario</th>
-            <th class="px-2 py-2">Rol</th>
-            <th class="px-2 py-2">Estado</th>
-            <th class="px-2 py-2">Último acceso</th>
-            <th class="px-2 py-2">Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading">
-            <td colspan="5" class="px-2 py-4 text-[var(--nsfw-muted)]">Cargando…</td>
-          </tr>
-          <tr v-for="user in users" :key="user.id" class="border-t border-[var(--nsfw-line)]">
-            <td class="px-2 py-3">{{ user.username }}</td>
-            <td class="px-2 py-3">{{ user.role }}</td>
-            <td class="px-2 py-3">{{ user.active ? 'Activo' : 'Inactivo' }}</td>
-            <td class="px-2 py-3">{{ formatDate(user.lastLoginAt) }}</td>
-            <td class="px-2 py-3">
-              <button type="button" class="nsfw-btn-ghost" @click="startEdit(user)">Editar</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <section>
+      <div class="nsfw-section-head">
+        <h3>Cuentas</h3>
+        <span class="text-xs text-[var(--nsfw-dim)]">{{ users.length }}</span>
+      </div>
+
+      <p v-if="loading" class="py-6 text-sm text-[var(--nsfw-muted)]">Cargando…</p>
+
+      <div v-for="user in users" :key="user.id" class="nsfw-row cursor-default">
+        <span class="min-w-0 flex-1">
+          <span class="nsfw-row-title block truncate">{{ user.username }}</span>
+          <span class="nsfw-row-sub block">
+            {{ user.role === 'admin' ? 'Administrador' : 'Usuario' }} ·
+            {{ user.active ? 'activo' : 'inactivo' }} · último acceso
+            {{ formatDate(user.lastLoginAt) }}
+          </span>
+        </span>
+        <button type="button" class="nsfw-btn-text shrink-0" @click="startEdit(user)">Editar</button>
+      </div>
     </section>
 
-    <section v-if="editId" class="nsfw-card mt-8">
-      <h2 class="mb-4 text-lg font-medium">Editar usuario</h2>
-      <form class="grid gap-4 md:grid-cols-2" @submit.prevent="onSaveEdit">
-        <input v-model="editForm.username" class="nsfw-input" required>
-        <input
-          v-model="editForm.password"
-          type="password"
-          class="nsfw-input"
-          placeholder="Nueva contraseña (opcional)"
-        >
-        <select v-model="editForm.role" class="nsfw-input">
-          <option value="user">Usuario</option>
-          <option value="admin">Admin</option>
-        </select>
-        <label class="flex items-center gap-2 text-sm text-[var(--nsfw-muted)]">
-          <input v-model="editForm.active" type="checkbox">
+    <section v-if="editId" class="mt-11">
+      <div class="nsfw-section-head">
+        <h3>Editar usuario</h3>
+      </div>
+      <form class="grid items-end gap-6 md:grid-cols-2" @submit.prevent="onSaveEdit">
+        <label class="block">
+          <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Usuario</span>
+          <input v-model="editForm.username" class="nsfw-underline" required>
+        </label>
+        <label class="block">
+          <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Nueva contraseña (opcional)</span>
+          <input v-model="editForm.password" type="password" class="nsfw-underline">
+        </label>
+        <label class="block">
+          <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Rol</span>
+          <select v-model="editForm.role" class="nsfw-underline !text-base">
+            <option value="user">Usuario</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-2.5 text-sm text-[var(--nsfw-muted)]">
+          <input v-model="editForm.active" type="checkbox" class="accent-[var(--nsfw-accent)]">
           Activo
         </label>
-        <div class="flex gap-2 md:col-span-2">
+        <div class="flex flex-wrap items-center gap-5 md:col-span-2">
           <button type="submit" class="nsfw-btn-primary">Guardar</button>
-          <button type="button" class="nsfw-btn-ghost" @click="cancelEdit">Cancelar</button>
+          <button type="button" class="nsfw-btn-text" @click="cancelEdit">Cancelar</button>
         </div>
       </form>
     </section>

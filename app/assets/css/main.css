@@ -57,14 +57,20 @@
 }
 
 .nsfw-scope {
-  --nsfw-ink: #f2ece4;
-  --nsfw-muted: #aca49d;
-  --nsfw-faint: #746d68;
-  --nsfw-canvas: #100d0e;
-  --nsfw-surface: #171315;
-  --nsfw-raised: #211b1d;
-  --nsfw-soft: #2b2224;
-  --nsfw-line: rgba(235, 220, 208, 0.16);
+  color-scheme: dark;
+  --nsfw-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --nsfw-ink: #f4efe8;
+  --nsfw-prose: #e8e1d8;
+  --nsfw-muted: #a89f98;
+  --nsfw-faint: #9a918a;
+  --nsfw-dim: #8b837d;
+  --nsfw-canvas: #0e0b0c;
+  --nsfw-surface: #141011;
+  --nsfw-raised: #191415;
+  --nsfw-soft: #241d1f;
+  --nsfw-hair: rgba(238, 224, 212, 0.09);
+  --nsfw-line: rgba(238, 224, 212, 0.13);
+  --nsfw-line-strong: rgba(238, 224, 212, 0.22);
   --nsfw-accent: #ff755f;
   --nsfw-gold: #e0b46a;
   --nsfw-azure: #72b5d0;
@@ -81,6 +87,13 @@
   color: var(--nsfw-ink);
 }
 
+/* Serif estructural: títulos, nombres y prosa. La sans queda para etiquetas y metadatos. */
+.nsfw-scope .font-serif {
+  font-family: var(--nsfw-serif);
+  font-weight: 300;
+  letter-spacing: -0.012em;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nsfw-scope *,
   .nsfw-scope *::before,
@@ -93,27 +106,47 @@
 }
 
 @utility nsfw-input {
-  @apply min-h-11 rounded-xl border border-[var(--nsfw-line)] bg-[var(--nsfw-soft)] px-3 py-2 text-sm text-[var(--nsfw-ink)] outline-none placeholder:text-[var(--nsfw-faint)] focus:border-[var(--nsfw-accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--nsfw-accent)_35%,transparent)];
+  @apply min-h-11 rounded-xl border border-[var(--nsfw-line)] bg-transparent px-3 py-2 text-sm text-[var(--nsfw-ink)] outline-none placeholder:text-[var(--nsfw-dim)] focus:border-[var(--nsfw-accent)] focus:ring-1 focus:ring-[color-mix(in_srgb,var(--nsfw-accent)_35%,transparent)];
+}
+
+/* Campo subrayado: el patrón dominante del rediseño (sin caja, solo una línea). */
+@utility nsfw-underline {
+  @apply min-h-10 w-full rounded-none border-0 border-b border-[var(--nsfw-line-strong)] bg-transparent px-0 pb-1.5 font-serif text-lg text-[var(--nsfw-ink)] outline-none placeholder:font-sans placeholder:text-sm placeholder:text-[var(--nsfw-dim)] focus:border-[var(--nsfw-accent)];
 }
 
 @utility nsfw-btn {
-  @apply inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--nsfw-accent)] disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--nsfw-accent)] disabled:cursor-not-allowed disabled:opacity-50;
 }
 
+/* Una sola acción sólida por pantalla. */
 @utility nsfw-btn-primary {
-  @apply nsfw-btn bg-[var(--nsfw-accent)] text-[var(--nsfw-canvas)] hover:brightness-110;
+  @apply nsfw-btn bg-[var(--nsfw-accent)] px-6 font-semibold text-[var(--nsfw-canvas)] hover:brightness-110;
 }
 
 @utility nsfw-btn-ghost {
-  @apply nsfw-btn border border-[var(--nsfw-line)] text-[var(--nsfw-ink)] hover:bg-[var(--nsfw-soft)];
+  @apply nsfw-btn border border-[var(--nsfw-line)] text-[var(--nsfw-muted)] hover:border-[var(--nsfw-line-strong)] hover:text-[var(--nsfw-ink)];
+}
+
+/* El resto, en texto o iconos. */
+@utility nsfw-btn-text {
+  @apply inline-flex min-h-9 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-[0.8rem] text-[var(--nsfw-faint)] transition hover:text-[var(--nsfw-ink)] disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility nsfw-icon-btn {
+  @apply inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-[var(--nsfw-line)] text-[var(--nsfw-muted)] transition hover:border-[var(--nsfw-accent)] hover:text-[var(--nsfw-accent)] disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility nsfw-heat-btn {
+  @apply inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--nsfw-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--nsfw-accent)_10%,transparent)] px-3 text-xs font-semibold text-[var(--nsfw-accent)] transition hover:bg-[color-mix(in_srgb,var(--nsfw-accent)_20%,transparent)] disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 @utility nsfw-page {
   @apply w-full max-w-full overflow-x-hidden;
 }
 
-@utility nsfw-card {
-  @apply rounded-2xl border border-[var(--nsfw-line)] bg-[var(--nsfw-raised)] p-4 sm:p-5;
+/* Bloque de sección: sin caja, solo una regla superior. */
+@utility nsfw-block {
+  @apply border-t border-[var(--nsfw-line)] pt-6;
 }
 
 .nsfw-scope label > span:first-child,
@@ -121,181 +154,557 @@
   letter-spacing: 0.02em;
 }
 
-.nsfw-scope .create-progress {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.nsfw-scope .create-progress-step {
-  display: inline-flex;
-  min-height: 2.75rem;
-  align-items: center;
-  gap: 0.55rem;
-  border: 1px solid var(--nsfw-line);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--nsfw-muted);
-  padding: 0.4rem 0.9rem;
-  font-size: 0.85rem;
-}
-
-.nsfw-scope .create-progress-step span {
-  display: inline-grid;
-  width: 1.45rem;
-  height: 1.45rem;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--nsfw-soft);
-  font-size: 0.75rem;
-}
-
-.nsfw-scope .create-progress-step.current {
-  border-color: color-mix(in srgb, var(--nsfw-accent) 55%, var(--nsfw-line));
-  color: var(--nsfw-ink);
-}
-
-.nsfw-scope .create-progress-step.current span {
-  background: var(--nsfw-accent);
-  color: var(--nsfw-canvas);
-}
-
-.nsfw-scope .create-progress-step.complete {
-  color: var(--nsfw-ink);
-}
-
-.nsfw-scope .source-grid,
-.nsfw-scope .preset-grid,
-.nsfw-scope .model-choice-grid {
-  display: grid;
-  gap: 0.75rem;
+@media (min-width: 640px) {
 }
 
 @media (min-width: 640px) {
-  .nsfw-scope .source-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .nsfw-scope .preset-grid,
-  .nsfw-scope .model-choice-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
-.nsfw-scope .source-card,
-.nsfw-scope .preset-card,
-.nsfw-scope .library-choice,
-.nsfw-scope .model-choice {
-  display: grid;
-  gap: 0.35rem;
-  min-height: 5.5rem;
-  border: 1px solid var(--nsfw-line);
-  border-radius: 1.1rem;
-  background: var(--nsfw-raised);
-  padding: 1rem;
-  text-align: left;
-  color: var(--nsfw-ink);
-  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
-}
-
-.nsfw-scope .source-card:hover,
-.nsfw-scope .preset-card:hover,
-.nsfw-scope .library-choice:hover,
-.nsfw-scope .model-choice:hover {
-  border-color: color-mix(in srgb, var(--nsfw-accent) 45%, var(--nsfw-line));
-}
-
-.nsfw-scope .source-card.selected,
-.nsfw-scope .preset-card.selected,
-.nsfw-scope .library-choice.selected,
-.nsfw-scope .model-choice.selected {
-  border-color: var(--nsfw-accent);
-  background: color-mix(in srgb, var(--nsfw-accent) 12%, var(--nsfw-raised));
-}
-
-.nsfw-scope .source-card.disabled,
-.nsfw-scope .source-card:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.nsfw-scope .source-card strong,
-.nsfw-scope .preset-card strong,
-.nsfw-scope .library-choice strong,
-.nsfw-scope .model-choice strong {
-  font-family: ui-serif, Georgia, serif;
-  font-size: 1.05rem;
-}
-
-.nsfw-scope .source-card span,
-.nsfw-scope .preset-card span,
-.nsfw-scope .library-choice span {
-  color: var(--nsfw-muted);
-  font-size: 0.82rem;
-  line-height: 1.4;
-}
-
-.nsfw-scope .source-detail,
-.nsfw-scope .configuration-card,
-.nsfw-scope .quick-preset-block {
-  border: 1px solid var(--nsfw-line);
-  border-radius: 1.25rem;
-  background: var(--nsfw-raised);
-  padding: 1rem;
-}
-
-@media (min-width: 640px) {
-  .nsfw-scope .source-detail,
-  .nsfw-scope .configuration-card,
-  .nsfw-scope .quick-preset-block {
-    padding: 1.25rem;
-  }
-}
-
-.nsfw-scope .eyebrow {
+.nsfw-scope .eyebrow,
+.nsfw-scope .nsfw-eyebrow {
   margin-bottom: 0.35rem;
   color: var(--nsfw-faint);
-  font-size: 0.68rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.nsfw-scope .nsfw-eyebrow--dim {
+  color: var(--nsfw-dim);
+}
+
+/* Cabecera de sección: etiqueta + acción en texto sobre una regla fina. */
+.nsfw-scope .nsfw-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--nsfw-line);
+  padding-bottom: 0.7rem;
+  margin-bottom: 1.1rem;
+}
+
+.nsfw-scope .nsfw-section-head h2,
+.nsfw-scope .nsfw-section-head h3 {
+  margin: 0;
+  color: var(--nsfw-faint);
+  font-size: 0.66rem;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* Rejilla de celdas separadas por una hairline, sin tarjetas. */
+.nsfw-scope .nsfw-hairgrid {
+  display: grid;
+  gap: 1px;
+  background: var(--nsfw-hair);
+}
+
+.nsfw-scope .nsfw-hairgrid > * {
+  background: var(--nsfw-canvas);
+  margin: 0;
+}
+
+.nsfw-scope .nsfw-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  border: 0;
+  padding: 1.15rem 1.15rem 1.3rem;
+  text-align: left;
+  color: var(--nsfw-muted);
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.nsfw-scope .nsfw-cell:hover:not(:disabled) {
+  background: var(--nsfw-surface);
+}
+
+.nsfw-scope .nsfw-cell:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.nsfw-scope .nsfw-cell strong {
+  font-family: var(--nsfw-serif);
+  font-size: 1.25rem;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--nsfw-ink);
+  letter-spacing: -0.01em;
+}
+
+.nsfw-scope .nsfw-cell span {
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--nsfw-faint);
+}
+
+.nsfw-scope .nsfw-cell.selected {
+  background: color-mix(in srgb, var(--nsfw-accent) 7%, transparent);
+  box-shadow: inset 2px 0 0 var(--nsfw-accent);
+}
+
+.nsfw-scope .nsfw-cell.selected:hover {
+  background: color-mix(in srgb, var(--nsfw-accent) 12%, transparent);
+}
+
+/* Fila de lista: hairline y hover apenas perceptible. */
+.nsfw-scope .nsfw-row {
+  display: flex;
+  align-items: center;
+  gap: 1.15rem;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--nsfw-hair);
+  background: transparent;
+  padding: 1rem 0.25rem;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.nsfw-scope .nsfw-row:hover {
+  background: rgba(238, 224, 212, 0.025);
+}
+
+.nsfw-scope .nsfw-row-kind {
+  width: 3.4rem;
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.nsfw-scope .nsfw-row-title {
+  font-family: var(--nsfw-serif);
+  font-size: 1.3rem;
+  font-weight: 400;
+  line-height: 1.25;
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .nsfw-row-sub {
+  overflow: hidden;
+  color: var(--nsfw-faint);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nsfw-scope .nsfw-row-meta {
+  flex-shrink: 0;
+  color: var(--nsfw-dim);
+  font-size: 0.72rem;
+}
+
+/* Pestañas subrayadas. */
+.nsfw-scope .nsfw-tabs {
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--nsfw-line);
+}
+
+.nsfw-scope .nsfw-tab {
+  border: 0;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  padding: 0 0 0.7rem;
+  color: var(--nsfw-faint);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+
+.nsfw-scope .nsfw-tab:hover {
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .nsfw-tab.is-active {
+  border-bottom-color: var(--nsfw-accent);
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .nsfw-tab small {
+  margin-left: 0.35rem;
+  color: var(--nsfw-dim);
+}
+
+/* Prosa: columna de 62 caracteres sobre el canvas, sin borde ni fondo. */
+.nsfw-scope .nsfw-prose {
+  max-width: 62ch;
+  margin-inline: auto;
+  font-family: var(--nsfw-serif);
+  font-size: clamp(1.06rem, 0.95rem + 0.5vw, 1.25rem);
+  font-weight: 300;
+  line-height: 1.72;
+  color: var(--nsfw-prose);
+  text-wrap: pretty;
+}
+
+.nsfw-scope .nsfw-prose p {
+  margin: 0 0 1.6rem;
+}
+
+.nsfw-scope .nsfw-prose .is-dialogue {
+  border-left: 1px solid color-mix(in srgb, var(--nsfw-gold) 30%, transparent);
+  padding-left: 1.5rem;
+}
+
+.nsfw-scope .nsfw-speaker {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: var(--nsfw-gold);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.66rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
-.nsfw-scope .experience-picker {
-  display: grid;
-  gap: 0.65rem;
+/* Separador con acción centrada («Bifurcar aquí»). */
+.nsfw-scope .nsfw-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 2rem 0;
 }
 
-.nsfw-scope .instant-start {
+.nsfw-scope .nsfw-divider::before,
+.nsfw-scope .nsfw-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--nsfw-hair);
+}
+
+.nsfw-scope .nsfw-divider button {
+  border: 0;
+  background: transparent;
+  color: var(--nsfw-dim);
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.nsfw-scope .nsfw-divider button:hover {
+  color: var(--nsfw-accent);
+}
+
+/* Chrome del player: barras que se funden con el canvas. */
+.nsfw-scope .nsfw-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(180deg, var(--nsfw-canvas) 62%, transparent);
+}
+
+.nsfw-scope .nsfw-dock {
+  position: sticky;
+  /* Sobre la barra inferior fija del móvil; pegado al borde en escritorio. */
+  bottom: calc(4rem + env(safe-area-inset-bottom));
+  z-index: 3;
+  padding: 0 1.5rem 1.4rem;
+  background: linear-gradient(0deg, var(--nsfw-canvas) 58%, transparent);
+}
+
+@media (min-width: 1024px) {
+  .nsfw-scope .nsfw-dock {
+    bottom: 0;
+  }
+}
+
+.nsfw-scope .nsfw-composer {
+  border: 1px solid var(--nsfw-line-strong);
+  border-radius: 1.25rem;
+  background: color-mix(in srgb, var(--nsfw-raised) 92%, transparent);
+  backdrop-filter: blur(12px);
+  padding: 0.9rem 1rem 0.8rem;
+}
+
+.nsfw-scope .nsfw-composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 2.6rem;
+  max-height: 9rem;
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: var(--nsfw-ink);
+  font-family: var(--nsfw-serif);
+  font-size: 1.05rem;
+  line-height: 1.5;
+  outline: none;
+}
+
+.nsfw-scope .nsfw-composer textarea::placeholder {
+  color: var(--nsfw-dim);
+  font-style: italic;
+}
+
+.nsfw-scope .nsfw-composer-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-top: 1rem;
-  border-top: 1px solid var(--nsfw-line);
-  padding-top: 1rem;
+  border-top: 1px solid var(--nsfw-hair);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
 }
 
-.nsfw-scope .recommendation-stamp {
-  border: 1px solid color-mix(in srgb, var(--nsfw-gold) 40%, var(--nsfw-line));
+/* Segmentado Hablar / Actuar / Narrador. */
+.nsfw-scope .nsfw-segment {
+  display: flex;
+  gap: 3px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--nsfw-gold) 10%, transparent);
-  padding: 0.55rem 0.9rem;
-  color: var(--nsfw-muted);
-  font-size: 0.82rem;
+  background: rgba(238, 224, 212, 0.05);
+  padding: 3px;
 }
 
-.nsfw-scope .choice-fieldset {
-  display: grid;
-  gap: 0.55rem;
+.nsfw-scope .nsfw-segment button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   border: 0;
-  padding: 0;
+  border-radius: 999px;
+  background: transparent;
+  padding: 0.4rem 0.85rem;
+  color: var(--nsfw-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
 }
 
-.nsfw-scope .choice-fieldset legend {
-  margin-bottom: 0.15rem;
+.nsfw-scope .nsfw-segment button:hover {
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .nsfw-segment button.is-active {
+  background: var(--nsfw-accent);
+  color: var(--nsfw-canvas);
+  font-weight: 600;
+}
+
+/* Píldoras de elección y sugerencias. */
+.nsfw-scope .nsfw-choice {
+  border: 1px solid var(--nsfw-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  padding: 0.5rem 0.95rem;
   color: var(--nsfw-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.nsfw-scope .nsfw-choice:hover {
+  border-color: var(--nsfw-accent);
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .nsfw-choice.is-primary {
+  border-color: var(--nsfw-accent);
+  color: var(--nsfw-ink);
+}
+
+/* Medidor de intensidad en cinco tramos. */
+.nsfw-scope .nsfw-meter {
+  display: flex;
+  gap: 3px;
+}
+
+.nsfw-scope .nsfw-meter span {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(238, 224, 212, 0.12);
+}
+
+.nsfw-scope .nsfw-meter span.is-on {
+  background: var(--nsfw-gold);
+}
+
+/* Avatar circular con inicial. */
+.nsfw-scope .nsfw-avatar {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nsfw-line-strong);
+  border-radius: 999px;
+  font-family: var(--nsfw-serif);
+  font-size: 0.85rem;
+  color: var(--nsfw-muted);
+}
+
+.nsfw-scope .nsfw-avatar.is-gold {
+  border-color: color-mix(in srgb, var(--nsfw-gold) 40%, transparent);
+  color: var(--nsfw-gold);
+}
+
+/* Progreso de creación en tres pasos. */
+.nsfw-scope .nsfw-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.nsfw-scope .nsfw-steps button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--nsfw-dim);
   font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.nsfw-scope .nsfw-steps button i {
+  display: flex;
+  height: 1.2rem;
+  width: 1.2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nsfw-line-strong);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-style: normal;
+}
+
+.nsfw-scope .nsfw-steps button.is-current {
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .nsfw-steps button.is-current i {
+  border-color: var(--nsfw-accent);
+  background: var(--nsfw-accent);
+  color: var(--nsfw-canvas);
+  font-weight: 600;
+}
+
+.nsfw-scope .nsfw-steps button.is-done {
+  color: var(--nsfw-faint);
+}
+
+.nsfw-scope .nsfw-steps button.is-done i {
+  border-color: color-mix(in srgb, var(--nsfw-success) 50%, transparent);
+  color: var(--nsfw-success);
+}
+
+.nsfw-scope .nsfw-steps hr {
+  width: 1.6rem;
+  border: 0;
+  border-top: 1px solid var(--nsfw-line);
+}
+
+/* Columna de resumen vivo, a la derecha del formulario. */
+.nsfw-scope .nsfw-summary {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--nsfw-hair);
+  padding-left: 2.25rem;
+}
+
+@media (max-width: 1023px) {
+  .nsfw-scope .nsfw-summary {
+    border-left: 0;
+    border-top: 1px solid var(--nsfw-line);
+    padding-left: 0;
+    padding-top: 1.5rem;
+  }
+}
+
+.nsfw-scope .nsfw-summary dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--nsfw-hair);
+  padding: 0.6rem 0;
+  font-size: 0.78rem;
+}
+
+.nsfw-scope .nsfw-summary dt {
+  color: var(--nsfw-faint);
+}
+
+.nsfw-scope .nsfw-summary dd {
+  margin: 0;
+  text-align: right;
+  color: var(--nsfw-ink);
+}
+
+/* Rail de navegación sin fondo propio; el activo se marca con una barra coral. */
+.nsfw-scope .nsfw-nav-link {
+  position: relative;
+  display: block;
+  padding: 0.6rem 1.5rem;
+  font-family: var(--nsfw-serif);
+  font-size: 1.15rem;
+  color: var(--nsfw-muted);
+  transition: color 160ms ease;
+}
+
+.nsfw-scope .nsfw-nav-link:hover {
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .nsfw-nav-link.is-active {
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .nsfw-nav-link.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.7rem;
+  bottom: 0.7rem;
+  width: 2px;
+  background: var(--nsfw-accent);
+}
+
+.nsfw-scope .nsfw-nav-sub {
+  display: block;
+  padding: 0.28rem 1.5rem;
+  font-size: 0.82rem;
+  color: var(--nsfw-muted);
+  transition: color 160ms ease;
+}
+
+.nsfw-scope .nsfw-nav-sub:hover {
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .nsfw-nav-sub.is-active {
+  color: var(--nsfw-accent);
+}
+
+.nsfw-scope .nsfw-nav-group {
+  margin-bottom: 0.5rem;
+  padding: 0 1.5rem;
+  color: var(--nsfw-dim);
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
 }
 
 .nsfw-scope .choice-pills,
@@ -309,52 +718,103 @@
 
 .nsfw-scope .choice-pill,
 .nsfw-scope .asset-pill,
-.nsfw-scope .pill,
-.nsfw-scope .term-action {
-  min-height: 2.5rem;
-  border: 1px solid currentColor;
+.nsfw-scope .pill {
+  min-height: 2.4rem;
+  border: 1px solid var(--nsfw-line);
   border-radius: 999px;
   background: transparent;
-  padding: 0.35rem 0.8rem;
-  color: var(--nsfw-muted);
+  padding: 0.35rem 0.9rem;
+  color: var(--nsfw-faint);
   font-size: 0.82rem;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.nsfw-scope .choice-pill:hover:not(:disabled),
+.nsfw-scope .asset-pill:hover:not(:disabled) {
+  border-color: var(--nsfw-line-strong);
+  color: var(--nsfw-ink);
 }
 
 .nsfw-scope .choice-pill.selected,
 .nsfw-scope .asset-pill.selected {
   border-color: var(--nsfw-accent);
-  background: color-mix(in srgb, var(--nsfw-accent) 16%, transparent);
+  background: color-mix(in srgb, var(--nsfw-accent) 12%, transparent);
   color: var(--nsfw-ink);
 }
 
-.nsfw-scope .choice-description,
-.nsfw-scope .asset-description,
-.nsfw-scope .contextual-explainer {
-  color: var(--nsfw-muted);
-  font-size: 0.8rem;
-  line-height: 1.45;
+/* Tres acciones circulares por etiqueta: predominante, excluir, si encaja. */
+.nsfw-scope .term-action {
+  display: inline-flex;
+  height: 2.1rem;
+  width: 2.1rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nsfw-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--nsfw-dim);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+.nsfw-scope .term-action:hover:not(:disabled) {
+  border-color: currentColor;
+}
+
+.nsfw-scope .term-action:disabled {
+  cursor: not-allowed;
+  color: #4a443f;
 }
 
 .nsfw-scope .interest-legend .positive,
-.nsfw-scope .term-action.positive,
 .nsfw-scope .pill.positive {
   color: var(--nsfw-positive);
 }
 
 .nsfw-scope .interest-legend .negative,
-.nsfw-scope .term-action.negative,
 .nsfw-scope .pill.negative {
   color: var(--nsfw-negative);
 }
 
 .nsfw-scope .interest-legend .contextual,
-.nsfw-scope .term-action.contextual,
 .nsfw-scope .pill.contextual {
   color: var(--nsfw-contextual);
 }
 
+.nsfw-scope .pill.positive {
+  border-color: color-mix(in srgb, var(--nsfw-positive) 40%, transparent);
+  background: color-mix(in srgb, var(--nsfw-positive) 10%, transparent);
+}
+
+.nsfw-scope .pill.negative {
+  border-color: color-mix(in srgb, var(--nsfw-negative) 35%, transparent);
+}
+
+.nsfw-scope .pill.contextual {
+  border-color: color-mix(in srgb, var(--nsfw-contextual) 30%, transparent);
+}
+
+.nsfw-scope .term-action.positive:hover:not(:disabled),
+.nsfw-scope .term-action.positive.selected {
+  color: var(--nsfw-positive);
+}
+
+.nsfw-scope .term-action.negative:hover:not(:disabled),
+.nsfw-scope .term-action.negative.selected {
+  color: var(--nsfw-negative);
+}
+
+.nsfw-scope .term-action.contextual:hover:not(:disabled),
+.nsfw-scope .term-action.contextual.selected {
+  color: var(--nsfw-contextual);
+}
+
 .nsfw-scope .term-action.selected {
-  background: color-mix(in srgb, currentColor 18%, transparent);
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 16%, transparent);
 }
 
 .nsfw-scope .term-action.delete {
@@ -363,32 +823,6 @@
   color: var(--nsfw-danger);
   font-size: 1rem;
   line-height: 1;
-}
-
-.nsfw-session-sheet__trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-height: 2.35rem;
-  border: 1px solid var(--nsfw-line);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--nsfw-raised) 80%, transparent);
-  padding: 0.3rem 0.85rem;
-  color: var(--nsfw-muted);
-  font-size: 0.82rem;
-  letter-spacing: 0.04em;
-  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
-}
-
-.nsfw-session-sheet__trigger:hover,
-.nsfw-session-sheet__trigger[aria-expanded='true'] {
-  border-color: color-mix(in srgb, var(--nsfw-gold) 45%, var(--nsfw-line));
-  color: var(--nsfw-ink);
-  background: color-mix(in srgb, var(--nsfw-soft) 70%, transparent);
-}
-
-.nsfw-session-sheet__trigger.is-compact .nsfw-session-sheet__trigger-label {
-  display: none;
 }
 
 .nsfw-session-sheet__root {
@@ -441,8 +875,8 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 1.1rem 1.1rem 0.75rem;
-  border-bottom: 1px solid var(--nsfw-line);
+  padding: 1.5rem 1.5rem 1.1rem;
+  border-bottom: 1px solid var(--nsfw-hair);
 }
 
 .nsfw-session-sheet__eyebrow {
@@ -461,29 +895,35 @@
 
 .nsfw-session-sheet__tabs {
   display: flex;
-  gap: 0.25rem;
-  padding: 0.65rem 0.9rem;
-  border-bottom: 1px solid var(--nsfw-line);
+  gap: 1.2rem;
+  padding: 0.9rem 1.6rem 0;
+  border-bottom: 1px solid var(--nsfw-hair);
   overflow-x: auto;
 }
 
 .nsfw-session-sheet__tabs button {
   border: 0;
-  border-radius: 999px;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
   background: transparent;
-  padding: 0.4rem 0.75rem;
-  color: var(--nsfw-muted);
-  font-size: 0.8rem;
+  padding: 0 0 0.7rem;
+  color: var(--nsfw-faint);
+  font-size: 0.78rem;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.nsfw-session-sheet__tabs button:hover {
+  color: var(--nsfw-ink);
 }
 
 .nsfw-session-sheet__tabs button.is-active {
-  background: color-mix(in srgb, var(--nsfw-accent) 16%, transparent);
+  border-bottom-color: var(--nsfw-accent);
   color: var(--nsfw-ink);
 }
 
 .nsfw-session-sheet__status {
-  margin: 0.75rem 1.1rem 0;
+  margin: 0.75rem 1.5rem 0;
   font-size: 0.82rem;
 }
 
@@ -498,7 +938,7 @@
 .nsfw-session-sheet__body {
   flex: 1;
   overflow-y: auto;
-  padding: 1rem 1.1rem 1.5rem;
+  padding: 1.5rem;
 }
 
 .nsfw-session-sheet__label {
@@ -556,118 +996,6 @@
   }
 }
 
-.nsfw-scope .term-matrix {
-  max-height: 22rem;
-  overflow: auto;
-  border-top: 1px solid var(--nsfw-line);
-}
-
-.nsfw-scope .term-matrix article {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--nsfw-line) 80%, transparent);
-  padding: 0.65rem 0;
-}
-
-.nsfw-scope .term-matrix strong {
-  display: block;
-  font-size: 0.85rem;
-}
-
-.nsfw-scope .term-matrix small {
-  color: var(--nsfw-faint);
-  font-size: 0.7rem;
-}
-
-.nsfw-scope .term-matrix article > div:last-child {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.nsfw-scope .custom-interest-grid {
-  display: grid;
-  gap: 0.75rem;
-}
-
-@media (min-width: 768px) {
-  .nsfw-scope .custom-interest-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-.nsfw-scope .custom-interest-grid label {
-  display: grid;
-  gap: 0.35rem;
-  color: var(--nsfw-muted);
-  font-size: 0.78rem;
-}
-
-.nsfw-scope .custom-interest-grid label > span {
-  display: flex;
-  gap: 0.35rem;
-}
-
-.nsfw-scope .custom-interest-grid .nsfw-input {
-  min-width: 0;
-  flex: 1;
-}
-
-.nsfw-scope .relationship-toggle {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  border: 1px solid var(--nsfw-line);
-  border-radius: 1rem;
-  padding: 0.85rem 1rem;
-}
-
-.nsfw-scope .relationship-toggle strong {
-  display: block;
-}
-
-.nsfw-scope .relationship-toggle small {
-  color: var(--nsfw-faint);
-  font-size: 0.75rem;
-}
-
-.nsfw-scope .creator-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding-top: 0.25rem;
-}
-
-.nsfw-scope .model-choice code {
-  overflow-wrap: anywhere;
-  color: var(--nsfw-faint);
-  font-size: 0.68rem;
-}
-
-.nsfw-scope .preset-card.coral.selected {
-  border-color: var(--nsfw-accent);
-}
-
-.nsfw-scope .preset-card.gold.selected {
-  border-color: var(--nsfw-gold);
-}
-
-.nsfw-scope .preset-card.azure.selected {
-  border-color: var(--nsfw-azure);
-}
-
-.nsfw-scope .nsfw-gate input,
-.nsfw-scope .nsfw-card input,
-.nsfw-scope .nsfw-card textarea,
-.nsfw-scope .nsfw-card select {
-  width: 100%;
-}
-
 html,
 body,
 #__nuxt {
@@ -715,4 +1043,92 @@ body {
   .page-shell {
     padding: 1rem;
   }
+}
+
+/* Studio: rail de fichas a la izquierda, detalle a la derecha. */
+.nsfw-scope .nsfw-studio {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+}
+
+.nsfw-scope .nsfw-studio-rail {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--nsfw-hair);
+  padding: 1.5rem 0;
+}
+
+.nsfw-scope .nsfw-studio-detail {
+  min-width: 0;
+  flex: 1;
+  padding: 2rem 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .nsfw-scope .nsfw-studio {
+    flex-direction: row;
+  }
+
+  .nsfw-scope .nsfw-studio-rail {
+    width: 238px;
+    border-bottom: 0;
+    border-right: 1px solid var(--nsfw-hair);
+    padding: 2.25rem 0;
+  }
+
+  .nsfw-scope .nsfw-studio-detail {
+    padding: 2.25rem 2.5rem;
+  }
+}
+
+.nsfw-scope .nsfw-studio-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.65rem;
+  border: 0;
+  background: transparent;
+  padding: 0.7rem 1.4rem;
+  text-align: left;
+  color: var(--nsfw-muted);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.nsfw-scope .nsfw-studio-item:hover {
+  background: rgba(238, 224, 212, 0.025);
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .nsfw-studio-item.is-active {
+  background: rgba(238, 224, 212, 0.04);
+  box-shadow: inset 2px 0 0 var(--nsfw-accent);
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope .nsfw-studio-item strong {
+  display: block;
+  font-family: var(--nsfw-serif);
+  font-size: 1.05rem;
+  font-weight: 400;
+}
+
+.nsfw-scope .nsfw-studio-item small {
+  display: block;
+  color: var(--nsfw-dim);
+  font-size: 0.7rem;
+}
+
+/* Los desplegables nativos heredan el canvas; sin esto el popup sale claro. */
+.nsfw-scope select,
+.nsfw-scope option,
+.nsfw-scope optgroup {
+  background-color: var(--nsfw-surface);
+  color: var(--nsfw-ink);
+}
+
+.nsfw-scope select:not(:disabled) {
+  cursor: pointer;
 }

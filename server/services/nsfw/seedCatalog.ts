@@ -66,3 +66,50 @@ export const NSFW_SEED_EXPERIENCES = [
     premise: 'En la sala de espera, la conversación salta del protocolo a lo íntimo.'
   }
 ] as const
+
+/**
+ * Catálogo público de intereses y límites que trae la instalación.
+ * `kind` está restringido por el esquema a interest/exclusion/setting/era/other.
+ */
+export const NSFW_SEED_TAXONOMY = [
+  { label: 'Slow burn', kind: 'interest' },
+  { label: 'Tensión', kind: 'interest' },
+  { label: 'Anticipación', kind: 'interest' },
+  { label: 'Romance', kind: 'interest' },
+  { label: 'Diálogo íntimo', kind: 'interest' },
+  { label: 'Interioridad', kind: 'interest' },
+  { label: 'Humor seco', kind: 'interest' },
+  { label: 'Vulnerabilidad', kind: 'interest' },
+  { label: 'Proximidad', kind: 'interest' },
+  { label: 'Primera vez', kind: 'interest' },
+  { label: 'Reencuentro', kind: 'interest' },
+  { label: 'Amistad que cambia', kind: 'interest' },
+  { label: 'Juego de poder', kind: 'interest' },
+  { label: 'Dominación', kind: 'interest' },
+  { label: 'Sumisión', kind: 'interest' },
+  { label: 'Provocación verbal', kind: 'interest' },
+  { label: 'Celos', kind: 'interest' },
+  { label: 'Secreto compartido', kind: 'interest' },
+  { label: 'Prohibido', kind: 'interest' },
+  { label: 'Público', kind: 'interest' },
+  { label: 'Exhibicionismo', kind: 'interest' },
+  { label: 'Voyeurismo', kind: 'interest' },
+  { label: 'Terceros', kind: 'interest' },
+  { label: 'Triángulo', kind: 'interest' },
+  { label: 'Ropa y detalle', kind: 'interest' },
+  { label: 'Manos y tacto', kind: 'interest' },
+  { label: 'Voz y susurro', kind: 'interest' },
+  { label: 'Lentitud deliberada', kind: 'interest' },
+  { label: 'Urgencia', kind: 'interest' },
+  { label: 'Ternura después', kind: 'interest' },
+  { label: 'Ambiente nocturno', kind: 'setting' },
+  { label: 'Interior cerrado', kind: 'setting' },
+  { label: 'Exterior expuesto', kind: 'setting' },
+  { label: 'Humillación', kind: 'exclusion' },
+  { label: 'Dolor', kind: 'exclusion' },
+  { label: 'Sangre', kind: 'exclusion' },
+  { label: 'Engaño', kind: 'exclusion' },
+  { label: 'No consentimiento', kind: 'exclusion' },
+  { label: 'Violencia', kind: 'exclusion' },
+  { label: 'Degradación', kind: 'exclusion' }
+] as const

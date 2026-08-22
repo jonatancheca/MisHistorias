@@ -3,11 +3,13 @@ import {
   DURATION_CHOICES,
   FORMAT_CHOICES,
   INTERACTION_CHOICES,
+  MAX_PRIMARY_INTERESTS,
   PERSPECTIVE_CHOICES,
   TONE_CHOICES,
   coherentConfiguration,
   mapPerspectiveToSession,
   mapToneToSession,
+  sceneIntensity,
   type CreatorFormat,
   type NarrativePerspective,
   type NarrativeTone,
@@ -22,17 +24,20 @@ import type {
 const props = defineProps<{
   sessionId: string
   compact?: boolean
+  hideTrigger?: boolean
 }>()
 
 const route = useRoute()
 const sessions = useNsfwSessionsStore()
 const open = ref(false)
-const tab = ref<'options' | 'director' | 'bible' | 'cast'>('options')
+const tab = ref<SessionSheetTab>('direction')
+const advancedOpen = ref(false)
 const message = ref<string | null>(null)
 const error = ref<string | null>(null)
 const saving = ref(false)
 
 const session = computed(() => sessions.play?.session ?? null)
+const attempt = computed(() => sessions.play?.activeAttempt ?? null)
 
 const title = ref('')
 const premise = ref('')
@@ -50,6 +55,30 @@ const bibleText = ref('')
 const castDrafts = ref<
   Record<string, { name: string; personality: string; characterization: string }>
 >({})
+
+const TABS: Array<{ id: SessionSheetTab; label: string }> = [
+  { id: 'direction', label: 'Dirección' },
+  { id: 'bible', label: 'Biblia' },
+  { id: 'plan', label: 'Plan' },
+  { id: 'state', label: 'Estado' },
+  { id: 'cast', label: 'Reparto' },
+  { id: 'usage', label: 'Uso' }
+]
+
+/** La intensidad se lee del tono y sube un tramo cuando la escalada está pedida. */
+const intensity = computed(() => sceneIntensity(tone.value, Boolean(session.value?.escalationHeart)))
+
+const profileLabel = computed(() => {
+  const value = attempt.value?.generationProfile || session.value?.generationProfile
+  if (!value) return '—'
+  return value === 'quick' ? 'Rápido' : 'Calidad'
+})
+
+const intensityNote = computed(() =>
+  session.value?.escalationHeart
+    ? 'Escalada pedida: sube a explícito en los próximos beats.'
+    : `${TONE_CHOICES.find((item) => item.value === tone.value)?.label}. Puedes subirla cuando quieras.`
+)
 
 function toneFromSession(value: string): NarrativeTone {
   if (value === 'romantic') return 'romantic'
@@ -132,7 +161,11 @@ function splitList(value: string) {
     .filter(Boolean)
 }
 
-function openSheet(nextTab: typeof tab.value = 'options') {
+function actorName(actorId: string) {
+  return session.value?.cast.find((member) => member.actorId === actorId)?.name || actorId
+}
+
+function openSheet(nextTab: SessionSheetTab = 'direction') {
   if (session.value) syncFromSession(session.value)
   tab.value = nextTab
   open.value = true
@@ -169,12 +202,12 @@ async function saveOptions() {
         interactionPolicy: coherent.interactionPolicy,
         generationProfile: coherent.profile,
         modelAlias: modelAlias.value,
-        interests: splitList(interestsText.value).slice(0, 5),
+        interests: splitList(interestsText.value).slice(0, MAX_PRIMARY_INTERESTS),
         exclusions: splitList(exclusionsText.value)
       }
     })
     await sessions.loadPlay(props.sessionId)
-    message.value = 'Opciones guardadas'
+    message.value = 'Afecta al siguiente beat'
   } catch (caught) {
     error.value = (caught as Error).message || 'No se pudo guardar'
   } finally {
@@ -251,7 +284,7 @@ async function cloneCast(actorId: string) {
       `/api/private/sessions/${props.sessionId}/cast/${actorId}`,
       { method: 'POST', body: { action: 'clone', name: draft?.name } }
     )
-    message.value = `Clone: ${result.character.name}`
+    message.value = `Copiado a Studio: ${result.character.name}`
   } catch (caught) {
     error.value = (caught as Error).message || 'No se pudo clonar'
   } finally {
@@ -274,15 +307,15 @@ defineExpose({ openSheet, closeSheet })
 <template>
   <div class="nsfw-session-sheet">
     <button
+      v-if="!hideTrigger"
       type="button"
-      class="nsfw-session-sheet__trigger"
+      class="nsfw-btn-text"
       :class="compact ? 'is-compact' : ''"
       :aria-expanded="open"
       aria-haspopup="dialog"
       @click="openSheet()"
     >
-      <span aria-hidden="true">···</span>
-      <span class="nsfw-session-sheet__trigger-label">Sesión</span>
+      Director
     </button>
 
     <Teleport to="body">
@@ -291,7 +324,7 @@ defineExpose({ openSheet, closeSheet })
         class="nsfw-session-sheet__root nsfw-scope"
         role="dialog"
         aria-modal="true"
-        aria-label="Opciones de sesión"
+        aria-label="Director de la sesión"
       >
         <button
           type="button"
@@ -301,41 +334,32 @@ defineExpose({ openSheet, closeSheet })
         />
         <aside class="nsfw-session-sheet__panel">
           <header class="nsfw-session-sheet__header">
-            <div>
-              <p class="nsfw-session-sheet__eyebrow">Director</p>
-              <h2>{{ session?.title || 'Sesión' }}</h2>
+            <div class="min-w-0">
+              <p class="nsfw-session-sheet__eyebrow truncate">
+                {{ session?.title || 'Sesión' }}
+                <template v-if="session?.branchLabel"> · {{ session.branchLabel }}</template>
+              </p>
+              <h2>Director</h2>
             </div>
-            <button type="button" class="nsfw-btn-ghost" @click="closeSheet">Cerrar</button>
+            <button
+              type="button"
+              class="nsfw-btn-text text-lg leading-none"
+              aria-label="Cerrar"
+              @click="closeSheet"
+            >
+              ×
+            </button>
           </header>
 
           <nav class="nsfw-session-sheet__tabs" aria-label="Secciones">
             <button
+              v-for="item in TABS"
+              :key="item.id"
               type="button"
-              :class="tab === 'options' ? 'is-active' : ''"
-              @click="tab = 'options'"
+              :class="tab === item.id ? 'is-active' : ''"
+              @click="tab = item.id"
             >
-              Opciones
-            </button>
-            <button
-              type="button"
-              :class="tab === 'director' ? 'is-active' : ''"
-              @click="tab = 'director'"
-            >
-              Plan
-            </button>
-            <button
-              type="button"
-              :class="tab === 'bible' ? 'is-active' : ''"
-              @click="tab = 'bible'"
-            >
-              Bible
-            </button>
-            <button
-              type="button"
-              :class="tab === 'cast' ? 'is-active' : ''"
-              @click="tab = 'cast'"
-            >
-              Reparto
+              {{ item.label }}
             </button>
           </nav>
 
@@ -343,134 +367,143 @@ defineExpose({ openSheet, closeSheet })
           <p v-if="error" class="nsfw-session-sheet__status is-err">{{ error }}</p>
 
           <div class="nsfw-session-sheet__body">
-            <section v-if="tab === 'options'" class="space-y-4">
-              <div class="nsfw-session-sheet__readonly">
-                <div>
-                  <span>Formato</span>
-                  <strong>{{ formatLabel }}</strong>
+            <!-- DIRECCIÓN -->
+            <section v-if="tab === 'direction'" class="space-y-6">
+              <p class="text-xs leading-relaxed text-[var(--nsfw-faint)]">
+                Cambia el rumbo sin reescribir lo ya leído. Todo lo de aquí afecta al
+                <strong class="font-medium text-[var(--nsfw-muted)]">siguiente</strong> beat.
+                Formato: <strong class="font-medium text-[var(--nsfw-muted)]">{{ formatLabel }}</strong>,
+                inmutable para esta historia.
+              </p>
+
+              <div>
+                <p class="nsfw-eyebrow nsfw-eyebrow--dim">Intensidad de la escena</p>
+                <div class="mb-2 flex items-center gap-3">
+                  <div class="nsfw-meter flex-1">
+                    <span v-for="n in 5" :key="n" :class="n <= intensity ? 'is-on' : ''" />
+                  </div>
+                  <button
+                    type="button"
+                    class="nsfw-heat-btn"
+                    :aria-pressed="Boolean(session?.escalationHeart)"
+                    @click="toggleHeart"
+                  >
+                    <span aria-hidden="true">♥</span>
+                    {{ session?.escalationHeart ? 'Bajar' : 'Subir ya' }}
+                  </button>
                 </div>
-                <p>Inmutable para esta historia.</p>
+                <p class="text-xs text-[var(--nsfw-dim)]">{{ intensityNote }}</p>
+              </div>
+
+              <div>
+                <p class="nsfw-eyebrow nsfw-eyebrow--dim">Tono</p>
+                <div class="choice-pills">
+                  <button
+                    v-for="item in TONE_CHOICES"
+                    :key="item.value"
+                    type="button"
+                    class="choice-pill !min-h-9 !text-xs"
+                    :class="tone === item.value ? 'selected' : ''"
+                    :aria-pressed="tone === item.value"
+                    @click="tone = item.value"
+                  >
+                    {{ item.label }}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <p class="nsfw-eyebrow nsfw-eyebrow--dim">Ritmo</p>
+                <div class="choice-pills">
+                  <button
+                    v-for="item in DURATION_CHOICES"
+                    :key="item.value"
+                    type="button"
+                    class="choice-pill !min-h-9 !text-xs"
+                    :class="duration === item.value ? 'selected' : ''"
+                    :aria-pressed="duration === item.value"
+                    @click="duration = item.value"
+                  >
+                    {{ item.label }}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <p class="nsfw-eyebrow nsfw-eyebrow--dim">Quién lleva la iniciativa</p>
+                <div class="choice-pills">
+                  <button
+                    v-for="item in policyChoices"
+                    :key="item.value"
+                    type="button"
+                    class="choice-pill !min-h-9 !text-xs"
+                    :class="interactionPolicy === item.value ? 'selected' : ''"
+                    :aria-pressed="interactionPolicy === item.value"
+                    @click="interactionPolicy = item.value"
+                  >
+                    {{ item.label }}
+                  </button>
+                </div>
+                <p class="mt-2 text-xs text-[var(--nsfw-dim)]">
+                  {{ INTERACTION_CHOICES.find((item) => item.value === interactionPolicy)?.description }}
+                </p>
+              </div>
+
+              <div>
+                <p class="nsfw-eyebrow nsfw-eyebrow--dim">Perspectiva</p>
+                <select v-model="perspective" class="nsfw-input w-full">
+                  <option v-for="item in perspectiveChoices" :key="item.value" :value="item.value">
+                    {{ item.label }}
+                  </option>
+                </select>
               </div>
 
               <label class="block">
                 <span class="nsfw-session-sheet__label">Título</span>
                 <input v-model="title" class="nsfw-input w-full">
               </label>
+
               <label class="block">
-                <span class="nsfw-session-sheet__label">Premisa</span>
+                <span class="nsfw-session-sheet__label">Nota al narrador · premisa</span>
                 <textarea v-model="premise" class="nsfw-input min-h-20 w-full" />
               </label>
 
-              <div class="grid gap-3 sm:grid-cols-2">
-                <label class="block">
-                  <span class="nsfw-session-sheet__label">Tono</span>
-                  <select v-model="tone" class="nsfw-input w-full">
-                    <option v-for="item in TONE_CHOICES" :key="item.value" :value="item.value">
-                      {{ item.label }}
-                    </option>
-                  </select>
-                </label>
-                <label class="block">
-                  <span class="nsfw-session-sheet__label">Perspectiva</span>
-                  <select v-model="perspective" class="nsfw-input w-full">
-                    <option
-                      v-for="item in perspectiveChoices"
-                      :key="item.value"
-                      :value="item.value"
-                    >
-                      {{ item.label }}
-                    </option>
-                  </select>
-                </label>
-                <label class="block">
-                  <span class="nsfw-session-sheet__label">Duración</span>
-                  <select v-model="duration" class="nsfw-input w-full">
-                    <option v-for="item in DURATION_CHOICES" :key="item.value" :value="item.value">
-                      {{ item.label }}
-                    </option>
-                  </select>
-                </label>
-                <label class="block">
-                  <span class="nsfw-session-sheet__label">Interacción</span>
-                  <select v-model="interactionPolicy" class="nsfw-input w-full">
-                    <option v-for="item in policyChoices" :key="item.value" :value="item.value">
-                      {{ item.label }}
-                    </option>
-                  </select>
-                </label>
-                <label class="block">
-                  <span class="nsfw-session-sheet__label">Perfil por defecto</span>
-                  <select v-model="generationProfile" class="nsfw-input w-full">
-                    <option value="quick">Rápido</option>
-                    <option value="quality">Calidad</option>
-                  </select>
-                </label>
-                <label class="block">
-                  <span class="nsfw-session-sheet__label">Modelo por defecto</span>
-                  <select v-model="modelAlias" class="nsfw-input w-full">
-                    <option
-                      v-for="model in sessions.models"
-                      :key="model.alias"
-                      :value="model.alias"
-                    >
-                      {{ model.alias }}
-                    </option>
-                  </select>
-                </label>
-              </div>
-
               <label class="block">
-                <span class="nsfw-session-sheet__label">Intereses (máx. 5, coma)</span>
+                <span class="nsfw-session-sheet__label">
+                  Predominantes · máx. {{ MAX_PRIMARY_INTERESTS }}, separados por comas
+                </span>
                 <input v-model="interestsText" class="nsfw-input w-full">
               </label>
               <label class="block">
-                <span class="nsfw-session-sheet__label">Exclusiones (coma)</span>
+                <span class="nsfw-session-sheet__label">Excluir · sin límite, separados por comas</span>
                 <input v-model="exclusionsText" class="nsfw-input w-full">
               </label>
 
-              <div class="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  class="nsfw-btn-ghost"
-                  :class="session?.escalationHeart ? 'text-[var(--nsfw-accent)]' : ''"
-                  @click="toggleHeart"
-                >
-                  ♥ Escalada
-                </button>
-                <button
-                  type="button"
-                  class="nsfw-btn-primary"
-                  :disabled="saving"
-                  @click="saveOptions"
-                >
-                  Guardar opciones
-                </button>
-              </div>
-            </section>
-
-            <section v-else-if="tab === 'director'" class="space-y-3">
-              <p class="text-xs text-[var(--nsfw-faint)]">
-                Plan como posibilidad mutable. No reescribe beats ya aceptados.
-              </p>
-              <textarea v-model="planSummary" class="nsfw-input min-h-28 w-full" />
-              <ul class="space-y-1 text-sm text-[var(--nsfw-muted)]">
-                <li v-for="beat in session?.plan.nextBeats || []" :key="beat.id">
-                  {{ beat.status }} · {{ beat.intent }}
-                </li>
-                <li v-if="!(session?.plan.nextBeats || []).length">Sin beats planificados aún.</li>
-              </ul>
-              <button type="button" class="nsfw-btn-primary" :disabled="saving" @click="savePlan">
-                Guardar plan
+              <button
+                type="button"
+                class="nsfw-btn-primary w-full"
+                :disabled="saving"
+                @click="saveOptions"
+              >
+                Aplicar al siguiente beat
               </button>
             </section>
 
-            <section v-else-if="tab === 'bible'" class="space-y-3">
+            <!-- BIBLIA -->
+            <section v-else-if="tab === 'bible'" class="space-y-4">
+              <p class="text-xs text-[var(--nsfw-faint)]">
+                Hechos que la historia no puede contradecir.
+              </p>
               <ul
                 v-if="session?.bible.facts.length"
                 class="space-y-2 text-sm text-[var(--nsfw-muted)]"
               >
-                <li v-for="fact in session.bible.facts" :key="fact.id">
-                  <span class="text-[var(--nsfw-ink)]">{{ fact.entity }}:</span>
+                <li
+                  v-for="fact in session.bible.facts"
+                  :key="fact.id"
+                  class="border-b border-[var(--nsfw-hair)] pb-2"
+                >
+                  <span class="text-[var(--nsfw-gold)]">{{ fact.entity }}:</span>
                   {{ fact.text }}
                 </li>
               </ul>
@@ -479,21 +512,93 @@ defineExpose({ openSheet, closeSheet })
                 <input v-model="bibleEntity" class="nsfw-input" placeholder="Entidad">
                 <input v-model="bibleText" class="nsfw-input" placeholder="Hecho">
               </div>
-              <button type="button" class="nsfw-btn-ghost" :disabled="saving" @click="addBibleFact">
+              <button
+                type="button"
+                class="nsfw-btn-ghost"
+                :disabled="saving"
+                @click="addBibleFact"
+              >
                 Añadir hecho
               </button>
             </section>
 
-            <section v-else class="space-y-4">
+            <!-- PLAN -->
+            <section v-else-if="tab === 'plan'" class="space-y-4">
               <p class="text-xs text-[var(--nsfw-faint)]">
-                Override local. No muta el Personaje fuente.
+                El plan es una posibilidad mutable. No reescribe beats ya aceptados.
+              </p>
+              <textarea v-model="planSummary" class="nsfw-input min-h-28 w-full" />
+              <div>
+                <p class="nsfw-eyebrow nsfw-eyebrow--dim">Próximo en el plan</p>
+                <ul class="space-y-1.5">
+                  <li
+                    v-for="beat in session?.plan.nextBeats || []"
+                    :key="beat.id"
+                    class="font-serif text-[0.95rem] italic leading-relaxed text-[var(--nsfw-muted)]"
+                  >
+                    {{ beat.intent }}
+                    <span class="font-sans text-[0.68rem] not-italic text-[var(--nsfw-dim)]">
+                      · {{ beat.status }}
+                    </span>
+                  </li>
+                  <li v-if="!(session?.plan.nextBeats || []).length" class="text-sm text-[var(--nsfw-muted)]">
+                    Sin beats planificados aún.
+                  </li>
+                </ul>
+              </div>
+              <button type="button" class="nsfw-btn-ghost" :disabled="saving" @click="savePlan">
+                Guardar plan
+              </button>
+            </section>
+
+            <!-- ESTADO -->
+            <section v-else-if="tab === 'state'" class="space-y-6">
+              <div>
+                <p class="nsfw-eyebrow nsfw-eyebrow--dim">Escena</p>
+                <p class="font-serif text-xl leading-tight">{{ session?.sceneState.location }}</p>
+                <p class="mt-1 text-xs leading-relaxed text-[var(--nsfw-faint)]">
+                  {{ session?.sceneState.intention }} · ritmo {{ session?.sceneState.pacing }}
+                </p>
+              </div>
+              <div>
+                <p class="nsfw-eyebrow nsfw-eyebrow--dim">Presentes</p>
+                <div class="flex flex-col gap-2.5">
+                  <div
+                    v-for="actorId in session?.sceneState.presentActorIds || []"
+                    :key="actorId"
+                    class="flex items-center gap-2.5"
+                  >
+                    <span class="nsfw-avatar is-gold h-7 w-7 text-xs">
+                      {{ actorName(actorId).slice(0, 1) }}
+                    </span>
+                    <span class="text-sm">{{ actorName(actorId) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <p class="nsfw-eyebrow nsfw-eyebrow--dim">Mundo</p>
+                <p class="text-sm text-[var(--nsfw-muted)]">
+                  {{ session?.worldState.location }} · {{ session?.worldState.mood }}
+                </p>
+                <ul class="mt-2 space-y-1 text-xs text-[var(--nsfw-faint)]">
+                  <li v-for="(note, index) in session?.worldState.relationshipNotes || []" :key="index">
+                    {{ note }}
+                  </li>
+                </ul>
+              </div>
+            </section>
+
+            <!-- REPARTO -->
+            <section v-else-if="tab === 'cast'" class="space-y-5">
+              <p class="text-xs text-[var(--nsfw-faint)]">
+                Override local. No muta el Personaje fuente del Studio.
               </p>
               <article
                 v-for="member in session?.cast || []"
                 :key="member.actorId"
-                class="space-y-2 border-t border-[var(--nsfw-line)] pt-3 first:border-0 first:pt-0"
+                class="space-y-2 border-t border-[var(--nsfw-hair)] pt-4 first:border-0 first:pt-0"
               >
-                <p class="text-xs uppercase tracking-wide text-[var(--nsfw-faint)]">
+                <p class="nsfw-eyebrow nsfw-eyebrow--dim">
                   {{ member.role }} · {{ member.name }}
                 </p>
                 <template v-if="castDrafts[member.actorId]">
@@ -512,10 +617,10 @@ defineExpose({ openSheet, closeSheet })
                     class="nsfw-input min-h-20 w-full"
                     placeholder="Caracterización"
                   />
-                  <div class="flex flex-wrap gap-2">
+                  <div class="flex flex-wrap items-center gap-4">
                     <button
                       type="button"
-                      class="nsfw-btn-primary"
+                      class="nsfw-btn-ghost"
                       :disabled="saving"
                       @click="saveCast(member.actorId)"
                     >
@@ -523,16 +628,87 @@ defineExpose({ openSheet, closeSheet })
                     </button>
                     <button
                       type="button"
-                      class="nsfw-btn-ghost"
+                      class="nsfw-btn-text"
                       :disabled="saving"
                       @click="cloneCast(member.actorId)"
                     >
-                      Clone
+                      Copiar a Studio
                     </button>
                   </div>
                 </template>
               </article>
             </section>
+
+            <!-- USO -->
+            <section v-else class="space-y-4">
+              <p class="text-xs text-[var(--nsfw-faint)]">Último intento de esta sesión.</p>
+              <div class="nsfw-session-sheet__readonly space-y-2">
+                <div>
+                  <span>Modelo</span>
+                  <strong>{{ attempt?.modelAlias || session?.modelAlias || '—' }}</strong>
+                </div>
+                <div>
+                  <span>Perfil</span>
+                  <strong>{{ profileLabel }}</strong>
+                </div>
+                <div>
+                  <span>Latencia</span>
+                  <strong>{{ attempt ? `${(attempt.latencyMs / 1000).toFixed(1)} s` : '—' }}</strong>
+                </div>
+                <div>
+                  <span>Tokens</span>
+                  <strong>{{ attempt?.usage.totalTokens ?? '—' }}</strong>
+                </div>
+                <div>
+                  <span>Estado</span>
+                  <strong>{{ attempt?.state || 'sin intentos' }}</strong>
+                </div>
+              </div>
+              <NuxtLink to="/private/usage" class="nsfw-btn-text">Uso y latencia completos</NuxtLink>
+            </section>
+          </div>
+
+          <!-- OPCIONES AVANZADAS -->
+          <div class="border-t border-[var(--nsfw-hair)] bg-[rgba(238,224,212,0.02)]">
+            <button
+              type="button"
+              class="flex w-full cursor-pointer items-center justify-between border-0 bg-transparent px-6 py-3.5 text-left"
+              :aria-expanded="advancedOpen"
+              @click="advancedOpen = !advancedOpen"
+            >
+              <span class="nsfw-eyebrow !mb-0 !text-[var(--nsfw-muted)]">Opciones avanzadas</span>
+              <span class="text-xs text-[var(--nsfw-faint)]">{{ advancedOpen ? '▴' : '▾' }}</span>
+            </button>
+            <div v-if="advancedOpen" class="grid gap-4 px-6 pb-5 sm:grid-cols-2">
+              <label class="block">
+                <span class="nsfw-session-sheet__label">Modelo</span>
+                <select v-model="modelAlias" class="nsfw-input w-full">
+                  <option v-for="model in sessions.models" :key="model.alias" :value="model.alias">
+                    {{ model.alias }}{{ model.available ? '' : ' (no detectado)' }}
+                  </option>
+                </select>
+              </label>
+              <label class="block">
+                <span class="nsfw-session-sheet__label">Perfil</span>
+                <select v-model="generationProfile" class="nsfw-input w-full">
+                  <option value="quick">Rápido</option>
+                  <option value="quality">Calidad</option>
+                </select>
+              </label>
+              <div class="sm:col-span-2 flex flex-wrap items-center justify-between gap-3">
+                <span class="text-xs text-[var(--nsfw-dim)]">
+                  Se aplica al guardar en Dirección.
+                </span>
+                <button
+                  type="button"
+                  class="nsfw-btn-ghost"
+                  :disabled="saving"
+                  @click="saveOptions"
+                >
+                  Guardar
+                </button>
+              </div>
+            </div>
           </div>
         </aside>
       </div>

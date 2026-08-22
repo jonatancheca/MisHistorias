@@ -586,10 +586,17 @@ export function deletePrivateTerm(ownerUserId: string, termId: string) {
 }
 
 export function listInterestCatalog(ownerUserId: string) {
+  const facetLabels: Record<string, string> = {
+    interest: 'interés',
+    exclusion: 'límite',
+    setting: 'ambiente',
+    era: 'época',
+    other: 'otros'
+  }
   const publicTerms = listTaxonomy('approved').map((row) => ({
     id: String(row.id),
     label: text(row.label),
-    facet: text(row.kind) || 'interés',
+    facet: facetLabels[text(row.kind)] || 'interés',
     private: false as const
   }))
   const privateTerms = listPrivateTerms(ownerUserId).map((term) => ({

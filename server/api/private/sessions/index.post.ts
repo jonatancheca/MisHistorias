@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { requireSessionUser } from '../../../utils/nsfwAuth.ts'
 import { createStorySession } from '../../../utils/nsfwStorage.ts'
 import { buildDefaultAssetPins, listExperiences, listLibrary } from '../../../utils/nsfwStudio.ts'
+import { MAX_PRIMARY_INTERESTS } from '../../../../shared/lib/nsfwCreatorConfig.ts'
 import type {
   CreateStorySessionInput,
   InteractionPolicy,
@@ -121,7 +122,7 @@ export default defineEventHandler(async (event) => {
     generationProfile: (asString(body.generationProfile, 'quick') as GenerationProfile) || 'quick',
     modelAlias: asString(body.modelAlias),
     cast,
-    interests: asStringArray(body.interests).slice(0, 5),
+    interests: asStringArray(body.interests).slice(0, MAX_PRIMARY_INTERESTS),
     exclusions: asStringArray(body.exclusions),
     planSummary: planBits.join(' · '),
     experienceId,

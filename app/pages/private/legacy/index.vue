@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { relativeTime } from '../../../lib/relativeTime.ts'
+
 definePageMeta({ layout: 'private' })
 
 const { stories } = await $fetch<{
@@ -7,28 +9,30 @@ const { stories } = await $fetch<{
 </script>
 
 <template>
-  <div class="nsfw-page mx-auto max-w-3xl px-4 py-8 sm:px-6">
-    <header class="mb-6">
-      <h1 class="font-serif text-3xl">Legado privado</h1>
-      <p class="text-sm text-[var(--nsfw-muted)]">
+  <div class="nsfw-page mx-auto max-w-[52rem] px-5 py-10 sm:px-12 sm:py-14">
+    <header class="mb-8">
+      <h1 class="font-serif text-4xl">Legado privado</h1>
+      <p class="mt-1 text-xs text-[var(--nsfw-faint)]">
         Solo lectura. El motor nuevo no reescribe estas historias.
       </p>
     </header>
-    <p v-if="stories.length === 0" class="nsfw-card text-sm text-[var(--nsfw-muted)]">
+
+    <p v-if="stories.length === 0" class="py-8 text-sm text-[var(--nsfw-muted)]">
       No hay historias en la colección privada lineal.
     </p>
-    <ul class="grid gap-3">
-      <li v-for="story in stories" :key="story.id" class="nsfw-card flex flex-wrap items-center gap-3">
-        <div class="min-w-0 flex-1">
-          <NuxtLink :to="`/private/legacy/${story.id}`" class="text-lg hover:text-[var(--nsfw-accent)]">
-            {{ story.title }}
-          </NuxtLink>
-          <p class="text-xs text-[var(--nsfw-faint)]">{{ story.messageCount }} mensajes</p>
-        </div>
-          <NuxtLink :to="`/private/legacy/${story.id}`" class="nsfw-btn-primary">
-            Abrir / nueva versión
-          </NuxtLink>
-      </li>
-    </ul>
+
+    <NuxtLink
+      v-for="story in stories"
+      :key="story.id"
+      :to="`/private/legacy/${story.id}`"
+      class="nsfw-row"
+    >
+      <span class="min-w-0 flex-1">
+        <span class="nsfw-row-title block truncate">{{ story.title }}</span>
+        <span class="nsfw-row-sub block">{{ story.messageCount }} mensajes</span>
+      </span>
+      <span class="nsfw-row-meta">{{ relativeTime(story.updatedAt) }}</span>
+      <span class="nsfw-row-meta text-base" aria-hidden="true">→</span>
+    </NuxtLink>
   </div>
 </template>

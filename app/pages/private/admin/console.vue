@@ -68,28 +68,28 @@ async function withdraw(publicationId: string) {
 </script>
 
 <template>
-  <div class="nsfw-page mx-auto max-w-5xl px-4 py-8 sm:px-6">
-    <header class="mb-6">
-      <h1 class="font-serif text-3xl">Consola admin</h1>
-      <p class="text-sm text-[var(--nsfw-muted)]">
+  <div class="nsfw-page mx-auto max-w-[58rem] px-5 py-10 sm:px-12 sm:py-14">
+    <header class="mb-9">
+      <h1 class="font-serif text-4xl">Consola</h1>
+      <p class="mt-1 text-xs text-[var(--nsfw-faint)]">
         Taxonomía, feedback, publicaciones y generaciones sin prosa.
       </p>
     </header>
     <p v-if="message" class="mb-4 text-sm text-[var(--nsfw-success)]">{{ message }}</p>
 
-    <section class="nsfw-card mb-6">
-      <h2 class="mb-3 text-lg">Taxonomía propuesta</h2>
+    <section class="mb-10">
+      <div class="nsfw-section-head"><h3>Taxonomía propuesta</h3></div>
       <ul class="grid gap-2">
         <li
           v-for="term in data.taxonomy?.proposed || []"
           :key="String(term.id)"
-          class="flex flex-wrap items-center gap-2 border-b border-[var(--nsfw-line)] py-2"
+          class="flex flex-wrap items-center gap-2 border-b border-[var(--nsfw-hair)] py-3"
         >
           <span class="flex-1">{{ term.label }} · {{ term.kind }}</span>
-          <button type="button" class="nsfw-btn-ghost" @click="setTerm(String(term.id), 'approved')">
+          <button type="button" class="nsfw-btn-text" @click="setTerm(String(term.id), 'approved')">
             Aprobar
           </button>
-          <button type="button" class="nsfw-btn-ghost" @click="setTerm(String(term.id), 'discarded')">
+          <button type="button" class="nsfw-btn-text" @click="setTerm(String(term.id), 'discarded')">
             Descartar
           </button>
         </li>
@@ -99,8 +99,8 @@ async function withdraw(publicationId: string) {
       </ul>
     </section>
 
-    <section class="nsfw-card mb-6">
-      <h2 class="mb-3 text-lg">Privados candidatos a público</h2>
+    <section class="mb-10">
+      <div class="nsfw-section-head"><h3>Privados candidatos a público</h3></div>
       <p class="mb-3 text-sm text-[var(--nsfw-muted)]">
         Lista deduplicada de etiquetas privadas que aún no existen como término público aprobado.
         Al promover, se crea el público y se eliminan los privados homónimos.
@@ -109,7 +109,7 @@ async function withdraw(publicationId: string) {
         <li
           v-for="term in data.privateCandidates || []"
           :key="term.label"
-          class="flex flex-wrap items-center gap-2 border-b border-[var(--nsfw-line)] py-2"
+          class="flex flex-wrap items-center gap-2 border-b border-[var(--nsfw-hair)] py-3"
         >
           <span class="flex-1">
             {{ term.label }}
@@ -119,7 +119,7 @@ async function withdraw(publicationId: string) {
           </span>
           <button
             type="button"
-            class="nsfw-btn-ghost"
+            class="nsfw-btn-text"
             @click="promotePrivate(term.label, term.kind)"
           >
             Promover a público
@@ -131,13 +131,13 @@ async function withdraw(publicationId: string) {
       </ul>
     </section>
 
-    <section class="nsfw-card mb-6">
-      <h2 class="mb-3 text-lg">Publicaciones</h2>
+    <section class="mb-10">
+      <div class="nsfw-section-head"><h3>Publicaciones</h3></div>
       <ul class="grid gap-2">
         <li
           v-for="item in data.publications || []"
           :key="String(item.id)"
-          class="flex flex-wrap items-center gap-2 border-b border-[var(--nsfw-line)] py-2"
+          class="flex flex-wrap items-center gap-2 border-b border-[var(--nsfw-hair)] py-3"
         >
           <div class="min-w-0 flex-1">
             <p>{{ item.title }} · {{ item.username }}</p>
@@ -146,7 +146,7 @@ async function withdraw(publicationId: string) {
           <button
             v-if="item.status === 'published'"
             type="button"
-            class="nsfw-btn-ghost"
+            class="nsfw-btn-text"
             @click="withdraw(String(item.id))"
           >
             Retirar
@@ -155,13 +155,13 @@ async function withdraw(publicationId: string) {
       </ul>
     </section>
 
-    <section class="nsfw-card mb-6">
-      <h2 class="mb-3 text-lg">Generaciones (metadatos)</h2>
+    <section class="mb-10">
+      <div class="nsfw-section-head"><h3>Generaciones (metadatos)</h3></div>
       <ul class="grid gap-2 text-sm">
         <li
           v-for="item in data.generations || []"
           :key="String(item.attemptId)"
-          class="border-b border-[var(--nsfw-line)] py-2"
+          class="border-b border-[var(--nsfw-hair)] py-3"
         >
           <p>
             {{ item.username }} · {{ item.format }} · {{ item.generationProfile }} ·
@@ -174,13 +174,13 @@ async function withdraw(publicationId: string) {
       </ul>
     </section>
 
-    <section class="nsfw-card">
-      <h2 class="mb-3 text-lg">Feedback</h2>
+    <section>
+      <div class="nsfw-section-head"><h3>Feedback</h3></div>
       <ul class="grid gap-2 text-sm">
         <li
           v-for="item in data.feedback || []"
           :key="String(item.id)"
-          class="border-b border-[var(--nsfw-line)] py-2"
+          class="border-b border-[var(--nsfw-hair)] py-3"
         >
           <p>{{ item.kind }} · score {{ item.score ?? '—' }}</p>
           <p class="text-[var(--nsfw-muted)]">{{ item.body || '(sin texto)' }}</p>

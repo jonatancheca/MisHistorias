@@ -1,6 +1,12 @@
 <script setup lang="ts">
+import {
+  MAX_PRIMARY_INTERESTS,
+  sortInterestTerms
+} from '../../../shared/lib/nsfwCreatorConfig.ts'
+
 definePageMeta({ layout: 'private' })
 
+const auth = useNsfwAuthStore()
 const displayName = ref('')
 const pronouns = ref('')
 const appearance = ref('')
@@ -58,12 +64,23 @@ async function refreshTerms() {
 
 await refreshTerms()
 
+const initial = computed(() =>
+  (displayName.value || auth.user?.username || '?').slice(0, 1).toLocaleUpperCase('es-ES')
+)
+
 const filteredTerms = computed(() => {
   const q = termFilter.value.trim().toLocaleLowerCase('es-ES')
-  return catalog.value
-    .filter((term) => !q || `${term.label} ${term.facet}`.toLocaleLowerCase('es-ES').includes(q))
-    .slice(0, 80)
+  const matching = catalog.value.filter(
+    (term) => !q || `${term.label} ${term.facet}`.toLocaleLowerCase('es-ES').includes(q)
+  )
+  return sortInterestTerms(matching, {
+    primary: primary.value,
+    excluded: excluded.value,
+    contextual: contextual.value
+  }).slice(0, 120)
 })
+
+const primaryFull = computed(() => primary.value.length >= MAX_PRIMARY_INTERESTS)
 
 function splitList(value: string) {
   return value
@@ -76,24 +93,29 @@ function unique(values: string[]) {
   return [...new Set(values.map((item) => item.trim()).filter(Boolean))]
 }
 
-function classify(label: string, kind: 'primary' | 'excluded' | 'contextual') {
+function clearClassification(label: string) {
   primary.value = primary.value.filter((item) => item !== label)
   excluded.value = excluded.value.filter((item) => item !== label)
   contextual.value = contextual.value.filter((item) => item !== label)
+}
+
+function classify(label: string, kind: 'primary' | 'excluded' | 'contextual') {
+  const wasSelected =
+    kind === 'primary'
+      ? primary.value.includes(label)
+      : kind === 'excluded'
+        ? excluded.value.includes(label)
+        : contextual.value.includes(label)
+  clearClassification(label)
+  if (wasSelected) return
   if (kind === 'primary') {
-    if (primary.value.length >= 5) return
-    primary.value = unique([...primary.value, label]).slice(0, 5)
+    if (primary.value.length >= MAX_PRIMARY_INTERESTS) return
+    primary.value = unique([...primary.value, label]).slice(0, MAX_PRIMARY_INTERESTS)
   } else if (kind === 'excluded') {
     excluded.value = unique([...excluded.value, label])
   } else {
     contextual.value = unique([...contextual.value, label])
   }
-}
-
-function clearClassification(label: string) {
-  primary.value = primary.value.filter((item) => item !== label)
-  excluded.value = excluded.value.filter((item) => item !== label)
-  contextual.value = contextual.value.filter((item) => item !== label)
 }
 
 async function createPrivate() {
@@ -112,6 +134,7 @@ async function createPrivate() {
     catalog.value = result.catalog
     privateTerms.value = result.privateTerms
     customLabel.value = ''
+    termFilter.value = result.term.label
     message.value = `Privado creado: ${result.term.label}`
   } catch (caught) {
     termError.value =
@@ -150,7 +173,7 @@ async function save() {
       appearance: appearance.value,
       boundaries: splitList(boundaries.value),
       adultDefaults: {
-        primary: primary.value.slice(0, 5),
+        primary: primary.value.slice(0, MAX_PRIMARY_INTERESTS),
         excluded: excluded.value,
         contextual: contextual.value
       }
@@ -161,79 +184,139 @@ async function save() {
 </script>
 
 <template>
-  <div class="nsfw-page mx-auto max-w-3xl px-3 py-8 sm:px-6">
-    <header class="mb-6">
-      <h1 class="font-serif text-3xl">Self-insert y preferencias</h1>
-      <p class="mt-2 text-sm text-[var(--nsfw-muted)]">
-        Cómo te representan las sesiones y qué intereses se precargan al crear.
-      </p>
+  <form class="nsfw-page mx-auto max-w-[58rem] px-5 py-10 sm:px-12 sm:py-14" @submit.prevent="save">
+    <header class="mb-9 flex items-center gap-4">
+      <span class="nsfw-avatar is-gold h-14 w-14 text-2xl">{{ initial }}</span>
+      <div>
+        <h1 class="font-serif text-3xl">{{ displayName || auth.user?.username }}</h1>
+        <p class="text-xs text-[var(--nsfw-faint)]">
+          {{ auth.isAdmin ? 'Administrador' : 'Lector' }} · self-insert «{{ displayName || 'Tú' }}»
+        </p>
+      </div>
     </header>
+
     <p v-if="message" class="mb-4 text-sm text-[var(--nsfw-success)]" role="status">{{ message }}</p>
     <p v-if="termError" class="mb-4 text-sm text-[var(--nsfw-danger)]">{{ termError }}</p>
 
-    <form class="nsfw-card space-y-4" @submit.prevent="save">
-      <label class="block">
-        <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Nombre en escena</span>
-        <input v-model="displayName" class="nsfw-input w-full" autocomplete="nickname">
-      </label>
-      <label class="block">
-        <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Pronombres</span>
-        <input v-model="pronouns" class="nsfw-input w-full">
-      </label>
-      <label class="block">
-        <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Apariencia</span>
-        <textarea v-model="appearance" class="nsfw-input min-h-24 w-full" />
-      </label>
-      <label class="block">
-        <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Límites duros (coma)</span>
-        <input v-model="boundaries" class="nsfw-input w-full" placeholder="Ej. no sangre, no no-con">
-      </label>
-
-      <div class="border-t border-[var(--nsfw-line)] pt-4">
-        <h2 class="mb-2 font-serif text-xl">Defaults adultos</h2>
-        <p class="mb-3 text-sm text-[var(--nsfw-muted)]">
-          Predominantes máx. 5; exclusiones nunca; contextuales = permitidos si encajan.
-          Las etiquetas <em>privado</em> son solo tuyas y permanecen en el catálogo.
-        </p>
-        <div class="interest-legend mb-3">
-          <span class="positive">Predominante</span>
-          <span class="negative">Excluir</span>
-          <span class="contextual">Permitido si encaja</span>
-        </div>
-        <label class="mb-3 block">
-          <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Buscar</span>
-          <input v-model="termFilter" class="nsfw-input w-full" placeholder="Filtra">
+    <section class="mb-11">
+      <div class="nsfw-section-head">
+        <h3>Cómo apareces en las historias</h3>
+      </div>
+      <div class="grid gap-6 sm:grid-cols-2">
+        <label class="block">
+          <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Nombre en escena</span>
+          <input v-model="displayName" class="nsfw-underline" autocomplete="nickname">
         </label>
-        <div class="term-matrix mb-4">
-          <article v-for="term in filteredTerms" :key="term.id">
-            <div>
-              <strong>{{ term.label }}</strong>
-              <small>{{ term.private ? 'privado' : term.facet }}</small>
+        <label class="block">
+          <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Pronombres</span>
+          <input v-model="pronouns" class="nsfw-underline">
+        </label>
+        <label class="block sm:col-span-2">
+          <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Apariencia</span>
+          <textarea v-model="appearance" class="nsfw-input min-h-24 w-full" />
+        </label>
+        <label class="block sm:col-span-2">
+          <span class="nsfw-eyebrow nsfw-eyebrow--dim mb-2 block">Límites duros (coma)</span>
+          <input v-model="boundaries" class="nsfw-underline" placeholder="Ej. no sangre, no no-con">
+        </label>
+      </div>
+    </section>
+
+    <section>
+      <div class="nsfw-section-head">
+        <h3>Intereses y límites por defecto</h3>
+        <span class="text-xs text-[var(--nsfw-dim)]">
+          se precargan al crear cada historia
+        </span>
+      </div>
+      <p class="mb-6 max-w-[66ch] font-serif text-[1.05rem] italic leading-relaxed text-[var(--nsfw-muted)]">
+        Predominantes, máximo {{ MAX_PRIMARY_INTERESTS }} para que ninguno se diluya. Excluir y
+        «si encaja» no tienen límite.
+      </p>
+
+      <div class="flex flex-col gap-10 lg:flex-row lg:gap-14">
+        <div class="min-w-0 flex-1">
+          <div
+            class="mb-1 flex flex-wrap items-center gap-4 border-b border-[var(--nsfw-line-strong)] pb-2.5"
+          >
+            <label class="min-w-[10rem] flex-1">
+              <span class="sr-only">Filtrar etiquetas</span>
+              <input
+                v-model="termFilter"
+                class="w-full border-0 bg-transparent text-sm text-[var(--nsfw-ink)] outline-none placeholder:text-[var(--nsfw-dim)]"
+                :placeholder="`Filtrar entre ${catalog.length} etiquetas…`"
+              >
+            </label>
+            <label class="flex items-center gap-2">
+              <span class="sr-only">Nueva etiqueta privada</span>
+              <input
+                v-model="customLabel"
+                class="w-36 border-0 bg-transparent text-xs text-[var(--nsfw-ink)] outline-none placeholder:text-[var(--nsfw-faint)]"
+                maxlength="80"
+                placeholder="+ Crear etiqueta privada"
+                @keydown.enter.prevent="createPrivate"
+              >
+              <button
+                v-if="customLabel.trim()"
+                type="button"
+                class="nsfw-btn-text !text-[var(--nsfw-accent)]"
+                @click="createPrivate"
+              >
+                Crear
+              </button>
+            </label>
+          </div>
+
+          <div
+            v-for="term in filteredTerms"
+            :key="term.id"
+            class="flex items-center justify-between gap-4 border-b border-[var(--nsfw-hair)] py-3"
+          >
+            <div class="min-w-0">
+              <p class="truncate text-sm">
+                {{ term.label }}
+                <span
+                  v-if="term.private"
+                  class="ml-2 text-[0.62rem] uppercase tracking-[0.14em] text-[var(--nsfw-gold)]"
+                >
+                  privada
+                </span>
+              </p>
+              <p class="text-[0.7rem] text-[var(--nsfw-dim)]">
+                {{ term.private ? 'solo tuya' : term.facet }}
+              </p>
             </div>
-            <div>
+            <div class="flex shrink-0 gap-1.5">
               <button
                 type="button"
                 class="term-action positive"
                 :class="primary.includes(term.label) ? 'selected' : ''"
+                :aria-pressed="primary.includes(term.label)"
+                :disabled="primaryFull && !primary.includes(term.label)"
+                title="Predominante"
                 @click="classify(term.label, 'primary')"
               >
-                Preferir
+                <NsfwInterestIcon kind="primary" :filled="primary.includes(term.label)" />
               </button>
               <button
                 type="button"
                 class="term-action negative"
                 :class="excluded.includes(term.label) ? 'selected' : ''"
+                :aria-pressed="excluded.includes(term.label)"
+                title="Excluir"
                 @click="classify(term.label, 'excluded')"
               >
-                Excluir
+                <NsfwInterestIcon kind="excluded" />
               </button>
               <button
                 type="button"
                 class="term-action contextual"
                 :class="contextual.includes(term.label) ? 'selected' : ''"
+                :aria-pressed="contextual.includes(term.label)"
+                title="Si encaja"
                 @click="classify(term.label, 'contextual')"
               >
-                Permitir
+                <NsfwInterestIcon kind="contextual" />
               </button>
               <button
                 v-if="term.private"
@@ -245,31 +328,83 @@ async function save() {
                 ×
               </button>
             </div>
-          </article>
-        </div>
-        <label class="block">
-          <span class="mb-1 block text-sm text-[var(--nsfw-muted)]">Nuevo término privado</span>
-          <span class="flex gap-2">
-            <input
-              v-model="customLabel"
-              class="nsfw-input flex-1"
-              maxlength="80"
-              placeholder="Solo para ti; no duplica públicos"
-              @keydown.enter.prevent="createPrivate"
-            >
-            <button type="button" class="nsfw-btn-ghost" @click="createPrivate">Crear</button>
-          </span>
-        </label>
-        <p v-if="privateTerms.length" class="mt-2 text-xs text-[var(--nsfw-muted)]">
-          {{ privateTerms.length }} etiqueta(s) privada(s) en tu catálogo.
-        </p>
-      </div>
+          </div>
 
-      <p class="text-xs text-[var(--nsfw-faint)]">
-        Valoraciones Hub: {{ ratingsCount }}. «De las que me gustan» se activa con
-        {{ minTaste }}+ ({{ tasteUnlocked ? 'activa' : 'aún no' }}).
-      </p>
-      <button type="submit" class="nsfw-btn-primary">Guardar</button>
-    </form>
-  </div>
+          <p v-if="privateTerms.length" class="mt-4 text-xs text-[var(--nsfw-dim)]">
+            {{ privateTerms.length }} etiqueta(s) privada(s) en tu catálogo. Nunca se publican al Hub.
+          </p>
+        </div>
+
+        <aside class="nsfw-summary w-full shrink-0 lg:w-[21rem]">
+          <p class="nsfw-eyebrow nsfw-eyebrow--dim mb-4">Por defecto</p>
+
+          <div class="mb-5">
+            <p class="mb-2.5 flex items-center gap-2 text-xs text-[var(--nsfw-positive)]">
+              <NsfwInterestIcon kind="primary" filled />
+              Predominante · {{ primary.length }} de {{ MAX_PRIMARY_INTERESTS }}
+            </p>
+            <div class="custom-pills">
+              <button
+                v-for="label in primary"
+                :key="`p-${label}`"
+                type="button"
+                class="pill positive !min-h-8 !py-1 !text-xs"
+                @click="clearClassification(label)"
+              >
+                {{ label }} ×
+              </button>
+              <span v-if="!primary.length" class="text-xs text-[var(--nsfw-dim)]">Ninguno.</span>
+            </div>
+          </div>
+
+          <div class="mb-5">
+            <p class="mb-2.5 flex items-center gap-2 text-xs text-[var(--nsfw-negative)]">
+              <NsfwInterestIcon kind="excluded" />
+              Excluir · {{ excluded.length }}
+            </p>
+            <div class="custom-pills">
+              <button
+                v-for="label in excluded"
+                :key="`e-${label}`"
+                type="button"
+                class="pill negative !min-h-8 !py-1 !text-xs"
+                @click="clearClassification(label)"
+              >
+                {{ label }} ×
+              </button>
+              <span v-if="!excluded.length" class="text-xs text-[var(--nsfw-dim)]">Ninguno.</span>
+            </div>
+          </div>
+
+          <div class="mb-6">
+            <p class="mb-2.5 flex items-center gap-2 text-xs text-[var(--nsfw-contextual)]">
+              <NsfwInterestIcon kind="contextual" />
+              Si encaja · {{ contextual.length }}
+            </p>
+            <div class="custom-pills">
+              <button
+                v-for="label in contextual"
+                :key="`c-${label}`"
+                type="button"
+                class="pill contextual !min-h-8 !py-1 !text-xs"
+                @click="clearClassification(label)"
+              >
+                {{ label }} ×
+              </button>
+              <span v-if="!contextual.length" class="text-xs text-[var(--nsfw-dim)]">Ninguno.</span>
+            </div>
+          </div>
+
+          <p class="mb-6 text-xs leading-relaxed text-[var(--nsfw-dim)]">
+            Valoraciones del Hub: {{ ratingsCount }}. «De las que me gustan» se activa con
+            {{ minTaste }}+ ({{ tasteUnlocked ? 'activa' : 'aún no' }}).
+          </p>
+
+          <div class="flex-1" />
+
+          <button type="submit" class="nsfw-btn-primary min-h-13 w-full">Guardar</button>
+        </aside>
+      </div>
+    </section>
+  </form>
 </template>

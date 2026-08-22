@@ -5,18 +5,20 @@ const volume = ref(0.7)
 </script>
 
 <template>
-  <section class="nsfw-card flex flex-wrap items-center gap-3 text-sm">
-    <p class="text-xs uppercase tracking-wide text-[var(--nsfw-faint)]">Audio</p>
-    <button
-      type="button"
-      class="nsfw-btn-ghost"
-      :class="muted ? '' : 'text-[var(--nsfw-accent)]'"
-      @click="muted = !muted"
-    >
-      {{ muted ? 'Silenciado' : 'Listo (sin TTS)' }}
-    </button>
-    <label class="flex min-w-[8rem] flex-1 items-center gap-2 text-xs text-[var(--nsfw-muted)]">
-      Volumen
+  <section class="flex flex-col gap-2.5">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="nsfw-eyebrow nsfw-eyebrow--dim !mb-0">Audio</p>
+      <button
+        type="button"
+        class="nsfw-btn-text"
+        :class="muted ? '' : '!text-[var(--nsfw-accent)]'"
+        @click="muted = !muted"
+      >
+        {{ muted ? 'Silenciado' : 'Listo (sin TTS)' }}
+      </button>
+    </div>
+    <label class="flex items-center gap-2.5 text-xs text-[var(--nsfw-faint)]">
+      <span class="sr-only">Volumen</span>
       <input
         v-model.number="volume"
         class="w-full accent-[var(--nsfw-accent)]"
@@ -27,7 +29,7 @@ const volume = ref(0.7)
         :disabled="muted"
       >
     </label>
-    <p class="text-xs text-[var(--nsfw-faint)]">
+    <p class="text-[0.7rem] leading-relaxed text-[var(--nsfw-dim)]">
       Speech anotado, no se renderiza. TTS próximamente.
     </p>
   </section>

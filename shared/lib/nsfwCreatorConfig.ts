@@ -23,6 +23,12 @@ export type ChoiceDefinition<T extends string> = {
 
 export const MIN_TASTE_RATINGS = 3
 
+/**
+ * Predominantes: máximo tres para que ninguno se diluya.
+ * Excluidos y contextuales no tienen límite.
+ */
+export const MAX_PRIMARY_INTERESTS = 3
+
 export const FORMAT_CHOICES: ChoiceDefinition<CreatorFormat>[] = [
   {
     value: 'chat',
@@ -297,4 +303,63 @@ export function mapPerspectiveToSession(perspective: NarrativePerspective) {
   if (perspective === 'third') return 'third'
   if (perspective === 'narrative') return 'narrative'
   return 'second'
+}
+
+/** Etiqueta corta y color de cada formato en listas y filas. */
+export const FORMAT_BADGES: Record<CreatorFormat, { short: string; color: string }> = {
+  chat: { short: 'Chat', color: 'var(--nsfw-gold)' },
+  vn: { short: 'VN', color: 'var(--nsfw-azure)' },
+  story: { short: 'Story', color: 'var(--nsfw-muted)' }
+}
+
+export function sessionPlayPath(format: string, id: string) {
+  if (format === 'chat') return `/private/play/chat/${id}`
+  if (format === 'vn') return `/private/play/vn/${id}`
+  return `/private/play/story/${id}`
+}
+
+/**
+ * Intensidad de la escena en cinco tramos, a partir del tono y de si la
+ * escalada está pedida. Acepta tanto los tonos del creador como los de sesión.
+ */
+export function sceneIntensity(tone: string, escalation: boolean) {
+  const base: Record<string, number> = {
+    romantic: 2,
+    neutral: 3,
+    sensual: 3,
+    hardcore: 4,
+    explicit: 4,
+    dark: 4
+  }
+  return Math.min(5, (base[tone] ?? 3) + (escalation ? 1 : 0))
+}
+
+export type InterestTerm = { id: string; label: string; facet: string; private?: boolean }
+
+export type InterestSelection = {
+  primary: string[]
+  excluded: string[]
+  contextual: string[]
+}
+
+/**
+ * Orden del catálogo: primero lo que ya está clasificado en cualquier estado,
+ * después las privadas del usuario y por último el resto del catálogo público.
+ */
+export function sortInterestTerms<T extends InterestTerm>(
+  terms: T[],
+  selection: InterestSelection
+): T[] {
+  const classified = new Set(
+    [...selection.primary, ...selection.excluded, ...selection.contextual].map((label) =>
+      label.toLocaleLowerCase('es-ES')
+    )
+  )
+  const rank = (term: T) => {
+    if (classified.has(term.label.toLocaleLowerCase('es-ES'))) return 0
+    return term.private ? 1 : 2
+  }
+  return [...terms].sort(
+    (a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label, 'es', { sensitivity: 'base' })
+  )
 }

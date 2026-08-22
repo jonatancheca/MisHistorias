@@ -22,6 +22,7 @@ import type {
 } from '../../shared/types/nsfw/session.ts'
 import {
   coherentConfiguration,
+  MAX_PRIMARY_INTERESTS,
   mapPerspectiveToSession,
   mapToneToSession,
   type CreatorFormat,
@@ -349,7 +350,7 @@ export function createStorySession(ownerUserId: string, input: CreateStorySessio
       json(worldState),
       json(sceneState),
       json(cast),
-      json(input.interests.slice(0, 5)),
+      json(input.interests.slice(0, MAX_PRIMARY_INTERESTS)),
       json(input.exclusions),
       now,
       now,
@@ -367,12 +368,27 @@ export function getStorySession(sessionId: string, ownerUserId: string) {
   return row ? rowToSession(row) : null
 }
 
+/**
+ * Solo se listan las historias que han empezado de verdad: una sesión creada
+ * y abandonada antes del primer beat no cuenta como guardada.
+ * ponytail: purga las vacías con más de 24 h; si molesta, moverlo a un job.
+ */
 export function listStorySessions(ownerUserId: string, options: { archived?: boolean } = {}) {
   const archived = options.archived ? 1 : 0
+  db()
+    .prepare(`
+      DELETE FROM nsfw_story_sessions
+      WHERE owner_user_id = ?
+        AND created_at < ?
+        AND NOT EXISTS (SELECT 1 FROM nsfw_beats WHERE session_id = nsfw_story_sessions.id)
+    `)
+    .run(ownerUserId, Date.now() - 24 * 60 * 60 * 1000)
+
   const rows = db()
     .prepare(`
       SELECT * FROM nsfw_story_sessions
       WHERE owner_user_id = ? AND archived = ?
+        AND EXISTS (SELECT 1 FROM nsfw_beats WHERE session_id = nsfw_story_sessions.id)
       ORDER BY updated_at DESC
     `)
     .all(ownerUserId, archived) as SessionRow[]
@@ -856,7 +872,7 @@ export function updateStorySessionConfig(
   const premise =
     typeof patch.premise === 'string' ? patch.premise.trim() || session.premise : session.premise
   const interests = Array.isArray(patch.interests)
-    ? patch.interests.map((item) => item.trim()).filter(Boolean).slice(0, 5)
+    ? patch.interests.map((item) => item.trim()).filter(Boolean).slice(0, MAX_PRIMARY_INTERESTS)
     : session.interests
   const exclusions = Array.isArray(patch.exclusions)
     ? patch.exclusions.map((item) => item.trim()).filter(Boolean)

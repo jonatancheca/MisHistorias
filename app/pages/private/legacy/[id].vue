@@ -27,31 +27,33 @@ async function revive() {
 </script>
 
 <template>
-  <div class="nsfw-page mx-auto max-w-3xl px-4 py-8 sm:px-6">
-    <header class="mb-6 flex flex-wrap items-end justify-between gap-3">
+  <div class="nsfw-page mx-auto max-w-[52rem] px-5 py-10 sm:px-12 sm:py-14">
+    <header class="mb-8 flex flex-wrap items-end justify-between gap-5">
       <div>
-        <p class="text-xs uppercase tracking-[0.2em] text-[var(--nsfw-faint)]">Solo lectura</p>
-        <h1 class="font-serif text-3xl">{{ story.title }}</h1>
+        <p class="nsfw-eyebrow">Solo lectura</p>
+        <h1 class="font-serif text-4xl">{{ story.title }}</h1>
       </div>
-      <div class="flex gap-2">
-        <NuxtLink to="/private/legacy" class="nsfw-btn-ghost">Volver</NuxtLink>
+      <div class="flex items-center gap-5">
+        <NuxtLink to="/private/legacy" class="nsfw-btn-text">Volver</NuxtLink>
         <button type="button" class="nsfw-btn-primary" :disabled="busy" @click="revive">
           {{ busy ? 'Creando…' : 'Iniciar nueva versión' }}
         </button>
       </div>
     </header>
+
     <p v-if="error" class="mb-4 text-sm text-[var(--nsfw-danger)]">{{ error }}</p>
-    <p class="mb-4 text-xs text-[var(--nsfw-faint)]">
+    <p class="mb-8 max-w-[62ch] text-xs leading-relaxed text-[var(--nsfw-dim)]">
       Copia premisa y reparto a una sesión envelope nueva. No convierte mensajes antiguos.
     </p>
-    <article class="space-y-4">
+
+    <article class="nsfw-prose">
       <p
         v-for="(message, index) in story.messages"
         :key="index"
-        class="nsfw-card whitespace-pre-wrap text-sm"
-        :class="message.role === 'user' ? 'border-[var(--nsfw-accent)]/40' : ''"
+        class="whitespace-pre-wrap"
+        :class="message.role === 'user' ? 'is-dialogue' : ''"
       >
-        <span class="mb-1 block text-xs uppercase text-[var(--nsfw-faint)]">{{ message.role }}</span>
+        <span v-if="message.role === 'user'" class="nsfw-speaker">Tú</span>
         {{ message.text }}
       </p>
     </article>

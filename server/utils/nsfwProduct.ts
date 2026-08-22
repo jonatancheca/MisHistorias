@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { getStorage } from './storage.ts'
 import { getAttempt, updateAttempt } from './nsfwStorage.ts'
 import { listTaxonomy } from './nsfwStudio.ts'
+import { MAX_PRIMARY_INTERESTS } from '../../shared/lib/nsfwCreatorConfig.ts'
 
 function db() {
   return getStorage().database
@@ -239,7 +240,7 @@ function parseAdultDefaults(raw: unknown): AdultDefaults {
         ? record[key].filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
         : []
     return {
-      primary: list('primary').slice(0, 5),
+      primary: list('primary').slice(0, MAX_PRIMARY_INTERESTS),
       excluded: list('excluded'),
       contextual: list('contextual')
     }
@@ -261,7 +262,7 @@ export function upsertSelfInsertProfile(
   const now = Date.now()
   const adultDefaults = input.adultDefaults
     ? {
-        primary: input.adultDefaults.primary.map((item) => item.trim()).filter(Boolean).slice(0, 5),
+        primary: input.adultDefaults.primary.map((item) => item.trim()).filter(Boolean).slice(0, MAX_PRIMARY_INTERESTS),
         excluded: input.adultDefaults.excluded.map((item) => item.trim()).filter(Boolean),
         contextual: input.adultDefaults.contextual.map((item) => item.trim()).filter(Boolean)
       }
