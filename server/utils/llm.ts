@@ -21,12 +21,18 @@ export interface LlmProxyRequest {
   messages: Array<{ role: string; content: string }>
   temperature: number
   maxTokens: number
+  /** Desactiva el canal de razonamiento en LM Studio / modelos thinking. */
+  disableReasoning?: boolean
   signal?: AbortSignal
 }
 
 interface ChatCompletionResponse {
   choices?: Array<{
-    message?: { content?: unknown }
+    message?: {
+      content?: unknown
+      reasoning_content?: unknown
+      reasoning?: unknown
+    }
     finish_reason?: unknown
   }>
 }
@@ -40,7 +46,23 @@ export function stripThinkingBlocks(content: string) {
   return content
     .replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/gi, '')
     .replace(/<think\b[^>]*>[\s\S]*$/gi, '')
+    .replace(/<reasoning\b[^>]*>[\s\S]*?<\/reasoning\s*>/gi, '')
     .trim()
+}
+
+export function extractAssistantText(message: {
+  content?: unknown
+  reasoning_content?: unknown
+  reasoning?: unknown
+} | null | undefined) {
+  const content = typeof message?.content === 'string' ? message.content.trim() : ''
+  if (content) return stripThinkingBlocks(content)
+  const reasoningContent =
+    typeof message?.reasoning_content === 'string' ? message.reasoning_content.trim() : ''
+  if (reasoningContent) return stripThinkingBlocks(reasoningContent)
+  const reasoning = typeof message?.reasoning === 'string' ? message.reasoning.trim() : ''
+  if (reasoning) return stripThinkingBlocks(reasoning)
+  return ''
 }
 
 export function normalizeLocalBaseUrl(rawBaseUrl: unknown): string {
@@ -116,18 +138,26 @@ export async function fetchProxyChat(settings: LlmProxySettings, request: LlmPro
   if (!request.messages.length) throw llmError('Faltan mensajes')
   if (!request.model) throw llmError('Falta el modelo')
 
+  const body: Record<string, unknown> = {
+    model: request.model,
+    messages: request.messages,
+    temperature: request.temperature,
+    max_tokens: request.maxTokens,
+    stream: false
+  }
+  // LM Studio / modelos thinking: sin esto, max_tokens se gasta en reasoning_content
+  // y content llega vacío (finish_reason=length).
+  if (request.disableReasoning !== false) {
+    body.reasoning_effort = 'none'
+    body.reasoning = 'off'
+  }
+
   let response: Response
   try {
     response = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...authHeader(settings.apiKey) },
-      body: JSON.stringify({
-        model: request.model,
-        messages: request.messages,
-        temperature: request.temperature,
-        max_tokens: request.maxTokens,
-        stream: false
-      }),
+      body: JSON.stringify(body),
       signal: request.signal
     })
   } catch (caught) {
@@ -142,8 +172,14 @@ export async function fetchProxyChat(settings: LlmProxySettings, request: LlmPro
     throw llmError('El servidor del modelo devolvió una respuesta no válida')
   }
   const choice = completion.choices?.[0]
-  const content =
-    typeof choice?.message?.content === 'string' ? stripThinkingBlocks(choice.message.content) : ''
+  const content = extractAssistantText(choice?.message)
   const finishReason = typeof choice?.finish_reason === 'string' ? choice.finish_reason : null
+  if (!content) {
+    throw llmError(
+      finishReason === 'length'
+        ? 'El modelo agotó tokens en razonamiento y no devolvió JSON. Sube max_tokens o desactiva Thinking en LM Studio.'
+        : 'El modelo devolvió content vacío'
+    )
+  }
   return { content, finishReason }
 }

@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { DatabaseBackup, DatabaseBackupKind } from '../../shared/types/index.ts'
+import { NSFW_SEED_TAXONOMY } from '../services/nsfw/seedCatalog.ts'
 
 export type DataScope = 'normal' | 'private'
 export type DataResource =
@@ -54,7 +55,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 7
+const SCHEMA_VERSION = 18
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -743,6 +744,487 @@ export class MisHistoriasStorage {
           this.database.exec(
             "ALTER TABLE stories ADD COLUMN pending_image_instructions_json TEXT NOT NULL DEFAULT '[]'"
           )
+        }
+      }
+
+      if (version.user_version < 8) {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS nsfw_users (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('user', 'admin')),
+            active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+            avatar_asset_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            last_login_at INTEGER
+          ) STRICT;
+
+          CREATE TABLE IF NOT EXISTS nsfw_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            expires_at INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES nsfw_users(id) ON DELETE CASCADE
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_sessions_by_user
+            ON nsfw_sessions(user_id, expires_at);
+
+          CREATE TABLE IF NOT EXISTS nsfw_story_sessions (
+            id TEXT PRIMARY KEY,
+            owner_user_id TEXT NOT NULL,
+            format TEXT NOT NULL CHECK (format IN ('story', 'chat', 'vn')),
+            title TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (owner_user_id) REFERENCES nsfw_users(id)
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_story_sessions_by_owner
+            ON nsfw_story_sessions(owner_user_id, updated_at DESC);
+        `)
+      }
+
+      if (version.user_version < 9) {
+        const sessionColumns = this.database
+          .prepare('PRAGMA table_info(nsfw_story_sessions)')
+          .all() as Array<{ name: string }>
+        const sessionNames = new Set(sessionColumns.map((column) => column.name))
+        const addSessionColumn = (name: string, ddl: string) => {
+          if (!sessionNames.has(name)) {
+            this.database.exec(`ALTER TABLE nsfw_story_sessions ADD COLUMN ${ddl}`)
+          }
+        }
+        addSessionColumn('premise', "premise TEXT NOT NULL DEFAULT ''")
+        addSessionColumn('duration', "duration TEXT NOT NULL DEFAULT 'medium'")
+        addSessionColumn('tone', "tone TEXT NOT NULL DEFAULT 'sensual'")
+        addSessionColumn('perspective', "perspective TEXT NOT NULL DEFAULT 'second'")
+        addSessionColumn('interaction_policy', "interaction_policy TEXT NOT NULL DEFAULT 'pause'")
+        addSessionColumn('generation_profile', "generation_profile TEXT NOT NULL DEFAULT 'quick'")
+        addSessionColumn('model_alias', "model_alias TEXT NOT NULL DEFAULT ''")
+        addSessionColumn('head_beat_id', 'head_beat_id TEXT')
+        addSessionColumn('revision', 'revision INTEGER NOT NULL DEFAULT 0')
+        addSessionColumn('plan_json', "plan_json TEXT NOT NULL DEFAULT '{}'")
+        addSessionColumn('bible_json', "bible_json TEXT NOT NULL DEFAULT '{}'")
+        addSessionColumn('world_state_json', "world_state_json TEXT NOT NULL DEFAULT '{}'")
+        addSessionColumn('scene_state_json', "scene_state_json TEXT NOT NULL DEFAULT '{}'")
+        addSessionColumn('cast_json', "cast_json TEXT NOT NULL DEFAULT '[]'")
+        addSessionColumn('interests_json', "interests_json TEXT NOT NULL DEFAULT '[]'")
+        addSessionColumn('exclusions_json', "exclusions_json TEXT NOT NULL DEFAULT '[]'")
+        addSessionColumn('archived', 'archived INTEGER NOT NULL DEFAULT 0')
+        addSessionColumn('privacy_notice_seen', 'privacy_notice_seen INTEGER NOT NULL DEFAULT 1')
+
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS nsfw_beats (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            parent_beat_id TEXT,
+            accepted_attempt_id TEXT NOT NULL,
+            envelope_json TEXT NOT NULL,
+            sequence INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES nsfw_story_sessions(id) ON DELETE CASCADE
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_beats_by_session
+            ON nsfw_beats(session_id, sequence);
+
+          CREATE TABLE IF NOT EXISTS nsfw_generation_attempts (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            parent_beat_id TEXT,
+            sibling_group_id TEXT NOT NULL,
+            input_json TEXT NOT NULL,
+            input_fingerprint TEXT NOT NULL,
+            model_alias TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            generation_profile TEXT NOT NULL,
+            state TEXT NOT NULL,
+            envelope_json TEXT,
+            provisional_text TEXT NOT NULL DEFAULT '',
+            error_message TEXT,
+            usage_json TEXT NOT NULL,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES nsfw_story_sessions(id) ON DELETE CASCADE
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_attempts_by_session
+            ON nsfw_generation_attempts(session_id, created_at DESC);
+
+          CREATE TABLE IF NOT EXISTS nsfw_generation_usage (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            attempt_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            prompt_tokens INTEGER NOT NULL,
+            completion_tokens INTEGER NOT NULL,
+            total_tokens INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES nsfw_story_sessions(id) ON DELETE CASCADE
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_usage_by_session
+            ON nsfw_generation_usage(session_id, created_at DESC);
+        `)
+      }
+
+      if (version.user_version < 10) {
+        const sessionColumns = this.database
+          .prepare('PRAGMA table_info(nsfw_story_sessions)')
+          .all() as Array<{ name: string }>
+        const sessionNames = new Set(sessionColumns.map((column) => column.name))
+        const addSessionColumn = (name: string, ddl: string) => {
+          if (!sessionNames.has(name)) {
+            this.database.exec(`ALTER TABLE nsfw_story_sessions ADD COLUMN ${ddl}`)
+          }
+        }
+        addSessionColumn('parent_session_id', 'parent_session_id TEXT')
+        addSessionColumn('fork_beat_id', 'fork_beat_id TEXT')
+        addSessionColumn('sequel_of_session_id', 'sequel_of_session_id TEXT')
+        addSessionColumn('branch_label', 'branch_label TEXT')
+        addSessionColumn('finalized_at', 'finalized_at INTEGER')
+      }
+
+      if (version.user_version < 11) {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS nsfw_vn_saves (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            owner_user_id TEXT NOT NULL,
+            label TEXT NOT NULL,
+            head_beat_id TEXT,
+            is_autosave INTEGER NOT NULL DEFAULT 0 CHECK (is_autosave IN (0, 1)),
+            payload_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES nsfw_story_sessions(id) ON DELETE CASCADE
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_vn_saves_by_session
+            ON nsfw_vn_saves(session_id, updated_at DESC);
+
+          CREATE TABLE IF NOT EXISTS nsfw_read_units (
+            session_id TEXT NOT NULL,
+            beat_id TEXT NOT NULL,
+            unit_index INTEGER NOT NULL,
+            read_at INTEGER NOT NULL,
+            PRIMARY KEY (session_id, beat_id, unit_index),
+            FOREIGN KEY (session_id) REFERENCES nsfw_story_sessions(id) ON DELETE CASCADE
+          ) STRICT;
+        `)
+      }
+
+      if (version.user_version < 12) {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS nsfw_studio_characters (
+            id TEXT PRIMARY KEY,
+            owner_user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            tags_json TEXT NOT NULL,
+            color TEXT NOT NULL,
+            defaults_json TEXT NOT NULL,
+            published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0, 1)),
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (owner_user_id) REFERENCES nsfw_users(id)
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_studio_characters_by_owner
+            ON nsfw_studio_characters(owner_user_id, updated_at DESC);
+
+          CREATE TABLE IF NOT EXISTS nsfw_studio_sprites (
+            id TEXT PRIMARY KEY,
+            character_id TEXT NOT NULL,
+            owner_user_id TEXT NOT NULL,
+            label TEXT NOT NULL,
+            facets_json TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            data BLOB,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (character_id) REFERENCES nsfw_studio_characters(id) ON DELETE CASCADE,
+            FOREIGN KEY (owner_user_id) REFERENCES nsfw_users(id)
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_studio_sprites_by_character
+            ON nsfw_studio_sprites(character_id, created_at);
+
+          CREATE TABLE IF NOT EXISTS nsfw_studio_places (
+            id TEXT PRIMARY KEY,
+            owner_user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            setting TEXT NOT NULL,
+            era TEXT NOT NULL,
+            tags_json TEXT NOT NULL,
+            published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0, 1)),
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (owner_user_id) REFERENCES nsfw_users(id)
+          ) STRICT;
+
+          CREATE TABLE IF NOT EXISTS nsfw_studio_place_backgrounds (
+            id TEXT PRIMARY KEY,
+            place_id TEXT NOT NULL,
+            owner_user_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+            mime_type TEXT NOT NULL,
+            data BLOB,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (place_id) REFERENCES nsfw_studio_places(id) ON DELETE CASCADE
+          ) STRICT;
+
+          CREATE TABLE IF NOT EXISTS nsfw_studio_experiences (
+            id TEXT PRIMARY KEY,
+            owner_user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            premise TEXT NOT NULL,
+            slots_json TEXT NOT NULL,
+            adult_profile TEXT NOT NULL,
+            plan_seeds_json TEXT NOT NULL,
+            endings_json TEXT NOT NULL,
+            published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0, 1)),
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (owner_user_id) REFERENCES nsfw_users(id)
+          ) STRICT;
+
+          CREATE TABLE IF NOT EXISTS nsfw_taxonomy_terms (
+            id TEXT PRIMARY KEY,
+            label TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            kind TEXT NOT NULL CHECK (kind IN ('interest', 'exclusion', 'setting', 'era', 'other')),
+            status TEXT NOT NULL CHECK (status IN ('approved', 'proposed', 'discarded')),
+            proposed_by TEXT,
+            created_at INTEGER NOT NULL
+          ) STRICT;
+
+          CREATE TABLE IF NOT EXISTS nsfw_publications (
+            id TEXT PRIMARY KEY,
+            owner_user_id TEXT NOT NULL,
+            resource_type TEXT NOT NULL CHECK (resource_type IN ('character', 'place', 'experience', 'story')),
+            resource_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            tags_json TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('published', 'withdrawn')),
+            snapshot_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (owner_user_id) REFERENCES nsfw_users(id)
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_publications_by_status
+            ON nsfw_publications(status, updated_at DESC);
+
+          CREATE TABLE IF NOT EXISTS nsfw_library_entries (
+            id TEXT PRIMARY KEY,
+            owner_user_id TEXT NOT NULL,
+            publication_id TEXT NOT NULL,
+            resource_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE (owner_user_id, publication_id),
+            FOREIGN KEY (owner_user_id) REFERENCES nsfw_users(id),
+            FOREIGN KEY (publication_id) REFERENCES nsfw_publications(id)
+          ) STRICT;
+
+          CREATE TABLE IF NOT EXISTS nsfw_follows (
+            follower_user_id TEXT NOT NULL,
+            followed_user_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (follower_user_id, followed_user_id)
+          ) STRICT;
+
+          CREATE TABLE IF NOT EXISTS nsfw_ratings (
+            id TEXT PRIMARY KEY,
+            publication_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            score INTEGER NOT NULL CHECK (score BETWEEN 1 AND 5),
+            dimensions_json TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            UNIQUE (publication_id, user_id)
+          ) STRICT;
+
+          CREATE TABLE IF NOT EXISTS nsfw_comments (
+            id TEXT PRIMARY KEY,
+            publication_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            body TEXT NOT NULL,
+            hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1)),
+            created_at INTEGER NOT NULL
+          ) STRICT;
+        `)
+      }
+
+      if (version.user_version < 13) {
+        const attemptColumns = new Set(
+          (
+            this.database
+              .prepare('PRAGMA table_info(nsfw_generation_attempts)')
+              .all() as Array<{ name: string }>
+          ).map((column) => column.name)
+        )
+        if (!attemptColumns.has('skill_versions_json')) {
+          this.database.exec(`
+            ALTER TABLE nsfw_generation_attempts
+              ADD COLUMN skill_versions_json TEXT NOT NULL DEFAULT '{}';
+          `)
+        }
+        if (!attemptColumns.has('pipeline_passes_json')) {
+          this.database.exec(`
+            ALTER TABLE nsfw_generation_attempts
+              ADD COLUMN pipeline_passes_json TEXT NOT NULL DEFAULT '[]';
+          `)
+        }
+        if (!attemptColumns.has('latency_ms')) {
+          this.database.exec(`
+            ALTER TABLE nsfw_generation_attempts
+              ADD COLUMN latency_ms INTEGER NOT NULL DEFAULT 0;
+          `)
+        }
+        if (!attemptColumns.has('thumb')) {
+          this.database.exec(`
+            ALTER TABLE nsfw_generation_attempts
+              ADD COLUMN thumb TEXT;
+          `)
+        }
+
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS nsfw_product_feedback (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('bug', 'suggestion', 'checkpoint', 'survey', 'thumb')),
+            session_id TEXT,
+            attempt_id TEXT,
+            score INTEGER,
+            body TEXT NOT NULL,
+            metadata_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES nsfw_users(id)
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_product_feedback_by_created
+            ON nsfw_product_feedback(created_at DESC);
+
+          CREATE TABLE IF NOT EXISTS nsfw_self_insert_profiles (
+            user_id TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            pronouns TEXT NOT NULL,
+            appearance TEXT NOT NULL,
+            boundaries_json TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES nsfw_users(id)
+          ) STRICT;
+        `)
+      }
+
+      if (version.user_version < 14) {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS nsfw_collections (
+            id TEXT PRIMARY KEY,
+            owner_user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('user', 'editorial')),
+            summary TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (owner_user_id) REFERENCES nsfw_users(id)
+          ) STRICT;
+
+          CREATE TABLE IF NOT EXISTS nsfw_collection_entries (
+            collection_id TEXT NOT NULL,
+            publication_id TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (collection_id, publication_id),
+            FOREIGN KEY (collection_id) REFERENCES nsfw_collections(id) ON DELETE CASCADE,
+            FOREIGN KEY (publication_id) REFERENCES nsfw_publications(id)
+          ) STRICT;
+
+          CREATE TABLE IF NOT EXISTS nsfw_scene_cgs (
+            id TEXT PRIMARY KEY,
+            owner_user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            tags_json TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (owner_user_id) REFERENCES nsfw_users(id)
+          ) STRICT;
+
+          CREATE TABLE IF NOT EXISTS nsfw_seen_cgs (
+            session_id TEXT NOT NULL,
+            cg_id TEXT NOT NULL,
+            seen_at INTEGER NOT NULL,
+            PRIMARY KEY (session_id, cg_id),
+            FOREIGN KEY (session_id) REFERENCES nsfw_story_sessions(id) ON DELETE CASCADE
+          ) STRICT;
+        `)
+      }
+
+      if (version.user_version < 15) {
+        const sessionColumns = new Set(
+          (
+            this.database
+              .prepare('PRAGMA table_info(nsfw_story_sessions)')
+              .all() as Array<{ name: string }>
+          ).map((column) => column.name)
+        )
+        if (!sessionColumns.has('asset_pins_json')) {
+          this.database.exec(`
+            ALTER TABLE nsfw_story_sessions
+              ADD COLUMN asset_pins_json TEXT NOT NULL DEFAULT '{}';
+          `)
+        }
+        if (!sessionColumns.has('escalation_heart')) {
+          this.database.exec(`
+            ALTER TABLE nsfw_story_sessions
+              ADD COLUMN escalation_heart INTEGER NOT NULL DEFAULT 0 CHECK (escalation_heart IN (0, 1));
+          `)
+        }
+        if (!sessionColumns.has('experience_id')) {
+          this.database.exec(`
+            ALTER TABLE nsfw_story_sessions
+              ADD COLUMN experience_id TEXT;
+          `)
+        }
+      }
+
+      if (version.user_version < 16) {
+        const profileColumns = new Set(
+          (
+            this.database
+              .prepare('PRAGMA table_info(nsfw_self_insert_profiles)')
+              .all() as Array<{ name: string }>
+          ).map((column) => column.name)
+        )
+        if (!profileColumns.has('adult_defaults_json')) {
+          this.database.exec(`
+            ALTER TABLE nsfw_self_insert_profiles
+              ADD COLUMN adult_defaults_json TEXT NOT NULL DEFAULT '{}';
+          `)
+        }
+      }
+
+      if (version.user_version < 17) {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS nsfw_private_terms (
+            id TEXT PRIMARY KEY,
+            owner_user_id TEXT NOT NULL,
+            label TEXT NOT NULL COLLATE NOCASE,
+            kind TEXT NOT NULL DEFAULT 'interest'
+              CHECK (kind IN ('interest', 'exclusion', 'setting', 'era', 'other')),
+            created_at INTEGER NOT NULL,
+            UNIQUE (owner_user_id, label COLLATE NOCASE),
+            FOREIGN KEY (owner_user_id) REFERENCES nsfw_users(id) ON DELETE CASCADE
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS nsfw_private_terms_by_owner
+            ON nsfw_private_terms(owner_user_id, label COLLATE NOCASE);
+        `)
+      }
+
+      if (version.user_version < 18) {
+        // Catálogo público de intereses y límites: sin él solo se verían las etiquetas privadas.
+        const insertTerm = this.database.prepare(`
+          INSERT OR IGNORE INTO nsfw_taxonomy_terms(id, label, kind, status, proposed_by, created_at)
+          VALUES (?, ?, ?, 'approved', NULL, ?)
+        `)
+        const seededAt = Date.now()
+        for (const term of NSFW_SEED_TAXONOMY) {
+          insertTerm.run(randomUUID(), term.label, term.kind, seededAt)
         }
       }
 

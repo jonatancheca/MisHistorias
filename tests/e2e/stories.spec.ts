@@ -411,8 +411,8 @@ test.describe('novela visual y responsive', () => {
     await trigger.click()
     expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('')
     await trigger.click()
-    await expect(page).toHaveURL('/')
-    await expect(page.getByRole('button', { name: 'Salir del modo privado' })).toBeVisible()
+    await expect(page).toHaveURL('/private/login')
+    await expect(page.locator('html')).toHaveClass(/nsfw-scope/)
   })
 
   test('persiste modo visual, fondo y avance manual', async ({ page, data }) => {

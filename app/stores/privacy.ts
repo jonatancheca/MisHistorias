@@ -50,13 +50,21 @@ export const usePrivacyStore = defineStore('privacy', () => {
     }
   }
 
-  function activate() {
-    return switchScope('private')
+  async function activate() {
+    await navigateTo('/private/login')
   }
 
-  function deactivate() {
-    return switchScope('normal')
+  async function deactivate() {
+    const auth = useNsfwAuthStore()
+    if (auth.isAuthenticated) {
+      await auth.logout()
+    }
+    if (isPrivate.value) {
+      await switchScope('normal')
+      return
+    }
+    await navigateTo('/')
   }
 
-  return { isPrivate, switching, activate, deactivate }
+  return { isPrivate, switching, activate, deactivate, switchScope }
 })
