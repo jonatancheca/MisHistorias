@@ -4,7 +4,7 @@ import { getStorage } from '../../utils/storage'
 export default defineEventHandler(async (event) => {
   const rawBody = await readBody(event)
   if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
-    throw createError({ statusCode: 400, statusMessage: 'Petición no válida' })
+    throw createError({ statusCode: 400, message: 'Petición no válida' })
   }
   const body = rawBody as Record<string, unknown>
   const prompt = typeof body.prompt === 'string' ? body.prompt : ''
@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   if (!prompt.trim() || prompt.length > 100_000 || Boolean(preset.trim()) === Boolean(model.trim())) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Indica un prompt y exactamente un preset o modelo'
+      message: 'Indica un prompt y exactamente un preset o modelo'
     })
   }
 
@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
     const error = caught as SwarmProxyError
     throw createError({
       statusCode: error.status && error.status >= 400 ? error.status : 502,
-      statusMessage: error.message,
+      message: error.message,
       data: { detail: error.detail }
     })
   } finally {

@@ -95,18 +95,18 @@ export default defineEventHandler(async (event) => {
   const storage = getStorage()
   if (event.method === 'GET') return publicSettings(storage.readSettings())
   if (event.method !== 'PATCH') {
-    throw createError({ statusCode: 405, statusMessage: 'Método no permitido' })
+    throw createError({ statusCode: 405, message: 'Método no permitido' })
   }
 
   const rawBody = await readBody(event)
   if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
-    throw createError({ statusCode: 400, statusMessage: 'Ajustes no válidos' })
+    throw createError({ statusCode: 400, message: 'Ajustes no válidos' })
   }
   const entries = Object.entries(rawBody as Record<string, unknown>).filter(([key]) =>
     ALLOWED_SETTINGS.has(key)
   )
   if (entries.some(([key, value]) => !validSetting(key, value))) {
-    throw createError({ statusCode: 400, statusMessage: 'Ajustes no válidos' })
+    throw createError({ statusCode: 400, message: 'Ajustes no válidos' })
   }
   const patch = Object.fromEntries(entries)
   return publicSettings(storage.writeSettings(patch))

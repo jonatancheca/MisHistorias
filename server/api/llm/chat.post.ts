@@ -9,7 +9,7 @@ function numberInRange(value: unknown, fallback: number, min: number, max: numbe
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    throw createError({ statusCode: 400, statusMessage: 'Petición no válida' })
+    throw createError({ statusCode: 400, message: 'Petición no válida' })
   }
   const value = body as Record<string, unknown>
   const messages = Array.isArray(value.messages)
@@ -51,7 +51,7 @@ export default defineEventHandler(async (event) => {
     const error = caught as LlmProxyError
     throw createError({
       statusCode: error.status && error.status >= 400 ? error.status : 502,
-      statusMessage: error.message,
+      message: error.message,
       data: { detail: error.detail }
     })
   } finally {

@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
     const detail = error instanceof Error ? error.message : String(error)
     throw createError({
       statusCode: 503,
-      statusMessage: `No se pudo comprobar la actualización: ${detail}`
+      message: `No se pudo comprobar la actualización: ${detail}`
     })
   }
 })

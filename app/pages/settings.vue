@@ -94,8 +94,13 @@ async function testConnection() {
     testMessage.value = `${availableModels.length} modelos disponibles`
     if (!form.model && availableModels[0]) form.model = availableModels[0]
   } catch (caught) {
-    const detail = caught as { statusMessage?: string; message?: string }
-    testError.value = detail.statusMessage || detail.message || 'No se pudo conectar'
+    const detail = caught as {
+      data?: { message?: string; statusMessage?: string }
+      statusMessage?: string
+      message?: string
+    }
+    testError.value = detail.data?.message || detail.data?.statusMessage || detail.statusMessage ||
+      detail.message || 'No se pudo conectar'
   } finally {
     testing.value = false
   }
@@ -406,11 +411,12 @@ async function setChromeLlmEnabled(enabled: boolean) {
 
 function backupErrorMessage(caught: unknown, fallback: string) {
   const detail = caught as {
-    data?: { statusMessage?: string }
+    data?: { message?: string; statusMessage?: string }
     statusMessage?: string
     message?: string
   }
-  return detail.data?.statusMessage || detail.statusMessage || detail.message || fallback
+  return detail.data?.message || detail.data?.statusMessage || detail.statusMessage ||
+    detail.message || fallback
 }
 
 async function loadBackups() {

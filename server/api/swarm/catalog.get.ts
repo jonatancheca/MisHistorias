@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
     const error = caught as SwarmProxyError
     throw createError({
       statusCode: error.status && error.status >= 400 ? error.status : 502,
-      statusMessage: error.message,
+      message: error.message,
       data: { detail: error.detail }
     })
   } finally {

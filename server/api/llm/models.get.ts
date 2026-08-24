@@ -12,7 +12,7 @@ export default defineEventHandler(async () => {
     const error = caught as LlmProxyError
     throw createError({
       statusCode: error.status && error.status >= 400 ? error.status : 502,
-      statusMessage: error.message,
+      message: error.message,
       data: { detail: error.detail }
     })
   }

@@ -24,7 +24,7 @@ const SOUND_TYPES = new Set(['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wa
 
 function asScope(value: unknown): DataScope {
   if (value === 'normal' || value === 'private') return value
-  throw createError({ statusCode: 400, statusMessage: 'Ámbito de datos no válido' })
+  throw createError({ statusCode: 400, message: 'Ámbito de datos no válido' })
 }
 
 function asResource(value: unknown): DataResource {
@@ -43,7 +43,7 @@ function asRecord(value: unknown): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as Record<string, unknown>
   }
-  throw createError({ statusCode: 400, statusMessage: 'Datos no válidos' })
+  throw createError({ statusCode: 400, message: 'Datos no válidos' })
 }
 
 function hasString(value: Record<string, unknown>, key: string) {
@@ -167,7 +167,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasNumber(value, 'createdAt')
       break
   }
-  if (!valid) throw createError({ statusCode: 400, statusMessage: 'Datos no válidos' })
+  if (!valid) throw createError({ statusCode: 400, message: 'Datos no válidos' })
   return value
 }
 
@@ -181,7 +181,7 @@ function validateCharacterCopy(rawValue: unknown) {
     !hasString(value, 'color') ||
     !hasString(value, 'imageGenerationPreset')
   ) {
-    throw createError({ statusCode: 400, statusMessage: 'Datos no válidos' })
+    throw createError({ statusCode: 400, message: 'Datos no válidos' })
   }
   return value
 }
@@ -191,7 +191,7 @@ async function readBinaryPayload(event: H3Event, resource: 'images' | 'backgroun
   const metadataPart = parts?.find((part) => part.name === 'metadata')
   const filePart = parts?.find((part) => part.name === 'file')
   if (!metadataPart || !filePart) {
-    throw createError({ statusCode: 400, statusMessage: 'Faltan metadatos o archivo' })
+    throw createError({ statusCode: 400, message: 'Faltan metadatos o archivo' })
   }
   const maximum = resource === 'sounds' ? MAX_SOUND_BYTES : MAX_IMAGE_BYTES
   if (filePart.data.byteLength > maximum) {
@@ -204,7 +204,7 @@ async function readBinaryPayload(event: H3Event, resource: 'images' | 'backgroun
   try {
     metadata = JSON.parse(metadataPart.data.toString('utf8'))
   } catch {
-    throw createError({ statusCode: 400, statusMessage: 'Metadatos no válidos' })
+    throw createError({ statusCode: 400, message: 'Metadatos no válidos' })
   }
   return { metadata: asRecord(metadata), data: filePart.data }
 }
@@ -214,7 +214,7 @@ function importAssets(
   parts: Awaited<ReturnType<typeof readMultipartFormData>>,
   kind: 'images' | 'sounds'
 ) {
-  if (!Array.isArray(rawAssets)) throw createError({ statusCode: 400, statusMessage: 'Archivos no válidos' })
+  if (!Array.isArray(rawAssets)) throw createError({ statusCode: 400, message: 'Archivos no válidos' })
   const allowedTypes = kind === 'images' ? IMAGE_TYPES : SOUND_TYPES
   const maximum = kind === 'images' ? MAX_IMAGE_BYTES : MAX_SOUND_BYTES
   const seenFields = new Set<string>()
@@ -224,25 +224,25 @@ function importAssets(
     const field = typeof asset.field === 'string' ? asset.field : ''
     const mimeType = typeof asset.mimeType === 'string' ? asset.mimeType.toLocaleLowerCase() : ''
     if (!field || seenFields.has(field) || !allowedTypes.has(mimeType) || !hasStringArray(asset, 'tags')) {
-      throw createError({ statusCode: 400, statusMessage: 'Archivos no válidos' })
+      throw createError({ statusCode: 400, message: 'Archivos no válidos' })
     }
     if (kind === 'sounds' && asset.tags.length === 0) {
-      throw createError({ statusCode: 400, statusMessage: 'Cada sonido necesita etiquetas' })
+      throw createError({ statusCode: 400, message: 'Cada sonido necesita etiquetas' })
     }
     if (
       kind === 'images' &&
       (!hasString(asset, 'description') || typeof asset.isDefault !== 'boolean')
     ) {
-      throw createError({ statusCode: 400, statusMessage: 'Imágenes no válidas' })
+      throw createError({ statusCode: 400, message: 'Imágenes no válidas' })
     }
     if (kind === 'images' && asset.isDefault) defaultImages += 1
     if (defaultImages > 1) {
-      throw createError({ statusCode: 400, statusMessage: 'Solo puede haber una imagen predeterminada' })
+      throw createError({ statusCode: 400, message: 'Solo puede haber una imagen predeterminada' })
     }
     seenFields.add(field)
     const file = parts?.find((part) => part.name === field)
     if (!file || file.data.byteLength === 0 || file.data.byteLength > maximum) {
-      throw createError({ statusCode: 400, statusMessage: 'Archivo ausente o demasiado grande' })
+      throw createError({ statusCode: 400, message: 'Archivo ausente o demasiado grande' })
     }
     return {
       metadata: {
@@ -264,7 +264,7 @@ async function readCharacterImport(event: H3Event) {
   try {
     rawMetadata = JSON.parse(metadataPart.data.toString('utf8'))
   } catch {
-    throw createError({ statusCode: 400, statusMessage: 'Metadatos no válidos' })
+    throw createError({ statusCode: 400, message: 'Metadatos no válidos' })
   }
   const metadata = asRecord(rawMetadata)
   const character = asRecord(metadata.character)
@@ -277,7 +277,7 @@ async function readCharacterImport(event: H3Event) {
     !hasString(character, 'color') || !/^#[0-9a-f]{6}$/i.test(String(character.color)) ||
     !hasString(character, 'imageGenerationPreset')
   ) {
-    throw createError({ statusCode: 400, statusMessage: 'Personaje no válido' })
+    throw createError({ statusCode: 400, message: 'Personaje no válido' })
   }
   const targetId = metadata.mode === 'replace' ? asId(metadata.targetId) : null
   const payload: CharacterImportPayload = {
@@ -299,12 +299,12 @@ function mapStorageError(caught: unknown): never {
     const stories = (caught as { stories?: Array<{ id: string; title: string }> }).stories ?? []
     throw createError({
       statusCode: 409,
-      statusMessage: 'El personaje se usa en historias',
+      message: 'El personaje se usa en historias',
       data: { stories }
     })
   }
   if (error.errcode === 787 || error.message?.includes('FOREIGN KEY constraint failed')) {
-    throw createError({ statusCode: 400, statusMessage: 'Referencia de datos no válida' })
+    throw createError({ statusCode: 400, message: 'Referencia de datos no válida' })
   }
   if (
     error.code === 'ERR_BACKGROUND_TAG_CONFLICT' ||
@@ -313,10 +313,10 @@ function mapStorageError(caught: unknown): never {
     error.errcode === 2067 ||
     error.message?.includes('UNIQUE constraint failed')
   ) {
-    throw createError({ statusCode: 409, statusMessage: 'El registro entra en conflicto con otro' })
+    throw createError({ statusCode: 409, message: 'El registro entra en conflicto con otro' })
   }
   console.error('SQLite data API error', error)
-  throw createError({ statusCode: 500, statusMessage: 'No se pudieron guardar los datos' })
+  throw createError({ statusCode: 500, message: 'No se pudieron guardar los datos' })
 }
 
 export default defineEventHandler(async (event) => {
@@ -414,7 +414,7 @@ export default defineEventHandler(async (event) => {
       return { ok: true }
     }
 
-    throw createError({ statusCode: 405, statusMessage: 'Método no permitido' })
+    throw createError({ statusCode: 405, message: 'Método no permitido' })
   } catch (caught) {
     mapStorageError(caught)
   }

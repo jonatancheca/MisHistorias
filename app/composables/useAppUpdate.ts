@@ -26,11 +26,11 @@ export function useAppUpdate() {
     } catch (caught) {
       checked.value = true
       const detail = caught as {
-        data?: { statusMessage?: string }
+        data?: { message?: string; statusMessage?: string }
         statusMessage?: string
         message?: string
       }
-      error.value = detail.data?.statusMessage || detail.statusMessage || detail.message ||
+      error.value = detail.data?.message || detail.data?.statusMessage || detail.statusMessage || detail.message ||
         'No se pudo comprobar la actualización.'
       return null
     } finally {

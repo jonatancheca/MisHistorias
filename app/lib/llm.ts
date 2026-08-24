@@ -20,6 +20,7 @@ function normalizeError(caught: unknown): LlmCallError {
     cause?: { name?: string }
     data?: {
       statusCode?: number
+      message?: string
       statusMessage?: string
       data?: { detail?: string }
       detail?: string
@@ -29,7 +30,10 @@ function normalizeError(caught: unknown): LlmCallError {
     return Object.assign(new Error('Petición cancelada'), { name: 'AbortError' })
   }
   return Object.assign(
-    new Error(error.data?.statusMessage || error.statusMessage || error.message || 'Fallo del modelo'),
+    new Error(
+      error.data?.message || error.data?.statusMessage || error.statusMessage || error.message ||
+      'Fallo del modelo'
+    ),
     {
       status: error.statusCode ?? error.data?.statusCode,
       detail: error.data?.data?.detail ?? error.data?.detail

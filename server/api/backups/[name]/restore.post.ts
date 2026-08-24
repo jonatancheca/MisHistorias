@@ -3,7 +3,7 @@ import { getStorage } from '../../../utils/storage'
 export default defineEventHandler((event) => {
   const name = getRouterParam(event, 'name')
   if (!name) {
-    throw createError({ statusCode: 400, statusMessage: 'Falta el nombre del backup' })
+    throw createError({ statusCode: 400, message: 'Falta el nombre del backup' })
   }
 
   try {
@@ -18,7 +18,7 @@ export default defineEventHandler((event) => {
     const message = (caught as Error).message || 'No se pudo restaurar el backup'
     throw createError({
       statusCode: message === 'Backup no encontrado' ? 404 : 400,
-      statusMessage: message
+      message
     })
   }
 })

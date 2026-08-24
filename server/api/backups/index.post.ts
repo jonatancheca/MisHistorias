@@ -6,7 +6,7 @@ export default defineEventHandler(() => {
   } catch (caught) {
     throw createError({
       statusCode: 500,
-      statusMessage: (caught as Error).message || 'No se pudo crear el backup'
+      message: (caught as Error).message || 'No se pudo crear el backup'
     })
   }
 })

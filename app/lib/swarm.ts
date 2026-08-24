@@ -7,11 +7,12 @@ export interface SwarmCatalog {
 
 function errorMessage(caught: unknown, fallback: string) {
   const detail = caught as {
-    data?: { statusMessage?: string }
+    data?: { message?: string; statusMessage?: string }
     statusMessage?: string
     message?: string
   }
-  return detail.data?.statusMessage || detail.statusMessage || detail.message || fallback
+  return detail.data?.message || detail.data?.statusMessage || detail.statusMessage ||
+    detail.message || fallback
 }
 
 export async function fetchSwarmCatalog(signal?: AbortSignal) {
@@ -46,8 +47,11 @@ export async function fetchSwarmImage(input: {
     throw new Error('No se pudo conectar con el proxy de SwarmUI.', { cause: caught })
   }
   if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { statusMessage?: string } | null
-    throw new Error(payload?.statusMessage || `SwarmUI respondió ${response.status}.`)
+    const payload = await response.json().catch(() => null) as {
+      message?: string
+      statusMessage?: string
+    } | null
+    throw new Error(payload?.message || payload?.statusMessage || `SwarmUI respondió ${response.status}.`)
   }
   return response.blob()
 }

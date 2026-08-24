@@ -49,7 +49,7 @@ test('muestra en Ajustes un error al comprobar actualizaciones', async ({ page }
     await route.fulfill({
       status: 503,
       contentType: 'application/json',
-      body: JSON.stringify({ statusMessage: 'GitHub no disponible para la prueba.' })
+      body: JSON.stringify({ message: 'GitHub no disponible para la prueba.' })
     })
   })
 

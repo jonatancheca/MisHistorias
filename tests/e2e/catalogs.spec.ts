@@ -29,6 +29,13 @@ async function uploadCharacterZip(page: import('@playwright/test').Page, buffer:
 }
 
 test.describe('personajes', () => {
+  test('conserva mensajes de error con acentos sin usar statusMessage', async ({ page }) => {
+    const response = await page.request.get('/api/data/characters?scope=invalido')
+
+    expect(response.status()).toBe(400)
+    expect(await response.json()).toMatchObject({ message: 'Ámbito de datos no válido' })
+  })
+
   test('crea personaje nuevo y persiste sus datos', async ({ page, data }) => {
     const name = data.unique('Clara')
     const prompt = data.unique('Prompt')
