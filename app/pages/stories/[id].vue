@@ -691,13 +691,53 @@ function onVisualFrameClick(event: MouseEvent) {
   }
 }
 
+function navigateChatMessage(direction: -1 | 1) {
+  const container = scroller.value
+  if (!container) return false
+  const elements = Array.from(
+    container.querySelectorAll<HTMLElement>('[data-story-message-id]')
+  )
+  if (!elements.length) return false
+  const containerTop = container.getBoundingClientRect().top
+  const currentIndex = elements.reduce((bestIndex, element, index) => {
+    const bestDistance = Math.abs(
+      elements[bestIndex]!.getBoundingClientRect().top - containerTop
+    )
+    const distance = Math.abs(element.getBoundingClientRect().top - containerTop)
+    return distance < bestDistance ? index : bestIndex
+  }, 0)
+  const targetIndex = currentIndex + direction
+  if (targetIndex < 0 || targetIndex >= elements.length) return false
+  const target = elements[targetIndex]!
+  followingBottom.value = false
+  const targetTop = container.scrollTop + target.getBoundingClientRect().top - containerTop
+  autoScrollTarget = targetTop
+  container.scrollTo({ top: targetTop, behavior: 'smooth' })
+  updateScrollControls()
+  return true
+}
+
 function onVisualNovelKeydown(event: KeyboardEvent) {
-  if (!stories.activeStory?.visualMode) return
+  if (!stories.activeStory) return
   if (
     event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
     storyPreferencesOpen.value || selectedDebugTrace.value || imagePickerTarget.value ||
     confirmDialog.dialog
   ) return
+
+  if (event.key === 'PageUp' || event.key === 'PageDown') {
+    const handled = stories.activeStory.visualMode
+      ? event.key === 'PageUp'
+        ? showPreviousVisualFrame()
+        : advanceVisualFrame()
+      : event.key === 'PageDown' && stories.completeCurrentRevealLine()
+        ? true
+        : navigateChatMessage(event.key === 'PageUp' ? -1 : 1)
+    if (handled) event.preventDefault()
+    return
+  }
+
+  if (!stories.activeStory.visualMode) return
   const target = event.target
   if (
     target instanceof HTMLElement &&

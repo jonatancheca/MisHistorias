@@ -158,6 +158,45 @@ test.describe('historias', () => {
 })
 
 test.describe('chat', () => {
+  test('PageUp y PageDown navegan mensajes desde el cuadro de escritura', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data)
+    const messages = []
+    for (const label of ['Primero', 'Segundo', 'Tercero', 'Cuarto']) {
+      messages.push(await data.createMessage({
+        story,
+        role: 'user',
+        raw: `${label}: ${'contenido largo '.repeat(90)}`
+      }))
+    }
+
+    await page.goto(`/stories/${story.id}`)
+    const scroller = page.getByTestId('story-scroller')
+    await scroller.evaluate((element) => element.scrollTo({ top: 0 }))
+    const input = page.getByPlaceholder('Escribe lo que haces o dices…')
+    await input.fill('Texto sin enviar')
+
+    const alignedMessage = () => page.evaluate(() => {
+      const container = document.querySelector<HTMLElement>('[data-testid="story-scroller"]')
+      if (!container) return null
+      const top = container.getBoundingClientRect().top
+      const messages = Array.from(
+        container.querySelectorAll<HTMLElement>('[data-story-message-id]')
+      )
+      return messages.toSorted((left, right) =>
+        Math.abs(left.getBoundingClientRect().top - top) -
+        Math.abs(right.getBoundingClientRect().top - top)
+      )[0]?.dataset.storyMessageId ?? null
+    })
+
+    await input.press('PageDown')
+    await expect.poll(alignedMessage).toBe(messages[1]!.id)
+    await input.press('PageDown')
+    await expect.poll(alignedMessage).toBe(messages[2]!.id)
+    await input.press('PageUp')
+    await expect.poll(alignedMessage).toBe(messages[1]!.id)
+    await expect(input).toHaveValue('Texto sin enviar')
+  })
+
   test('usa Chrome AI sin modelo LMStudio ni fallback', async ({ page, data }) => {
     const { story } = await createStoryFixture(data)
     const localResponse = 'Narración: respuesta local de Chrome.'
@@ -582,6 +621,40 @@ test.describe('novela visual y responsive', () => {
     expect(after.length).toBeGreaterThan(before.length + 5)
     await page.waitForTimeout(300)
     await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+  })
+
+  test('PageUp y PageDown controlan la novela con foco en el cuadro de escritura', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data, true)
+    await data.patchSettings({
+      mockMode: true,
+      responseSpeed: 'slow',
+      visualNovelManualAdvance: true
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.evaluate(() => {
+      Math.random = () => 0
+    })
+    await page.getByTestId('continue-button').click()
+    const frame = page.getByTestId('visual-novel-frame')
+    const counter = page.getByTestId('visual-novel-counter')
+    await expect.poll(async () => (await frame.innerText()).trim(), { timeout: 15_000 })
+      .not.toBe('La historia aún no ha empezado.')
+    const beforeText = (await frame.innerText()).trim()
+    const beforeIndex = Number((await counter.innerText()).split('/')[0]?.trim())
+    const input = page.getByPlaceholder('Escribe lo que haces o dices…')
+    await input.fill('Texto sin enviar')
+
+    await input.press('PageDown')
+    expect((await frame.innerText()).trim().length).toBeGreaterThan(beforeText.length + 5)
+    await input.press('PageDown')
+    await expect.poll(async () => Number((await counter.innerText()).split('/')[0]?.trim()))
+      .toBe(beforeIndex + 1)
+    await input.press('PageUp')
+    await expect.poll(async () => Number((await counter.innerText()).split('/')[0]?.trim()))
+      .toBe(beforeIndex)
+    await expect(input).toHaveValue('Texto sin enviar')
     await page.getByRole('button', { name: 'Parar', exact: true }).click()
   })
 

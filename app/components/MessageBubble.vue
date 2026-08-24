@@ -196,7 +196,11 @@ function confirmEdit() {
 </script>
 
 <template>
-  <div v-if="!isAiInstruction(message.raw)" class="group flex min-w-0 items-start gap-2">
+  <div
+    v-if="!isAiInstruction(message.raw)"
+    class="group flex min-w-0 items-start gap-2"
+    :data-story-message-id="message.id"
+  >
     <div
       v-if="!editing && (editable || debugTrace)"
       class="flex w-8 shrink-0 flex-col gap-1 text-[var(--color-fg-muted)] opacity-100 transition max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
