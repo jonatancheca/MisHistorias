@@ -14,6 +14,7 @@ const character: Character = {
   tags: ['aventurera'],
   color: '#123456',
   imageGenerationPreset: '',
+  archived: false,
   createdAt: 1,
   updatedAt: 1
 }

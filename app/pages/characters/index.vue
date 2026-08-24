@@ -7,7 +7,7 @@ import {
   readCharacterArchive,
   type ImportedCharacterArchive
 } from '~/lib/characterArchive'
-import { listSounds } from '~/lib/db'
+import { listSounds, listStories } from '~/lib/db'
 
 const characters = useCharactersStore()
 const confirmDialog = useConfirmStore()
@@ -21,14 +21,52 @@ const importing = ref(false)
 const exportingId = ref<string | null>(null)
 const transferError = ref<string | null>(null)
 const transferSuccess = ref<string | null>(null)
+const showArchived = ref(false)
+const visibleCharacters = computed(() =>
+  characters.characters.filter((character) => character.archived === showArchived.value)
+)
+
+function usageMessage(name: string, stories: Array<{ title: string }>) {
+  const titles = stories.map((story) => `«${story.title}»`).join(', ')
+  return `No se puede borrar «${name}». Se usa en ${titles}. Borra antes esas historias.`
+}
+
+function serverUsageStories(caught: unknown) {
+  const error = caught as {
+    data?: { data?: { stories?: Array<{ id: string; title: string }> } }
+  }
+  return error.data?.data?.stories ?? []
+}
 
 async function remove(id: string) {
+  const character = characters.byId(id)
+  if (!character) return
+  transferError.value = null
+  transferSuccess.value = null
+  const usedBy = (await listStories()).filter((story) => story.characterIds.includes(id))
+  if (usedBy.length) {
+    transferError.value = usageMessage(character.name, usedBy)
+    return
+  }
   const accepted = await confirmDialog.ask({
     title: 'Borrar personaje',
     message: 'Se borrarán el personaje y todas sus imágenes. Esta acción no se puede deshacer.'
   })
   if (!accepted) return
-  await characters.removeCharacter(id)
+  try {
+    await characters.removeCharacter(id)
+  } catch (caught) {
+    const stories = serverUsageStories(caught)
+    transferError.value = stories.length
+      ? usageMessage(character.name, stories)
+      : (caught as Error).message || 'No se pudo borrar el personaje.'
+  }
+}
+
+async function setArchived(id: string, archived: boolean) {
+  transferError.value = null
+  transferSuccess.value = null
+  await characters.setArchived(id, archived)
 }
 
 function galleryItems(characterId: string) {
@@ -116,6 +154,17 @@ function cancelImport() {
     <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-2xl font-bold">Personajes</h1>
       <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="btn-ghost"
+          :aria-pressed="showArchived"
+          @click="showArchived = !showArchived"
+        >
+          <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
+          </svg>
+          {{ showArchived ? 'Ver activos' : 'Ver archivados' }}
+        </button>
         <button type="button" class="btn-ghost" :disabled="importing" @click="importInput?.click()">
           <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
@@ -148,12 +197,12 @@ function cancelImport() {
       {{ transferSuccess }}
     </p>
 
-    <p v-if="characters.characters.length === 0" class="card text-sm text-[var(--color-fg-muted)]">
-      Aún no hay personajes.
+    <p v-if="visibleCharacters.length === 0" class="card text-sm text-[var(--color-fg-muted)]">
+      {{ showArchived ? 'No hay personajes archivados.' : 'Aún no hay personajes.' }}
     </p>
 
     <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-      <li v-for="character in characters.characters" :key="character.id" class="card flex h-full flex-col">
+      <li v-for="character in visibleCharacters" :key="character.id" class="card flex h-full flex-col">
         <div class="flex items-start gap-3">
           <ImageLightbox
             v-if="characters.urlFor(characters.defaultImage(character.id)?.id)"
@@ -198,17 +247,35 @@ function cancelImport() {
         <div class="mt-auto flex flex-nowrap gap-2 pt-3">
           <NuxtLink
             :to="{ path: '/characters/new', query: { copyFrom: character.id } }"
-            class="btn-ghost inline-flex items-center gap-1.5"
+            class="btn-ghost inline-flex items-center gap-1.5 max-[359px]:px-2"
+            aria-label="Copiar"
+            title="Copiar"
           >
             <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="9" y="9" width="11" height="11" rx="2" />
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
-            Copiar
+            <span class="hidden min-[360px]:inline">Copiar</span>
           </NuxtLink>
           <button
             type="button"
-            class="btn-ghost inline-flex items-center gap-1.5"
+            class="btn-ghost inline-flex shrink-0 items-center gap-1.5 px-2"
+            :aria-label="character.archived ? 'Desarchivar' : 'Archivar'"
+            :title="character.archived ? 'Desarchivar' : 'Archivar'"
+            @click="setArchived(character.id, !character.archived)"
+          >
+            <svg v-if="character.archived" aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 7h16v13H4zM3 3h18v4H3zM12 16v-5m0 0-3 3m3-3 3 3" />
+            </svg>
+            <svg v-else aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="btn-ghost inline-flex items-center gap-1.5 max-[359px]:px-2"
+            aria-label="Exportar"
+            title="Exportar"
             :disabled="Boolean(exportingId)"
             @click="exportCharacter(character.id)"
           >
@@ -216,11 +283,13 @@ function cancelImport() {
               <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
               <path d="M5 21h14" />
             </svg>
-            {{ exportingId === character.id ? 'Exportando…' : 'Exportar' }}
+            <span class="hidden min-[360px]:inline">
+              {{ exportingId === character.id ? 'Exportando…' : 'Exportar' }}
+            </span>
           </button>
           <button
             type="button"
-            class="btn-danger inline-flex shrink-0 items-center gap-1.5"
+            class="btn-danger inline-flex shrink-0 items-center gap-1.5 px-2"
             aria-label="Borrar"
             title="Borrar"
             @click="remove(character.id)"

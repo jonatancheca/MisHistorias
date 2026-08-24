@@ -11,6 +11,7 @@ const character: Character = {
   tags: [],
   color: '#db2777',
   imageGenerationPreset: '',
+  archived: false,
   createdAt: 1,
   updatedAt: 1
 }

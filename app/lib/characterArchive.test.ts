@@ -17,6 +17,7 @@ const character: Character = {
   tags: ['valiente'],
   color: '#123456',
   imageGenerationPreset: 'Retrato',
+  archived: false,
   createdAt: 1,
   updatedAt: 2
 }

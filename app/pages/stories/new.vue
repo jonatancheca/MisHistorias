@@ -24,7 +24,10 @@ const copiedStory =
   typeof copyFromId === 'string'
     ? (stories.stories.find((story) => story.id === copyFromId) ?? null)
     : null
-const availableCharacterIds = new Set(characters.characters.map((character) => character.id))
+const selectableCharacters = computed(() =>
+  characters.characters.filter((character) => !character.archived)
+)
+const availableCharacterIds = new Set(selectableCharacters.value.map((character) => character.id))
 const copiedCustomizations = new Map(
   (copiedStory?.characterCustomizations ?? []).map((customization) => [
     customization.characterId,
@@ -54,7 +57,7 @@ const presetId = ref<string | null>(
 const saving = ref(false)
 const characterCustomizations = ref<Record<string, StoryCharacterCustomization>>(
   Object.fromEntries(
-    characters.characters.map((character) => {
+    selectableCharacters.value.map((character) => {
       const copied = copiedCustomizations.get(character.id)
       return [
         character.id,
@@ -75,7 +78,7 @@ const selectedCharacters = computed(() =>
   })
 )
 const characterTagSuggestions = computed(() =>
-  characters.characters.flatMap((character) => character.tags ?? [])
+  selectableCharacters.value.flatMap((character) => character.tags ?? [])
 )
 
 function customizationFor(characterId: string) {
@@ -164,13 +167,13 @@ async function submit() {
 
       <div>
         <span class="label">Personajes</span>
-        <p v-if="characters.characters.length === 0" class="text-sm text-[var(--color-fg-muted)]">
+        <p v-if="selectableCharacters.length === 0" class="text-sm text-[var(--color-fg-muted)]">
           No hay personajes.
           <NuxtLink to="/characters" class="text-brand-600 underline">Crea uno primero</NuxtLink>.
         </p>
         <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           <button
-            v-for="character in characters.characters"
+            v-for="character in selectableCharacters"
             :key="character.id"
             type="button"
             class="flex items-center gap-3 rounded-xl border p-3 text-left transition"

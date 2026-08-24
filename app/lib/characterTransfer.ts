@@ -7,7 +7,8 @@ export function exportCharacterTransferFields(character: Character) {
     prompt: character.prompt,
     tags: [...character.tags],
     color: character.color,
-    imageGenerationPreset: character.imageGenerationPreset
+    imageGenerationPreset: character.imageGenerationPreset,
+    archived: character.archived
   }
 }
 

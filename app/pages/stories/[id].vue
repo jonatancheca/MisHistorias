@@ -66,7 +66,9 @@ const storyCustomizationRows = computed(() =>
   }))
 )
 const availableStoryCharacters = computed(() =>
-  characters.characters.filter((character) => !storyCharacterIds.value.includes(character.id))
+  characters.characters.filter(
+    (character) => !character.archived && !storyCharacterIds.value.includes(character.id)
+  )
 )
 const characterTagSuggestions = computed(() =>
   characters.characters.flatMap((character) => character.tags ?? [])

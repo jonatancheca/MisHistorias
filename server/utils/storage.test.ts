@@ -34,6 +34,7 @@ function character(id: string) {
     tags: ['uno'],
     color: '#123456',
     imageGenerationPreset: '',
+    archived: false,
     createdAt: 1,
     updatedAt: 2
   }
@@ -139,14 +140,14 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
           ?.visualMode,
         true
       )
-      assert.equal(reopened.health().schemaVersion, 7)
+      assert.equal(reopened.health().schemaVersion, 19)
     } finally {
       reopened.close()
     }
   })
 })
 
-test('migra v1 a v7 copiando personajes y dejando modo visual desactivado', () => {
+test('migra v1 a v19 copiando personajes y dejando modo visual desactivado', () => {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
   const path = join(directory, 'test.sqlite')
   const legacy = new DatabaseSync(path)
@@ -216,7 +217,8 @@ test('migra v1 a v7 copiando personajes y dejando modo visual desactivado', () =
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 7)
+    assert.equal(storage.health().schemaVersion, 19)
+    assert.equal(storage.get('characters', 'normal', 'character-1')?.archived, false)
     assert.equal(
       (storage.get('stories', 'normal', 'story-1') as { visualMode?: boolean } | null)
         ?.visualMode,
@@ -267,7 +269,7 @@ test('migra v5 añadiendo preset de personaje y secreto Swarm con backup previo'
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 7)
+    assert.equal(storage.health().schemaVersion, 19)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationPreset, '')
     assert.equal(storage.readSettings()?.apiKey, 'llm-secret')
     assert.equal(storage.readSettings()?.swarmAuthToken, '')
@@ -316,7 +318,7 @@ test('migra v6 añadiendo indicaciones de imagen pendientes', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 7)
+    assert.equal(storage.health().schemaVersion, 19)
     assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.pendingImageInstructions, [])
     assert.equal(migrationBackups(path).length, 1)
   } finally {
@@ -411,7 +413,7 @@ test('migra imágenes v3 a BLOBs referenciados sin perder contenido', () => {
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 7)
+    assert.equal(storage.health().schemaVersion, 19)
     assert.deepEqual(Array.from(storage.getBinary('images', 'normal', 'image-1')!.data), [7, 8, 9])
     const row = storage.database
       .prepare('SELECT blob_id FROM images WHERE scope = ? AND id = ?')
@@ -442,7 +444,7 @@ test('conserva backup y revierte la base original si falla la migración', () =>
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /Falló la migración SQLite v3 a v7\. Backup:/
+      /Falló la migración SQLite v3 a v19\. Backup:/
     )
 
     const backups = migrationBackups(path)
@@ -483,7 +485,7 @@ test('no inicia la migración si no puede crear el backup', () => {
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /No se pudo crear el backup previo de SQLite\. Migración v3 a v7 no iniciada\./
+      /No se pudo crear el backup previo de SQLite\. Migración v3 a v19 no iniciada\./
     )
     const source = new DatabaseSync(path, { readOnly: true })
     try {
@@ -560,7 +562,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     const backup = storage.createManualBackup()
     assert.equal(backup.kind, 'manual')
     assert.equal(backup.valid, true)
-    assert.equal(backup.schemaVersion, 7)
+    assert.equal(backup.schemaVersion, 19)
     assert.equal(storage.listBackups().some((item) => item.name === backup.name), true)
 
     storage.put('characters', 'normal', 'normal-1', {
@@ -660,11 +662,48 @@ test('guarda BLOB y mantiene una sola imagen predeterminada', () => {
   })
 })
 
+test('persiste archivado y bloquea borrar personajes usados por historias del mismo ámbito', () => {
+  withStorage((storage) => {
+    storage.put('characters', 'normal', 'character-1', {
+      ...character('character-1'),
+      archived: true
+    })
+    storage.put('characters', 'private', 'character-1', character('character-1'))
+    storage.put('stories', 'normal', 'story-1', {
+      ...story('story-1'),
+      title: 'Bosque secreto',
+      characterIds: ['character-1']
+    })
+
+    assert.equal(storage.get('characters', 'normal', 'character-1')?.archived, true)
+    assert.equal(storage.get('characters', 'private', 'character-1')?.archived, false)
+    assert.throws(
+      () => storage.delete('characters', 'normal', 'character-1'),
+      (caught: unknown) => {
+        const error = caught as {
+          code?: string
+          stories?: Array<{ id: string; title: string }>
+        }
+        assert.equal(error.code, 'ERR_CHARACTER_IN_USE')
+        assert.deepEqual(error.stories, [{ id: 'story-1', title: 'Bosque secreto' }])
+        return true
+      }
+    )
+
+    storage.delete('characters', 'private', 'character-1')
+    assert.equal(storage.get('characters', 'normal', 'character-1')?.id, 'character-1')
+    storage.delete('stories', 'normal', 'story-1')
+    storage.delete('characters', 'normal', 'character-1')
+    assert.equal(storage.get('characters', 'normal', 'character-1'), null)
+  })
+})
+
 test('copia personajes con preset, imágenes nuevas y BLOBs compartidos dentro del ámbito', () => {
   withStorage((storage) => {
     storage.put('characters', 'normal', 'source', {
       ...character('source'),
-      imageGenerationPreset: 'Retrato cinematográfico'
+      imageGenerationPreset: 'Retrato cinematográfico',
+      archived: true
     })
     storage.put('characters', 'private', 'private-source', character('private-source'))
     storage.putBinary('images', 'normal', 'image-1', {
@@ -701,6 +740,7 @@ test('copia personajes con preset, imágenes nuevas y BLOBs compartidos dentro d
     assert.notEqual(copied.character.id, 'source')
     assert.equal(copied.character.name, 'Copia editable')
     assert.equal(copied.character.imageGenerationPreset, 'Retrato cinematográfico')
+    assert.equal(copied.character.archived, false)
     assert.deepEqual(copied.images.map((image) => image.tags), [['neutral'], ['feliz']])
     assert.deepEqual(copied.images.map((image) => image.description), ['Primera', 'Segunda'])
     assert.deepEqual(copied.images.map((image) => image.isDefault), [true, false])
@@ -895,7 +935,10 @@ test('importa personaje nuevo con medios e IDs nuevos', () => {
 
 test('reemplaza personaje de forma atómica conservando su ID e historias', () => {
   withStorage((storage) => {
-    storage.put('characters', 'normal', 'target', character('target'))
+    storage.put('characters', 'normal', 'target', {
+      ...character('target'),
+      archived: true
+    })
     storage.put('stories', 'normal', 'story-target', {
       ...story('story-target'),
       characterIds: ['target'],
@@ -935,6 +978,7 @@ test('reemplaza personaje de forma atómica conservando su ID e historias', () =
     })!
 
     assert.equal(imported.character.id, 'target')
+    assert.equal(imported.character.archived, true)
     assert.equal(storage.get('images', 'normal', 'old-image'), null)
     assert.equal(storage.get('sounds', 'normal', 'old-sound'), null)
     assert.deepEqual(storage.get('stories', 'normal', 'story-target')?.characterIds, ['target'])

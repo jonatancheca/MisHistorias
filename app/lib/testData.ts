@@ -159,6 +159,7 @@ async function seedNormalData() {
       tags: ['exploradora', 'optimista'],
       color: '#db2777',
       imageGenerationPreset: '',
+      archived: false,
       createdAt: TEST_TIME + 10,
       updatedAt: TEST_TIME + 10
     },
@@ -169,6 +170,7 @@ async function seedNormalData() {
       tags: ['guardián', 'prudente'],
       color: '#2563eb',
       imageGenerationPreset: '',
+      archived: false,
       createdAt: TEST_TIME + 11,
       updatedAt: TEST_TIME + 11
     }

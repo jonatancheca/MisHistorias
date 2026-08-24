@@ -173,6 +173,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
           tags: input.tags ?? ['prueba', unique('rasgo')],
           color: input.color ?? '#db2777',
           imageGenerationPreset: input.imageGenerationPreset ?? '',
+          archived: false,
           createdAt: now,
           updatedAt: now
         }

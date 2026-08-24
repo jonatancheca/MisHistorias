@@ -20,6 +20,8 @@ export interface Character {
   color: string
   /** Preset de SwarmUI usado solo al generar imágenes manualmente. */
   imageGenerationPreset: string
+  /** Oculta el personaje de catálogos y selectores sin romper historias existentes. */
+  archived: boolean
   createdAt: number
   updatedAt: number
 }

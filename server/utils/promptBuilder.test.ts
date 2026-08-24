@@ -28,6 +28,7 @@ const character: Character = {
   tags: ['global'],
   color: '#123456',
   imageGenerationPreset: '',
+  archived: false,
   createdAt: 1,
   updatedAt: 1
 }

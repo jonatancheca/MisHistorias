@@ -97,6 +97,72 @@ test.describe('personajes', () => {
     expect((await data.list<Character>('characters')).some((item) => item.id === character.id)).toBe(false)
   })
 
+  test('archiva, filtra y desarchiva sin ofrecer el personaje en historias nuevas', async ({ page, data }) => {
+    const character = await data.createCharacter({ name: data.unique('Archivada') })
+
+    await page.goto('/characters')
+    const card = page.locator('li').filter({ hasText: character.name })
+    await card.getByRole('button', { name: 'Archivar' }).click()
+    await expect(card).toHaveCount(0)
+    await expect.poll(async () => (await data.get<Character>('characters', character.id)).archived)
+      .toBe(true)
+
+    await page.getByRole('button', { name: 'Ver archivados' }).click()
+    const archivedCard = page.locator('li').filter({ hasText: character.name })
+    await expect(archivedCard).toBeVisible()
+
+    await page.goto('/stories/new')
+    await expect(page.getByText(character.name, { exact: true })).toHaveCount(0)
+
+    await page.goto('/characters')
+    await page.getByRole('button', { name: 'Ver archivados' }).click()
+    await page.locator('li').filter({ hasText: character.name })
+      .getByRole('button', { name: 'Desarchivar' }).click()
+    await expect.poll(async () => (await data.get<Character>('characters', character.id)).archived)
+      .toBe(false)
+  })
+
+  test('conserva personajes archivados en historias y bloquea borrarlos indicando títulos', async ({ page, data }) => {
+    const character = await data.createCharacter({ name: data.unique('Usada') })
+    const first = await data.createStory({
+      title: data.unique('Historia-bosque'),
+      characters: [character]
+    })
+    const second = await data.createStory({
+      title: data.unique('Historia-mar'),
+      characters: [character]
+    })
+
+    await page.goto('/characters')
+    await page.locator('li').filter({ hasText: character.name })
+      .getByRole('button', { name: 'Archivar' }).click()
+
+    await page.goto(`/stories/${first.id}`)
+    await expect(page.getByText(character.name, { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
+    await expect(page.getByRole('heading', { name: character.name })).toBeVisible()
+
+    const blocked = await page.request.delete(`/api/data/characters/${character.id}?scope=normal`)
+    expect(blocked.status()).toBe(409)
+    expect(await blocked.json()).toMatchObject({
+      data: {
+        stories: expect.arrayContaining([
+          { id: first.id, title: first.title },
+          { id: second.id, title: second.title }
+        ])
+      }
+    })
+
+    await page.goto('/characters')
+    await page.getByRole('button', { name: 'Ver archivados' }).click()
+    await page.locator('li').filter({ hasText: character.name })
+      .getByRole('button', { name: 'Borrar' }).click()
+    await expect(page.getByRole('alert')).toContainText(first.title)
+    await expect(page.getByRole('alert')).toContainText(second.title)
+    expect((await data.list<Character>('characters')).some((item) => item.id === character.id))
+      .toBe(true)
+  })
+
   test('exporta e importa ZIP con ficha, imagen y sonido', async ({ page, data }) => {
     const source = await data.createCharacter({
       name: data.unique('Exportable'),

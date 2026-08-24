@@ -86,6 +86,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasStringArray(value, 'tags') &&
         hasString(value, 'color') &&
         hasString(value, 'imageGenerationPreset') &&
+        typeof value.archived === 'boolean' &&
         hasNumber(value, 'createdAt') &&
         hasNumber(value, 'updatedAt')
       break
@@ -294,6 +295,14 @@ async function readCharacterImport(event: H3Event) {
 function mapStorageError(caught: unknown): never {
   if (caught && typeof caught === 'object' && 'statusCode' in caught) throw caught
   const error = caught as { code?: string; errcode?: number; message?: string }
+  if (error.code === 'ERR_CHARACTER_IN_USE') {
+    const stories = (caught as { stories?: Array<{ id: string; title: string }> }).stories ?? []
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'El personaje se usa en historias',
+      data: { stories }
+    })
+  }
   if (error.errcode === 787 || error.message?.includes('FOREIGN KEY constraint failed')) {
     throw createError({ statusCode: 400, statusMessage: 'Referencia de datos no válida' })
   }

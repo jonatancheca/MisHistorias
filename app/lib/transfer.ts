@@ -32,7 +32,7 @@ import {
   importImageGenerationPreset
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 11
+const EXPORT_VERSION = 12
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -51,6 +51,7 @@ interface ExportedCharacter {
   tags?: string[]
   color: string
   imageGenerationPreset?: string
+  archived?: boolean
   images: ExportedImage[]
 }
 
@@ -163,7 +164,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -201,6 +202,7 @@ export async function importBundle(raw: string) {
       tags: sanitizeTags(item.tags),
       color: normalizeColor(item.color, DEFAULT_CHARACTER_COLOR),
       imageGenerationPreset: importImageGenerationPreset(item.imageGenerationPreset),
+      archived: item.archived === true,
       createdAt: now,
       updatedAt: now
     }

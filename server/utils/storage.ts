@@ -54,7 +54,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 7
+const SCHEMA_VERSION = 19
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -121,6 +121,7 @@ function rowToCharacter(row: SqliteRow) {
     tags: parseJson<string[]>(row.tags_json, []),
     color: text(row.color),
     imageGenerationPreset: text(row.image_generation_preset),
+    archived: integer(row.archived) === 1,
     createdAt: integer(row.created_at),
     updatedAt: integer(row.updated_at)
   }
@@ -486,6 +487,7 @@ export class MisHistoriasStorage {
           tags_json TEXT NOT NULL,
           color TEXT NOT NULL,
           image_generation_preset TEXT NOT NULL DEFAULT '',
+          archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
           PRIMARY KEY (scope, id)
@@ -746,6 +748,17 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 19) {
+        const characterColumns = this.database
+          .prepare('PRAGMA table_info(characters)')
+          .all() as Array<{ name: string }>
+        if (!characterColumns.some((column) => column.name === 'archived')) {
+          this.database.exec(
+            'ALTER TABLE characters ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'
+          )
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -924,6 +937,7 @@ export class MisHistoriasStorage {
           typeof value.imageGenerationPreset === 'string'
             ? value.imageGenerationPreset
             : source.imageGenerationPreset,
+        archived: false,
         createdAt: now,
         updatedAt: now
       })
@@ -995,6 +1009,7 @@ export class MisHistoriasStorage {
         tags: payload.tags,
         color: payload.color,
         imageGenerationPreset: payload.imageGenerationPreset,
+        archived: existing?.archived ?? false,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now
       })
@@ -1074,15 +1089,16 @@ export class MisHistoriasStorage {
         this.database
           .prepare(`
             INSERT INTO characters(
-              scope, id, name, prompt, tags_json, color, image_generation_preset,
+              scope, id, name, prompt, tags_json, color, image_generation_preset, archived,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               name = excluded.name,
               prompt = excluded.prompt,
               tags_json = excluded.tags_json,
               color = excluded.color,
               image_generation_preset = excluded.image_generation_preset,
+              archived = excluded.archived,
               created_at = excluded.created_at,
               updated_at = excluded.updated_at
           `)
@@ -1094,6 +1110,7 @@ export class MisHistoriasStorage {
             json(tags(value.tags)),
             text(value.color),
             text(value.imageGenerationPreset),
+            bool(value.archived),
             integer(value.createdAt),
             integer(value.updatedAt)
           )
@@ -1361,6 +1378,22 @@ export class MisHistoriasStorage {
     if (resource === 'messages') {
       this.deleteMessages(scope, [id])
       return
+    }
+    if (resource === 'characters') {
+      const stories = (this.database
+        .prepare('SELECT id, title, character_ids_json FROM stories WHERE scope = ?')
+        .all(scope) as Array<{ id: string; title: string; character_ids_json: string }>)
+        .filter((story) => parseJson<string[]>(story.character_ids_json, []).includes(id))
+        .map((story) => ({ id: story.id, title: story.title }))
+      if (stories.length) {
+        const error = new Error('El personaje se usa en historias') as Error & {
+          code: string
+          stories: Array<{ id: string; title: string }>
+        }
+        error.code = 'ERR_CHARACTER_IN_USE'
+        error.stories = stories
+        throw error
+      }
     }
     const table = resource === 'llmDebugTraces' ? 'llm_debug_traces' : resource
     this.database.prepare(`DELETE FROM ${table} WHERE scope = ? AND id = ?`).run(scope, id)

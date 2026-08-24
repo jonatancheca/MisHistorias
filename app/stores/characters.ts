@@ -121,6 +121,7 @@ export const useCharactersStore = defineStore('characters', () => {
       ),
       imageGenerationPreset:
         input.imageGenerationPreset ?? existing?.imageGenerationPreset ?? '',
+      archived: existing?.archived ?? false,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now
     }
@@ -151,6 +152,20 @@ export const useCharactersStore = defineStore('characters', () => {
     characters.value = characters.value.filter((character) => character.id !== id)
     images.value = images.value.filter((image) => image.characterId !== id)
     syncUrls()
+  }
+
+  async function setArchived(id: string, archived: boolean) {
+    const character = byId(id)
+    if (!character) return null
+    const updated: Character = {
+      ...character,
+      archived,
+      updatedAt: Date.now()
+    }
+    await putCharacter(updated)
+    const index = characters.value.findIndex((item) => item.id === id)
+    if (index >= 0) characters.value[index] = updated
+    return updated
   }
 
   async function importArchive(
@@ -245,6 +260,7 @@ export const useCharactersStore = defineStore('characters', () => {
     copyCharacter,
     importArchive,
     removeCharacter,
+    setArchived,
     addImage,
     updateImage,
     removeImage,

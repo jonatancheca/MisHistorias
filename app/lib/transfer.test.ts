@@ -13,10 +13,12 @@ test('transferencia conserva el preset SwarmUI y acepta personajes anteriores', 
     tags: ['aventurera'],
     color: '#123456',
     imageGenerationPreset: 'Retrato',
+    archived: true,
     createdAt: 1,
     updatedAt: 2
   })
   assert.equal(exported.imageGenerationPreset, 'Retrato')
+  assert.equal(exported.archived, true)
   assert.equal(importImageGenerationPreset(exported.imageGenerationPreset), 'Retrato')
   assert.equal(importImageGenerationPreset(undefined), '')
 })
