@@ -58,6 +58,36 @@ test('muestra en Ajustes un error al comprobar actualizaciones', async ({ page }
     .toContainText('GitHub no disponible para la prueba.')
 })
 
+test('agrupa LLM y unifica controles de conexión y tokens', async ({ page, data }) => {
+  await data.patchSettings({ apiKey: 'lm-token', swarmAuthToken: 'swarm-token' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/settings')
+
+  const llm = page.getByTestId('llm-settings')
+  const swarm = page.getByTestId('swarm-settings')
+  await expect(llm.getByRole('heading', { name: 'LLM' })).toBeVisible()
+  const llmTest = llm.getByRole('button', { name: 'Probar conexión' })
+  const swarmTest = swarm.getByRole('button', { name: 'Probar conexión' })
+  await expect(llmTest).toBeVisible()
+  await expect(swarmTest).toBeVisible()
+  expect(await swarmTest.locator('path').getAttribute('d'))
+    .toBe(await llmTest.locator('path').getAttribute('d'))
+
+  const tokenInput = page.getByLabel('Token de SwarmUI (opcional)')
+  const showToken = page.getByRole('button', { name: 'Mostrar token SwarmUI' })
+  const removeToken = page.getByRole('button', { name: 'Quitar token SwarmUI' })
+  await expect(showToken).toBeVisible()
+  await expect(removeToken).toBeVisible()
+  expect(await showToken.evaluate((element) => element.getBoundingClientRect().left))
+    .toBeGreaterThan(await tokenInput.evaluate((element) => element.getBoundingClientRect().left))
+  expect(await removeToken.evaluate((element) => element.getBoundingClientRect().left))
+    .toBeGreaterThan(await showToken.evaluate((element) => element.getBoundingClientRect().left))
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+  await page.setViewportSize({ width: 320, height: 800 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+})
+
 test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) => {
   const userName = data.unique('Protagonista')
   await data.patchSettings({ theme: 'system', mockMode: false, responseSpeed: 'high' })

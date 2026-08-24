@@ -615,8 +615,13 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section class="grid gap-5">
-      <div class="card">
+    <section class="mt-10" data-testid="llm-settings">
+      <h2 class="mb-2 text-lg font-semibold">LLM</h2>
+      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+        Generación de texto para historias con Chrome o LMStudio.
+      </p>
+      <div class="card grid min-w-0 gap-5">
+      <div>
         <label class="flex cursor-pointer items-start gap-3">
           <input
             type="checkbox"
@@ -635,7 +640,7 @@ onBeforeRouteLeave(async () => {
         </label>
       </div>
 
-      <div class="card">
+      <div>
         <label class="flex cursor-pointer items-start gap-3">
           <input
             type="checkbox"
@@ -748,10 +753,14 @@ onBeforeRouteLeave(async () => {
           <button
             v-if="form.apiKeyConfigured"
             type="button"
-            class="btn-ghost shrink-0"
+            class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
+            aria-label="Quitar token"
+            title="Quitar token"
             @click="clearApiKey"
           >
-            Quitar token
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" />
+            </svg>
           </button>
         </div>
         <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
@@ -827,6 +836,7 @@ onBeforeRouteLeave(async () => {
         </p>
       </div>
 
+      </div>
     </section>
 
     <section class="mt-10" data-testid="swarm-settings">
@@ -837,54 +847,78 @@ onBeforeRouteLeave(async () => {
       <div class="card grid min-w-0 gap-4">
         <div>
           <label class="label" for="swarmBaseUrl">URL de SwarmUI</label>
-          <div class="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <div class="flex min-w-0 gap-2">
             <input
               id="swarmBaseUrl"
               v-model="form.swarmBaseUrl"
               autocomplete="off"
-              class="field min-w-0"
+              class="field min-w-0 flex-1"
               placeholder="http://localhost:7801"
             >
             <button
               type="button"
-              class="btn-ghost"
+              class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center gap-2 px-0 sm:w-auto sm:px-3"
+              :aria-label="swarmTesting ? 'Probando conexión' : 'Probar conexión'"
+              :title="swarmTesting ? 'Probando conexión' : 'Probar conexión'"
               :disabled="swarmTesting"
               @click="testSwarmConnection"
             >
-              {{ swarmTesting ? 'Probando…' : 'Probar conexión SwarmUI' }}
+              <svg
+                aria-hidden="true"
+                class="h-4 w-4"
+                :class="{ 'animate-pulse': swarmTesting }"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M8 4v5M16 4v5M7 9h10v1a5 5 0 0 1-10 0V9Zm5 6v5" />
+              </svg>
+              <span class="hidden sm:inline">{{ swarmTesting ? 'Probando…' : 'Probar conexión' }}</span>
             </button>
           </div>
         </div>
 
         <div>
           <label class="label" for="swarmAuthToken">Token de SwarmUI (opcional)</label>
-          <div class="flex min-w-0 flex-wrap gap-2">
+          <div class="flex min-w-0 gap-2">
             <input
               id="swarmAuthToken"
               v-model="form.swarmAuthToken"
               :type="swarmAuthTokenVisible ? 'text' : 'password'"
               autocomplete="off"
-              class="field min-w-0 basis-full sm:flex-1 sm:basis-auto"
+              class="field min-w-0 flex-1"
               :placeholder="form.swarmAuthConfigured ? 'Token configurado; escribe para cambiarlo' : 'swarm_token'"
               @input="onSwarmAuthTokenInput"
             >
             <button
               v-if="form.swarmAuthConfigured || form.swarmAuthToken"
               type="button"
-              class="btn-ghost shrink-0"
+              class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
               :disabled="swarmAuthTokenLoading"
               :aria-label="swarmAuthTokenVisible ? 'Ocultar token SwarmUI' : 'Mostrar token SwarmUI'"
+              :title="swarmAuthTokenVisible ? 'Ocultar token SwarmUI' : 'Mostrar token SwarmUI'"
               @click="toggleSwarmAuthTokenVisibility"
             >
-              {{ swarmAuthTokenVisible ? 'Ocultar' : 'Mostrar' }}
+              <svg v-if="swarmAuthTokenVisible" aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 4.2A10.7 10.7 0 0 1 12 4c5.5 0 9 5.5 9 5.5a16.8 16.8 0 0 1-2.1 2.7M6.6 6.6C4.3 8 3 10 3 10s3.5 5.5 9 5.5c1 0 2-.2 2.8-.5" />
+              </svg>
+              <svg v-else aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
             </button>
             <button
               v-if="form.swarmAuthConfigured"
               type="button"
-              class="btn-ghost shrink-0"
+              class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
+              aria-label="Quitar token SwarmUI"
+              title="Quitar token SwarmUI"
               @click="clearSwarmAuthToken"
             >
-              Quitar token
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" />
+              </svg>
             </button>
           </div>
           <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
