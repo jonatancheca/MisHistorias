@@ -24,6 +24,8 @@ export default defineEventHandler(async (event) => {
         .map((message) => ({ role: message.role, content: message.content }))
     : []
   const settings = getStorage().readSettings()
+  const usePrivate =
+    value.scope === 'private' && settings?.value.privateLlmSettingsEnabled === true
   const abortController = new AbortController()
   const abort = () => abortController.abort()
   const abortIfResponseClosed = () => {
@@ -35,8 +37,12 @@ export default defineEventHandler(async (event) => {
   try {
     return await fetchProxyChat(
       {
-        baseUrl: String(settings?.value.baseUrl ?? 'http://localhost:1234'),
-        apiKey: settings?.apiKey ?? ''
+        baseUrl: String(
+          usePrivate
+            ? (settings?.value.privateBaseUrl ?? settings?.value.baseUrl ?? 'http://localhost:1234')
+            : (settings?.value.baseUrl ?? 'http://localhost:1234')
+        ),
+        apiKey: usePrivate ? settings?.privateApiKey ?? '' : settings?.apiKey ?? ''
       },
       {
         model: typeof value.model === 'string' ? value.model : '',

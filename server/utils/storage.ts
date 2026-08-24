@@ -46,6 +46,7 @@ export interface CharacterImportPayload {
 interface SettingsRow {
   value: Record<string, unknown>
   apiKey: string
+  privateApiKey: string
   swarmAuthToken: string
 }
 
@@ -54,7 +55,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 19
+const SCHEMA_VERSION = 20
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -622,6 +623,7 @@ export class MisHistoriasStorage {
           key TEXT PRIMARY KEY,
           value_json TEXT NOT NULL,
           api_key TEXT NOT NULL DEFAULT '',
+          private_api_key TEXT NOT NULL DEFAULT '',
           swarm_auth_token TEXT NOT NULL DEFAULT ''
         ) STRICT;
       `)
@@ -755,6 +757,17 @@ export class MisHistoriasStorage {
         if (!characterColumns.some((column) => column.name === 'archived')) {
           this.database.exec(
             'ALTER TABLE characters ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'
+          )
+        }
+      }
+
+      if (version.user_version < 20) {
+        const settingsColumns = this.database
+          .prepare('PRAGMA table_info(settings)')
+          .all() as Array<{ name: string }>
+        if (!settingsColumns.some((column) => column.name === 'private_api_key')) {
+          this.database.exec(
+            "ALTER TABLE settings ADD COLUMN private_api_key TEXT NOT NULL DEFAULT ''"
           )
         }
       }
@@ -1450,39 +1463,70 @@ export class MisHistoriasStorage {
 
   readSettings(): SettingsRow | null {
     const row = this.database
-      .prepare("SELECT value_json, api_key, swarm_auth_token FROM settings WHERE key = 'app'")
-      .get() as { value_json: string; api_key: string; swarm_auth_token: string } | undefined
+      .prepare(
+        "SELECT value_json, api_key, private_api_key, swarm_auth_token FROM settings WHERE key = 'app'"
+      )
+      .get() as {
+        value_json: string
+        api_key: string
+        private_api_key: string
+        swarm_auth_token: string
+      } | undefined
     if (!row) return null
     return {
       value: parseJson(row.value_json, {}),
       apiKey: row.api_key,
+      privateApiKey: row.private_api_key,
       swarmAuthToken: row.swarm_auth_token
     }
   }
 
   writeSettings(patchValue: unknown) {
     const patch = record(patchValue)
-    const current = this.readSettings() ?? { value: {}, apiKey: '', swarmAuthToken: '' }
+    const current = this.readSettings() ?? {
+      value: {},
+      apiKey: '',
+      privateApiKey: '',
+      swarmAuthToken: ''
+    }
     const nextValue = { ...current.value }
     let nextApiKey = current.apiKey
+    let nextPrivateApiKey = current.privateApiKey
     let nextSwarmAuthToken = current.swarmAuthToken
+    if (
+      patch.privateLlmSettingsEnabled === true &&
+      current.value.privateLlmSettingsEnabled !== true &&
+      !Object.hasOwn(patch, 'privateApiKey')
+    ) {
+      nextPrivateApiKey = current.apiKey
+    }
+    if (patch.privateLlmSettingsEnabled === false) nextPrivateApiKey = ''
     for (const [key, value] of Object.entries(patch)) {
       if (key === 'apiKey') nextApiKey = text(value).trim()
+      else if (key === 'privateApiKey') nextPrivateApiKey = text(value).trim()
       else if (key === 'swarmAuthToken') nextSwarmAuthToken = text(value).trim()
-      else if (key !== 'apiKeyConfigured' && key !== 'swarmAuthConfigured') nextValue[key] = value
+      else if (
+        key !== 'apiKeyConfigured' &&
+        key !== 'privateApiKeyConfigured' &&
+        key !== 'swarmAuthConfigured'
+      ) nextValue[key] = value
     }
     this.database
       .prepare(`
-        INSERT INTO settings(key, value_json, api_key, swarm_auth_token) VALUES ('app', ?, ?, ?)
+        INSERT INTO settings(
+          key, value_json, api_key, private_api_key, swarm_auth_token
+        ) VALUES ('app', ?, ?, ?, ?)
         ON CONFLICT(key) DO UPDATE SET
           value_json = excluded.value_json,
           api_key = excluded.api_key,
+          private_api_key = excluded.private_api_key,
           swarm_auth_token = excluded.swarm_auth_token
       `)
-      .run(json(nextValue), nextApiKey, nextSwarmAuthToken)
+      .run(json(nextValue), nextApiKey, nextPrivateApiKey, nextSwarmAuthToken)
     return {
       value: nextValue,
       apiKey: nextApiKey,
+      privateApiKey: nextPrivateApiKey,
       swarmAuthToken: nextSwarmAuthToken
     }
   }

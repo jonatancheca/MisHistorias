@@ -758,9 +758,13 @@ export const useStoriesStore = defineStore('stories', () => {
     ])
 
     const settings = settingsStore.settings
+    const model = settingsStore.activeModel
+    const temperature = settingsStore.activeTemperature
+    const maxTokens = settingsStore.activeMaxTokens
+    const historyBudget = settingsStore.activeHistoryBudget
     const mock = settings.mockMode
     const useChromeLlm = settingsStore.activeUseChromeLlm
-    if (!mock && !useChromeLlm && !settings.model) {
+    if (!mock && !useChromeLlm && !model) {
       error.value = 'Configura primero el modelo en Ajustes.'
       return
     }
@@ -852,7 +856,7 @@ export const useStoriesStore = defineStore('stories', () => {
           backgrounds: backgroundsStore.backgrounds,
           sounds: storySounds,
           messages: messages.value,
-          historyBudget: settings.historyBudget,
+          historyBudget,
           userName: settingsStore.activeUserName,
           protagonistPreferences: resolveProtagonistPreferences(
             settingsStore.activeProtagonistPreferences,
@@ -868,10 +872,10 @@ export const useStoriesStore = defineStore('stories', () => {
 
         debugRequest = {
           provider: useChromeLlm ? 'chrome' : 'lmstudio',
-          model: useChromeLlm ? 'chrome-prompt-api' : settings.model,
+          model: useChromeLlm ? 'chrome-prompt-api' : model,
           messages: payload,
-          temperature: settings.temperature,
-          max_tokens: settings.maxTokens,
+          temperature,
+          max_tokens: maxTokens,
           stream: false
         }
 
@@ -882,10 +886,10 @@ export const useStoriesStore = defineStore('stories', () => {
               signal: requestController.signal
             })
           : await fetchLlmChat({
-              model: settings.model,
+              model,
               messages: payload,
-              temperature: settings.temperature,
-              maxTokens: settings.maxTokens,
+              temperature,
+              maxTokens,
               signal: requestController.signal
             })
         raw = result.content

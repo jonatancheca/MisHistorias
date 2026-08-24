@@ -297,8 +297,11 @@ export async function writeSettings(patch: Partial<AppSettings>) {
   return $fetch<AppSettings>('/api/settings', { method: 'PATCH', body: unwrap(patch) })
 }
 
-export async function readApiKey() {
-  return $fetch<{ apiKey: string }>('/api/settings/api-key', { method: 'POST' })
+export async function readApiKey(scope: DataScope = activeDataScope.value) {
+  return $fetch<{ apiKey: string }>('/api/settings/api-key', {
+    method: 'POST',
+    query: { scope }
+  })
 }
 
 export async function readSwarmAuthToken() {

@@ -187,6 +187,17 @@ export interface AppSettings {
   apiKey: string
   /** El servidor tiene un token guardado; nunca devuelve su valor. */
   apiKeyConfigured: boolean
+  /** Activa valores de LMStudio independientes para la colección privada. */
+  privateLlmSettingsEnabled: boolean
+  privateBaseUrl: string | null
+  /** Token privado opcional. Solo se mantiene en memoria mientras se edita. */
+  privateApiKey: string
+  /** El servidor tiene un token privado guardado; nunca devuelve su valor. */
+  privateApiKeyConfigured: boolean
+  privateModel: string | null
+  privateTemperature: number | null
+  privateMaxTokens: number | null
+  privateHistoryBudget: number | null
   swarmBaseUrl: string
   /** Token opcional de SwarmUI. Solo se mantiene en memoria mientras se edita. */
   swarmAuthToken: string

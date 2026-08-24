@@ -30,7 +30,18 @@ const appUpdate = useAppUpdate()
 await settings.load()
 
 const form = reactive({ ...settings.settings })
+const privateLlmSettingsEnabled = ref(
+  privacy.isPrivate && settings.settings.privateLlmSettingsEnabled
+)
 if (privacy.isPrivate) {
+  if (privateLlmSettingsEnabled.value) {
+    form.baseUrl = settings.settings.privateBaseUrl ?? settings.settings.baseUrl
+    form.model = settings.settings.privateModel ?? settings.settings.model
+    form.temperature = settings.settings.privateTemperature ?? settings.settings.temperature
+    form.maxTokens = settings.settings.privateMaxTokens ?? settings.settings.maxTokens
+    form.historyBudget = settings.settings.privateHistoryBudget ?? settings.settings.historyBudget
+    form.apiKeyConfigured = settings.settings.privateApiKeyConfigured
+  }
   form.userName = settings.settings.privateUserName ?? settings.settings.userName
   form.protagonistPreferences =
     settings.settings.privateProtagonistPreferences ?? settings.settings.protagonistPreferences
@@ -76,6 +87,7 @@ let saveRevision = 0
 let saveQueue: Promise<void> = Promise.resolve()
 let apiKeyDirty = false
 let revealingApiKey = false
+let switchingPrivateLlmSettings = false
 let swarmAuthTokenDirty = false
 let revealingSwarmAuthToken = false
 let privateUserNameDirty: boolean = false
@@ -108,25 +120,38 @@ async function testConnection() {
 
 function settingsPatch() {
   const patch: Partial<AppSettings> = {
-    baseUrl: form.baseUrl.trim(),
     swarmBaseUrl: form.swarmBaseUrl.trim(),
-    model: form.model,
-    temperature: Number(form.temperature),
-    maxTokens: Number(form.maxTokens),
-    historyBudget: Number(form.historyBudget),
     responseSpeed: form.responseSpeed,
     userColor: form.userColor
   }
   if (privacy.isPrivate) {
+    if (privateLlmSettingsEnabled.value) {
+      patch.privateBaseUrl = form.baseUrl.trim()
+      patch.privateModel = form.model
+      patch.privateTemperature = Number(form.temperature)
+      patch.privateMaxTokens = Number(form.maxTokens)
+      patch.privateHistoryBudget = Number(form.historyBudget)
+    }
     if (privateUserNameDirty) patch.privateUserName = form.userName.trim() || 'Protagonista'
     if (privateProtagonistPreferencesDirty) {
       patch.privateProtagonistPreferences = form.protagonistPreferences.trim()
     }
   } else {
+    patch.baseUrl = form.baseUrl.trim()
+    patch.model = form.model
+    patch.temperature = Number(form.temperature)
+    patch.maxTokens = Number(form.maxTokens)
+    patch.historyBudget = Number(form.historyBudget)
     patch.userName = form.userName.trim() || 'Protagonista'
     patch.protagonistPreferences = form.protagonistPreferences.trim()
   }
-  if (apiKeyDirty) patch.apiKey = form.apiKey.trim()
+  if (apiKeyDirty) {
+    if (privacy.isPrivate && privateLlmSettingsEnabled.value) {
+      patch.privateApiKey = form.apiKey.trim()
+    } else if (!privacy.isPrivate) {
+      patch.apiKey = form.apiKey.trim()
+    }
+  }
   if (swarmAuthTokenDirty) patch.swarmAuthToken = form.swarmAuthToken.trim()
   return patch
 }
@@ -143,11 +168,14 @@ function enqueueSave(revision: number) {
     try {
       await settings.save(patch)
       if (revision === saveRevision) {
-        if ('apiKey' in patch) apiKeyDirty = false
+        if ('apiKey' in patch || 'privateApiKey' in patch) apiKeyDirty = false
         if ('swarmAuthToken' in patch) swarmAuthTokenDirty = false
         if ('privateUserName' in patch) privateUserNameDirty = false
         if ('privateProtagonistPreferences' in patch) privateProtagonistPreferencesDirty = false
-        form.apiKeyConfigured = settings.settings.apiKeyConfigured
+        form.apiKeyConfigured =
+          privacy.isPrivate && privateLlmSettingsEnabled.value
+            ? settings.settings.privateApiKeyConfigured
+            : settings.settings.apiKeyConfigured
         form.swarmAuthConfigured = settings.settings.swarmAuthConfigured
         saveStatus.value = 'saved'
         savedTimer = setTimeout(() => {
@@ -217,6 +245,53 @@ async function toggleApiKeyVisibility() {
   apiKeyVisible.value = true
 }
 
+async function setPrivateLlmSettingsEnabled(enabled: boolean) {
+  if (!privacy.isPrivate || switchingPrivateLlmSettings) return
+  switchingPrivateLlmSettings = true
+  try {
+    await flushSave()
+    privateLlmSettingsEnabled.value = enabled
+    form.baseUrl = settings.settings.baseUrl
+    form.model = settings.settings.model
+    form.temperature = settings.settings.temperature
+    form.maxTokens = settings.settings.maxTokens
+    form.historyBudget = settings.settings.historyBudget
+    form.apiKey = ''
+    apiKeyVisible.value = false
+    apiKeyDirty = false
+    if (enabled) {
+      await settings.save({
+        privateLlmSettingsEnabled: true,
+        privateBaseUrl: form.baseUrl,
+        privateModel: form.model,
+        privateTemperature: form.temperature,
+        privateMaxTokens: form.maxTokens,
+        privateHistoryBudget: form.historyBudget
+      })
+      form.apiKeyConfigured = settings.settings.privateApiKeyConfigured
+    } else {
+      await settings.save({
+        privateLlmSettingsEnabled: false,
+        privateBaseUrl: null,
+        privateApiKey: '',
+        privateModel: null,
+        privateTemperature: null,
+        privateMaxTokens: null,
+        privateHistoryBudget: null
+      })
+      form.apiKeyConfigured = settings.settings.apiKeyConfigured
+    }
+    saveStatus.value = 'saved'
+    await nextTick()
+  } catch (caught) {
+    privateLlmSettingsEnabled.value = settings.settings.privateLlmSettingsEnabled
+    saveStatus.value = 'error'
+    saveError.value = (caught as Error).message || 'No se pudieron guardar los ajustes privados.'
+  } finally {
+    switchingPrivateLlmSettings = false
+  }
+}
+
 function clearSwarmAuthToken() {
   form.swarmAuthToken = ''
   swarmAuthTokenVisible.value = false
@@ -251,7 +326,7 @@ async function toggleSwarmAuthTokenVisibility() {
 }
 
 function scheduleSave() {
-  if (revealingApiKey || revealingSwarmAuthToken) return
+  if (revealingApiKey || revealingSwarmAuthToken || switchingPrivateLlmSettings) return
   saveRevision += 1
   savePending = true
   if (saveTimer) clearTimeout(saveTimer)
@@ -621,6 +696,22 @@ onBeforeRouteLeave(async () => {
         Generación de texto para historias con Chrome o LMStudio.
       </p>
       <div class="card grid min-w-0 gap-5">
+      <label v-if="privacy.isPrivate" class="flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          autocomplete="off"
+          class="mt-1 h-4 w-4 accent-[var(--color-brand-500)]"
+          :checked="privateLlmSettingsEnabled"
+          :disabled="switchingPrivateLlmSettings"
+          @change="setPrivateLlmSettingsEnabled(($event.target as HTMLInputElement).checked)"
+        >
+        <span>
+          <span class="block text-sm font-semibold">Personalizar ajustes de LMStudio</span>
+          <span class="block text-xs text-[var(--color-fg-muted)]">
+            Al activarlo copia los valores normales. Al desactivarlo vuelve a heredarlos.
+          </span>
+        </span>
+      </label>
       <div>
         <label class="flex cursor-pointer items-start gap-3">
           <input
@@ -688,6 +779,7 @@ onBeforeRouteLeave(async () => {
           <input
             id="baseUrl"
             v-model="form.baseUrl"
+            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
             autocomplete="off"
             class="field min-w-0 flex-1"
             placeholder="http://localhost:1234"
@@ -727,6 +819,7 @@ onBeforeRouteLeave(async () => {
           <input
             id="apiKey"
             v-model="form.apiKey"
+            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
             :type="apiKeyVisible ? 'text' : 'password'"
             autocomplete="off"
             class="field min-w-0 flex-1"
@@ -737,7 +830,7 @@ onBeforeRouteLeave(async () => {
             v-if="form.apiKeyConfigured || form.apiKey"
             type="button"
             class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
-            :disabled="apiKeyLoading"
+            :disabled="apiKeyLoading || (privacy.isPrivate && !privateLlmSettingsEnabled)"
             :aria-label="apiKeyVisible ? 'Ocultar token' : 'Mostrar token'"
             :title="apiKeyVisible ? 'Ocultar token' : 'Mostrar token'"
             @click="toggleApiKeyVisibility"
@@ -756,6 +849,7 @@ onBeforeRouteLeave(async () => {
             class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
             aria-label="Quitar token"
             title="Quitar token"
+            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
             @click="clearApiKey"
           >
             <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -771,13 +865,20 @@ onBeforeRouteLeave(async () => {
 
       <div>
         <label class="label" for="model">Modelo</label>
-        <select v-if="models.length" id="model" v-model="form.model" class="field">
+        <select
+          v-if="models.length"
+          id="model"
+          v-model="form.model"
+          class="field"
+          :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
+        >
           <option v-for="model in models" :key="model" :value="model">{{ model }}</option>
         </select>
         <input
           v-else
           id="model"
           v-model="form.model"
+          :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
           autocomplete="off"
           class="field"
           placeholder="nombre-del-modelo"
@@ -790,6 +891,7 @@ onBeforeRouteLeave(async () => {
           <input
             id="temperature"
             v-model.number="form.temperature"
+            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
             type="number"
             autocomplete="off"
             step="0.1"
@@ -803,6 +905,7 @@ onBeforeRouteLeave(async () => {
           <input
             id="maxTokens"
             v-model.number="form.maxTokens"
+            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
             type="number"
             autocomplete="off"
             min="64"
@@ -814,6 +917,7 @@ onBeforeRouteLeave(async () => {
           <input
             id="historyBudget"
             v-model.number="form.historyBudget"
+            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
             type="number"
             autocomplete="off"
             min="1000"

@@ -175,6 +175,86 @@ test('prepara Chrome AI y guarda override privado', async ({ page, data }) => {
   await data.patchSettings({ useChromeLlm: false, privateUseChromeLlm: null })
 })
 
+test('personaliza LMStudio en privado y vuelve a heredar al desactivarlo', async ({ page, data }) => {
+  await data.patchSettings({
+    baseUrl: 'http://normal.test',
+    apiKey: 'normal-secret',
+    model: 'normal-model',
+    temperature: 0.6,
+    maxTokens: 900,
+    historyBudget: 5000,
+    privateLlmSettingsEnabled: false,
+    privateBaseUrl: null,
+    privateApiKey: '',
+    privateModel: null,
+    privateTemperature: null,
+    privateMaxTokens: null,
+    privateHistoryBudget: null
+  })
+
+  await page.goto('/settings')
+  const privateTrigger = page.getByRole('button', { name: 'Activar modo privado' })
+  await privateTrigger.click()
+  await privateTrigger.click()
+  await privateTrigger.click()
+  await expect(page).toHaveURL('/')
+  await page.getByRole('link', { name: 'Ajustes' }).click()
+
+  const customize = page.getByRole('checkbox', { name: /Personalizar ajustes de LMStudio/ })
+  const baseUrl = page.getByLabel('URL del servidor (LMStudio)')
+  const model = page.getByLabel('Modelo')
+  await expect(customize).not.toBeChecked()
+  await expect(baseUrl).toBeDisabled()
+  await expect(baseUrl).toHaveValue('http://normal.test')
+  await expect(model).toHaveValue('normal-model')
+
+  await customize.check()
+  await expect(baseUrl).toBeEnabled()
+  const copiedToken = await page.request.post('/api/settings/api-key?scope=private')
+  expect(await copiedToken.json()).toEqual({ apiKey: 'normal-secret' })
+
+  await baseUrl.fill('http://private.test')
+  await model.fill('private-model')
+  await page.getByLabel('Temperatura').fill('1.2')
+  await page.getByLabel('Máx. tokens').fill('1200')
+  await page.getByLabel('Historial (caracteres)').fill('7000')
+  await page.getByLabel('Token de acceso (opcional)').fill('private-secret')
+  await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
+
+  let modelsScope = ''
+  await page.route('**/api/llm/models**', async (route) => {
+    modelsScope = new URL(route.request().url()).searchParams.get('scope') ?? ''
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '["private-model"]' })
+  })
+  await page.getByTestId('llm-settings').getByRole('button', { name: 'Probar conexión' }).click()
+  await expect(page.getByText('1 modelos disponibles')).toBeVisible()
+  expect(modelsScope).toBe('private')
+
+  const stored = await page.request.get('/api/settings')
+  expect(await stored.json()).toMatchObject({
+    baseUrl: 'http://normal.test',
+    model: 'normal-model',
+    privateLlmSettingsEnabled: true,
+    privateBaseUrl: 'http://private.test',
+    privateModel: 'private-model',
+    privateTemperature: 1.2,
+    privateMaxTokens: 1200,
+    privateHistoryBudget: 7000
+  })
+  const privateToken = await page.request.post('/api/settings/api-key?scope=private')
+  expect(await privateToken.json()).toEqual({ apiKey: 'private-secret' })
+
+  await customize.uncheck()
+  await expect(baseUrl).toBeDisabled()
+  await expect(baseUrl).toHaveValue('http://normal.test')
+  await expect.poll(async () => {
+    const response = await page.request.get('/api/settings')
+    return ((await response.json()) as AppSettings).privateLlmSettingsEnabled
+  }).toBe(false)
+  const inheritedToken = await page.request.post('/api/settings/api-key?scope=private')
+  expect(await inheritedToken.json()).toEqual({ apiKey: 'normal-secret' })
+})
+
 test('no activa Chrome AI cuando navegador es incompatible', async ({ page, data }) => {
   await data.patchSettings({ useChromeLlm: false, privateUseChromeLlm: null })
   await page.addInitScript(() => {

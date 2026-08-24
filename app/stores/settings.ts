@@ -7,6 +7,14 @@ const DEFAULTS: AppSettings = {
   baseUrl: 'http://localhost:1234',
   apiKey: '',
   apiKeyConfigured: false,
+  privateLlmSettingsEnabled: false,
+  privateBaseUrl: null,
+  privateApiKey: '',
+  privateApiKeyConfigured: false,
+  privateModel: null,
+  privateTemperature: null,
+  privateMaxTokens: null,
+  privateHistoryBudget: null,
   swarmBaseUrl: 'http://localhost:7801',
   swarmAuthToken: '',
   swarmAuthConfigured: false,
@@ -44,6 +52,34 @@ export const useSettingsStore = defineStore('settings', () => {
     activeDataScope.value === 'private'
       ? (settings.value.privateUseChromeLlm ?? settings.value.useChromeLlm)
       : settings.value.useChromeLlm
+  )
+  const usePrivateLlmSettings = computed(() =>
+    activeDataScope.value === 'private' && settings.value.privateLlmSettingsEnabled
+  )
+  const activeBaseUrl = computed(() =>
+    usePrivateLlmSettings.value
+      ? (settings.value.privateBaseUrl ?? settings.value.baseUrl)
+      : settings.value.baseUrl
+  )
+  const activeModel = computed(() =>
+    usePrivateLlmSettings.value
+      ? (settings.value.privateModel ?? settings.value.model)
+      : settings.value.model
+  )
+  const activeTemperature = computed(() =>
+    usePrivateLlmSettings.value
+      ? (settings.value.privateTemperature ?? settings.value.temperature)
+      : settings.value.temperature
+  )
+  const activeMaxTokens = computed(() =>
+    usePrivateLlmSettings.value
+      ? (settings.value.privateMaxTokens ?? settings.value.maxTokens)
+      : settings.value.maxTokens
+  )
+  const activeHistoryBudget = computed(() =>
+    usePrivateLlmSettings.value
+      ? (settings.value.privateHistoryBudget ?? settings.value.historyBudget)
+      : settings.value.historyBudget
   )
   const activeUserName = computed(() => {
     const value =
@@ -91,6 +127,7 @@ export const useSettingsStore = defineStore('settings', () => {
       ...settings.value,
       ...saved,
       apiKey: '',
+      privateApiKey: '',
       swarmAuthToken: ''
     }
     if ('theme' in patch) applyTheme()
@@ -131,6 +168,11 @@ export const useSettingsStore = defineStore('settings', () => {
     settings,
     activePresetId,
     activeUseChromeLlm,
+    activeBaseUrl,
+    activeModel,
+    activeTemperature,
+    activeMaxTokens,
+    activeHistoryBudget,
     activeUserName,
     activeProtagonistPreferences,
     loaded,

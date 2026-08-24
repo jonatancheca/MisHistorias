@@ -140,14 +140,14 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
           ?.visualMode,
         true
       )
-      assert.equal(reopened.health().schemaVersion, 19)
+      assert.equal(reopened.health().schemaVersion, 20)
     } finally {
       reopened.close()
     }
   })
 })
 
-test('migra v1 a v19 copiando personajes y dejando modo visual desactivado', () => {
+test('migra v1 a v20 copiando personajes y dejando modo visual desactivado', () => {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
   const path = join(directory, 'test.sqlite')
   const legacy = new DatabaseSync(path)
@@ -217,7 +217,7 @@ test('migra v1 a v19 copiando personajes y dejando modo visual desactivado', () 
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 19)
+    assert.equal(storage.health().schemaVersion, 20)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.archived, false)
     assert.equal(
       (storage.get('stories', 'normal', 'story-1') as { visualMode?: boolean } | null)
@@ -269,7 +269,7 @@ test('migra v5 añadiendo preset de personaje y secreto Swarm con backup previo'
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 19)
+    assert.equal(storage.health().schemaVersion, 20)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationPreset, '')
     assert.equal(storage.readSettings()?.apiKey, 'llm-secret')
     assert.equal(storage.readSettings()?.swarmAuthToken, '')
@@ -318,9 +318,58 @@ test('migra v6 añadiendo indicaciones de imagen pendientes', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 19)
+    assert.equal(storage.health().schemaVersion, 20)
     assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.pendingImageInstructions, [])
     assert.equal(migrationBackups(path).length, 1)
+  } finally {
+    storage.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('migra v19 y separa los ajustes privados de LMStudio', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v19-'))
+  const path = join(directory, 'test.sqlite')
+  const legacy = new DatabaseSync(path)
+  legacy.exec(`
+    CREATE TABLE settings (
+      key TEXT PRIMARY KEY,
+      value_json TEXT NOT NULL,
+      api_key TEXT NOT NULL DEFAULT '',
+      swarm_auth_token TEXT NOT NULL DEFAULT ''
+    ) STRICT;
+    INSERT INTO settings(key, value_json, api_key, swarm_auth_token)
+    VALUES (
+      'app',
+      '{"baseUrl":"http://normal.test","model":"normal-model","temperature":0.7,"maxTokens":900,"historyBudget":5000}',
+      'normal-secret',
+      ''
+    );
+    PRAGMA user_version = 19;
+  `)
+  legacy.close()
+
+  const storage = new MisHistoriasStorage(path)
+  try {
+    assert.equal(storage.health().schemaVersion, 20)
+    assert.equal(storage.readSettings()?.privateApiKey, '')
+
+    storage.writeSettings({
+      privateLlmSettingsEnabled: true,
+      privateBaseUrl: 'http://normal.test',
+      privateModel: 'normal-model',
+      privateTemperature: 0.7,
+      privateMaxTokens: 900,
+      privateHistoryBudget: 5000
+    })
+    assert.equal(storage.readSettings()?.privateApiKey, 'normal-secret')
+
+    storage.writeSettings({ privateApiKey: 'private-secret', privateModel: 'private-model' })
+    assert.equal(storage.readSettings()?.privateApiKey, 'private-secret')
+    assert.equal(storage.readSettings()?.value.privateModel, 'private-model')
+
+    storage.writeSettings({ privateLlmSettingsEnabled: false, privateApiKey: '' })
+    assert.equal(storage.readSettings()?.privateApiKey, '')
   } finally {
     storage.close()
     rmSync(directory, { recursive: true, force: true })
@@ -413,7 +462,7 @@ test('migra imágenes v3 a BLOBs referenciados sin perder contenido', () => {
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 19)
+    assert.equal(storage.health().schemaVersion, 20)
     assert.deepEqual(Array.from(storage.getBinary('images', 'normal', 'image-1')!.data), [7, 8, 9])
     const row = storage.database
       .prepare('SELECT blob_id FROM images WHERE scope = ? AND id = ?')
@@ -444,7 +493,7 @@ test('conserva backup y revierte la base original si falla la migración', () =>
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /Falló la migración SQLite v3 a v19\. Backup:/
+      /Falló la migración SQLite v3 a v20\. Backup:/
     )
 
     const backups = migrationBackups(path)
@@ -485,7 +534,7 @@ test('no inicia la migración si no puede crear el backup', () => {
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /No se pudo crear el backup previo de SQLite\. Migración v3 a v19 no iniciada\./
+      /No se pudo crear el backup previo de SQLite\. Migración v3 a v20 no iniciada\./
     )
     const source = new DatabaseSync(path, { readOnly: true })
     try {
@@ -562,7 +611,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     const backup = storage.createManualBackup()
     assert.equal(backup.kind, 'manual')
     assert.equal(backup.valid, true)
-    assert.equal(backup.schemaVersion, 19)
+    assert.equal(backup.schemaVersion, 20)
     assert.equal(storage.listBackups().some((item) => item.name === backup.name), true)
 
     storage.put('characters', 'normal', 'normal-1', {

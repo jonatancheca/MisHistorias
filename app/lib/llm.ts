@@ -1,3 +1,5 @@
+import { getActiveDataScope, type DataScope } from './db.ts'
+
 export interface LlmCallError extends Error {
   status?: number
   detail?: string
@@ -8,6 +10,7 @@ export interface LlmChatRequest {
   messages: Array<{ role: string; content: string }>
   temperature?: number
   maxTokens?: number
+  scope?: DataScope
   signal?: AbortSignal
 }
 
@@ -41,9 +44,9 @@ function normalizeError(caught: unknown): LlmCallError {
   )
 }
 
-export async function fetchLlmModels(): Promise<string[]> {
+export async function fetchLlmModels(scope: DataScope = getActiveDataScope()): Promise<string[]> {
   try {
-    return await $fetch<string[]>('/api/llm/models')
+    return await $fetch<string[]>('/api/llm/models', { query: { scope } })
   } catch (caught) {
     throw normalizeError(caught)
   }
@@ -57,7 +60,8 @@ export async function fetchLlmChat(request: LlmChatRequest) {
         model: request.model,
         messages: request.messages,
         temperature: request.temperature ?? 0.8,
-        maxTokens: request.maxTokens ?? 800
+        maxTokens: request.maxTokens ?? 800,
+        scope: request.scope ?? getActiveDataScope()
       },
       signal: request.signal
     })

@@ -3,6 +3,13 @@ import { getStorage } from '../utils/storage'
 const ALLOWED_SETTINGS = new Set([
   'baseUrl',
   'apiKey',
+  'privateLlmSettingsEnabled',
+  'privateBaseUrl',
+  'privateApiKey',
+  'privateModel',
+  'privateTemperature',
+  'privateMaxTokens',
+  'privateHistoryBudget',
   'swarmBaseUrl',
   'swarmAuthToken',
   'useChromeLlm',
@@ -33,21 +40,33 @@ function validSetting(key: string, value: unknown) {
     case 'baseUrl':
     case 'swarmBaseUrl':
       return typeof value === 'string' && value.length <= 2048
+    case 'privateBaseUrl':
+      return value === null || (typeof value === 'string' && value.length <= 2048)
     case 'apiKey':
+    case 'privateApiKey':
     case 'swarmAuthToken':
       return typeof value === 'string' && value.length <= 4096
+    case 'privateLlmSettingsEnabled':
     case 'useChromeLlm':
       return typeof value === 'boolean'
     case 'privateUseChromeLlm':
       return value === null || typeof value === 'boolean'
     case 'model':
       return typeof value === 'string' && value.length <= 500
+    case 'privateModel':
+      return value === null || (typeof value === 'string' && value.length <= 500)
     case 'temperature':
       return typeof value === 'number' && value >= 0 && value <= 2
+    case 'privateTemperature':
+      return value === null || (typeof value === 'number' && value >= 0 && value <= 2)
     case 'maxTokens':
       return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 100000
+    case 'privateMaxTokens':
+      return value === null || (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 100000)
     case 'historyBudget':
       return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 1000000
+    case 'privateHistoryBudget':
+      return value === null || (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 1000000)
     case 'activePresetId':
     case 'privateActivePresetId':
       return value === null || typeof value === 'string'
@@ -86,6 +105,8 @@ function publicSettings(row: ReturnType<ReturnType<typeof getStorage>['readSetti
     ...row.value,
     apiKey: '',
     apiKeyConfigured: Boolean(row.apiKey),
+    privateApiKey: '',
+    privateApiKeyConfigured: Boolean(row.privateApiKey),
     swarmAuthToken: '',
     swarmAuthConfigured: Boolean(row.swarmAuthToken)
   }

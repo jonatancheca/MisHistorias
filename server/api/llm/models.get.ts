@@ -1,12 +1,18 @@
 import { fetchProxyModels, type LlmProxyError } from '../../utils/llm'
 import { getStorage } from '../../utils/storage'
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
   const settings = getStorage().readSettings()
+  const usePrivate =
+    getQuery(event).scope === 'private' && settings?.value.privateLlmSettingsEnabled === true
   try {
     return await fetchProxyModels({
-      baseUrl: String(settings?.value.baseUrl ?? 'http://localhost:1234'),
-      apiKey: settings?.apiKey ?? ''
+      baseUrl: String(
+        usePrivate
+          ? (settings?.value.privateBaseUrl ?? settings?.value.baseUrl ?? 'http://localhost:1234')
+          : (settings?.value.baseUrl ?? 'http://localhost:1234')
+      ),
+      apiKey: usePrivate ? settings?.privateApiKey ?? '' : settings?.apiKey ?? ''
     })
   } catch (caught) {
     const error = caught as LlmProxyError
