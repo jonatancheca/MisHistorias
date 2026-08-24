@@ -382,7 +382,16 @@ async function remove(id: string) {
     </p>
 
     <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-      <li v-for="image in images" :key="image.id" class="card flex min-w-0 flex-col gap-3 sm:flex-row">
+      <li
+        v-for="image in images"
+        :key="image.id"
+        class="card flex min-w-0 flex-col gap-3 sm:flex-row"
+        :class="{
+          'border-amber-400 bg-amber-50/70 ring-2 ring-amber-300/60 dark:bg-amber-950/20':
+            visibleImageTags(image.tags).length === 0 && !image.isDefault
+        }"
+        data-testid="character-image-card"
+      >
         <ImageLightbox
           :src="characters.urlFor(image.id)!"
           alt=""
@@ -392,6 +401,13 @@ async function remove(id: string) {
           :gallery-items="galleryItems"
         />
         <div class="min-w-0 flex-1 space-y-2">
+          <span
+            v-if="visibleImageTags(image.tags).length === 0 && !image.isDefault"
+            class="inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900 dark:bg-amber-900 dark:text-amber-100"
+            data-testid="untagged-image-warning"
+          >
+            Sin etiqueta
+          </span>
           <TagInput
             :model-value="visibleImageTags(image.tags)"
             :suggestions="imageTagSuggestions"

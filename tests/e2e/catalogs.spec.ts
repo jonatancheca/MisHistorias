@@ -59,6 +59,22 @@ test.describe('personajes', () => {
       .toBe(updatedPrompt)
   })
 
+  test('resalta imágenes sin etiquetas salvo la predeterminada', async ({ page, data }) => {
+    const character = await data.createCharacter()
+    const untagged = await data.createImage(character, ['neutral'])
+    const defaultImage = await data.createImage(character, ['neutral'])
+
+    await page.goto(`/characters/${character.id}`)
+    const cards = page.getByTestId('character-image-card')
+    const warningCard = cards.filter({ has: page.getByTestId('untagged-image-warning') })
+
+    await expect(warningCard).toHaveCount(1)
+    await expect(warningCard).toContainText('Sin etiqueta')
+    expect(await warningCard.getAttribute('class')).toContain('border-amber-400')
+    expect((await data.get<CharacterImage>('images', untagged.id)).isDefault).toBe(false)
+    expect((await data.get<CharacterImage>('images', defaultImage.id)).isDefault).toBe(true)
+  })
+
   test('copia personaje e imágenes con IDs independientes', async ({ page, data }) => {
     const source = await data.createCharacter({ imageGenerationPreset: 'Retrato' })
     const sourceImage = await data.createImage(source, ['feliz'])
