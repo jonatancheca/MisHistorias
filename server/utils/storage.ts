@@ -10,7 +10,14 @@ import {
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import type { DatabaseBackup, DatabaseBackupKind } from '../../shared/types/index.ts'
+import type {
+  DatabaseBackup,
+  DatabaseBackupKind,
+  LlmDebugTrace,
+  Message,
+  Story,
+  StorySaveSlot
+} from '../../shared/types/index.ts'
 
 export type DataScope = 'normal' | 'private'
 export type DataResource =
@@ -21,6 +28,7 @@ export type DataResource =
   | 'stories'
   | 'messages'
   | 'llmDebugTraces'
+  | 'storySaves'
   | 'presets'
 
 export interface ResourceQuery {
@@ -55,7 +63,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 20
+const SCHEMA_VERSION = 21
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -223,6 +231,19 @@ function rowToTrace(row: SqliteRow) {
     status: row.status === 'error' ? 'error' : 'success',
     request: parseJson(row.request_json, {}),
     response: parseJson(row.response_json, {}),
+    createdAt: integer(row.created_at)
+  }
+}
+
+function rowToStorySave(row: SqliteRow) {
+  return {
+    id: row.id,
+    storyId: text(row.story_id),
+    name: text(row.name),
+    story: parseJson(row.story_json, {}),
+    messages: parseJson(row.messages_json, []),
+    debugTraces: parseJson(row.debug_traces_json, []),
+    thumbnailDataUrl: text(row.thumbnail_data_url),
     createdAt: integer(row.created_at)
   }
 }
@@ -607,6 +628,22 @@ export class MisHistoriasStorage {
         CREATE INDEX IF NOT EXISTS traces_by_response_message
           ON llm_debug_traces(scope, response_message_id);
 
+        CREATE TABLE IF NOT EXISTS story_saves (
+          scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          id TEXT NOT NULL,
+          story_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          story_json TEXT NOT NULL,
+          messages_json TEXT NOT NULL,
+          debug_traces_json TEXT NOT NULL,
+          thumbnail_data_url TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          PRIMARY KEY (scope, id),
+          FOREIGN KEY (scope, story_id) REFERENCES stories(scope, id) ON DELETE CASCADE
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS story_saves_by_story
+          ON story_saves(scope, story_id, created_at DESC);
+
         CREATE TABLE IF NOT EXISTS presets (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
           id TEXT NOT NULL,
@@ -772,6 +809,26 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 21) {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS story_saves (
+            scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+            id TEXT NOT NULL,
+            story_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            story_json TEXT NOT NULL,
+            messages_json TEXT NOT NULL,
+            debug_traces_json TEXT NOT NULL,
+            thumbnail_data_url TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, id),
+            FOREIGN KEY (scope, story_id) REFERENCES stories(scope, id) ON DELETE CASCADE
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS story_saves_by_story
+            ON story_saves(scope, story_id, created_at DESC);
+        `)
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -878,6 +935,12 @@ export class MisHistoriasStorage {
             'SELECT * FROM llm_debug_traces WHERE scope = ? AND story_id = ? ORDER BY created_at'
           )
           .all(scope, query.storyId ?? '') as SqliteRow[]).map(rowToTrace)
+      case 'storySaves':
+        return (this.database
+          .prepare(
+            'SELECT * FROM story_saves WHERE scope = ? AND story_id = ? ORDER BY created_at DESC'
+          )
+          .all(scope, query.storyId ?? '') as SqliteRow[]).map(rowToStorySave)
       case 'presets':
         return (this.database
           .prepare('SELECT * FROM presets WHERE scope = ? ORDER BY created_at')
@@ -886,7 +949,11 @@ export class MisHistoriasStorage {
   }
 
   get(resource: DataResource, scope: DataScope, id: string) {
-    const table = resource === 'llmDebugTraces' ? 'llm_debug_traces' : resource
+    const table = resource === 'llmDebugTraces'
+      ? 'llm_debug_traces'
+      : resource === 'storySaves'
+        ? 'story_saves'
+        : resource
     const row = this.database
       .prepare(`SELECT * FROM ${table} WHERE scope = ? AND id = ?`)
       .get(scope, id) as SqliteRow | undefined
@@ -906,6 +973,8 @@ export class MisHistoriasStorage {
         return rowToMessage(row)
       case 'llmDebugTraces':
         return rowToTrace(row)
+      case 'storySaves':
+        return rowToStorySave(row)
       case 'presets':
         return rowToPreset(row)
     }
@@ -1220,6 +1289,34 @@ export class MisHistoriasStorage {
             integer(value.createdAt)
           )
         break
+      case 'storySaves':
+        this.database
+          .prepare(`
+            INSERT INTO story_saves(
+              scope, id, story_id, name, story_json, messages_json,
+              debug_traces_json, thumbnail_data_url, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(scope, id) DO UPDATE SET
+              story_id = excluded.story_id,
+              name = excluded.name,
+              story_json = excluded.story_json,
+              messages_json = excluded.messages_json,
+              debug_traces_json = excluded.debug_traces_json,
+              thumbnail_data_url = excluded.thumbnail_data_url,
+              created_at = excluded.created_at
+          `)
+          .run(
+            scope,
+            id,
+            text(value.storyId),
+            text(value.name),
+            json(record(value.story)),
+            json(Array.isArray(value.messages) ? value.messages : []),
+            json(Array.isArray(value.debugTraces) ? value.debugTraces : []),
+            text(value.thumbnailDataUrl),
+            integer(value.createdAt)
+          )
+        break
       case 'presets':
         this.database
           .prepare(`
@@ -1408,8 +1505,57 @@ export class MisHistoriasStorage {
         throw error
       }
     }
-    const table = resource === 'llmDebugTraces' ? 'llm_debug_traces' : resource
+    const table = resource === 'llmDebugTraces'
+      ? 'llm_debug_traces'
+      : resource === 'storySaves'
+        ? 'story_saves'
+        : resource
     this.database.prepare(`DELETE FROM ${table} WHERE scope = ? AND id = ?`).run(scope, id)
+  }
+
+  createStorySave(scope: DataScope, storyId: string, name: string, thumbnailDataUrl: string) {
+    return this.transaction(() => {
+      const story = this.get('stories', scope, storyId) as Story | null
+      if (!story) return null
+      const save: StorySaveSlot = {
+        id: randomUUID(),
+        storyId,
+        name,
+        story,
+        messages: this.list('messages', scope, { storyId }) as Message[],
+        debugTraces: this.list('llmDebugTraces', scope, { storyId }) as LlmDebugTrace[],
+        thumbnailDataUrl,
+        createdAt: Date.now()
+      }
+      return this.put('storySaves', scope, save.id, save)
+    })
+  }
+
+  loadStorySave(scope: DataScope, id: string) {
+    return this.transaction(() => {
+      const save = this.get('storySaves', scope, id) as StorySaveSlot | null
+      if (!save) return null
+      const current = this.get('stories', scope, save.storyId) as Story | null
+      if (!current) return null
+      const story = {
+        ...save.story,
+        id: save.storyId,
+        createdAt: current.createdAt,
+        updatedAt: Date.now()
+      }
+      this.put('stories', scope, save.storyId, story)
+      this.database.prepare('DELETE FROM llm_debug_traces WHERE scope = ? AND story_id = ?')
+        .run(scope, save.storyId)
+      this.database.prepare('DELETE FROM messages WHERE scope = ? AND story_id = ?')
+        .run(scope, save.storyId)
+      for (const message of save.messages) {
+        this.put('messages', scope, text(message.id), { ...message, storyId: save.storyId })
+      }
+      for (const trace of save.debugTraces) {
+        this.put('llmDebugTraces', scope, text(trace.id), { ...trace, storyId: save.storyId })
+      }
+      return { save, story }
+    })
   }
 
   deleteMessages(scope: DataScope, ids: string[]) {
@@ -1446,6 +1592,7 @@ export class MisHistoriasStorage {
   clear(scope: DataScope) {
     this.transaction(() => {
       for (const table of [
+        'story_saves',
         'llm_debug_traces',
         'messages',
         'stories',

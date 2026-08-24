@@ -3,7 +3,8 @@ import type {
   Message,
   PromptPreset,
   Story,
-  StoryCharacterCustomization
+  StoryCharacterCustomization,
+  StorySaveSlot
 } from '#shared/types'
 import {
   listBackgrounds,
@@ -12,6 +13,7 @@ import {
   listMessages,
   listPresets,
   listStories,
+  listStorySaves,
   newId,
   putBackground,
   putCharacter,
@@ -19,6 +21,7 @@ import {
   putMessage,
   putPreset,
   putStory,
+  putStorySave,
   type StoredBackground,
   type StoredImage
 } from '~/lib/db'
@@ -32,7 +35,7 @@ import {
   importImageGenerationPreset
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 12
+const EXPORT_VERSION = 13
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -75,6 +78,7 @@ interface ExportedStory {
   initialBackgroundId?: string | null
   presetId: string | null
   messages: Array<Pick<Message, 'role' | 'raw' | 'segments' | 'generationMode' | 'createdAt'>>
+  saves?: StorySaveSlot[]
 }
 
 interface ExportBundle {
@@ -130,7 +134,8 @@ export async function exportBundle(): Promise<ExportBundle> {
         segments: stripSoundSegments(message.segments),
         generationMode: message.generationMode,
         createdAt: message.createdAt
-      }))
+      })),
+      saves: await listStorySaves(story.id)
     }))
   )
 
@@ -164,7 +169,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -351,6 +356,120 @@ export async function importBundle(raw: string) {
         createdAt: Number(message.createdAt) || now
       }
       await putMessage(stored)
+    }
+
+    for (const save of item.saves ?? []) {
+      if (
+        typeof save.thumbnailDataUrl !== 'string' ||
+        !save.thumbnailDataUrl.startsWith('data:image/webp;base64,')
+      ) continue
+      const savedCharacterIds = (save.story.characterIds ?? [])
+        .map((id) => characterIdMap.get(String(id)))
+        .filter((id): id is string => Boolean(id))
+      const savedCustomizations = new Map(
+        (save.story.characterCustomizations ?? []).map((customization) => [
+          String(customization.characterId),
+          customization
+        ])
+      )
+      const storySnapshot: Story = {
+        ...story,
+        title: String(save.story.title ?? story.title),
+        premise: String(save.story.premise ?? story.premise),
+        visualMode: save.story.visualMode === true,
+        protagonistPreferences: String(save.story.protagonistPreferences ?? ''),
+        protagonistPreferencesMode:
+          save.story.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
+        characterIds: savedCharacterIds,
+        characterCustomizations: (save.story.characterIds ?? []).flatMap((sourceId) => {
+          const characterId = characterIdMap.get(String(sourceId))
+          if (!characterId) return []
+          const source = savedCustomizations.get(String(sourceId))
+          const character = importedCharacters.find((candidate) => candidate.id === characterId)
+          return [{
+            characterId,
+            name: String(source?.name ?? character?.name ?? '').trim() || String(character?.name ?? ''),
+            prompt: String(source?.prompt ?? character?.prompt ?? ''),
+            tags: sanitizeTags(source?.tags ?? character?.tags)
+          }]
+        }),
+        pendingImageInstructions: (save.story.pendingImageInstructions ?? []).flatMap(
+          (instruction) => {
+            const characterId = characterIdMap.get(String(instruction.characterId))
+            const imageId = imageIdMap.get(String(instruction.imageId))
+            return characterId && imageId
+              ? [{ characterId, imageId, tags: sanitizeTags(instruction.tags) }]
+              : []
+          }
+        ),
+        initialBackgroundId: save.story.initialBackgroundId
+          ? (backgroundIdMap.get(String(save.story.initialBackgroundId)) ?? null)
+          : null,
+        presetId: save.story.presetId
+          ? (presetIdMap.get(String(save.story.presetId)) ?? null)
+          : null,
+        imageCatalogSnapshot: buildStoryImageCatalog(
+          savedCharacterIds,
+          importedCharacters,
+          importedImages
+        ),
+        createdAt: story.createdAt,
+        updatedAt: Number(save.story.updatedAt) || story.updatedAt
+      }
+
+      const messageIdMap = new Map<string, string>()
+      const savedMessages: Message[] = (save.messages ?? []).map((message) => {
+        const id = newId()
+        messageIdMap.set(String(message.id), id)
+        return {
+          id,
+          storyId: story.id,
+          role: message.role === 'assistant' ? 'assistant' : 'user',
+          raw: stripSoundDirectives(String(message.raw ?? '')),
+          generationMode:
+            message.generationMode === 'continue' || message.generationMode === 'auto'
+              ? message.generationMode
+              : 'normal',
+          segments: stripSoundSegments(message.segments ?? []).map((segment) => ({
+            ...segment,
+            characterId: segment.characterId
+              ? (characterIdMap.get(String(segment.characterId)) ?? null)
+              : null,
+            backgroundId: segment.backgroundId
+              ? (backgroundIdMap.get(String(segment.backgroundId)) ?? null)
+              : segment.type === 'background'
+                ? null
+                : undefined,
+            imageId: segment.imageId
+              ? (imageIdMap.get(String(segment.imageId)) ?? null)
+              : segment.imageId === null
+                ? null
+                : undefined
+          })),
+          createdAt: Number(message.createdAt) || now
+        }
+      })
+      const debugTraces = (save.debugTraces ?? []).map((trace) => ({
+        ...trace,
+        id: newId(),
+        storyId: story.id,
+        requestMessageId: trace.requestMessageId
+          ? messageIdMap.get(String(trace.requestMessageId))
+          : undefined,
+        responseMessageId: trace.responseMessageId
+          ? messageIdMap.get(String(trace.responseMessageId))
+          : undefined
+      }))
+      await putStorySave({
+        id: newId(),
+        storyId: story.id,
+        name: String(save.name ?? 'Partida importada'),
+        story: storySnapshot,
+        messages: savedMessages,
+        debugTraces,
+        thumbnailDataUrl: save.thumbnailDataUrl,
+        createdAt: Number(save.createdAt) || now
+      })
     }
   }
 }

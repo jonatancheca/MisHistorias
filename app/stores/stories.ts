@@ -11,6 +11,7 @@ import type {
   ProtagonistPreferencesMode,
   ResponseSpeed,
   Story,
+  StorySaveSlot,
   StoryCharacterCustomization,
   StoryPendingImageInstruction
 } from '#shared/types'
@@ -19,8 +20,12 @@ import {
   deleteMessages as dbDeleteMessages,
   deleteLlmDebugTrace as dbDeleteLlmDebugTrace,
   deleteStory,
+  deleteStorySave as dbDeleteStorySave,
+  createStorySave as dbCreateStorySave,
+  loadStorySave as dbLoadStorySave,
   listLlmDebugTraces,
   listMessages,
+  listStorySaves,
   listStories,
   newId,
   putLlmDebugTrace,
@@ -135,6 +140,7 @@ export const useStoriesStore = defineStore('stories', () => {
   const activeStory = ref<Story | null>(null)
   const messages = ref<Message[]>([])
   const debugTraces = ref<LlmDebugTrace[]>([])
+  const saveSlots = ref<StorySaveSlot[]>([])
   const generating = ref(false)
   const waitingForResponse = ref(false)
   const pendingAssistantMessage = ref<Message | null>(null)
@@ -159,6 +165,7 @@ export const useStoriesStore = defineStore('stories', () => {
     activeStory.value = null
     messages.value = []
     debugTraces.value = []
+    saveSlots.value = []
     pendingAssistantMessage.value = null
     visualRevealWaitingForAdvance.value = false
     visualRevealNavigationPaused.value = false
@@ -221,6 +228,7 @@ export const useStoriesStore = defineStore('stories', () => {
       activeStory.value = null
       messages.value = []
       debugTraces.value = []
+      saveSlots.value = []
     }
   }
 
@@ -229,9 +237,9 @@ export const useStoriesStore = defineStore('stories', () => {
     visualRevealNavigationPaused.value = false
     visualRevealWaitingForAdvance.value = false
     activeStory.value = stories.value.find((story) => story.id === id) ?? null
-    const [storedMessages, storedTraces] = activeStory.value
-      ? await Promise.all([listMessages(id), listLlmDebugTraces(id)])
-      : [[], []]
+    const [storedMessages, storedTraces, storedSaves] = activeStory.value
+      ? await Promise.all([listMessages(id), listLlmDebugTraces(id), listStorySaves(id)])
+      : [[], [], []]
     const charactersStore = useCharactersStore()
     await charactersStore.load()
     const changed: Message[] = []
@@ -261,7 +269,29 @@ export const useStoriesStore = defineStore('stories', () => {
     if (changed.length) await Promise.all(changed.map((message) => putMessage(message)))
     messages.value = normalizedMessages
     debugTraces.value = storedTraces
+    saveSlots.value = storedSaves
     error.value = null
+  }
+
+  async function createSaveSlot(name: string, thumbnailDataUrl: string) {
+    if (!activeStory.value) return null
+    const save = await dbCreateStorySave(activeStory.value.id, name, thumbnailDataUrl)
+    saveSlots.value = [save, ...saveSlots.value]
+    return save
+  }
+
+  async function loadSaveSlot(id: string) {
+    if (!activeStory.value) return null
+    await stop()
+    const result = await dbLoadStorySave(id)
+    await load(true)
+    await openStory(result.story.id)
+    return result
+  }
+
+  async function removeSaveSlot(id: string) {
+    await dbDeleteStorySave(id)
+    saveSlots.value = saveSlots.value.filter((save) => save.id !== id)
   }
 
   async function touchStory() {
@@ -1047,6 +1077,7 @@ export const useStoriesStore = defineStore('stories', () => {
     activeStory,
     messages,
     debugTraces,
+    saveSlots,
     generating,
     waitingForResponse,
     pendingAssistantMessage,
@@ -1058,6 +1089,9 @@ export const useStoriesStore = defineStore('stories', () => {
     setVisualMode,
     removeStory,
     openStory,
+    createSaveSlot,
+    loadSaveSlot,
+    removeSaveSlot,
     addUserMessage,
     updateMessage,
     replaceMessageSegmentImage,

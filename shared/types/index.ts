@@ -173,6 +173,19 @@ export interface LlmDebugTrace {
   createdAt: number
 }
 
+export interface StorySaveSlot {
+  id: string
+  storyId: string
+  name: string
+  /** Copia completa de los ajustes y del progreso de la historia. */
+  story: Story
+  messages: Message[]
+  debugTraces: LlmDebugTrace[]
+  /** Miniatura fija WebP de la situación al guardar. */
+  thumbnailDataUrl: string
+  createdAt: number
+}
+
 export interface PromptPreset {
   id: string
   name: string

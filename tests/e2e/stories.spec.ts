@@ -1,4 +1,11 @@
-import type { CharacterImage, LlmDebugTrace, Message, Story } from '../../shared/types'
+import { readFileSync } from 'node:fs'
+import type {
+  CharacterImage,
+  LlmDebugTrace,
+  Message,
+  Story,
+  StorySaveSlot
+} from '../../shared/types'
 import { expect, test, type TestDataFactory } from './fixtures'
 
 async function createStoryFixture(data: TestDataFactory, visualMode = false) {
@@ -154,6 +161,120 @@ test.describe('historias', () => {
     await card.getByRole('button', { name: 'Borrar' }).click()
     await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar' }).click()
     await expect(card).toHaveCount(0)
+  })
+
+  test('guarda, carga, bifurca, borra y exporta partidas', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data)
+    const original = await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Narración: Progreso original guardado.'
+    })
+    const trace: LlmDebugTrace = {
+      id: data.unique('trace'),
+      storyId: story.id,
+      responseMessageId: original.id,
+      status: 'success',
+      request: {
+        model: 'modelo-prueba',
+        messages: [{ role: 'user', content: 'Continúa.' }],
+        temperature: 0.8,
+        max_tokens: 500,
+        stream: false
+      },
+      response: { content: original.raw, finishReason: null },
+      createdAt: Date.now()
+    }
+    const traceResponse = await page.request.put(
+      `/api/data/llmDebugTraces/${trace.id}?scope=normal`,
+      { data: trace }
+    )
+    await expect(traceResponse).toBeOK()
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByRole('button', { name: 'Partidas' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Partidas' })
+    const name = dialog.getByLabel('Nombre de la partida')
+    await expect(name).not.toHaveValue('')
+    await name.fill('Mismo nombre')
+    await dialog.getByRole('button', { name: 'Guardar partida' }).click()
+    await expect(dialog.getByRole('listitem')).toHaveCount(1)
+    await dialog.getByRole('button', { name: 'Guardar partida' }).click()
+    await expect(dialog.getByRole('listitem')).toHaveCount(2)
+
+    const saved = await data.list<StorySaveSlot>('storySaves', 'normal', { storyId: story.id })
+    expect(saved).toHaveLength(2)
+    expect(saved[0]?.name).toBe('Mismo nombre')
+    expect(saved[0]?.thumbnailDataUrl).toMatch(/^data:image\/webp;base64,/)
+    expect(saved[0]?.messages.map((message) => message.id)).toEqual([original.id])
+    expect(saved[0]?.debugTraces.map((item) => item.id)).toEqual([trace.id])
+    expect(saved[0]?.story).toMatchObject({ id: story.id, title: story.title })
+
+    await dialog.getByRole('button', { name: 'Cerrar partidas' }).click()
+    const branch = await data.createMessage({
+      story,
+      role: 'user',
+      raw: 'Progreso posterior que se reemplazará.'
+    })
+    const changedStory = { ...story, title: data.unique('Título-cambiado'), updatedAt: Date.now() }
+    const changedResponse = await page.request.put(
+      `/api/data/stories/${story.id}?scope=normal`,
+      { data: changedStory }
+    )
+    await expect(changedResponse).toBeOK()
+    await page.reload()
+    await expect(page.getByText(branch.raw, { exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Partidas' }).click()
+    await dialog.getByRole('listitem').first().getByRole('button', { name: 'Cargar' }).click()
+    const loadConfirm = page.getByRole('alertdialog', { name: 'Cargar partida' })
+    await loadConfirm.getByRole('button', { name: 'Cancelar' }).click()
+    await expect(page.getByRole('heading', { name: changedStory.title })).toBeVisible()
+    await dialog.getByRole('listitem').first().getByRole('button', { name: 'Cargar' }).click()
+    await page.getByRole('alertdialog', { name: 'Cargar partida' })
+      .getByRole('button', { name: 'Cargar' }).click()
+    await expect(page.getByRole('heading', { name: story.title })).toBeVisible()
+    await expect(page.getByText(branch.raw, { exact: true })).toHaveCount(0)
+    expect(await data.list<Message>('messages', 'normal', { storyId: story.id }))
+      .toHaveLength(1)
+    expect(await data.list<StorySaveSlot>('storySaves', 'normal', { storyId: story.id }))
+      .toHaveLength(2)
+
+    const continuation = await data.createMessage({
+      story,
+      role: 'user',
+      raw: 'Nueva rama después de cargar.'
+    })
+    await page.reload()
+    await expect(page.getByText(continuation.raw, { exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Partidas' }).click()
+    await page.setViewportSize({ width: 320, height: 800 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+    await dialog.getByRole('listitem').first().getByRole('button', { name: 'Borrar' }).click()
+    await page.getByRole('alertdialog', { name: 'Borrar partida' })
+      .getByRole('button', { name: 'Cancelar' }).click()
+    await expect(dialog.getByRole('listitem')).toHaveCount(2)
+    await dialog.getByRole('listitem').first().getByRole('button', { name: 'Borrar' }).click()
+    await page.getByRole('alertdialog', { name: 'Borrar partida' })
+      .getByRole('button', { name: 'Borrar' }).click()
+    await expect(dialog.getByRole('listitem')).toHaveCount(1)
+    await page.setViewportSize({ width: 390, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+    await dialog.getByRole('button', { name: 'Cerrar partidas' }).click()
+    await page.goto('/settings')
+    const downloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Exportar JSON' }).click()
+    const download = await downloadPromise
+    const exportPath = await download.path()
+    expect(exportPath).not.toBeNull()
+    const bundle = JSON.parse(readFileSync(exportPath!, 'utf8')) as {
+      version: number
+      stories: Array<{ title: string; saves?: StorySaveSlot[] }>
+    }
+    expect(bundle.version).toBe(13)
+    expect(bundle.stories.find((item) => item.title === story.title)?.saves).toHaveLength(1)
   })
 })
 

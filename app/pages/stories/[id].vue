@@ -8,6 +8,7 @@ import type {
 } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
 import { primaryTag } from '~/lib/tags'
+import { createStoryThumbnail } from '~/lib/storyThumbnail'
 import {
   buildVisualNovelFrames,
   resolveVisualNovelFrameIndex,
@@ -45,6 +46,9 @@ const timelineContent = ref<HTMLElement | null>(null)
 const canScrollToTop = ref(false)
 const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
+const storySavesOpen = ref(false)
+const storySavesBusy = ref(false)
+const storySavesError = ref<string | null>(null)
 interface ImagePickerTarget {
   mode: 'replace' | 'queue'
   characterId: string | null
@@ -578,6 +582,96 @@ const visualSpeaker = computed(() => {
   }
 })
 
+const thumbnailCharacterUrls = computed(() => {
+  if (stories.activeStory?.visualMode) {
+    return visualCharacterStates.value.map((state) => {
+      const image = characters.resolveImage(
+        state.characterId,
+        state.tags?.length ? state.tags : state.tag,
+        state.imageId,
+        '',
+        state.imageIdOverride
+      )
+      return characters.urlFor(image?.id)
+    })
+  }
+  return (stories.activeStory?.characterIds ?? []).map((characterId) => {
+    const active = lastDialogue.value?.characterId === characterId ? lastDialogue.value : null
+    const image = characters.resolveImage(
+      characterId,
+      active?.tags?.length ? active.tags : active?.tag ?? null,
+      active?.imageId,
+      '',
+      active?.imageIdOverride === true
+    )
+    return characters.urlFor(image?.id)
+  })
+})
+
+async function saveStorySlot(name: string) {
+  if (!stories.activeStory || storySavesBusy.value) return
+  storySavesBusy.value = true
+  storySavesError.value = null
+  try {
+    const lastMessage = stories.messages[stories.messages.length - 1]
+    const thumbnailDataUrl = await createStoryThumbnail({
+      backgroundUrl: backgrounds.urlFor(
+        stories.activeStory.visualMode ? visualBackground.value.id : currentBackground.value.id
+      ),
+      characterUrls: thumbnailCharacterUrls.value,
+      title: stories.activeStory.title,
+      text: activeVisualFrame.value?.text ?? lastMessage?.raw ?? stories.activeStory.premise
+    })
+    await stories.createSaveSlot(name, thumbnailDataUrl)
+  } catch (caught) {
+    storySavesError.value = (caught as Error).message || 'No se pudo guardar la partida.'
+  } finally {
+    storySavesBusy.value = false
+  }
+}
+
+async function loadStorySlot(id: string) {
+  if (storySavesBusy.value) return
+  const accepted = await confirmDialog.ask({
+    title: 'Cargar partida',
+    message: 'El progreso actual se reemplazará por esta partida. Las partidas guardadas se conservarán.',
+    confirmLabel: 'Cargar'
+  })
+  if (!accepted) return
+  storySavesBusy.value = true
+  storySavesError.value = null
+  try {
+    await stories.loadSaveSlot(id)
+    visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
+    followingVisualReveal.value = true
+    storySavesOpen.value = false
+    await scrollToBottom()
+  } catch (caught) {
+    storySavesError.value = (caught as Error).message || 'No se pudo cargar la partida.'
+  } finally {
+    storySavesBusy.value = false
+  }
+}
+
+async function removeStorySlot(id: string) {
+  if (storySavesBusy.value) return
+  const accepted = await confirmDialog.ask({
+    title: 'Borrar partida',
+    message: 'Esta partida se borrará definitivamente.',
+    confirmLabel: 'Borrar'
+  })
+  if (!accepted) return
+  storySavesBusy.value = true
+  storySavesError.value = null
+  try {
+    await stories.removeSaveSlot(id)
+  } catch (caught) {
+    storySavesError.value = (caught as Error).message || 'No se pudo borrar la partida.'
+  } finally {
+    storySavesBusy.value = false
+  }
+}
+
 watch(
   () => visualFrames.value.length,
   (length, previousLength) => {
@@ -839,6 +933,20 @@ onBeforeUnmount(() => {
           </p>
         </div>
         <div class="flex shrink-0 gap-1 sm:gap-2">
+          <button
+            type="button"
+            class="btn-ghost h-10 shrink-0 px-2 sm:px-3"
+            aria-label="Partidas"
+            title="Partidas"
+            :disabled="stories.generating"
+            @click="storySavesOpen = true; storySavesError = null"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 3h12l2 2v16H5V3Z" />
+              <path d="M8 3v6h8V3M8 21v-7h8v7" />
+            </svg>
+            <span class="hidden xl:inline">Partidas</span>
+          </button>
           <button
             type="button"
             class="btn-ghost h-10 w-10 shrink-0 px-0 py-0"
@@ -1248,6 +1356,17 @@ onBeforeUnmount(() => {
         :character-names="storyCharacterNames"
       />
     </div>
+
+    <StorySavesDialog
+      :open="storySavesOpen"
+      :saves="stories.saveSlots"
+      :busy="storySavesBusy"
+      :error="storySavesError"
+      @close="storySavesOpen = false"
+      @save="saveStorySlot"
+      @load="loadStorySlot"
+      @remove="removeStorySlot"
+    />
 
     <Teleport to="body">
       <div

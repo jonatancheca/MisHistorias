@@ -9,7 +9,8 @@ import type {
   Message,
   PromptPreset,
   Sound,
-  Story
+  Story,
+  StorySaveSlot
 } from '#shared/types'
 
 export interface StoredImage extends CharacterImage {
@@ -275,6 +276,38 @@ export async function putLlmDebugTrace(trace: LlmDebugTrace) {
 
 export async function deleteLlmDebugTrace(id: string) {
   await deleteJson('llmDebugTraces', id)
+}
+
+export async function listStorySaves(storyId: string) {
+  return $fetch<StorySaveSlot[]>(
+    dataUrl(`storySaves?storyId=${encodeURIComponent(storyId)}`)
+  )
+}
+
+export async function createStorySave(
+  storyId: string,
+  name: string,
+  thumbnailDataUrl: string
+) {
+  return $fetch<StorySaveSlot>(
+    dataUrl(`storySaves/${encodeURIComponent(storyId)}/create`),
+    { method: 'POST', body: { name, thumbnailDataUrl } }
+  )
+}
+
+export async function putStorySave(save: StorySaveSlot) {
+  return putJson('storySaves', save)
+}
+
+export async function loadStorySave(id: string) {
+  return $fetch<{ save: StorySaveSlot; story: Story }>(
+    dataUrl(`storySaves/${encodeURIComponent(id)}/load`),
+    { method: 'POST' }
+  )
+}
+
+export async function deleteStorySave(id: string) {
+  await deleteJson('storySaves', id)
 }
 
 export async function listPresets() {

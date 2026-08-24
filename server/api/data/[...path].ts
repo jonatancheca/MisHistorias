@@ -15,6 +15,7 @@ const RESOURCES = new Set<DataResource>([
   'stories',
   'messages',
   'llmDebugTraces',
+  'storySaves',
   'presets'
 ])
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -126,6 +127,20 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         Boolean(value.response) &&
         typeof value.response === 'object' &&
         !Array.isArray(value.response) &&
+        hasNumber(value, 'createdAt')
+      break
+    case 'storySaves':
+      valid =
+        hasString(value, 'storyId') &&
+        hasString(value, 'name') &&
+        Boolean(value.story) &&
+        typeof value.story === 'object' &&
+        !Array.isArray(value.story) &&
+        Array.isArray(value.messages) &&
+        Array.isArray(value.debugTraces) &&
+        hasString(value, 'thumbnailDataUrl') &&
+        String(value.thumbnailDataUrl).startsWith('data:image/webp;base64,') &&
+        String(value.thumbnailDataUrl).length <= 2_000_000 &&
         hasNumber(value, 'createdAt')
       break
     case 'presets':
@@ -369,6 +384,46 @@ export default defineEventHandler(async (event) => {
       )
       if (!copied) throw createError({ statusCode: 404, statusMessage: 'Personaje no encontrado' })
       return copied
+    }
+
+    if (
+      segments[0] === 'storySaves' &&
+      segments[1] &&
+      segments[2] === 'create' &&
+      event.method === 'POST'
+    ) {
+      const body = asRecord(await readBody(event))
+      const name = typeof body.name === 'string' ? body.name.trim() : ''
+      const thumbnailDataUrl = typeof body.thumbnailDataUrl === 'string'
+        ? body.thumbnailDataUrl
+        : ''
+      if (
+        !name ||
+        name.length > 200 ||
+        !thumbnailDataUrl.startsWith('data:image/webp;base64,') ||
+        thumbnailDataUrl.length > 2_000_000
+      ) {
+        throw createError({ statusCode: 400, message: 'Partida no válida' })
+      }
+      const save = storage.createStorySave(
+        scope,
+        asId(segments[1]),
+        name,
+        thumbnailDataUrl
+      )
+      if (!save) throw createError({ statusCode: 404, statusMessage: 'Historia no encontrada' })
+      return save
+    }
+
+    if (
+      segments[0] === 'storySaves' &&
+      segments[1] &&
+      segments[2] === 'load' &&
+      event.method === 'POST'
+    ) {
+      const loaded = storage.loadStorySave(scope, asId(segments[1]))
+      if (!loaded) throw createError({ statusCode: 404, statusMessage: 'Partida no encontrada' })
+      return loaded
     }
 
     const resource = asResource(segments[0])

@@ -140,14 +140,14 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
           ?.visualMode,
         true
       )
-      assert.equal(reopened.health().schemaVersion, 20)
+      assert.equal(reopened.health().schemaVersion, 21)
     } finally {
       reopened.close()
     }
   })
 })
 
-test('migra v1 a v20 copiando personajes y dejando modo visual desactivado', () => {
+test('migra v1 a v21 copiando personajes y dejando modo visual desactivado', () => {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
   const path = join(directory, 'test.sqlite')
   const legacy = new DatabaseSync(path)
@@ -217,7 +217,7 @@ test('migra v1 a v20 copiando personajes y dejando modo visual desactivado', () 
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 20)
+    assert.equal(storage.health().schemaVersion, 21)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.archived, false)
     assert.equal(
       (storage.get('stories', 'normal', 'story-1') as { visualMode?: boolean } | null)
@@ -269,7 +269,7 @@ test('migra v5 añadiendo preset de personaje y secreto Swarm con backup previo'
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 20)
+    assert.equal(storage.health().schemaVersion, 21)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationPreset, '')
     assert.equal(storage.readSettings()?.apiKey, 'llm-secret')
     assert.equal(storage.readSettings()?.swarmAuthToken, '')
@@ -318,7 +318,7 @@ test('migra v6 añadiendo indicaciones de imagen pendientes', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 20)
+    assert.equal(storage.health().schemaVersion, 21)
     assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.pendingImageInstructions, [])
     assert.equal(migrationBackups(path).length, 1)
   } finally {
@@ -351,7 +351,7 @@ test('migra v19 y separa los ajustes privados de LMStudio', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 20)
+    assert.equal(storage.health().schemaVersion, 21)
     assert.equal(storage.readSettings()?.privateApiKey, '')
 
     storage.writeSettings({
@@ -462,7 +462,7 @@ test('migra imágenes v3 a BLOBs referenciados sin perder contenido', () => {
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 20)
+    assert.equal(storage.health().schemaVersion, 21)
     assert.deepEqual(Array.from(storage.getBinary('images', 'normal', 'image-1')!.data), [7, 8, 9])
     const row = storage.database
       .prepare('SELECT blob_id FROM images WHERE scope = ? AND id = ?')
@@ -493,7 +493,7 @@ test('conserva backup y revierte la base original si falla la migración', () =>
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /Falló la migración SQLite v3 a v20\. Backup:/
+      /Falló la migración SQLite v3 a v21\. Backup:/
     )
 
     const backups = migrationBackups(path)
@@ -534,7 +534,7 @@ test('no inicia la migración si no puede crear el backup', () => {
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /No se pudo crear el backup previo de SQLite\. Migración v3 a v20 no iniciada\./
+      /No se pudo crear el backup previo de SQLite\. Migración v3 a v21 no iniciada\./
     )
     const source = new DatabaseSync(path, { readOnly: true })
     try {
@@ -611,7 +611,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     const backup = storage.createManualBackup()
     assert.equal(backup.kind, 'manual')
     assert.equal(backup.valid, true)
-    assert.equal(backup.schemaVersion, 20)
+    assert.equal(backup.schemaVersion, 21)
     assert.equal(storage.listBackups().some((item) => item.name === backup.name), true)
 
     storage.put('characters', 'normal', 'normal-1', {
@@ -935,6 +935,67 @@ test('borra mensajes y trazas relacionadas dentro de transacción', () => {
       ['user-1']
     )
     assert.equal(storage.list('llmDebugTraces', 'normal', { storyId: 'story-1' }).length, 0)
+  })
+})
+
+test('guarda, carga y aísla partidas completas por ámbito', () => {
+  withStorage((storage) => {
+    storage.put('stories', 'normal', 'story-1', story('story-1'))
+    storage.put('messages', 'normal', 'message-1', {
+      id: 'message-1',
+      storyId: 'story-1',
+      role: 'assistant',
+      raw: 'Progreso guardado',
+      segments: [{ type: 'narration', characterId: null, tag: null, text: 'Escena' }],
+      createdAt: 10
+    })
+    storage.put('llmDebugTraces', 'normal', 'trace-1', {
+      id: 'trace-1',
+      storyId: 'story-1',
+      responseMessageId: 'message-1',
+      status: 'success',
+      request: { model: 'modelo', messages: [], temperature: 0.8, max_tokens: 100, stream: false },
+      response: { content: 'Progreso guardado', finishReason: null },
+      createdAt: 11
+    })
+
+    const first = storage.createStorySave(
+      'normal',
+      'story-1',
+      '24/8/2026, 20:00:00',
+      'data:image/webp;base64,UklGRg=='
+    )
+    const second = storage.createStorySave(
+      'normal',
+      'story-1',
+      '24/8/2026, 20:00:00',
+      'data:image/webp;base64,UklGRg=='
+    )
+    assert.ok(first)
+    assert.ok(second)
+    assert.notEqual(first.id, second.id)
+    assert.equal(first.debugTraces.length, 1)
+
+    storage.put('stories', 'normal', 'story-1', { ...story('story-1'), title: 'Cambiada' })
+    storage.deleteMessages('normal', ['message-1'])
+    storage.put('messages', 'normal', 'message-2', {
+      id: 'message-2', storyId: 'story-1', role: 'user', raw: 'Rama nueva', segments: [], createdAt: 20
+    })
+    assert.ok(storage.loadStorySave('normal', first.id))
+    assert.equal(storage.get('stories', 'normal', 'story-1')?.title, 'Historia story-1')
+    assert.deepEqual(
+      storage.list('messages', 'normal', { storyId: 'story-1' }).map((message) => message.id),
+      ['message-1']
+    )
+    assert.deepEqual(
+      storage.list('llmDebugTraces', 'normal', { storyId: 'story-1' }).map((trace) => trace.id),
+      ['trace-1']
+    )
+    assert.equal(storage.list('storySaves', 'normal', { storyId: 'story-1' }).length, 2)
+    assert.equal(storage.list('storySaves', 'private', { storyId: 'story-1' }).length, 0)
+
+    storage.delete('stories', 'normal', 'story-1')
+    assert.equal(storage.list('storySaves', 'normal', { storyId: 'story-1' }).length, 0)
   })
 })
 
