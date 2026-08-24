@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  Character,
   GenerationMode,
   LlmDebugTrace,
   Message,
@@ -70,6 +71,16 @@ const availableStoryCharacters = computed(() =>
     (character) => !character.archived && !storyCharacterIds.value.includes(character.id)
   )
 )
+
+function storyCustomizationLabel(row: {
+  customization: StoryCharacterCustomization
+  character: Character | null
+}) {
+  const original = row.character?.name?.trim() ?? ''
+  const customized = row.customization.name?.trim() ?? ''
+  if (original && customized && original !== customized) return `${original} → ${customized}`
+  return original || customized || 'Personaje no disponible'
+}
 const characterTagSuggestions = computed(() =>
   characters.characters.flatMap((character) => character.tags ?? [])
 )
@@ -1194,6 +1205,7 @@ onBeforeUnmount(() => {
         :active-image-id-override="lastDialogue?.imageIdOverride === true"
         :background-id="currentBackground.id"
         :background-tag="currentBackground.tag"
+        :character-names="storyCharacterNames"
       />
     </div>
 
@@ -1286,7 +1298,7 @@ onBeforeUnmount(() => {
                 class="rounded-xl border border-[var(--color-border-soft)] p-4"
               >
                 <h3 class="font-semibold">
-                  {{ row.customization.name?.trim() || row.character?.name || 'Personaje no disponible' }}
+                  {{ storyCustomizationLabel(row) }}
                 </h3>
                 <div class="mt-3 grid gap-3">
                   <div>

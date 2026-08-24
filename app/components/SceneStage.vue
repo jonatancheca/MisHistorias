@@ -10,6 +10,7 @@ const props = defineProps<{
   activeImageIdOverride?: boolean
   backgroundId: string | null
   backgroundTag: string | null
+  characterNames?: Record<string, string>
 }>()
 
 const characters = useCharactersStore()
@@ -21,6 +22,10 @@ const cast = computed(() =>
     .map((id) => characters.byId(id))
     .filter((character): character is NonNullable<typeof character> => Boolean(character))
 )
+
+function characterName(characterId: string) {
+  return props.characterNames?.[characterId] ?? characters.byId(characterId)?.name ?? 'Personaje'
+}
 
 function imageUrl(characterId: string) {
   const tags = characterId === props.activeCharacterId
@@ -42,16 +47,16 @@ function currentTag(characterId: string) {
 }
 
 function galleryItems(characterId: string) {
-  const characterName = characters.byId(characterId)?.name ?? 'Personaje'
+  const name = characterName(characterId)
   return characters.imagesFor(characterId).map((image) => ({
     src: characters.urlFor(image.id)!,
-    alt: `${characterName} ${primaryTag(image) ?? ''}`.trim()
+    alt: `${name} ${primaryTag(image) ?? ''}`.trim()
   }))
 }
 </script>
 
 <template>
-  <aside class="flex flex-col gap-4">
+  <aside class="flex flex-col gap-4" data-testid="chat-scene-stage">
     <div class="rounded-xl border border-[var(--color-border-soft)] p-2">
       <ImageLightbox
         v-if="currentBackground && backgrounds.urlFor(currentBackground.id)"
@@ -82,14 +87,14 @@ function galleryItems(characterId: string) {
       <ImageLightbox
         v-if="imageUrl(character.id)"
         :src="imageUrl(character.id)!"
-        :alt="character.name"
+        :alt="characterName(character.id)"
         container-class="w-full"
         image-class="h-auto w-full rounded-lg object-contain object-top"
         :gallery-items="galleryItems(character.id)"
       />
       <div v-else class="aspect-square w-full rounded-lg bg-brand-500/20" />
       <p class="mt-2 truncate text-sm font-semibold" :style="{ color: characters.colorOf(character.id) }">
-        {{ character.name }}
+        {{ characterName(character.id) }}
       </p>
       <p class="truncate text-xs text-[var(--color-fg-muted)]">
         {{ currentTag(character.id) ? `[${currentTag(character.id)}]` : 'sin imagen' }}

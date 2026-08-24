@@ -42,6 +42,8 @@ test.describe('historias', () => {
 
     await expect(page).toHaveURL(/\/stories\/[^/]+$/)
     await expect(page.getByRole('heading', { name: title })).toBeVisible()
+    await expect(page.getByTestId('chat-scene-stage').getByText(storyCharacterName, { exact: true }))
+      .toBeVisible()
     const storyId = new URL(page.url()).pathname.split('/').pop()!
     const stored = await data.get<Story>('stories', storyId)
     expect(stored).toMatchObject({
@@ -62,9 +64,15 @@ test.describe('historias', () => {
     const updatedCharacterName = data.unique('Nombre-editado')
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     const form = page.getByRole('heading', { name: 'Ajustes de la historia' }).locator('..')
+    await expect(form.getByRole('heading', {
+      name: `${character.name} → ${storyCharacterName}`
+    })).toBeVisible()
     await form.getByLabel('Título').fill(updatedTitle)
     await form.getByLabel('Planteamiento').fill(updatedPremise)
     await form.locator(`#story-settings-character-name-${character.id}`).fill(updatedCharacterName)
+    await expect(form.getByRole('heading', {
+      name: `${character.name} → ${updatedCharacterName}`
+    })).toBeVisible()
     await form.getByRole('button', { name: 'Guardar' }).click()
     await expect(page.getByRole('heading', { name: updatedTitle })).toBeVisible()
     await expect(page.getByText(updatedPremise)).toBeVisible()
