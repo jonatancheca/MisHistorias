@@ -77,3 +77,18 @@ test('siembra el pack en ambas colecciones sin reponer borrados', async ({ page,
   expect((await data.list<Sound>('sounds')).some((sound) => sound.id === normalSteps.id))
     .toBe(false)
 })
+
+test('muestra tarjetas de sonido compactas y responsive', async ({ page, data }) => {
+  const character = await data.createCharacter()
+  await data.createSound(character, ['pasos', 'caminar'])
+
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(`/characters/${character.id}`)
+  const card = page.getByTestId('sound-card')
+  await expect(card).toBeVisible()
+  expect(await card.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(80)
+
+  await page.setViewportSize({ width: 390, height: 800 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  expect(await card.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(190)
+})

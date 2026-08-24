@@ -96,18 +96,22 @@ async function remove(sound: StoredSound) {
       <li
         v-for="sound in entries"
         :key="sound.id"
-        class="grid gap-2 rounded-xl border border-[var(--color-border-soft)] p-3"
+        class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-[var(--color-border-soft)] p-2 sm:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto]"
+        data-testid="sound-card"
       >
-        <audio :src="sounds.urlFor(sound.id)!" controls preload="metadata" class="w-full" />
+        <audio
+          :src="sounds.urlFor(sound.id)!"
+          controls
+          preload="metadata"
+          class="col-span-2 w-full min-w-0 sm:col-span-1"
+        />
         <TagInput
           :model-value="sound.tags"
           aria-label="Etiquetas del sonido"
           placeholder="puerta"
           @update:model-value="update(sound, $event)"
         />
-        <div class="flex justify-end">
-          <button type="button" class="btn-danger" @click="remove(sound)">Borrar</button>
-        </div>
+        <button type="button" class="btn-danger justify-self-end" @click="remove(sound)">Borrar</button>
       </li>
     </ul>
   </section>
