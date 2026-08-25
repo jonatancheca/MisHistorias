@@ -36,14 +36,13 @@ import {
   importImageGenerationPreset
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 14
+const EXPORT_VERSION = 15
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
   id?: string
   tags?: string[]
   tag?: string
-  description: string
   isDefault: boolean
   dataUrl: string
 }
@@ -110,7 +109,6 @@ export async function exportBundle(): Promise<ExportBundle> {
           .map(async (image) => ({
             id: image.id,
             tags: image.tags,
-            description: image.description,
             isDefault: image.isDefault,
             dataUrl: await blobToDataUrl(image.blob)
           }))
@@ -171,7 +169,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -226,7 +224,6 @@ export async function importBundle(raw: string) {
         id: newId(),
         characterId: character.id,
         tags: sanitizeTags(image.tags, image.tag, 'neutral'),
-        description: String(image.description ?? ''),
         isDefault: Boolean(image.isDefault),
         mimeType: blob.type || 'image/webp',
         createdAt: now,

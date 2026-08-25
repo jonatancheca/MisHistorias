@@ -40,7 +40,6 @@ const images: StoredImage[] = [
     id: 'image-b',
     characterId: 'character-b',
     tags: ['serio'],
-    description: 'Bruno alerta',
     isDefault: false,
     mimeType: 'image/png',
     createdAt: 1,
@@ -50,7 +49,6 @@ const images: StoredImage[] = [
     id: 'image-a',
     characterId: 'character-a',
     tags: ['feliz'],
-    description: 'Alicia sonríe',
     isDefault: true,
     mimeType: 'image/png',
     createdAt: 1,
@@ -67,7 +65,6 @@ describe('catálogo de imágenes de historia', () => {
         characterId: 'character-a',
         characterName: 'Alicia',
         tags: ['feliz'],
-        description: 'Alicia sonríe',
         isDefault: true
       }
     ])
@@ -81,7 +78,6 @@ describe('catálogo de imágenes de historia', () => {
       {
         ...previous.find((entry) => entry.imageId === 'image-a')!,
         tags: ['armadura'],
-        description: 'Nueva descripción',
         isDefault: false
       },
       {
@@ -89,7 +85,6 @@ describe('catálogo de imágenes de historia', () => {
         characterId: 'character-a',
         characterName: 'Alicia',
         tags: ['neutral'],
-        description: '',
         isDefault: true
       }
     ]
@@ -98,7 +93,7 @@ describe('catálogo de imágenes de historia', () => {
     assert.ok(change)
     assert.deepEqual(change.added.map((entry) => entry.imageId), ['image-c'])
     assert.deepEqual(change.removed.map((entry) => entry.imageId), ['image-b'])
-    assert.deepEqual(change.updated[0]?.fields, ['tags', 'description', 'isDefault'])
+    assert.deepEqual(change.updated[0]?.fields, ['tags', 'isDefault'])
     assert.match(formatStoryImageCatalogChange(change), /Añadida: Alicia \[neutral\]/)
     assert.match(formatStoryImageCatalogChange(change), /Eliminada: Bruno \[serio\]/)
   })

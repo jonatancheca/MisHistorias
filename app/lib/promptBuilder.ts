@@ -68,10 +68,7 @@ function characterSheet(
   const fallback = own.find((image) => image.isDefault) ?? own[0]
   const tags = own.length
     ? own
-        .map(
-          (image) =>
-            `  - ${formatImageTags(image.tags)}${image.isDefault ? ' (por defecto)' : ''}: ${image.description || 'sin descripción'}`
-        )
+        .map((image) => `  - ${formatImageTags(image.tags)}${image.isDefault ? ' (por defecto)' : ''}`)
         .join('\n')
     : '  - (sin imágenes; usa [neutral])'
 

@@ -7,7 +7,7 @@ export interface StoryImageCatalogChange {
   updated: Array<{
     before: StoryImageCatalogEntry
     after: StoryImageCatalogEntry
-    fields: Array<'tags' | 'description' | 'isDefault'>
+    fields: Array<'tags' | 'isDefault'>
   }>
 }
 
@@ -26,7 +26,6 @@ export function buildStoryImageCatalog(
       characterId: image.characterId,
       characterName: names.get(image.characterId) ?? 'Personaje no disponible',
       tags: [...image.tags],
-      description: image.description,
       isDefault: image.isDefault
     }))
     .sort(
@@ -51,7 +50,6 @@ export function compareStoryImageCatalogs(
     if (!before) continue
     const fields: StoryImageCatalogChange['updated'][number]['fields'] = []
     if (JSON.stringify(before.tags) !== JSON.stringify(after.tags)) fields.push('tags')
-    if (before.description !== after.description) fields.push('description')
     if (before.isDefault !== after.isDefault) fields.push('isDefault')
     if (fields.length) updated.push({ before, after, fields })
   }
@@ -72,10 +70,7 @@ export function formatStoryImageCatalogChange(change: StoryImageCatalogChange) {
   ]
 
   for (const entry of change.added) {
-    const details = entry.description || 'sin descripción'
-    lines.push(
-      `- Añadida: ${catalogLabel(entry)} — ${details}${entry.isDefault ? ' (predeterminada)' : ''}.`
-    )
+    lines.push(`- Añadida: ${catalogLabel(entry)}${entry.isDefault ? ' (predeterminada)' : ''}.`)
   }
   for (const entry of change.removed) {
     lines.push(`- Eliminada: ${catalogLabel(entry)}.`)
@@ -83,7 +78,6 @@ export function formatStoryImageCatalogChange(change: StoryImageCatalogChange) {
   for (const entry of change.updated) {
     const fields = entry.fields.map((field) => {
       if (field === 'tags') return 'etiquetas'
-      if (field === 'description') return 'descripción'
       return 'estado predeterminado'
     })
     lines.push(`- Actualizada: ${catalogLabel(entry.after)} (${fields.join(', ')}).`)

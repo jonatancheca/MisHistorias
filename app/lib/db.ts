@@ -129,7 +129,7 @@ export async function importCharacterArchive(input: {
   targetId?: string
   name: string
   character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora'>
-  images: Array<Pick<StoredImage, 'tags' | 'description' | 'isDefault' | 'mimeType' | 'blob'>>
+  images: Array<Pick<StoredImage, 'tags' | 'isDefault' | 'mimeType' | 'blob'>>
   sounds: Array<Pick<StoredSound, 'tags' | 'mimeType' | 'blob'>>
 }) {
   const form = new FormData()
@@ -139,7 +139,6 @@ export async function importCharacterArchive(input: {
     return {
       field,
       tags: image.tags,
-      description: image.description,
       isDefault: image.isDefault,
       mimeType: image.mimeType
     }

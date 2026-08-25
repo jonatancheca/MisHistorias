@@ -207,7 +207,6 @@ export const test = base.extend<{ data: TestDataFactory }>({
           id: unique('image'),
           characterId: character.id,
           tags,
-          description: 'Imagen exclusiva de prueba.',
           isDefault: true,
           mimeType: 'image/png',
           createdAt: Date.now()

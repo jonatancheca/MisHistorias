@@ -57,22 +57,21 @@ const story: Story = {
 }
 
 test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas visuales', () => {
+  const legacyImage = {
+    id: 'image-1',
+    characterId: 'character-1',
+    tags: ['feliz', 'armadura'],
+    description: 'DESCRIPCIÓN LEGACY NO ENVIADA',
+    isDefault: true,
+    mimeType: 'image/png',
+    createdAt: 1,
+    blob: new Blob()
+  }
   const prompt = buildSystemPrompt({
     presetContent: 'Narra.',
     story,
     characters: [{ ...character, prompt: 'Prompt global que no debe aparecer' }],
-    images: [
-      {
-        id: 'image-1',
-        characterId: 'character-1',
-        tags: ['feliz', 'armadura'],
-        description: '',
-        isDefault: true,
-        mimeType: 'image/png',
-        createdAt: 1,
-        blob: new Blob()
-      }
-    ],
+    images: [legacyImage],
     backgrounds: [],
     sounds: [
       {
@@ -97,6 +96,7 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
   assert.match(prompt, /\[feliz\]/)
   assert.match(prompt, /\[feliz\]\[armadura\]/)
   assert.doesNotMatch(prompt, /\[feliz\] \/ \[armadura\]/)
+  assert.doesNotMatch(prompt, /DESCRIPCIÓN LEGACY NO ENVIADA/)
   assert.match(prompt, /Sonido \[etiqueta\]:/)
   assert.match(prompt, /\[campana\] \(personaje Alicia\)/)
 })

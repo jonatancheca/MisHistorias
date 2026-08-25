@@ -32,7 +32,6 @@ const images = [
     id: 'neutral',
     characterId: 'alicia',
     tags: ['neutral'],
-    description: '',
     isDefault: true,
     mimeType: 'image/png',
     createdAt: 1
@@ -41,7 +40,6 @@ const images = [
     id: 'happy',
     characterId: 'alicia',
     tags: ['feliz', 'sonrisa'],
-    description: '',
     isDefault: false,
     mimeType: 'image/png',
     createdAt: 2

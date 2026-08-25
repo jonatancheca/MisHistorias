@@ -141,14 +141,14 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
           ?.visualMode,
         true
       )
-      assert.equal(reopened.health().schemaVersion, 22)
+      assert.equal(reopened.health().schemaVersion, 23)
     } finally {
       reopened.close()
     }
   })
 })
 
-test('migra v1 a v22 copiando personajes y dejando modo visual desactivado', () => {
+test('migra v1 a v23 copiando personajes y dejando modo visual desactivado', () => {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
   const path = join(directory, 'test.sqlite')
   const legacy = new DatabaseSync(path)
@@ -218,7 +218,7 @@ test('migra v1 a v22 copiando personajes y dejando modo visual desactivado', () 
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 22)
+    assert.equal(storage.health().schemaVersion, 23)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.archived, false)
     assert.equal(
       (storage.get('stories', 'normal', 'story-1') as { visualMode?: boolean } | null)
@@ -270,7 +270,7 @@ test('migra v5 añadiendo preset de personaje y secreto Swarm con backup previo'
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 22)
+    assert.equal(storage.health().schemaVersion, 23)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationPreset, '')
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationLora, '')
     assert.equal(storage.readSettings()?.apiKey, 'llm-secret')
@@ -320,8 +320,94 @@ test('migra v6 añadiendo indicaciones de imagen pendientes', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 22)
+    assert.equal(storage.health().schemaVersion, 23)
     assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.pendingImageInstructions, [])
+    assert.equal(migrationBackups(path).length, 1)
+  } finally {
+    storage.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('migra v22 eliminando descripciones de imágenes en ambos ámbitos', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v22-'))
+  const path = join(directory, 'test.sqlite')
+  const initial = new MisHistoriasStorage(path)
+  initial.put('characters', 'normal', 'normal-1', character('normal-1'))
+  initial.put('characters', 'private', 'private-1', character('private-1'))
+  initial.putBinary('images', 'normal', 'normal-image', {
+    metadata: {
+      characterId: 'normal-1',
+      tags: ['neutral'],
+      isDefault: true,
+      mimeType: 'image/png',
+      createdAt: 1
+    },
+    data: new Uint8Array([1])
+  })
+  initial.putBinary('images', 'private', 'private-image', {
+    metadata: {
+      characterId: 'private-1',
+      tags: ['neutral'],
+      isDefault: true,
+      mimeType: 'image/png',
+      createdAt: 1
+    },
+    data: new Uint8Array([2])
+  })
+  const legacyStory = {
+    ...story('story-1'),
+    imageCatalogSnapshot: [{
+      imageId: 'normal-image',
+      characterId: 'normal-1',
+      characterName: 'Personaje normal-1',
+      tags: ['neutral'],
+      description: 'descripción antigua',
+      isDefault: true
+    }]
+  }
+  initial.put('stories', 'normal', 'story-1', legacyStory)
+  initial.put('storySaves', 'normal', 'save-1', {
+    id: 'save-1',
+    storyId: 'story-1',
+    name: 'Partida antigua',
+    story: legacyStory,
+    messages: [],
+    debugTraces: [],
+    thumbnailDataUrl: 'data:image/webp;base64,AA==',
+    createdAt: 2
+  })
+  initial.close()
+
+  const legacy = new DatabaseSync(path)
+  legacy.exec(`
+    ALTER TABLE images ADD COLUMN description TEXT NOT NULL DEFAULT '';
+    UPDATE images SET description = 'descripción antigua';
+    PRAGMA user_version = 22;
+  `)
+  legacy.close()
+
+  const storage = new MisHistoriasStorage(path)
+  try {
+    assert.equal(storage.health().schemaVersion, 23)
+    const columns = storage.database.prepare('PRAGMA table_info(images)').all() as Array<{
+      name: string
+    }>
+    assert.equal(columns.some((column) => column.name === 'description'), false)
+    assert.equal('description' in storage.get('images', 'normal', 'normal-image')!, false)
+    assert.equal('description' in storage.get('images', 'private', 'private-image')!, false)
+    assert.equal(
+      'description' in storage.get('stories', 'normal', 'story-1')!.imageCatalogSnapshot![0]!,
+      false
+    )
+    assert.equal(
+      'description' in storage.get('storySaves', 'normal', 'save-1')!.story.imageCatalogSnapshot![0]!,
+      false
+    )
+    const persisted = storage.database.prepare(`
+      SELECT image_catalog_snapshot_json AS catalog FROM stories WHERE id = 'story-1'
+    `).get() as { catalog: string }
+    assert.equal(persisted.catalog.includes('description'), false)
     assert.equal(migrationBackups(path).length, 1)
   } finally {
     storage.close()
@@ -353,7 +439,7 @@ test('migra v19 y separa los ajustes privados de LMStudio', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 22)
+    assert.equal(storage.health().schemaVersion, 23)
     assert.equal(storage.readSettings()?.privateApiKey, '')
 
     storage.writeSettings({
@@ -464,7 +550,7 @@ test('migra imágenes v3 a BLOBs referenciados sin perder contenido', () => {
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 22)
+    assert.equal(storage.health().schemaVersion, 23)
     assert.deepEqual(Array.from(storage.getBinary('images', 'normal', 'image-1')!.data), [7, 8, 9])
     const row = storage.database
       .prepare('SELECT blob_id FROM images WHERE scope = ? AND id = ?')
@@ -495,7 +581,7 @@ test('conserva backup y revierte la base original si falla la migración', () =>
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /Falló la migración SQLite v3 a v22\. Backup:/
+      /Falló la migración SQLite v3 a v23\. Backup:/
     )
 
     const backups = migrationBackups(path)
@@ -536,7 +622,7 @@ test('no inicia la migración si no puede crear el backup', () => {
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /No se pudo crear el backup previo de SQLite\. Migración v3 a v22 no iniciada\./
+      /No se pudo crear el backup previo de SQLite\. Migración v3 a v23 no iniciada\./
     )
     const source = new DatabaseSync(path, { readOnly: true })
     try {
@@ -613,7 +699,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     const backup = storage.createManualBackup()
     assert.equal(backup.kind, 'manual')
     assert.equal(backup.valid, true)
-    assert.equal(backup.schemaVersion, 22)
+    assert.equal(backup.schemaVersion, 23)
     assert.equal(storage.listBackups().some((item) => item.name === backup.name), true)
 
     storage.put('characters', 'normal', 'normal-1', {
@@ -683,7 +769,6 @@ test('guarda BLOB y mantiene una sola imagen predeterminada', () => {
         id: 'image-1',
         characterId: 'character-1',
         tags: ['neutral'],
-        description: 'Primera',
         isDefault: true,
         mimeType: 'image/png',
         createdAt: 1
@@ -695,7 +780,6 @@ test('guarda BLOB y mantiene una sola imagen predeterminada', () => {
         id: 'image-2',
         characterId: 'character-1',
         tags: ['feliz'],
-        description: 'Segunda',
         isDefault: true,
         mimeType: 'image/png',
         createdAt: 2
@@ -763,7 +847,6 @@ test('copia personajes con preset, imágenes nuevas y BLOBs compartidos dentro d
         id: 'image-1',
         characterId: 'source',
         tags: ['neutral'],
-        description: 'Primera',
         isDefault: true,
         mimeType: 'image/png',
         createdAt: 1
@@ -775,7 +858,6 @@ test('copia personajes con preset, imágenes nuevas y BLOBs compartidos dentro d
         id: 'image-2',
         characterId: 'source',
         tags: ['feliz'],
-        description: 'Segunda',
         isDefault: false,
         mimeType: 'image/png',
         createdAt: 2
@@ -795,7 +877,6 @@ test('copia personajes con preset, imágenes nuevas y BLOBs compartidos dentro d
     assert.equal(copied.character.imageGenerationLora, 'Detalle cinematográfico')
     assert.equal(copied.character.archived, false)
     assert.deepEqual(copied.images.map((image) => image.tags), [['neutral'], ['feliz']])
-    assert.deepEqual(copied.images.map((image) => image.description), ['Primera', 'Segunda'])
     assert.deepEqual(copied.images.map((image) => image.isDefault), [true, false])
     assert.ok(copied.images.every((image) => !['image-1', 'image-2'].includes(image.id)))
 
@@ -1025,7 +1106,6 @@ test('importa personaje nuevo con medios e IDs nuevos', () => {
       images: [{
         metadata: {
           tags: ['feliz'],
-          description: 'Sonríe',
           isDefault: true,
           mimeType: 'image/png'
         },
@@ -1061,7 +1141,7 @@ test('reemplaza personaje de forma atómica conservando su ID e historias', () =
     })
     storage.putBinary('images', 'normal', 'old-image', {
       metadata: {
-        tags: ['antes'], description: '', isDefault: true, characterId: 'target',
+        tags: ['antes'], isDefault: true, characterId: 'target',
         mimeType: 'image/png', createdAt: 1
       },
       data: new Uint8Array([8])
@@ -1083,7 +1163,7 @@ test('reemplaza personaje de forma atómica conservando su ID e historias', () =
       imageGenerationLora: '',
       images: [{
         metadata: {
-          tags: ['después'], description: '', isDefault: true, mimeType: 'image/webp'
+          tags: ['después'], isDefault: true, mimeType: 'image/webp'
         },
         data: new Uint8Array([1])
       }],
@@ -1107,7 +1187,7 @@ test('reemplaza personaje de forma atómica conservando su ID e historias', () =
       imageGenerationPreset: '',
       imageGenerationLora: '',
       images: [1, 2].map(() => ({
-        metadata: { tags: [], description: '', isDefault: true, mimeType: 'image/png' },
+        metadata: { tags: [], isDefault: true, mimeType: 'image/png' },
         data: new Uint8Array([3])
       })),
       sounds: []

@@ -64,7 +64,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 22
+const SCHEMA_VERSION = 23
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -123,6 +123,31 @@ function record(value: unknown): Record<string, unknown> {
     : {}
 }
 
+function imageCatalogSnapshot(value: unknown) {
+  if (!Array.isArray(value)) return undefined
+  return value.flatMap((item) => {
+    const entry = record(item)
+    if (
+      typeof entry.imageId !== 'string' ||
+      typeof entry.characterId !== 'string' ||
+      typeof entry.characterName !== 'string'
+    ) return []
+    return [{
+      imageId: entry.imageId,
+      characterId: entry.characterId,
+      characterName: entry.characterName,
+      tags: tags(entry.tags),
+      isDefault: Boolean(entry.isDefault)
+    }]
+  })
+}
+
+function storyWithoutImageDescriptions(value: unknown) {
+  const story = record(value)
+  if (!Array.isArray(story.imageCatalogSnapshot)) return story
+  return { ...story, imageCatalogSnapshot: imageCatalogSnapshot(story.imageCatalogSnapshot) }
+}
+
 function rowToCharacter(row: SqliteRow) {
   return {
     id: row.id,
@@ -143,7 +168,6 @@ function rowToImage(row: SqliteRow) {
     id: row.id,
     characterId: text(row.character_id),
     tags: parseJson<string[]>(row.tags_json, []),
-    description: text(row.description),
     isDefault: Boolean(row.is_default),
     mimeType: text(row.mime_type, 'application/octet-stream'),
     createdAt: integer(row.created_at)
@@ -202,7 +226,7 @@ function rowToStory(row: SqliteRow) {
     imageCatalogSnapshot:
       row.image_catalog_snapshot_json === null
         ? undefined
-        : parseJson(row.image_catalog_snapshot_json, undefined),
+        : imageCatalogSnapshot(parseJson(row.image_catalog_snapshot_json, undefined)),
     pendingImageInstructions: parseJson(row.pending_image_instructions_json, []),
     createdAt: integer(row.created_at),
     updatedAt: integer(row.updated_at)
@@ -242,7 +266,7 @@ function rowToStorySave(row: SqliteRow) {
     id: row.id,
     storyId: text(row.story_id),
     name: text(row.name),
-    story: parseJson(row.story_json, {}),
+    story: storyWithoutImageDescriptions(parseJson(row.story_json, {})),
     messages: parseJson(row.messages_json, []),
     debugTraces: parseJson(row.debug_traces_json, []),
     thumbnailDataUrl: text(row.thumbnail_data_url),
@@ -530,7 +554,6 @@ export class MisHistoriasStorage {
           id TEXT NOT NULL,
           character_id TEXT NOT NULL,
           tags_json TEXT NOT NULL,
-          description TEXT NOT NULL,
           is_default INTEGER NOT NULL CHECK (is_default IN (0, 1)),
           mime_type TEXT NOT NULL,
           created_at INTEGER NOT NULL,
@@ -843,6 +866,47 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 23) {
+        const imageColumns = this.database.prepare('PRAGMA table_info(images)').all() as Array<{
+          name: string
+        }>
+        if (imageColumns.some((column) => column.name === 'description')) {
+          this.database.exec('ALTER TABLE images DROP COLUMN description')
+        }
+
+        const stories = this.database.prepare(`
+          SELECT scope, id, image_catalog_snapshot_json
+          FROM stories
+          WHERE image_catalog_snapshot_json IS NOT NULL
+        `).all() as Array<{ scope: string; id: string; image_catalog_snapshot_json: string }>
+        const updateStory = this.database.prepare(`
+          UPDATE stories SET image_catalog_snapshot_json = ? WHERE scope = ? AND id = ?
+        `)
+        for (const story of stories) {
+          updateStory.run(
+            json(imageCatalogSnapshot(parseJson(story.image_catalog_snapshot_json, []))),
+            story.scope,
+            story.id
+          )
+        }
+
+        const saves = this.database.prepare('SELECT scope, id, story_json FROM story_saves').all() as Array<{
+          scope: string
+          id: string
+          story_json: string
+        }>
+        const updateSave = this.database.prepare(
+          'UPDATE story_saves SET story_json = ? WHERE scope = ? AND id = ?'
+        )
+        for (const save of saves) {
+          updateSave.run(
+            json(storyWithoutImageDescriptions(parseJson(save.story_json, {}))),
+            save.scope,
+            save.id
+          )
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -913,12 +977,12 @@ export class MisHistoriasStorage {
         const rows = query.characterId
           ? this.database
               .prepare(
-                'SELECT scope, id, character_id, tags_json, description, is_default, mime_type, created_at FROM images WHERE scope = ? AND character_id = ? ORDER BY created_at'
+                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at FROM images WHERE scope = ? AND character_id = ? ORDER BY created_at'
               )
               .all(scope, query.characterId)
           : this.database
               .prepare(
-                'SELECT scope, id, character_id, tags_json, description, is_default, mime_type, created_at FROM images WHERE scope = ? ORDER BY created_at'
+                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at FROM images WHERE scope = ? ORDER BY created_at'
               )
               .all(scope)
         return (rows as SqliteRow[]).map(rowToImage)
@@ -1043,14 +1107,13 @@ export class MisHistoriasStorage {
       })
       const sourceImages = this.database
         .prepare(`
-          SELECT tags_json, description, is_default, mime_type, created_at, blob_id
+          SELECT tags_json, is_default, mime_type, created_at, blob_id
           FROM images
           WHERE scope = ? AND character_id = ?
           ORDER BY created_at, id
         `)
         .all(scope, sourceId) as Array<{
         tags_json: string
-        description: string
         is_default: number
         mime_type: string
         created_at: number
@@ -1058,9 +1121,9 @@ export class MisHistoriasStorage {
       }>
       const insertImage = this.database.prepare(`
         INSERT INTO images(
-          scope, id, character_id, tags_json, description, is_default,
+          scope, id, character_id, tags_json, is_default,
           mime_type, created_at, blob_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const image of sourceImages) {
         insertImage.run(
@@ -1068,7 +1131,6 @@ export class MisHistoriasStorage {
           randomUUID(),
           characterId,
           image.tags_json,
-          image.description,
           image.is_default,
           image.mime_type,
           image.created_at,
@@ -1120,9 +1182,9 @@ export class MisHistoriasStorage {
       )
       const insertImage = this.database.prepare(`
         INSERT INTO images(
-          scope, id, character_id, tags_json, description, is_default,
+          scope, id, character_id, tags_json, is_default,
           mime_type, created_at, blob_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const [index, image] of payload.images.entries()) {
         const imageId = randomUUID()
@@ -1134,7 +1196,6 @@ export class MisHistoriasStorage {
           imageId,
           characterId,
           json(imageTags),
-          text(image.metadata.description),
           bool(image.metadata.isDefault),
           text(image.metadata.mimeType),
           now + index,
@@ -1401,13 +1462,12 @@ export class MisHistoriasStorage {
         this.database
           .prepare(`
             INSERT INTO images(
-              scope, id, character_id, tags_json, description, is_default,
+              scope, id, character_id, tags_json, is_default,
               mime_type, created_at, blob_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               character_id = excluded.character_id,
               tags_json = excluded.tags_json,
-              description = excluded.description,
               is_default = excluded.is_default,
               mime_type = excluded.mime_type,
               created_at = excluded.created_at,
@@ -1418,7 +1478,6 @@ export class MisHistoriasStorage {
             id,
             characterId,
             json(tags(value.tags)),
-            text(value.description),
             bool(isDefault),
             text(value.mimeType, 'application/octet-stream'),
             integer(value.createdAt),

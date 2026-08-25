@@ -27,7 +27,6 @@ const image: StoredImage = {
   id: 'image-1',
   characterId: character.id,
   tags: ['feliz'],
-  description: 'Sonriendo',
   isDefault: true,
   mimeType: 'image/png',
   createdAt: 3,
@@ -58,7 +57,6 @@ test('crea y lee ZIP de personaje con imágenes y sonidos', async () => {
   })
   assert.deepEqual(imported.images[0], {
     tags: ['feliz'],
-    description: 'Sonriendo',
     isDefault: true,
     mimeType: 'image/png',
     blob: imported.images[0]!.blob
@@ -92,6 +90,7 @@ test('rechaza versión incompatible y archivos ausentes', async () => {
     version: 1,
     character: { name: 'Ana', prompt: '', tags: [], color: '#000000', imageGenerationPreset: '' },
     images: [{
+      // Compatibilidad con ZIPs antiguos: la descripción se ignora.
       path: 'images/1.png', tags: [], description: '', isDefault: true, mimeType: 'image/png'
     }],
     sounds: []

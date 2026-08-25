@@ -155,7 +155,6 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
       valid =
         hasString(value, 'characterId') &&
         hasStringArray(value, 'tags') &&
-        hasString(value, 'description') &&
         typeof value.isDefault === 'boolean' &&
         hasString(value, 'mimeType') &&
         String(value.mimeType).startsWith('image/') &&
@@ -248,7 +247,7 @@ function importAssets(
     }
     if (
       kind === 'images' &&
-      (!hasString(asset, 'description') || typeof asset.isDefault !== 'boolean')
+      typeof asset.isDefault !== 'boolean'
     ) {
       throw createError({ statusCode: 400, message: 'Imágenes no válidas' })
     }
@@ -264,7 +263,6 @@ function importAssets(
     return {
       metadata: {
         tags: asset.tags,
-        description: kind === 'images' ? asset.description : undefined,
         isDefault: kind === 'images' ? asset.isDefault : undefined,
         mimeType
       },

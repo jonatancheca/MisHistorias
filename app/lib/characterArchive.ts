@@ -2,7 +2,7 @@ import JSZip from 'jszip'
 import type { Character } from '../../shared/types/index.ts'
 import type { StoredImage, StoredSound } from './db.ts'
 
-export const CHARACTER_ARCHIVE_VERSION = 2
+export const CHARACTER_ARCHIVE_VERSION = 3
 export const MAX_CHARACTER_IMAGE_BYTES = 5 * 1024 * 1024
 export const MAX_CHARACTER_SOUND_BYTES = 10 * 1024 * 1024
 
@@ -16,7 +16,6 @@ interface ArchiveAsset {
 }
 
 interface ArchiveImage extends ArchiveAsset {
-  description: string
   isDefault: boolean
 }
 
@@ -72,7 +71,11 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
     throw new Error('El ZIP no contiene un personaje válido.')
   }
   const manifest = value as Record<string, unknown>
-  if (manifest.version !== 1 && manifest.version !== CHARACTER_ARCHIVE_VERSION) {
+  if (
+    manifest.version !== 1 &&
+    manifest.version !== 2 &&
+    manifest.version !== CHARACTER_ARCHIVE_VERSION
+  ) {
     throw new Error('Versión de personaje no compatible.')
   }
   if (!manifest.character || typeof manifest.character !== 'object' || Array.isArray(manifest.character)) {
@@ -94,7 +97,7 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
   if (!manifest.images.every((item) => {
     if (!isAsset(item, 'images/')) return false
     const image = item as unknown as Record<string, unknown>
-    return typeof image.description === 'string' && typeof image.isDefault === 'boolean'
+    return typeof image.isDefault === 'boolean'
   })) {
     throw new Error('El ZIP contiene imágenes no válidas.')
   }
@@ -159,7 +162,6 @@ export async function createCharacterArchive(
     images: images.map((image, index) => ({
       path: `images/${index + 1}.${extensionFor(image.mimeType)}`,
       tags: [...image.tags],
-      description: image.description,
       isDefault: image.isDefault,
       mimeType: image.mimeType
     })),
@@ -202,7 +204,6 @@ export async function readCharacterArchive(file: Blob): Promise<ImportedCharacte
     },
     images: await Promise.all(manifest.images.map(async (image) => ({
       tags: [...image.tags],
-      description: image.description,
       isDefault: image.isDefault,
       mimeType: image.mimeType,
       blob: await archiveBlob(zip, image, IMAGE_TYPES, MAX_CHARACTER_IMAGE_BYTES, 'Una imagen')

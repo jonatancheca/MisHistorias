@@ -197,7 +197,6 @@ export const useCharactersStore = defineStore('characters', () => {
       id: newId(),
       characterId,
       tags: sanitizeTags(tags, undefined, 'neutral'),
-      description: '',
       isDefault: isFirst,
       mimeType,
       createdAt: Date.now(),
@@ -220,7 +219,7 @@ export const useCharactersStore = defineStore('characters', () => {
 
   async function updateImage(
     id: string,
-    patch: Partial<Pick<StoredImage, 'tags' | 'description' | 'isDefault'>>
+    patch: Partial<Pick<StoredImage, 'tags' | 'isDefault'>>
   ) {
     const current = images.value.find((image) => image.id === id)
     if (!current) return

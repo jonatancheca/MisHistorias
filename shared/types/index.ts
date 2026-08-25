@@ -3,7 +3,6 @@ export interface CharacterImage {
   characterId: string
   /** Etiquetas cortas que el modelo usa en el prefijo, ej. `feliz` */
   tags: string[]
-  description: string
   isDefault: boolean
   mimeType: string
   createdAt: number
@@ -33,7 +32,6 @@ export interface StoryImageCatalogEntry {
   characterId: string
   characterName: string
   tags: string[]
-  description: string
   isDefault: boolean
 }
 

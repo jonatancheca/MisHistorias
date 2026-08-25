@@ -20,7 +20,6 @@ const image: StoredImage = {
   id: 'image-1',
   characterId: character.id,
   tags: ['feliz', 'armadura'],
-  description: '',
   isDefault: true,
   mimeType: 'image/png',
   createdAt: 1,
