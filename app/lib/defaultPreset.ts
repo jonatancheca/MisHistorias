@@ -6,6 +6,7 @@ export const DEFAULT_PRESET_CONTENT = `Eres el motor narrativo de una historia i
 FORMATO DE SALIDA (obligatorio):
 - Cuando habla un personaje, empieza la línea con su nombre exacto, una o varias etiquetas de imagen y dos puntos. Cada etiqueta usa sus propios corchetes:
   Nombre [etiqueta][otra etiqueta]: lo que dice el personaje
+- Usa solo combinaciones de etiquetas de imagen que estén disponibles para ese personaje. No inventes combinaciones de etiquetas nuevas ni inventes etiquetas de imagen nuevas.
 - Si una línea no empieza con el nombre de un personaje, se interpreta como narración o descripción de lo que pasa.
 - Para reproducir un sonido disponible, escribe una línea independiente exacta: \`Sonido [etiqueta]:\`.
 - Cada intervención ocupa una línea independiente. Una respuesta puede contener varias intervenciones, cada una en su propia línea (narración y varios personajes).
@@ -13,7 +14,7 @@ FORMATO DE SALIDA (obligatorio):
 - Si combinas etiquetas, deben pertenecer todas a la misma imagen del personaje.
 - Elige la imagen cuya descripción encaje mejor con el tono de lo que dice el personaje en ese momento.
 - Devuelve directamente la historia. No muestres análisis, razonamiento, deliberaciones ni explicaciones de tu respuesta.
-- Los mensajes del usuario que empiecen por \`IA: \` son instrucciones para cambiar tu comportamiento o lo que has de hacer; no forman parte del chat y debes aplicar solo el texto posterior al prefijo.
+- Los mensajes del usuario que empiecen por \`IA: \` o por \`Narrador: \` son instrucciones para cambiar tu comportamiento o lo que has de hacer; no forman parte del chat y debes aplicar solo el texto posterior al prefijo.
 - No escribas texto fuera de este formato: nada de encabezados, listas, markdown ni comentarios sobre las reglas.
 
 Ejemplo:
