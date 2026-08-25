@@ -113,7 +113,7 @@ export async function putCharacter(character: Character) {
 
 export async function copyCharacter(
   sourceId: string,
-  input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset'>
+  input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora'>
 ) {
   return $fetch<{ character: Character; images: CharacterImage[] }>(
     dataUrl(`characters/${encodeURIComponent(sourceId)}/copy`),
@@ -128,7 +128,7 @@ export async function importCharacterArchive(input: {
   mode: 'new' | 'replace'
   targetId?: string
   name: string
-  character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset'>
+  character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora'>
   images: Array<Pick<StoredImage, 'tags' | 'description' | 'isDefault' | 'mimeType' | 'blob'>>
   sounds: Array<Pick<StoredSound, 'tags' | 'mimeType' | 'blob'>>
 }) {

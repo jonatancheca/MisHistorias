@@ -14,6 +14,7 @@ export interface SwarmGenerationRequest {
   prompt: string
   preset?: string
   model?: string
+  lora?: string
   signal?: AbortSignal
 }
 
@@ -226,19 +227,24 @@ export async function generateSwarmImage(
   const prompt = request.prompt.trim()
   const preset = request.preset?.trim() ?? ''
   const model = request.model?.trim() ?? ''
+  const lora = request.lora?.trim() ?? ''
   if (!prompt) throw swarmError('Falta el prompt de imagen')
-  if (Boolean(preset) === Boolean(model)) {
-    throw swarmError('Elige exactamente un preset o un modelo')
+  if (!preset && !model) {
+    throw swarmError('Elige un preset o un modelo')
   }
-  if ([preset, model].some((value) => value.length > 500 || /[<>]/.test(value))) {
-    throw swarmError('Preset o modelo no válido')
+  if ([preset, model, lora].some((value) => value.length > 500 || /[<>]/.test(value))) {
+    throw swarmError('Preset, modelo o LoRA no válido')
   }
 
   const client = createSessionClient(settings, request.signal)
   const generated = await client.call('GenerateText2Image', {
     images: 1,
     donotsave: true,
-    prompt: preset ? `<preset:${preset}>\n${prompt}` : prompt,
+    prompt: [
+      ...(preset ? [`<preset:${preset}>`] : []),
+      ...(lora ? [`<lora:${lora}>`] : []),
+      prompt
+    ].join('\n'),
     ...(model ? { model } : {})
   })
   const reference = Array.isArray(generated.images) ? generated.images[0] : null

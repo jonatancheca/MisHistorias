@@ -8,10 +8,15 @@ export function exportCharacterTransferFields(character: Character) {
     tags: [...character.tags],
     color: character.color,
     imageGenerationPreset: character.imageGenerationPreset,
+    imageGenerationLora: character.imageGenerationLora,
     archived: character.archived
   }
 }
 
 export function importImageGenerationPreset(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+export function importImageGenerationLora(value: unknown) {
   return typeof value === 'string' ? value : ''
 }

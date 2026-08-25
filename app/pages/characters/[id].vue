@@ -20,6 +20,9 @@ const tags = ref([...(existing.value?.tags ?? copiedCharacter?.tags ?? [])])
 const imageGenerationPreset = ref(
   existing.value?.imageGenerationPreset ?? copiedCharacter?.imageGenerationPreset ?? ''
 )
+const imageGenerationLora = ref(
+  existing.value?.imageGenerationLora ?? copiedCharacter?.imageGenerationLora ?? ''
+)
 const color = ref(
   normalizeColor(
     existing.value?.color ?? copiedCharacter?.color,
@@ -45,7 +48,8 @@ function enqueueSave(revision: number, navigateAfterCreate = false) {
     prompt: prompt.value,
     tags: [...tags.value],
     color: color.value,
-    imageGenerationPreset: imageGenerationPreset.value
+    imageGenerationPreset: imageGenerationPreset.value,
+    imageGenerationLora: imageGenerationLora.value
   }
   const run = async () => {
     if (!input.name.trim()) return
@@ -130,7 +134,8 @@ watch(
     prompt.value,
     JSON.stringify(tags.value),
     color.value,
-    imageGenerationPreset.value
+    imageGenerationPreset.value,
+    imageGenerationLora.value
   ],
   scheduleSave
 )
@@ -221,6 +226,7 @@ onBeforeRouteLeave(flushSave)
       <CharacterImageEditor
         v-if="!isNew && existing"
         v-model:image-generation-preset="imageGenerationPreset"
+        v-model:image-generation-lora="imageGenerationLora"
         :character-id="characterId"
       />
       <section v-if="!isNew && existing" class="card mt-8 max-w-3xl">

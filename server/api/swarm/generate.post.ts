@@ -10,10 +10,11 @@ export default defineEventHandler(async (event) => {
   const prompt = typeof body.prompt === 'string' ? body.prompt : ''
   const preset = typeof body.preset === 'string' ? body.preset : ''
   const model = typeof body.model === 'string' ? body.model : ''
-  if (!prompt.trim() || prompt.length > 100_000 || Boolean(preset.trim()) === Boolean(model.trim())) {
+  const lora = typeof body.lora === 'string' ? body.lora : ''
+  if (!prompt.trim() || prompt.length > 100_000 || (!preset.trim() && !model.trim())) {
     throw createError({
       statusCode: 400,
-      message: 'Indica un prompt y exactamente un preset o modelo'
+      message: 'Indica un prompt y un preset o modelo'
     })
   }
 
@@ -33,7 +34,9 @@ export default defineEventHandler(async (event) => {
       },
       {
         prompt,
-        ...(preset.trim() ? { preset } : { model }),
+        ...(preset.trim() ? { preset } : {}),
+        ...(model.trim() ? { model } : {}),
+        ...(lora.trim() ? { lora } : {}),
         signal: abortController.signal
       }
     )

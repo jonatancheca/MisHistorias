@@ -47,6 +47,7 @@ export interface CharacterImportPayload {
   tags: string[]
   color: string
   imageGenerationPreset: string
+  imageGenerationLora: string
   images: BinaryPayload[]
   sounds: BinaryPayload[]
 }
@@ -63,7 +64,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 21
+const SCHEMA_VERSION = 22
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -130,6 +131,7 @@ function rowToCharacter(row: SqliteRow) {
     tags: parseJson<string[]>(row.tags_json, []),
     color: text(row.color),
     imageGenerationPreset: text(row.image_generation_preset),
+    imageGenerationLora: text(row.image_generation_lora),
     archived: integer(row.archived) === 1,
     createdAt: integer(row.created_at),
     updatedAt: integer(row.updated_at)
@@ -509,6 +511,7 @@ export class MisHistoriasStorage {
           tags_json TEXT NOT NULL,
           color TEXT NOT NULL,
           image_generation_preset TEXT NOT NULL DEFAULT '',
+          image_generation_lora TEXT NOT NULL DEFAULT '',
           archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
@@ -829,6 +832,17 @@ export class MisHistoriasStorage {
         `)
       }
 
+      if (version.user_version < 22) {
+        const characterColumns = this.database
+          .prepare('PRAGMA table_info(characters)')
+          .all() as Array<{ name: string }>
+        if (!characterColumns.some((column) => column.name === 'image_generation_lora')) {
+          this.database.exec(
+            "ALTER TABLE characters ADD COLUMN image_generation_lora TEXT NOT NULL DEFAULT ''"
+          )
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -1019,6 +1033,10 @@ export class MisHistoriasStorage {
           typeof value.imageGenerationPreset === 'string'
             ? value.imageGenerationPreset
             : source.imageGenerationPreset,
+        imageGenerationLora:
+          typeof value.imageGenerationLora === 'string'
+            ? value.imageGenerationLora
+            : source.imageGenerationLora,
         archived: false,
         createdAt: now,
         updatedAt: now
@@ -1091,6 +1109,7 @@ export class MisHistoriasStorage {
         tags: payload.tags,
         color: payload.color,
         imageGenerationPreset: payload.imageGenerationPreset,
+        imageGenerationLora: payload.imageGenerationLora,
         archived: existing?.archived ?? false,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now
@@ -1171,15 +1190,17 @@ export class MisHistoriasStorage {
         this.database
           .prepare(`
             INSERT INTO characters(
-              scope, id, name, prompt, tags_json, color, image_generation_preset, archived,
+              scope, id, name, prompt, tags_json, color, image_generation_preset,
+              image_generation_lora, archived,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               name = excluded.name,
               prompt = excluded.prompt,
               tags_json = excluded.tags_json,
               color = excluded.color,
               image_generation_preset = excluded.image_generation_preset,
+              image_generation_lora = excluded.image_generation_lora,
               archived = excluded.archived,
               created_at = excluded.created_at,
               updated_at = excluded.updated_at
@@ -1192,6 +1213,7 @@ export class MisHistoriasStorage {
             json(tags(value.tags)),
             text(value.color),
             text(value.imageGenerationPreset),
+            text(value.imageGenerationLora),
             bool(value.archived),
             integer(value.createdAt),
             integer(value.updatedAt)

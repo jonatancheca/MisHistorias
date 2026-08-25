@@ -29,6 +29,7 @@ export async function fetchSwarmImage(input: {
   prompt: string
   preset?: string
   model?: string
+  lora?: string
   signal?: AbortSignal
 }) {
   let response: Response
@@ -38,7 +39,9 @@ export async function fetchSwarmImage(input: {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         prompt: input.prompt,
-        ...(input.preset ? { preset: input.preset } : { model: input.model })
+        ...(input.preset ? { preset: input.preset } : {}),
+        ...(input.model ? { model: input.model } : {}),
+        ...(input.lora ? { lora: input.lora } : {})
       }),
       signal: input.signal
     })

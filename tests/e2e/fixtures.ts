@@ -58,6 +58,7 @@ interface CharacterInput {
   tags?: string[]
   color?: string
   imageGenerationPreset?: string
+  imageGenerationLora?: string
   scope?: DataScope
 }
 
@@ -173,6 +174,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
           tags: input.tags ?? ['prueba', unique('rasgo')],
           color: input.color ?? '#db2777',
           imageGenerationPreset: input.imageGenerationPreset ?? '',
+          imageGenerationLora: input.imageGenerationLora ?? '',
           archived: false,
           createdAt: now,
           updatedAt: now

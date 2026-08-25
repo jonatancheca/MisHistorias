@@ -83,7 +83,10 @@ test.describe('personajes', () => {
   })
 
   test('copia personaje e imágenes con IDs independientes', async ({ page, data }) => {
-    const source = await data.createCharacter({ imageGenerationPreset: 'Retrato' })
+    const source = await data.createCharacter({
+      imageGenerationPreset: 'Retrato',
+      imageGenerationLora: 'Detalle'
+    })
     const sourceImage = await data.createImage(source, ['feliz'])
     const copiedName = data.unique('Copia')
 
@@ -97,6 +100,7 @@ test.describe('personajes', () => {
     expect(copied).toBeDefined()
     expect(copied?.id).not.toBe(source.id)
     expect(copied?.imageGenerationPreset).toBe('Retrato')
+    expect(copied?.imageGenerationLora).toBe('Detalle')
     const copiedImages = await data.list<CharacterImage>('images', 'normal', {
       characterId: copied!.id
     })
@@ -190,7 +194,8 @@ test.describe('personajes', () => {
     const source = await data.createCharacter({
       name: data.unique('Exportable'),
       prompt: 'Prompt exportado',
-      imageGenerationPreset: 'Retrato'
+      imageGenerationPreset: 'Retrato',
+      imageGenerationLora: 'Detalle'
     })
     await data.createImage(source, ['feliz'])
     await data.createSound(source, ['saludo-exportado'])
@@ -205,14 +210,20 @@ test.describe('personajes', () => {
     expect(path).not.toBeNull()
     const zip = await JSZip.loadAsync(await readFile(path!))
     const manifest = JSON.parse(await zip.file('character.json')!.async('string')) as {
-      character: { name: string; prompt: string; imageGenerationPreset: string }
+      character: {
+        name: string
+        prompt: string
+        imageGenerationPreset: string
+        imageGenerationLora: string
+      }
       images: Array<{ path: string; tags: string[] }>
       sounds: Array<{ path: string; tags: string[] }>
     }
     expect(manifest.character).toMatchObject({
       name: source.name,
       prompt: 'Prompt exportado',
-      imageGenerationPreset: 'Retrato'
+      imageGenerationPreset: 'Retrato',
+      imageGenerationLora: 'Detalle'
     })
     expect(manifest.images[0]).toMatchObject({ tags: ['feliz'] })
     expect(manifest.sounds[0]).toMatchObject({ tags: ['saludo-exportado'] })

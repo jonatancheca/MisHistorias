@@ -34,6 +34,7 @@ function character(id: string) {
     tags: ['uno'],
     color: '#123456',
     imageGenerationPreset: '',
+    imageGenerationLora: '',
     archived: false,
     createdAt: 1,
     updatedAt: 2
@@ -140,14 +141,14 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
           ?.visualMode,
         true
       )
-      assert.equal(reopened.health().schemaVersion, 21)
+      assert.equal(reopened.health().schemaVersion, 22)
     } finally {
       reopened.close()
     }
   })
 })
 
-test('migra v1 a v21 copiando personajes y dejando modo visual desactivado', () => {
+test('migra v1 a v22 copiando personajes y dejando modo visual desactivado', () => {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
   const path = join(directory, 'test.sqlite')
   const legacy = new DatabaseSync(path)
@@ -217,7 +218,7 @@ test('migra v1 a v21 copiando personajes y dejando modo visual desactivado', () 
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 21)
+    assert.equal(storage.health().schemaVersion, 22)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.archived, false)
     assert.equal(
       (storage.get('stories', 'normal', 'story-1') as { visualMode?: boolean } | null)
@@ -269,8 +270,9 @@ test('migra v5 añadiendo preset de personaje y secreto Swarm con backup previo'
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 21)
+    assert.equal(storage.health().schemaVersion, 22)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationPreset, '')
+    assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationLora, '')
     assert.equal(storage.readSettings()?.apiKey, 'llm-secret')
     assert.equal(storage.readSettings()?.swarmAuthToken, '')
     const backups = migrationBackups(path)
@@ -318,7 +320,7 @@ test('migra v6 añadiendo indicaciones de imagen pendientes', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 21)
+    assert.equal(storage.health().schemaVersion, 22)
     assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.pendingImageInstructions, [])
     assert.equal(migrationBackups(path).length, 1)
   } finally {
@@ -351,7 +353,7 @@ test('migra v19 y separa los ajustes privados de LMStudio', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 21)
+    assert.equal(storage.health().schemaVersion, 22)
     assert.equal(storage.readSettings()?.privateApiKey, '')
 
     storage.writeSettings({
@@ -462,7 +464,7 @@ test('migra imágenes v3 a BLOBs referenciados sin perder contenido', () => {
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 21)
+    assert.equal(storage.health().schemaVersion, 22)
     assert.deepEqual(Array.from(storage.getBinary('images', 'normal', 'image-1')!.data), [7, 8, 9])
     const row = storage.database
       .prepare('SELECT blob_id FROM images WHERE scope = ? AND id = ?')
@@ -493,7 +495,7 @@ test('conserva backup y revierte la base original si falla la migración', () =>
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /Falló la migración SQLite v3 a v21\. Backup:/
+      /Falló la migración SQLite v3 a v22\. Backup:/
     )
 
     const backups = migrationBackups(path)
@@ -534,7 +536,7 @@ test('no inicia la migración si no puede crear el backup', () => {
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /No se pudo crear el backup previo de SQLite\. Migración v3 a v21 no iniciada\./
+      /No se pudo crear el backup previo de SQLite\. Migración v3 a v22 no iniciada\./
     )
     const source = new DatabaseSync(path, { readOnly: true })
     try {
@@ -611,7 +613,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     const backup = storage.createManualBackup()
     assert.equal(backup.kind, 'manual')
     assert.equal(backup.valid, true)
-    assert.equal(backup.schemaVersion, 21)
+    assert.equal(backup.schemaVersion, 22)
     assert.equal(storage.listBackups().some((item) => item.name === backup.name), true)
 
     storage.put('characters', 'normal', 'normal-1', {
@@ -752,6 +754,7 @@ test('copia personajes con preset, imágenes nuevas y BLOBs compartidos dentro d
     storage.put('characters', 'normal', 'source', {
       ...character('source'),
       imageGenerationPreset: 'Retrato cinematográfico',
+      imageGenerationLora: 'Detalle cinematográfico',
       archived: true
     })
     storage.put('characters', 'private', 'private-source', character('private-source'))
@@ -789,6 +792,7 @@ test('copia personajes con preset, imágenes nuevas y BLOBs compartidos dentro d
     assert.notEqual(copied.character.id, 'source')
     assert.equal(copied.character.name, 'Copia editable')
     assert.equal(copied.character.imageGenerationPreset, 'Retrato cinematográfico')
+    assert.equal(copied.character.imageGenerationLora, 'Detalle cinematográfico')
     assert.equal(copied.character.archived, false)
     assert.deepEqual(copied.images.map((image) => image.tags), [['neutral'], ['feliz']])
     assert.deepEqual(copied.images.map((image) => image.description), ['Primera', 'Segunda'])
@@ -1017,6 +1021,7 @@ test('importa personaje nuevo con medios e IDs nuevos', () => {
       tags: ['valiente'],
       color: '#abcdef',
       imageGenerationPreset: 'Retrato',
+      imageGenerationLora: 'Detalle',
       images: [{
         metadata: {
           tags: ['feliz'],
@@ -1075,6 +1080,7 @@ test('reemplaza personaje de forma atómica conservando su ID e historias', () =
       tags: ['después'],
       color: '#ffffff',
       imageGenerationPreset: '',
+      imageGenerationLora: '',
       images: [{
         metadata: {
           tags: ['después'], description: '', isDefault: true, mimeType: 'image/webp'
@@ -1099,6 +1105,7 @@ test('reemplaza personaje de forma atómica conservando su ID e historias', () =
       tags: [],
       color: '#000000',
       imageGenerationPreset: '',
+      imageGenerationLora: '',
       images: [1, 2].map(() => ({
         metadata: { tags: [], description: '', isDefault: true, mimeType: 'image/png' },
         data: new Uint8Array([3])

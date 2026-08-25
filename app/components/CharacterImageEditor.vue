@@ -6,6 +6,7 @@ import { fetchSwarmCatalog, fetchSwarmImage, type SwarmCatalog } from '~/lib/swa
 
 const props = defineProps<{ characterId: string }>()
 const imageGenerationPreset = defineModel<string>('imageGenerationPreset', { required: true })
+const imageGenerationLora = defineModel<string>('imageGenerationLora', { required: true })
 
 const characters = useCharactersStore()
 const settings = useSettingsStore()
@@ -29,6 +30,7 @@ const promptBusy = ref(false)
 const generationBusy = ref(false)
 const generationError = ref<string | null>(null)
 const generationNotice = ref<string | null>(null)
+const generationOpen = ref(false)
 let addedCount = 0
 let failedCount = 0
 let skippedCount = 0
@@ -62,6 +64,11 @@ async function loadSwarmCatalog() {
   } finally {
     catalogLoading.value = false
   }
+}
+
+async function toggleGeneration() {
+  generationOpen.value = !generationOpen.value
+  if (generationOpen.value && !swarmCatalog.value) await loadSwarmCatalog()
 }
 
 async function createGenerationPrompt() {
@@ -99,10 +106,13 @@ async function generateImage() {
     if (!swarmCatalog.value && !await loadSwarmCatalog()) return
     const preset = imageGenerationPreset.value.trim()
     const model = generationModel.value.trim()
+    const lora = imageGenerationLora.value.trim()
     if (!preset && !model) throw new Error('Selecciona un preset o un modelo de SwarmUI.')
     const blob = await fetchSwarmImage({
       prompt: generationPrompt.value,
-      ...(preset ? { preset } : { model })
+      ...(preset ? { preset } : {}),
+      ...(model ? { model } : {}),
+      ...(lora ? { lora } : {})
     })
     await characters.addImage(props.characterId, blob, [])
     generationNotice.value = 'Imagen generada y guardada en la galería.'
@@ -257,7 +267,21 @@ async function remove(id: string) {
       Imágenes se limitan a 1920px y se guardan en WebP.
     </p>
 
-    <div class="card mb-4 grid min-w-0 gap-3" data-testid="character-swarm-generator">
+    <button
+      type="button"
+      class="btn-primary mb-4"
+      data-testid="character-swarm-toggle"
+      :aria-expanded="generationOpen"
+      @click="toggleGeneration"
+    >
+      {{ generationOpen ? 'Ocultar creación de imagen' : 'Crear imagen con SwarmUI' }}
+    </button>
+
+    <div
+      v-if="generationOpen"
+      class="card mb-4 grid min-w-0 gap-3"
+      data-testid="character-swarm-generator"
+    >
       <div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
         <div>
           <h3 class="font-semibold">Generar imagen con SwarmUI</h3>
@@ -271,31 +295,51 @@ async function remove(id: string) {
           :disabled="catalogLoading"
           @click="loadSwarmCatalog"
         >
-          {{ catalogLoading ? 'Cargando…' : 'Cargar catálogo SwarmUI' }}
+          {{ catalogLoading ? 'Cargando…' : swarmCatalog ? 'Recargar catálogo SwarmUI' : 'Cargar catálogo SwarmUI' }}
         </button>
       </div>
 
-      <div class="grid min-w-0 gap-3 sm:grid-cols-2">
+      <div class="grid min-w-0 gap-3 md:grid-cols-3">
         <div>
           <label class="label" for="character-swarm-preset">Preset SwarmUI</label>
-          <input
+          <select
             id="character-swarm-preset"
             v-model="imageGenerationPreset"
-            list="character-swarm-presets"
-            autocomplete="off"
             class="field min-w-0"
-            placeholder="Vacío para usar un modelo"
           >
-          <datalist id="character-swarm-presets">
-            <option v-for="preset in swarmCatalog?.presets ?? []" :key="preset" :value="preset" />
-          </datalist>
+            <option value="">Sin preset</option>
+            <option
+              v-if="imageGenerationPreset && !swarmCatalog?.presets.includes(imageGenerationPreset)"
+              :value="imageGenerationPreset"
+            >
+              {{ imageGenerationPreset }} (no disponible)
+            </option>
+            <option v-for="preset in swarmCatalog?.presets ?? []" :key="preset" :value="preset">
+              {{ preset }}
+            </option>
+          </select>
         </div>
-        <div v-if="!imageGenerationPreset.trim()">
+        <div>
           <label class="label" for="character-swarm-model">Modelo SwarmUI</label>
           <select id="character-swarm-model" v-model="generationModel" class="field min-w-0">
             <option value="">Selecciona un modelo</option>
             <option v-for="model in swarmCatalog?.models ?? []" :key="model" :value="model">
               {{ model }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="label" for="character-swarm-lora">LoRA SwarmUI</label>
+          <select id="character-swarm-lora" v-model="imageGenerationLora" class="field min-w-0">
+            <option value="">Sin LoRA</option>
+            <option
+              v-if="imageGenerationLora && !swarmCatalog?.loras.includes(imageGenerationLora)"
+              :value="imageGenerationLora"
+            >
+              {{ imageGenerationLora }} (no disponible)
+            </option>
+            <option v-for="lora in swarmCatalog?.loras ?? []" :key="lora" :value="lora">
+              {{ lora }}
             </option>
           </select>
         </div>

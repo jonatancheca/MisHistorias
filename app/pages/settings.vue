@@ -402,7 +402,8 @@ async function generateSwarmPreview() {
     if (!preset && !model) throw new Error('SwarmUI no ofrece presets ni modelos.')
     const blob = await fetchSwarmImage({
       prompt: swarmTestPrompt.value,
-      ...(preset ? { preset } : { model })
+      ...(preset ? { preset } : {}),
+      ...(model ? { model } : {})
     })
     if (swarmPreviewUrl.value) URL.revokeObjectURL(swarmPreviewUrl.value)
     swarmPreviewUrl.value = URL.createObjectURL(blob)
@@ -1083,7 +1084,7 @@ onBeforeRouteLeave(async () => {
               </option>
             </select>
           </div>
-          <div v-if="!swarmTestPreset">
+          <div>
             <label class="label" for="swarmTestModel">Modelo de prueba</label>
             <select id="swarmTestModel" v-model="swarmTestModel" class="field">
               <option value="">Selecciona un modelo</option>

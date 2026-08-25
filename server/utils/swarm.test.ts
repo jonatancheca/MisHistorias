@@ -99,8 +99,9 @@ test('cliente Swarm renueva sesión, lista catálogo, autentica y descarga image
   }
 })
 
-test('cliente Swarm aplica preset sin contaminar el prompt editable', async () => {
+test('cliente Swarm combina modelo, preset y LoRA sin contaminar el prompt editable', async () => {
   let generatedPrompt = ''
+  let generatedModel = ''
   const server = createServer(async (request, response) => {
     const body = await readJson(request)
     response.setHeader('content-type', 'application/json')
@@ -108,6 +109,7 @@ test('cliente Swarm aplica preset sin contaminar el prompt editable', async () =
       response.end(JSON.stringify({ session_id: 'session', version: '1' }))
     } else {
       generatedPrompt = String(body.prompt ?? '')
+      generatedModel = String(body.model ?? '')
       response.end(JSON.stringify({ images: ['data:image/png;base64,iVBORw=='] }))
     }
   })
@@ -117,9 +119,10 @@ test('cliente Swarm aplica preset sin contaminar el prompt editable', async () =
   try {
     await generateSwarmImage(
       { baseUrl: `http://127.0.0.1:${address.port}`, authToken: '' },
-      { prompt: 'editable prompt', preset: 'Retrato' }
+      { prompt: 'editable prompt', preset: 'Retrato', model: 'modelo', lora: 'detalle' }
     )
-    assert.equal(generatedPrompt, '<preset:Retrato>\neditable prompt')
+    assert.equal(generatedPrompt, '<preset:Retrato>\n<lora:detalle>\neditable prompt')
+    assert.equal(generatedModel, 'modelo')
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve())

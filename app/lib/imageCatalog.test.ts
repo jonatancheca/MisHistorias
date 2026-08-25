@@ -16,6 +16,7 @@ const characters: Character[] = [
     tags: [],
     color: '#000000',
     imageGenerationPreset: '',
+    imageGenerationLora: '',
     archived: false,
     createdAt: 1,
     updatedAt: 1
@@ -27,6 +28,7 @@ const characters: Character[] = [
     tags: [],
     color: '#ffffff',
     imageGenerationPreset: '',
+    imageGenerationLora: '',
     archived: false,
     createdAt: 1,
     updatedAt: 1

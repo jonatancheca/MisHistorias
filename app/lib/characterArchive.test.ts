@@ -17,6 +17,7 @@ const character: Character = {
   tags: ['valiente'],
   color: '#123456',
   imageGenerationPreset: 'Retrato',
+  imageGenerationLora: 'Detalle',
   archived: false,
   createdAt: 1,
   updatedAt: 2
@@ -52,7 +53,8 @@ test('crea y lee ZIP de personaje con imágenes y sonidos', async () => {
     prompt: character.prompt,
     tags: character.tags,
     color: character.color,
-    imageGenerationPreset: character.imageGenerationPreset
+    imageGenerationPreset: character.imageGenerationPreset,
+    imageGenerationLora: character.imageGenerationLora
   })
   assert.deepEqual(imported.images[0], {
     tags: ['feliz'],
