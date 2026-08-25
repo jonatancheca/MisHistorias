@@ -1,13 +1,31 @@
 import assert from 'node:assert/strict'
 import { createServer, type IncomingMessage } from 'node:http'
 import test from 'node:test'
-import { fetchSwarmCatalog, generateSwarmImage } from './swarm.ts'
+import { fetchSwarmCatalog, generateSwarmImage, normalizeSwarmBaseUrl } from './swarm.ts'
 
 async function readJson(request: IncomingMessage) {
   const chunks: Uint8Array[] = []
   for await (const chunk of request) chunks.push(chunk)
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
 }
+
+test('cliente Swarm acepta servidores públicos HTTP y HTTPS', () => {
+  assert.equal(
+    normalizeSwarmBaseUrl('https://swarmui2.jonatancheca.com/'),
+    'https://swarmui2.jonatancheca.com'
+  )
+  assert.equal(
+    normalizeSwarmBaseUrl('http://swarm.example.test/api///'),
+    'http://swarm.example.test/api'
+  )
+  assert.equal(normalizeSwarmBaseUrl('http://localhost:7801'), 'http://localhost:7801')
+})
+
+test('cliente Swarm rechaza URLs vacías, inválidas o con otro protocolo', () => {
+  assert.throws(() => normalizeSwarmBaseUrl(''), /Falta la URL de SwarmUI/)
+  assert.throws(() => normalizeSwarmBaseUrl('no es una URL'), /URL de SwarmUI no válida/)
+  assert.throws(() => normalizeSwarmBaseUrl('ftp://swarm.example.test'), /http o https/)
+})
 
 test('cliente Swarm renueva sesión, lista catálogo, autentica y descarga imagen', async () => {
   let sessions = 0

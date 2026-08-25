@@ -1,5 +1,3 @@
-import { normalizeLocalBaseUrl } from './llm.ts'
-
 export interface SwarmProxySettings {
   baseUrl: string
   authToken: string
@@ -34,15 +32,19 @@ function swarmError(message: string, status?: number, detail?: string): SwarmPro
 }
 
 export function normalizeSwarmBaseUrl(rawBaseUrl: unknown) {
-  try {
-    return normalizeLocalBaseUrl(rawBaseUrl)
-  } catch (caught) {
-    throw swarmError(
-      ((caught as Error).message || 'URL de SwarmUI no válida')
-        .replace('del modelo', 'de SwarmUI')
-        .replace('modelo', 'SwarmUI')
-    )
+  if (typeof rawBaseUrl !== 'string' || rawBaseUrl.trim() === '') {
+    throw swarmError('Falta la URL de SwarmUI')
   }
+  let url: URL
+  try {
+    url = new URL(rawBaseUrl.trim())
+  } catch {
+    throw swarmError('URL de SwarmUI no válida')
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw swarmError('La URL debe usar http o https')
+  }
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
 }
 
 function cookieHeader(rawToken: unknown) {
