@@ -280,4 +280,41 @@ describe('pasos de novela visual', () => {
     assert.equal(frames[0]?.backgroundId, 'beach')
     assert.equal(frames[0]?.backgroundTag, 'playa')
   })
+
+  it('crea pasos propios para sonidos actuales y antiguos', () => {
+    const frames = buildVisualNovelFrames([{
+      id: 'assistant-sounds',
+      storyId: 'story-1',
+      role: 'assistant',
+      raw: '',
+      segments: [
+        { type: 'narration', characterId: null, tag: null, text: 'Antes.' },
+        {
+          type: 'sound',
+          characterId: null,
+          soundId: 'sound-current',
+          tag: 'campana',
+          text: ''
+        },
+        { type: 'sound', characterId: null, tag: 'lluvia', text: '' },
+        { type: 'narration', characterId: null, tag: null, text: 'Después.' }
+      ],
+      createdAt: 7
+    }], {
+      initialBackgroundId: null,
+      initialBackgroundTag: null,
+      resolveSoundId: (tag) => tag === 'lluvia' ? 'sound-legacy' : null
+    })
+
+    assert.deepEqual(frames.map((frame) => frame.kind), [
+      'narration',
+      'sound',
+      'sound',
+      'narration'
+    ])
+    assert.equal(frames[1]?.soundId, 'sound-current')
+    assert.equal(frames[1]?.soundTag, 'campana')
+    assert.equal(frames[2]?.soundId, 'sound-legacy')
+    assert.equal(frames[2]?.soundTag, 'lluvia')
+  })
 })

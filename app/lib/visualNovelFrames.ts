@@ -15,8 +15,10 @@ export interface VisualNovelFrame {
   id: string
   messageId: string
   segmentIndex: number | null
-  kind: 'user' | 'dialogue' | 'protagonist-dialogue' | 'narration'
+  kind: 'user' | 'dialogue' | 'protagonist-dialogue' | 'narration' | 'sound'
   text: string
+  soundId?: string | null
+  soundTag?: string | null
   backgroundId: string | null
   backgroundTag: string | null
   characterStates: VisualNovelCharacterState[]
@@ -26,6 +28,7 @@ interface BuildVisualNovelFramesOptions {
   initialBackgroundId: string | null
   initialBackgroundTag: string | null
   resolveBackgroundId?: (tag: string | null) => string | null
+  resolveSoundId?: (tag: string | null) => string | null
 }
 
 function hasBackgroundId(segment: MessageSegment) {
@@ -104,7 +107,23 @@ export function buildVisualNovelFrames(
         backgroundTag = segment.tag
         return
       }
-      if (segment.type === 'sound') return
+      if (segment.type === 'sound') {
+        frames.push({
+          id: `${message.id}:${segmentIndex}`,
+          messageId: message.id,
+          segmentIndex,
+          kind: 'sound',
+          text: segment.text,
+          soundId: Object.prototype.hasOwnProperty.call(segment, 'soundId')
+            ? (segment.soundId ?? null)
+            : (options.resolveSoundId?.(segment.tag) ?? null),
+          soundTag: segment.tag,
+          backgroundId,
+          backgroundTag,
+          characterStates: cloneCharacterStates(characterStates)
+        })
+        return
+      }
 
       let kind: VisualNovelFrame['kind'] = segment.type
       if (segment.type === 'dialogue' && segment.characterId) {

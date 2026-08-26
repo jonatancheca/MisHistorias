@@ -519,7 +519,8 @@ const visualFrames = computed(() =>
   buildVisualNovelFrames(stories.messages, {
     initialBackgroundId: stories.activeStory?.initialBackgroundId ?? null,
     initialBackgroundTag: primaryTag(initialBackground.value),
-    resolveBackgroundId: (tag) => backgrounds.byTag(tag)?.id ?? null
+    resolveBackgroundId: (tag) => backgrounds.byTag(tag)?.id ?? null,
+    resolveSoundId: (tag) => sounds.byTag(tag)?.id ?? null
   })
 )
 const completeVisualFrames = computed(() =>
@@ -528,7 +529,8 @@ const completeVisualFrames = computed(() =>
     {
       initialBackgroundId: stories.activeStory?.initialBackgroundId ?? null,
       initialBackgroundTag: primaryTag(initialBackground.value),
-      resolveBackgroundId: (tag) => backgrounds.byTag(tag)?.id ?? null
+      resolveBackgroundId: (tag) => backgrounds.byTag(tag)?.id ?? null,
+      resolveSoundId: (tag) => sounds.byTag(tag)?.id ?? null
     }
   )
 )
@@ -576,9 +578,15 @@ const visualCharacterStates = computed(() =>
 const visualCharacterIds = computed(() =>
   visualCharacterStates.value.map((state) => state.characterId)
 )
+const visualSoundUrl = computed(() =>
+  activeVisualFrame.value?.kind === 'sound'
+    ? sounds.urlFor(activeVisualFrame.value.soundId)
+    : null
+)
+const visualSoundPlayer = ref<HTMLAudioElement | null>(null)
 const visualSpeaker = computed(() => {
   const frame = activeVisualFrame.value
-  if (!frame || frame.kind === 'narration') return null
+  if (!frame || frame.kind === 'narration' || frame.kind === 'sound') return null
   const speakerState = frame.characterStates[frame.characterStates.length - 1]
   if (frame.kind === 'dialogue' && speakerState) {
     return {
@@ -591,6 +599,17 @@ const visualSpeaker = computed(() => {
     color: normalizeColor(settings.settings.userColor, DEFAULT_USER_COLOR)
   }
 })
+
+watch(
+  () => activeVisualFrame.value?.id,
+  async () => {
+    if (activeVisualFrame.value?.kind !== 'sound') return
+    await nextTick()
+    if (!visualSoundPlayer.value) return
+    visualSoundPlayer.value.currentTime = 0
+    void visualSoundPlayer.value.play().catch(() => undefined)
+  }
+)
 
 const thumbnailCharacterUrls = computed(() => {
   if (stories.activeStory?.visualMode) {
@@ -1117,7 +1136,29 @@ onBeforeUnmount(() => {
                 @click="onVisualFrameClick"
               >
                 <template v-if="activeVisualFrame">
+                  <div
+                    v-if="activeVisualFrame.kind === 'sound'"
+                    class="mx-auto grid max-w-xl gap-2 text-left"
+                    data-testid="visual-novel-sound"
+                    @click.stop
+                  >
+                    <span class="text-xs font-medium text-slate-300">
+                      Sonido [{{ activeVisualFrame.soundTag || 'sin etiqueta' }}]
+                    </span>
+                    <audio
+                      v-if="visualSoundUrl"
+                      ref="visualSoundPlayer"
+                      :key="activeVisualFrame.id"
+                      :src="visualSoundUrl"
+                      controls
+                      autoplay
+                      preload="metadata"
+                      class="w-full"
+                    />
+                    <span v-else class="text-sm text-slate-300">Sonido no disponible</span>
+                  </div>
                   <p
+                    v-else
                     class="text-[15px] leading-relaxed whitespace-pre-wrap sm:text-base"
                     :class="activeVisualFrame.kind === 'narration' ? 'italic text-slate-300' : ''"
                     :style="visualSpeaker ? { color: visualSpeaker.color } : undefined"

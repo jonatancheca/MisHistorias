@@ -612,6 +612,54 @@ test.describe('novela visual y responsive', () => {
     await expect(page.getByRole('button', { name: 'Salir del modo privado' })).toBeVisible()
   })
 
+  test('muestra y vuelve a reproducir sonidos al navegar en Novela Visual', async ({ page, data }) => {
+    const { story, character } = await createStoryFixture(data, true)
+    const sound = await data.createSound(character, ['campana'])
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Antes. Sonido. Después.',
+      segments: [
+        { type: 'narration', characterId: null, tag: null, text: 'Antes.' },
+        {
+          type: 'sound',
+          characterId: null,
+          soundId: sound.id,
+          tag: sound.tags[0]!,
+          text: ''
+        },
+        { type: 'narration', characterId: null, tag: null, text: 'Después.' }
+      ]
+    })
+    await page.addInitScript(() => {
+      const state = window as typeof window & { __visualSoundPlays: number }
+      state.__visualSoundPlays = 0
+      HTMLMediaElement.prototype.play = function () {
+        state.__visualSoundPlays += 1
+        return Promise.resolve()
+      }
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('story-start-button').click()
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('Antes.')
+    await page.getByTestId('visual-novel-next').click()
+    const soundFrame = page.getByTestId('visual-novel-sound')
+    await expect(soundFrame).toContainText('Sonido [campana]')
+    await expect(soundFrame.locator('audio')).toBeVisible()
+    await expect.poll(() => page.evaluate(() => (
+      window as typeof window & { __visualSoundPlays: number }
+    ).__visualSoundPlays)).toBeGreaterThanOrEqual(1)
+
+    await page.getByTestId('visual-novel-next').click()
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('Después.')
+    await page.getByTestId('visual-novel-previous').click()
+    await expect(soundFrame).toBeVisible()
+    await expect.poll(() => page.evaluate(() => (
+      window as typeof window & { __visualSoundPlays: number }
+    ).__visualSoundPlays)).toBeGreaterThanOrEqual(2)
+  })
+
   test('persiste modo visual, fondo y avance manual', async ({ page, data }) => {
     const { story, character, image, background } = await createStoryFixture(data)
     await data.patchSettings({ visualNovelManualAdvance: false })

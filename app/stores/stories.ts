@@ -651,7 +651,7 @@ export const useStoriesStore = defineStore('stories', () => {
           assistantMessage.id,
           storySounds
         )
-        playNewSounds(segments, playedSounds, soundsStore)
+        if (!visualMode) playNewSounds(segments, playedSounds, soundsStore)
         replaceDraft({
           ...assistantMessage,
           raw: visibleRaw,
@@ -981,7 +981,7 @@ export const useStoriesStore = defineStore('stories', () => {
           )
           if (!completed) return
         }
-        if (settings.responseSpeed === 'instant') {
+        if (settings.responseSpeed === 'instant' && !story.visualMode) {
           playNewSounds(segments, new Set<string>(), soundsStore)
         }
         await persist(completedMessage)
