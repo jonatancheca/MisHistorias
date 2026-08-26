@@ -64,9 +64,9 @@ function validSetting(key: string, value: unknown) {
     case 'privateMaxTokens':
       return value === null || (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 100000)
     case 'historyBudget':
-      return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 1000000
+      return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1000000
     case 'privateHistoryBudget':
-      return value === null || (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 1000000)
+      return value === null || (Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1000000)
     case 'activePresetId':
     case 'privateActivePresetId':
       return value === null || typeof value === 'string'

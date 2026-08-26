@@ -148,6 +148,8 @@ test('recorta historial conservando mensajes recientes y serializa segmentos', (
     { role: 'assistant', content: 'Alicia [feliz][armadura]: Respuesta reciente.' },
     { role: 'user', content: 'Vera: Sigo adelante.' }
   ])
+
+  assert.equal(buildHistory(messages, [character], 0, 'Vera').length, messages.length)
 })
 
 test('añade apertura, actualización de catálogo y reglas distintas para Sigue y Auto', () => {

@@ -204,7 +204,7 @@ export function buildHistory(
           : message.raw
         : `${userName}: ${message.raw}`
     if (!content.trim()) continue
-    if (used + content.length > budget && history.length > 0) break
+    if (budget > 0 && used + content.length > budget && history.length > 0) break
     history.unshift({ role: isInstruction ? 'system' : message.role, content })
     used += content.length
   }

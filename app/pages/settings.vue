@@ -921,10 +921,13 @@ onBeforeRouteLeave(async () => {
             :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
             type="number"
             autocomplete="off"
-            min="1000"
+            min="0"
             step="1000"
             class="field"
           >
+          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+            Usa 0 para enviar todo el historial disponible.
+          </p>
         </div>
       </div>
 
