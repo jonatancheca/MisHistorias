@@ -39,9 +39,11 @@ const images = computed(() => characters.imagesFor(props.characterId))
 const galleryItems = computed(() => {
   const characterName = characters.byId(props.characterId)?.name ?? 'Personaje'
   return images.value.map((image) => ({
+    id: image.id,
     src: characters.urlFor(image.id)!,
     alt: `${characterName} ${primaryTag(image) ?? ''}`.trim(),
-    downloadName: downloadName(image)
+    downloadName: downloadName(image),
+    tags: [...image.tags]
   }))
 })
 const imageTagSuggestions = computed(() =>
@@ -441,9 +443,29 @@ async function remove(id: string) {
           alt=""
           container-class="w-full shrink-0 sm:h-24 sm:w-24"
           image-class="max-h-56 w-full rounded-lg object-contain sm:h-24 sm:w-24"
-          :download-name="downloadName(image)"
-          :gallery-items="galleryItems"
-        />
+        :download-name="downloadName(image)"
+        :gallery-items="galleryItems"
+        >
+          <template #details="{ item }">
+            <div v-if="item.id" class="grid gap-3">
+              <div>
+                <h3 class="font-semibold">Etiquetas de la imagen</h3>
+                <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+                  Pulsa una disponible o escribe una nueva.
+                </p>
+              </div>
+              <TagInput
+                :model-value="visibleImageTags(item.tags ?? [])"
+                :suggestions="imageTagSuggestions"
+                show-all-suggestions
+                aria-label="Nueva etiqueta de imagen visualizada"
+                placeholder="Nueva etiqueta"
+                @update:model-value="updateImage(item.id, { tags: $event })"
+              />
+              <p v-if="error" class="text-sm text-red-500" role="alert">{{ error }}</p>
+            </div>
+          </template>
+        </ImageLightbox>
         <div class="min-w-0 flex-1 space-y-2">
           <span
             v-if="visibleImageTags(image.tags).length === 0 && !image.isDefault"

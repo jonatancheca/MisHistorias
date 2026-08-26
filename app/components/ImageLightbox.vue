@@ -1,8 +1,10 @@
 <script setup lang="ts">
 interface GalleryItem {
+  id?: string
   src: string
   alt: string
   downloadName?: string
+  tags?: string[]
 }
 
 const props = withDefaults(
@@ -93,50 +95,63 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       :aria-label="alt || 'Imagen ampliada'"
       @click.self="close"
     >
-      <div class="absolute top-4 right-4 flex items-center gap-2">
-        <a
-          v-if="activeItem.downloadName"
-          :href="activeItem.src"
-          :download="activeItem.downloadName"
-          class="rounded-full bg-black/60 px-4 py-2 text-sm font-semibold text-white hover:bg-black/80"
+      <section
+        class="flex max-h-[calc(100dvh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-xl lg:flex-row"
+      >
+        <div class="relative flex min-h-0 min-w-0 flex-1 items-center justify-center bg-black/40 p-3 sm:p-6">
+          <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
+            <a
+              v-if="activeItem.downloadName"
+              :href="activeItem.src"
+              :download="activeItem.downloadName"
+              class="rounded-full bg-black/60 px-4 py-2 text-sm font-semibold text-white hover:bg-black/80"
+            >
+              Descargar
+            </a>
+            <button
+              type="button"
+              class="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-2xl text-white hover:bg-black/80"
+              aria-label="Cerrar imagen"
+              title="Cerrar"
+              @click="close"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+          <button
+            v-if="canNavigate"
+            type="button"
+            class="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-3xl text-white hover:bg-black/80"
+            aria-label="Imagen anterior"
+            title="Imagen anterior"
+            @click="move(-1)"
+          >
+            <span aria-hidden="true">‹</span>
+          </button>
+          <img
+            :src="activeItem.src"
+            :alt="activeItem.alt"
+            class="max-h-[calc(100dvh-4rem)] max-w-full rounded-xl object-contain"
+          >
+          <button
+            v-if="canNavigate"
+            type="button"
+            class="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-3xl text-white hover:bg-black/80"
+            aria-label="Imagen siguiente"
+            title="Imagen siguiente"
+            @click="move(1)"
+          >
+            <span aria-hidden="true">›</span>
+          </button>
+        </div>
+        <aside
+          v-if="$slots.details"
+          class="max-h-[45dvh] w-full shrink-0 overflow-y-auto bg-[var(--color-surface)] p-4 text-[var(--color-fg)] lg:max-h-none lg:w-80"
+          data-testid="image-lightbox-details"
         >
-          Descargar
-        </a>
-        <button
-          type="button"
-          class="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-2xl text-white hover:bg-black/80"
-          aria-label="Cerrar imagen"
-          title="Cerrar"
-          @click="close"
-        >
-          <span aria-hidden="true">×</span>
-        </button>
-      </div>
-      <button
-        v-if="canNavigate"
-        type="button"
-        class="absolute left-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-3xl text-white hover:bg-black/80"
-        aria-label="Imagen anterior"
-        title="Imagen anterior"
-        @click="move(-1)"
-      >
-        <span aria-hidden="true">‹</span>
-      </button>
-      <img
-        :src="activeItem.src"
-        :alt="activeItem.alt"
-        class="max-h-[90vh] max-w-[95vw] rounded-xl object-contain"
-      >
-      <button
-        v-if="canNavigate"
-        type="button"
-        class="absolute right-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-3xl text-white hover:bg-black/80"
-        aria-label="Imagen siguiente"
-        title="Imagen siguiente"
-        @click="move(1)"
-      >
-        <span aria-hidden="true">›</span>
-      </button>
+          <slot name="details" :item="activeItem" :index="activeIndex" />
+        </aside>
+      </section>
     </div>
   </Teleport>
 </template>

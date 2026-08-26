@@ -104,6 +104,43 @@ test.describe('personajes', () => {
     expect((await data.get<CharacterImage>('images', defaultImage.id)).isDefault).toBe(true)
   })
 
+  test('edita etiquetas desde el visor con panel responsive', async ({ page, data }) => {
+    const character = await data.createCharacter()
+    const firstImage = await data.createImage(character, ['feliz'])
+    await data.createImage(character, ['seria'])
+    const addedTag = data.unique('visor')
+
+    await page.goto(`/characters/${character.id}`)
+    await page.getByTestId('character-image-card').first()
+      .getByRole('button', { name: 'Ampliar imagen' }).click()
+    const dialog = page.getByRole('dialog')
+    const details = dialog.getByTestId('image-lightbox-details')
+    await expect(details).toContainText('Etiquetas de la imagen')
+    await details.getByRole('button', { name: 'seria' }).click()
+    await details.getByLabel('Nueva etiqueta de imagen visualizada').fill(addedTag)
+    await details.getByLabel('Nueva etiqueta de imagen visualizada').press('Enter')
+    await expect.poll(async () => (
+      await data.get<CharacterImage>('images', firstImage.id)
+    ).tags).toEqual(expect.arrayContaining(['feliz', 'seria', addedTag]))
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 700 })
+      const layout = await dialog.locator('section').evaluate((section) => {
+        const media = section.firstElementChild!.getBoundingClientRect()
+        const aside = section.querySelector('aside')!.getBoundingClientRect()
+        return {
+          stacked: aside.top >= media.bottom - 1,
+          clientWidth: section.clientWidth,
+          scrollWidth: section.scrollWidth,
+          pageScrollWidth: document.documentElement.scrollWidth
+        }
+      })
+      expect(layout.stacked).toBe(true)
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
+      expect(layout.pageScrollWidth).toBeLessThanOrEqual(width)
+    }
+  })
+
   test('copia personaje e imágenes con IDs independientes', async ({ page, data }) => {
     const source = await data.createCharacter({
       imageGenerationPreset: 'Retrato',
