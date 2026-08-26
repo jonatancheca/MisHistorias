@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CHARACTER_COLORS, normalizeColor, pickColor } from '~/lib/colors'
+import { normalizeColor, pickColor } from '~/lib/colors'
 
 const route = useRoute()
 const characters = useCharactersStore()
@@ -172,18 +172,7 @@ onBeforeRouteLeave(flushSave)
         </div>
         <div>
           <label class="label" for="color">Color</label>
-          <div class="flex flex-wrap items-center gap-2">
-            <input id="color" v-model="color" type="color" autocomplete="off" class="h-9 w-14 cursor-pointer rounded border border-[var(--color-border-soft)] bg-transparent" >
-            <button
-              v-for="swatch in CHARACTER_COLORS"
-              :key="swatch"
-              type="button"
-              class="h-7 w-7 rounded-full border-2 transition"
-              :style="{ backgroundColor: swatch, borderColor: color === swatch ? 'var(--color-fg)' : 'transparent' }"
-              :aria-label="swatch"
-              @click="color = swatch"
-            />
-          </div>
+          <CharacterColorPicker id="color" v-model="color" />
           <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
             Se usa para su nombre y su diálogo dentro de la historia.
           </p>

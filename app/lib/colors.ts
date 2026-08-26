@@ -7,7 +7,15 @@ export const CHARACTER_COLORS = [
   '#f59e0b',
   '#ef4444',
   '#14b8a6',
-  '#a855f7'
+  '#a855f7',
+  '#f43f5e',
+  '#f97316',
+  '#eab308',
+  '#84cc16',
+  '#22c55e',
+  '#06b6d4',
+  '#3b82f6',
+  '#6366f1'
 ]
 
 export const DEFAULT_CHARACTER_COLOR = CHARACTER_COLORS[0]!
