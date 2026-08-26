@@ -23,6 +23,12 @@ const imageGenerationPreset = ref(
 const imageGenerationLora = ref(
   existing.value?.imageGenerationLora ?? copiedCharacter?.imageGenerationLora ?? ''
 )
+const imageGenerationSeed = ref(
+  existing.value?.imageGenerationSeed ?? copiedCharacter?.imageGenerationSeed ?? ''
+)
+const imageGenerationPromptPrefix = ref(
+  existing.value?.imageGenerationPromptPrefix ?? copiedCharacter?.imageGenerationPromptPrefix ?? ''
+)
 const color = ref(
   normalizeColor(
     existing.value?.color ?? copiedCharacter?.color,
@@ -49,7 +55,9 @@ function enqueueSave(revision: number, navigateAfterCreate = false) {
     tags: [...tags.value],
     color: color.value,
     imageGenerationPreset: imageGenerationPreset.value,
-    imageGenerationLora: imageGenerationLora.value
+    imageGenerationLora: imageGenerationLora.value,
+    imageGenerationSeed: imageGenerationSeed.value,
+    imageGenerationPromptPrefix: imageGenerationPromptPrefix.value
   }
   const run = async () => {
     if (!input.name.trim()) return
@@ -135,7 +143,9 @@ watch(
     JSON.stringify(tags.value),
     color.value,
     imageGenerationPreset.value,
-    imageGenerationLora.value
+    imageGenerationLora.value,
+    imageGenerationSeed.value,
+    imageGenerationPromptPrefix.value
   ],
   scheduleSave
 )
@@ -216,6 +226,8 @@ onBeforeRouteLeave(flushSave)
         v-if="!isNew && existing"
         v-model:image-generation-preset="imageGenerationPreset"
         v-model:image-generation-lora="imageGenerationLora"
+        v-model:image-generation-seed="imageGenerationSeed"
+        v-model:image-generation-prompt-prefix="imageGenerationPromptPrefix"
         :character-id="characterId"
       />
       <section v-if="!isNew && existing" class="card mt-8 max-w-3xl">

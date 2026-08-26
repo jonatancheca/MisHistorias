@@ -61,16 +61,21 @@ test('configura SwarmUI, muestra catálogo y genera una vista temporal', async (
 test('crea prompt editable y guarda la imagen generada en WebP', async ({ page, data }) => {
   const character = await data.createCharacter({
     imageGenerationPreset: '',
-    imageGenerationLora: ''
+    imageGenerationLora: '',
+    imageGenerationSeed: '',
+    imageGenerationPromptPrefix: ''
   })
   const generatedByLlm = 'Alicia standing upright, wearing a blue coat, with a joyful expression.'
   const editedPrompt = 'Alicia in a dynamic standing pose, wearing a red travel coat, visibly determined.'
+  const promptPrefix = 'masterpiece, detailed portrait'
   let generationBody: Record<string, unknown> | null = null
-  await data.patchSettings({ useChromeLlm: false, model: 'test-model' })
+  let llmBody: Record<string, unknown> | null = null
+  await data.patchSettings({ useChromeLlm: false, model: 'test-model', maxTokens: 1234 })
   await page.route('**/api/swarm/catalog', (route) => route.fulfill({ json: CATALOG }))
-  await page.route('**/api/llm/chat', (route) => route.fulfill({
-    json: { content: generatedByLlm, finishReason: 'stop' }
-  }))
+  await page.route('**/api/llm/chat', (route) => {
+    llmBody = route.request().postDataJSON() as Record<string, unknown>
+    return route.fulfill({ json: { content: generatedByLlm, finishReason: 'stop' } })
+  })
   await page.route('**/api/swarm/generate', async (route) => {
     generationBody = route.request().postDataJSON() as Record<string, unknown>
     await route.fulfill({ contentType: 'image/png', body: PNG_BYTES })
@@ -83,28 +88,39 @@ test('crea prompt editable y guarda la imagen generada en WebP', async ({ page, 
   await page.getByLabel('Preset SwarmUI').selectOption('Retrato')
   await expect(page.getByLabel('Modelo SwarmUI')).toBeVisible()
   await page.getByLabel('LoRA SwarmUI').selectOption('detail-lora')
+  await page.getByLabel('Semilla SwarmUI').fill('9243353')
+  await page.getByLabel('Prefijo del prompt').fill(promptPrefix)
   await page.getByLabel('Etiquetas para el prompt').fill('plano entero')
   await page.getByLabel('Etiquetas para el prompt').press('Enter')
   await page.getByLabel('Notas para el prompt').fill('Capa roja y gesto decidido.')
   await page.getByRole('button', { name: 'Crear prompt con IA' }).click()
+  expect(llmBody?.maxTokens).toBe(1234)
   await expect(page.getByLabel('Prompt de imagen (inglés y editable)')).toHaveValue(generatedByLlm)
   await page.getByLabel('Prompt de imagen (inglés y editable)').fill(editedPrompt)
   await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
 
   await expect(page.getByText('Imagen generada y guardada en la galería.')).toBeVisible()
   expect(generationBody).toEqual({
-    prompt: editedPrompt,
+    prompt: `${promptPrefix}\n${editedPrompt}`,
     preset: 'Retrato',
     model: 'model-a',
-    lora: 'detail-lora'
+    lora: 'detail-lora',
+    seed: '9243353'
   })
   await expect.poll(async () => {
     const stored = await data.get<Character>('characters', character.id)
     return {
       preset: stored.imageGenerationPreset,
-      lora: stored.imageGenerationLora
+      lora: stored.imageGenerationLora,
+      seed: stored.imageGenerationSeed,
+      prefix: stored.imageGenerationPromptPrefix
     }
-  }).toEqual({ preset: 'Retrato', lora: 'detail-lora' })
+  }).toEqual({
+    preset: 'Retrato',
+    lora: 'detail-lora',
+    seed: '9243353',
+    prefix: promptPrefix
+  })
   const images = await data.list<CharacterImage>('images', 'normal', {
     characterId: character.id
   })

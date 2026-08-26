@@ -160,6 +160,8 @@ async function seedNormalData() {
       color: '#db2777',
       imageGenerationPreset: '',
       imageGenerationLora: '',
+      imageGenerationSeed: '',
+      imageGenerationPromptPrefix: '',
       archived: false,
       createdAt: TEST_TIME + 10,
       updatedAt: TEST_TIME + 10
@@ -172,6 +174,8 @@ async function seedNormalData() {
       color: '#2563eb',
       imageGenerationPreset: '',
       imageGenerationLora: '',
+      imageGenerationSeed: '',
+      imageGenerationPromptPrefix: '',
       archived: false,
       createdAt: TEST_TIME + 11,
       updatedAt: TEST_TIME + 11

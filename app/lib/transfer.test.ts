@@ -3,7 +3,9 @@ import { test } from 'node:test'
 import {
   exportCharacterTransferFields,
   importImageGenerationLora,
-  importImageGenerationPreset
+  importImageGenerationPromptPrefix,
+  importImageGenerationPreset,
+  importImageGenerationSeed
 } from './characterTransfer.ts'
 
 test('transferencia conserva preset y LoRA SwarmUI y acepta personajes anteriores', () => {
@@ -15,15 +17,23 @@ test('transferencia conserva preset y LoRA SwarmUI y acepta personajes anteriore
     color: '#123456',
     imageGenerationPreset: 'Retrato',
     imageGenerationLora: 'Detalle',
+    imageGenerationSeed: '9243353',
+    imageGenerationPromptPrefix: 'masterpiece',
     archived: true,
     createdAt: 1,
     updatedAt: 2
   })
   assert.equal(exported.imageGenerationPreset, 'Retrato')
   assert.equal(exported.imageGenerationLora, 'Detalle')
+  assert.equal(exported.imageGenerationSeed, '9243353')
+  assert.equal(exported.imageGenerationPromptPrefix, 'masterpiece')
   assert.equal(exported.archived, true)
   assert.equal(importImageGenerationPreset(exported.imageGenerationPreset), 'Retrato')
   assert.equal(importImageGenerationPreset(undefined), '')
   assert.equal(importImageGenerationLora(exported.imageGenerationLora), 'Detalle')
   assert.equal(importImageGenerationLora(undefined), '')
+  assert.equal(importImageGenerationSeed(exported.imageGenerationSeed), '9243353')
+  assert.equal(importImageGenerationSeed(undefined), '')
+  assert.equal(importImageGenerationPromptPrefix(exported.imageGenerationPromptPrefix), 'masterpiece')
+  assert.equal(importImageGenerationPromptPrefix(undefined), '')
 })

@@ -30,6 +30,7 @@ export async function fetchSwarmImage(input: {
   preset?: string
   model?: string
   lora?: string
+  seed?: string
   signal?: AbortSignal
 }) {
   let response: Response
@@ -41,7 +42,8 @@ export async function fetchSwarmImage(input: {
         prompt: input.prompt,
         ...(input.preset ? { preset: input.preset } : {}),
         ...(input.model ? { model: input.model } : {}),
-        ...(input.lora ? { lora: input.lora } : {})
+        ...(input.lora ? { lora: input.lora } : {}),
+        ...(input.seed ? { seed: input.seed } : {})
       }),
       signal: input.signal
     })

@@ -186,7 +186,9 @@ test.describe('personajes', () => {
   test('copia personaje e imágenes con IDs independientes', async ({ page, data }) => {
     const source = await data.createCharacter({
       imageGenerationPreset: 'Retrato',
-      imageGenerationLora: 'Detalle'
+      imageGenerationLora: 'Detalle',
+      imageGenerationSeed: '12345',
+      imageGenerationPromptPrefix: 'masterpiece'
     })
     const sourceImage = await data.createImage(source, ['feliz'])
     const copiedName = data.unique('Copia')
@@ -202,6 +204,8 @@ test.describe('personajes', () => {
     expect(copied?.id).not.toBe(source.id)
     expect(copied?.imageGenerationPreset).toBe('Retrato')
     expect(copied?.imageGenerationLora).toBe('Detalle')
+    expect(copied?.imageGenerationSeed).toBe('12345')
+    expect(copied?.imageGenerationPromptPrefix).toBe('masterpiece')
     const copiedImages = await data.list<CharacterImage>('images', 'normal', {
       characterId: copied!.id
     })
@@ -296,7 +300,9 @@ test.describe('personajes', () => {
       name: data.unique('Exportable'),
       prompt: 'Prompt exportado',
       imageGenerationPreset: 'Retrato',
-      imageGenerationLora: 'Detalle'
+      imageGenerationLora: 'Detalle',
+      imageGenerationSeed: '12345',
+      imageGenerationPromptPrefix: 'masterpiece'
     })
     await data.createImage(source, ['feliz'])
     await data.createSound(source, ['saludo-exportado'])
@@ -316,6 +322,8 @@ test.describe('personajes', () => {
         prompt: string
         imageGenerationPreset: string
         imageGenerationLora: string
+        imageGenerationSeed: string
+        imageGenerationPromptPrefix: string
       }
       images: Array<{ path: string; tags: string[] }>
       sounds: Array<{ path: string; tags: string[] }>
@@ -324,7 +332,9 @@ test.describe('personajes', () => {
       name: source.name,
       prompt: 'Prompt exportado',
       imageGenerationPreset: 'Retrato',
-      imageGenerationLora: 'Detalle'
+      imageGenerationLora: 'Detalle',
+      imageGenerationSeed: '12345',
+      imageGenerationPromptPrefix: 'masterpiece'
     })
     expect(manifest.images[0]).toMatchObject({ tags: ['feliz'] })
     expect(manifest.sounds[0]).toMatchObject({ tags: ['saludo-exportado'] })

@@ -15,6 +15,7 @@ export interface SwarmGenerationRequest {
   preset?: string
   model?: string
   lora?: string
+  seed?: number
   signal?: AbortSignal
 }
 
@@ -228,12 +229,16 @@ export async function generateSwarmImage(
   const preset = request.preset?.trim() ?? ''
   const model = request.model?.trim() ?? ''
   const lora = request.lora?.trim() ?? ''
+  const seed = request.seed
   if (!prompt) throw swarmError('Falta el prompt de imagen')
   if (!preset && !model) {
     throw swarmError('Elige un preset o un modelo')
   }
   if ([preset, model, lora].some((value) => value.length > 500 || /[<>]/.test(value))) {
     throw swarmError('Preset, modelo o LoRA no válido')
+  }
+  if (seed !== undefined && (!Number.isSafeInteger(seed) || seed < 0)) {
+    throw swarmError('Semilla no válida')
   }
 
   const client = createSessionClient(settings, request.signal)
@@ -245,7 +250,8 @@ export async function generateSwarmImage(
       ...(lora ? [`<lora:${lora}>`] : []),
       prompt
     ].join('\n'),
-    ...(model ? { model } : {})
+    ...(model ? { model } : {}),
+    ...(seed !== undefined ? { seed } : {})
   })
   const reference = Array.isArray(generated.images) ? generated.images[0] : null
   if (typeof reference !== 'string' || !reference) {

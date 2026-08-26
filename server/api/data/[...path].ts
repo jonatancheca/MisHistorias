@@ -92,6 +92,8 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'color') &&
         hasString(value, 'imageGenerationPreset') &&
         hasString(value, 'imageGenerationLora') &&
+        hasString(value, 'imageGenerationSeed') &&
+        hasString(value, 'imageGenerationPromptPrefix') &&
         typeof value.archived === 'boolean' &&
         hasNumber(value, 'createdAt') &&
         hasNumber(value, 'updatedAt')
@@ -199,7 +201,9 @@ function validateCharacterCopy(rawValue: unknown) {
     !hasStringArray(value, 'tags') ||
     !hasString(value, 'color') ||
     !hasString(value, 'imageGenerationPreset') ||
-    !hasString(value, 'imageGenerationLora')
+    !hasString(value, 'imageGenerationLora') ||
+    !hasString(value, 'imageGenerationSeed') ||
+    !hasString(value, 'imageGenerationPromptPrefix')
   ) {
     throw createError({ statusCode: 400, message: 'Datos no válidos' })
   }
@@ -295,7 +299,9 @@ async function readCharacterImport(event: H3Event) {
     !hasStringArray(character, 'tags') ||
     !hasString(character, 'color') || !/^#[0-9a-f]{6}$/i.test(String(character.color)) ||
     !hasString(character, 'imageGenerationPreset') ||
-    !hasString(character, 'imageGenerationLora')
+    !hasString(character, 'imageGenerationLora') ||
+    !hasString(character, 'imageGenerationSeed') ||
+    !hasString(character, 'imageGenerationPromptPrefix')
   ) {
     throw createError({ statusCode: 400, message: 'Personaje no válido' })
   }
@@ -307,6 +313,8 @@ async function readCharacterImport(event: H3Event) {
     color: String(character.color),
     imageGenerationPreset: String(character.imageGenerationPreset),
     imageGenerationLora: String(character.imageGenerationLora),
+    imageGenerationSeed: String(character.imageGenerationSeed),
+    imageGenerationPromptPrefix: String(character.imageGenerationPromptPrefix),
     images: importAssets(metadata.images, parts, 'images'),
     sounds: importAssets(metadata.sounds, parts, 'sounds')
   }

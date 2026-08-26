@@ -29,6 +29,8 @@ const character: Character = {
   color: '#123456',
   imageGenerationPreset: '',
   imageGenerationLora: '',
+  imageGenerationSeed: '',
+  imageGenerationPromptPrefix: '',
   archived: false,
   createdAt: 1,
   updatedAt: 1

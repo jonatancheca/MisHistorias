@@ -12,6 +12,8 @@ const character: Character = {
   color: '#db2777',
   imageGenerationPreset: '',
   imageGenerationLora: '',
+  imageGenerationSeed: '',
+  imageGenerationPromptPrefix: '',
   archived: false,
   createdAt: 1,
   updatedAt: 1

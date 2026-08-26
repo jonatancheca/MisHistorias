@@ -11,11 +11,19 @@ export default defineEventHandler(async (event) => {
   const preset = typeof body.preset === 'string' ? body.preset : ''
   const model = typeof body.model === 'string' ? body.model : ''
   const lora = typeof body.lora === 'string' ? body.lora : ''
+  const seedValue = typeof body.seed === 'number'
+    ? body.seed
+    : typeof body.seed === 'string' && body.seed.trim()
+      ? Number(body.seed.trim())
+      : undefined
   if (!prompt.trim() || prompt.length > 100_000 || (!preset.trim() && !model.trim())) {
     throw createError({
       statusCode: 400,
       message: 'Indica un prompt y un preset o modelo'
     })
+  }
+  if (seedValue !== undefined && (!Number.isSafeInteger(seedValue) || seedValue < 0)) {
+    throw createError({ statusCode: 400, message: 'La semilla debe ser un entero no negativo' })
   }
 
   const settings = getStorage().readSettings()
@@ -37,6 +45,7 @@ export default defineEventHandler(async (event) => {
         ...(preset.trim() ? { preset } : {}),
         ...(model.trim() ? { model } : {}),
         ...(lora.trim() ? { lora } : {}),
+        ...(seedValue !== undefined ? { seed: seedValue } : {}),
         signal: abortController.signal
       }
     )

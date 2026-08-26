@@ -12,6 +12,7 @@ interface PromptProviderSettings {
   useChromeLlm: boolean
   model: string
   temperature: number
+  maxTokens: number
 }
 
 interface PromptProviders {
@@ -70,7 +71,7 @@ export async function generateCharacterImagePrompt(
           model: settings.model,
           messages,
           temperature: settings.temperature,
-          maxTokens: 350,
+          maxTokens: settings.maxTokens,
           signal
         })
       : (() => { throw new Error('Configura primero el modelo en Ajustes.') })()

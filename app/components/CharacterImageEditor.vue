@@ -7,6 +7,10 @@ import { fetchSwarmCatalog, fetchSwarmImage, type SwarmCatalog } from '~/lib/swa
 const props = defineProps<{ characterId: string }>()
 const imageGenerationPreset = defineModel<string>('imageGenerationPreset', { required: true })
 const imageGenerationLora = defineModel<string>('imageGenerationLora', { required: true })
+const imageGenerationSeed = defineModel<string>('imageGenerationSeed', { required: true })
+const imageGenerationPromptPrefix = defineModel<string>('imageGenerationPromptPrefix', {
+  required: true
+})
 
 const characters = useCharactersStore()
 const settings = useSettingsStore()
@@ -88,8 +92,9 @@ async function createGenerationPrompt() {
       },
       {
         useChromeLlm: settings.activeUseChromeLlm,
-        model: settings.settings.model,
-        temperature: settings.settings.temperature
+        model: settings.activeModel,
+        temperature: settings.activeTemperature,
+        maxTokens: settings.activeMaxTokens
       }
     )
   } catch (caught) {
@@ -109,12 +114,17 @@ async function generateImage() {
     const preset = imageGenerationPreset.value.trim()
     const model = generationModel.value.trim()
     const lora = imageGenerationLora.value.trim()
+    const seed = imageGenerationSeed.value.trim()
+    const prompt = [imageGenerationPromptPrefix.value.trim(), generationPrompt.value.trim()]
+      .filter(Boolean)
+      .join('\n')
     if (!preset && !model) throw new Error('Selecciona un preset o un modelo de SwarmUI.')
     const blob = await fetchSwarmImage({
-      prompt: generationPrompt.value,
+      prompt,
       ...(preset ? { preset } : {}),
       ...(model ? { model } : {}),
-      ...(lora ? { lora } : {})
+      ...(lora ? { lora } : {}),
+      ...(seed ? { seed } : {})
     })
     await characters.addImage(props.characterId, blob, [])
     generationNotice.value = 'Imagen generada y guardada en la galería.'
@@ -344,6 +354,38 @@ async function remove(id: string) {
               {{ lora }}
             </option>
           </select>
+        </div>
+      </div>
+
+      <div class="grid min-w-0 gap-3 md:grid-cols-2">
+        <div>
+          <label class="label" for="character-swarm-seed">Semilla SwarmUI</label>
+          <input
+            id="character-swarm-seed"
+            v-model="imageGenerationSeed"
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            autocomplete="off"
+            class="field min-w-0"
+            placeholder="Aleatoria"
+          >
+          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+            Vacía usa una semilla aleatoria. Se recuerda para este personaje.
+          </p>
+        </div>
+        <div>
+          <label class="label" for="character-swarm-prompt-prefix">Prefijo del prompt</label>
+          <textarea
+            id="character-swarm-prompt-prefix"
+            v-model="imageGenerationPromptPrefix"
+            autocomplete="off"
+            class="field min-h-20"
+            placeholder="masterpiece, detailed character portrait"
+          />
+          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+            Se antepone a prompts creados con IA o escritos manualmente.
+          </p>
         </div>
       </div>
 

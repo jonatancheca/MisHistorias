@@ -21,6 +21,10 @@ export interface Character {
   imageGenerationPreset: string
   /** LoRA de SwarmUI usado solo al generar imágenes manualmente. */
   imageGenerationLora: string
+  /** Semilla fija opcional de SwarmUI; vacío genera una semilla aleatoria. */
+  imageGenerationSeed: string
+  /** Texto antepuesto al prompt enviado a SwarmUI. */
+  imageGenerationPromptPrefix: string
   /** Oculta el personaje de catálogos y selectores sin romper historias existentes. */
   archived: boolean
   createdAt: number

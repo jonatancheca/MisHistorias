@@ -102,6 +102,7 @@ test('cliente Swarm renueva sesión, lista catálogo, autentica y descarga image
 test('cliente Swarm combina modelo, preset y LoRA sin contaminar el prompt editable', async () => {
   let generatedPrompt = ''
   let generatedModel = ''
+  let generatedSeed: unknown
   const server = createServer(async (request, response) => {
     const body = await readJson(request)
     response.setHeader('content-type', 'application/json')
@@ -110,6 +111,7 @@ test('cliente Swarm combina modelo, preset y LoRA sin contaminar el prompt edita
     } else {
       generatedPrompt = String(body.prompt ?? '')
       generatedModel = String(body.model ?? '')
+      generatedSeed = body.seed
       response.end(JSON.stringify({ images: ['data:image/png;base64,iVBORw=='] }))
     }
   })
@@ -119,15 +121,32 @@ test('cliente Swarm combina modelo, preset y LoRA sin contaminar el prompt edita
   try {
     await generateSwarmImage(
       { baseUrl: `http://127.0.0.1:${address.port}`, authToken: '' },
-      { prompt: 'editable prompt', preset: 'Retrato', model: 'modelo', lora: 'detalle' }
+      {
+        prompt: 'editable prompt',
+        preset: 'Retrato',
+        model: 'modelo',
+        lora: 'detalle',
+        seed: 9243353
+      }
     )
     assert.equal(generatedPrompt, '<preset:Retrato>\n<lora:detalle>\neditable prompt')
     assert.equal(generatedModel, 'modelo')
+    assert.equal(generatedSeed, 9243353)
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve())
     )
   }
+})
+
+test('cliente Swarm rechaza semillas no válidas', async () => {
+  await assert.rejects(
+    generateSwarmImage(
+      { baseUrl: 'http://localhost:7801', authToken: '' },
+      { prompt: 'portrait', model: 'model', seed: -1 }
+    ),
+    /Semilla no válida/
+  )
 })
 
 test('cliente Swarm propaga cancelación', async () => {

@@ -59,6 +59,8 @@ interface CharacterInput {
   color?: string
   imageGenerationPreset?: string
   imageGenerationLora?: string
+  imageGenerationSeed?: string
+  imageGenerationPromptPrefix?: string
   scope?: DataScope
 }
 
@@ -175,6 +177,8 @@ export const test = base.extend<{ data: TestDataFactory }>({
           color: input.color ?? '#db2777',
           imageGenerationPreset: input.imageGenerationPreset ?? '',
           imageGenerationLora: input.imageGenerationLora ?? '',
+          imageGenerationSeed: input.imageGenerationSeed ?? '',
+          imageGenerationPromptPrefix: input.imageGenerationPromptPrefix ?? '',
           archived: false,
           createdAt: now,
           updatedAt: now

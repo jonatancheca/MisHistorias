@@ -17,6 +17,8 @@ const characters: Character[] = [
     color: '#000000',
     imageGenerationPreset: '',
     imageGenerationLora: '',
+    imageGenerationSeed: '',
+    imageGenerationPromptPrefix: '',
     archived: false,
     createdAt: 1,
     updatedAt: 1
@@ -29,6 +31,8 @@ const characters: Character[] = [
     color: '#ffffff',
     imageGenerationPreset: '',
     imageGenerationLora: '',
+    imageGenerationSeed: '',
+    imageGenerationPromptPrefix: '',
     archived: false,
     createdAt: 1,
     updatedAt: 1

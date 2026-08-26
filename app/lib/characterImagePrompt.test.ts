@@ -15,6 +15,8 @@ const character: Character = {
   color: '#123456',
   imageGenerationPreset: '',
   imageGenerationLora: '',
+  imageGenerationSeed: '',
+  imageGenerationPromptPrefix: '',
   archived: false,
   createdAt: 1,
   updatedAt: 1
@@ -45,7 +47,7 @@ describe('prompt manual de imagen', () => {
     await assert.rejects(
       generateCharacterImagePrompt(
         { character, tags: [], notes: '' },
-        { useChromeLlm: true, model: 'fallback-prohibido', temperature: 0.8 },
+        { useChromeLlm: true, model: 'fallback-prohibido', temperature: 0.8, maxTokens: 900 },
         undefined,
         {
           chrome: async () => { throw new Error('Chrome incompatible') },
@@ -58,5 +60,23 @@ describe('prompt manual de imagen', () => {
       /Chrome incompatible/
     )
     assert.equal(lmStudioCalls, 0)
+  })
+
+  it('usa el máximo de tokens configurado para LM Studio', async () => {
+    let requestedMaxTokens = 0
+    const prompt = await generateCharacterImagePrompt(
+      { character, tags: [], notes: '' },
+      { useChromeLlm: false, model: 'modelo', temperature: 0.6, maxTokens: 1234 },
+      undefined,
+      {
+        chrome: async () => ({ content: 'no usado', finishReason: null }),
+        lmStudio: async (request) => {
+          requestedMaxTokens = request.maxTokens ?? 0
+          return { content: 'Portrait prompt', finishReason: 'stop' }
+        }
+      }
+    )
+    assert.equal(requestedMaxTokens, 1234)
+    assert.equal(prompt, 'Portrait prompt')
   })
 })

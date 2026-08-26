@@ -9,6 +9,8 @@ export function exportCharacterTransferFields(character: Character) {
     color: character.color,
     imageGenerationPreset: character.imageGenerationPreset,
     imageGenerationLora: character.imageGenerationLora,
+    imageGenerationSeed: character.imageGenerationSeed,
+    imageGenerationPromptPrefix: character.imageGenerationPromptPrefix,
     archived: character.archived
   }
 }
@@ -18,5 +20,13 @@ export function importImageGenerationPreset(value: unknown) {
 }
 
 export function importImageGenerationLora(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+export function importImageGenerationSeed(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+export function importImageGenerationPromptPrefix(value: unknown) {
   return typeof value === 'string' ? value : ''
 }

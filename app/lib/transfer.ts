@@ -33,10 +33,12 @@ import { stripSoundDirectives, stripSoundSegments } from '~/lib/soundTransfer'
 import {
   exportCharacterTransferFields,
   importImageGenerationLora,
-  importImageGenerationPreset
+  importImageGenerationPromptPrefix,
+  importImageGenerationPreset,
+  importImageGenerationSeed
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 15
+const EXPORT_VERSION = 16
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -55,6 +57,8 @@ interface ExportedCharacter {
   color: string
   imageGenerationPreset?: string
   imageGenerationLora?: string
+  imageGenerationSeed?: string
+  imageGenerationPromptPrefix?: string
   archived?: boolean
   images: ExportedImage[]
 }
@@ -169,7 +173,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -208,6 +212,10 @@ export async function importBundle(raw: string) {
       color: normalizeColor(item.color, DEFAULT_CHARACTER_COLOR),
       imageGenerationPreset: importImageGenerationPreset(item.imageGenerationPreset),
       imageGenerationLora: importImageGenerationLora(item.imageGenerationLora),
+      imageGenerationSeed: importImageGenerationSeed(item.imageGenerationSeed),
+      imageGenerationPromptPrefix: importImageGenerationPromptPrefix(
+        item.imageGenerationPromptPrefix
+      ),
       archived: item.archived === true,
       createdAt: now,
       updatedAt: now
