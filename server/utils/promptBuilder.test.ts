@@ -169,8 +169,8 @@ test('añade apertura, actualización de catálogo y reglas distintas para Sigue
   const continued = buildChatMessages({ ...common, generationMode: 'continue' })
   const automatic = buildChatMessages({ ...common, generationMode: 'auto' })
 
-  assert.equal(continued[1]?.role, 'user')
-  assert.match(continued[1]?.content ?? '', /Comienza la historia/)
+  const opening = continued.find((message) => message.role === 'user')
+  assert.match(opening?.content ?? '', /Comienza la historia/)
   assert.ok(continued.some((message) => message.content === 'Catálogo actualizado.'))
   assert.ok(continued.some((message) => /No inventes acciones/.test(message.content)))
   assert.ok(automatic.some((message) => /Puedes inventar acciones/.test(message.content)))
@@ -203,6 +203,73 @@ test('añade indicaciones visuales solo para la respuesta solicitada', () => {
   assert.equal(instruction?.role, 'system')
   assert.match(instruction?.content ?? '', /Alicia: \[seria\]\[armadura\]/)
   assert.match(instruction?.content ?? '', /termina después de esta respuesta/)
+})
+
+test('agrupa todos los mensajes system al principio para Qwen sin reordenar conversación', () => {
+  const messages = buildChatMessages({
+    presetContent: 'Narra.',
+    story,
+    characters: [character],
+    images: [],
+    backgrounds: [],
+    sounds: [],
+    messages: [
+      {
+        id: 'instruction-1',
+        storyId: story.id,
+        role: 'user',
+        raw: 'IA: Habla en susurros.',
+        segments: [],
+        createdAt: 1
+      },
+      {
+        id: 'user-1',
+        storyId: story.id,
+        role: 'user',
+        raw: 'Entra en la sala.',
+        segments: [],
+        createdAt: 2
+      },
+      {
+        id: 'assistant-1',
+        storyId: story.id,
+        role: 'assistant',
+        raw: 'La puerta se abre.',
+        segments: [],
+        createdAt: 3
+      }
+    ],
+    historyBudget: 1000,
+    userName: 'Vera',
+    protagonistPreferences: '',
+    generationMode: 'continue',
+    imageCatalogChange: 'Catálogo actualizado.',
+    pendingImageInstructions: [{
+      characterId: character.id,
+      imageId: 'image-2',
+      tags: ['seria']
+    }]
+  })
+
+  const firstConversation = messages.findIndex((message) => message.role !== 'system')
+  assert.ok(firstConversation > 0)
+  assert.ok(messages.slice(0, firstConversation).every((message) => message.role === 'system'))
+  assert.ok(messages.slice(firstConversation).every((message) => message.role !== 'system'))
+
+  const systemContents = messages.slice(0, firstConversation).map((message) => message.content)
+  const instructionIndex = systemContents.findIndex((content) => content.includes('Habla en susurros.'))
+  const catalogIndex = systemContents.indexOf('Catálogo actualizado.')
+  const continuationIndex = systemContents.findIndex((content) => content.startsWith('Continúa la historia'))
+  const pendingIndex = systemContents.findIndex((content) => content.includes('INDICACIÓN VISUAL'))
+  const reminderIndex = systemContents.findIndex((content) => content.startsWith('Responde directamente'))
+  assert.deepEqual(
+    [instructionIndex, catalogIndex, continuationIndex, pendingIndex, reminderIndex],
+    [1, 2, 3, 4, 5]
+  )
+  assert.deepEqual(messages.slice(firstConversation), [
+    { role: 'user', content: 'Vera: Entra en la sala.' },
+    { role: 'assistant', content: 'La puerta se abre.' }
+  ])
 })
 
 test('convierte mensajes IA en instrucciones ocultas del historial', () => {

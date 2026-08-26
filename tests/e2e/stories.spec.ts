@@ -347,6 +347,40 @@ test.describe('chat', () => {
     await expect(input).toHaveValue('Texto sin enviar')
   })
 
+  test('envía todos los mensajes system al principio para Qwen', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data)
+    await data.createMessage({ story, role: 'user', raw: 'IA: Habla en susurros.' })
+    await data.patchSettings({
+      mockMode: false,
+      model: 'qwen-test',
+      responseSpeed: 'instant',
+      useChromeLlm: false,
+      privateUseChromeLlm: null
+    })
+    let requestMessages: Array<{ role: string; content: string }> = []
+    await page.route('**/api/llm/chat', async (route) => {
+      requestMessages = route.request().postDataJSON().messages
+      await route.fulfill({ json: { content: 'La escena continúa.', finishReason: 'stop' } })
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Entra en la sala.')
+    await page.getByRole('button', { name: 'Enviar' }).click()
+    await expect.poll(async () => (
+      await data.list<Message>('messages', 'normal', { storyId: story.id })
+    ).some((message) => message.role === 'assistant')).toBe(true)
+
+    const firstConversation = requestMessages.findIndex((message) => message.role !== 'system')
+    expect(firstConversation).toBeGreaterThan(0)
+    expect(requestMessages.slice(0, firstConversation).every((message) => message.role === 'system'))
+      .toBe(true)
+    expect(requestMessages.slice(firstConversation).every((message) => message.role !== 'system'))
+      .toBe(true)
+    expect(requestMessages.slice(0, firstConversation).some((message) =>
+      message.content.includes('Habla en susurros.')
+    )).toBe(true)
+  })
+
   test('usa Chrome AI sin modelo LMStudio ni fallback', async ({ page, data }) => {
     const { story } = await createStoryFixture(data)
     const localResponse = 'Narración: respuesta local de Chrome.'

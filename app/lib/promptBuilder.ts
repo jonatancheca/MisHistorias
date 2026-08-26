@@ -258,7 +258,7 @@ export function buildChatMessages(options: {
     ? [{ role: 'system', content: pendingImageInstruction }]
     : []
 
-  return [
+  const messages: ChatMessage[] = [
     { role: 'system', content: system },
     ...history,
     ...opening,
@@ -266,6 +266,10 @@ export function buildChatMessages(options: {
     ...continuationMessages,
     ...pendingImageMessages,
     { role: 'system', content: formatReminder(options.generationMode, options.userName) }
+  ]
+  return [
+    ...messages.filter((message) => message.role === 'system'),
+    ...messages.filter((message) => message.role !== 'system')
   ]
 }
 
