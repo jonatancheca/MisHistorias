@@ -32,6 +32,7 @@ test.describe('historias', () => {
     const storyPrompt = data.unique('Prompt-historia')
     const storyTag = data.unique('etiqueta-historia')
     const storyCharacterName = data.unique('Nombre-historia')
+    const storyCharacterColor = '#6366f1'
 
     await page.goto('/stories/new')
     await page.getByLabel('Título').fill(title)
@@ -64,6 +65,7 @@ test.describe('historias', () => {
     })
     expect(stored.characterCustomizations[0]?.prompt).toBe(storyPrompt)
     expect(stored.characterCustomizations[0]?.name).toBe(storyCharacterName)
+    expect(stored.characterCustomizations[0]?.color).toBe(character.color)
     expect(stored.characterCustomizations[0]?.tags).toContain(storyTag)
 
     const updatedPremise = data.unique('Planteamiento-editado')
@@ -77,6 +79,7 @@ test.describe('historias', () => {
     await form.getByLabel('Título').fill(updatedTitle)
     await form.getByLabel('Planteamiento').fill(updatedPremise)
     await form.locator(`#story-settings-character-name-${character.id}`).fill(updatedCharacterName)
+    await form.locator(`#story-settings-character-color-${character.id}`).fill(storyCharacterColor)
     await expect(form.getByRole('heading', {
       name: `${character.name} → ${updatedCharacterName}`
     })).toBeVisible()
@@ -86,8 +89,34 @@ test.describe('historias', () => {
     await expect.poll(async () => await data.get<Story>('stories', storyId)).toMatchObject({
       title: updatedTitle,
       premise: updatedPremise,
-      characterCustomizations: [{ characterId: character.id, name: updatedCharacterName }]
+      characterCustomizations: [{
+        characterId: character.id,
+        name: updatedCharacterName,
+        color: storyCharacterColor
+      }]
     })
+
+    const dialogue = data.unique('Diálogo-con-color')
+    await data.createMessage({
+      story: await data.get<Story>('stories', storyId),
+      role: 'assistant',
+      raw: dialogue,
+      segments: [{
+        type: 'dialogue',
+        characterId: character.id,
+        tag: null,
+        text: dialogue
+      }]
+    })
+    await page.reload()
+    await expect(page.getByText(dialogue, { exact: true })).toHaveCSS('color', 'rgb(99, 102, 241)')
+    await page.getByTestId('visual-mode-toggle').click()
+    await expect(page.getByTestId('visual-novel-frame').getByText(dialogue, { exact: true }))
+      .toBeVisible()
+    await expect(page.getByTestId('visual-novel-frame').locator('p')).toHaveCSS(
+      'color',
+      'rgb(99, 102, 241)'
+    )
   })
 
   test('copia planteamiento sin título ni mensajes y mantiene independencia', async ({ page, data }) => {

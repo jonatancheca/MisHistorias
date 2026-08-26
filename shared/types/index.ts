@@ -59,6 +59,8 @@ export interface StoryCharacterCustomization {
   characterId: string
   /** Nombre usado solo dentro de esta historia. */
   name?: string
+  /** Color de diálogo copiado para esta historia. */
+  color?: string
   /** Copia independiente del prompt global para esta historia. */
   prompt: string
   /** Copia independiente de etiquetas descriptivas; nunca incluye etiquetas de imagen. */

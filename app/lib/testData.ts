@@ -260,11 +260,13 @@ async function seedNormalData() {
       characterCustomizations: [
         {
           characterId: TEST_DATA_IDS.characterAlicia,
+          color: characters[0]!.color,
           prompt: characters[0]!.prompt,
           tags: [...characters[0]!.tags]
         },
         {
           characterId: TEST_DATA_IDS.characterBruno,
+          color: characters[1]!.color,
           prompt: characters[1]!.prompt,
           tags: [...characters[1]!.tags]
         }
@@ -290,6 +292,7 @@ async function seedNormalData() {
       characterCustomizations: [
         {
           characterId: TEST_DATA_IDS.characterAlicia,
+          color: characters[0]!.color,
           prompt: characters[0]!.prompt,
           tags: [...characters[0]!.tags]
         }

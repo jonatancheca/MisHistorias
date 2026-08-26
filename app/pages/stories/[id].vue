@@ -96,6 +96,14 @@ const storyCharacterNames = computed<Record<string, string>>(() =>
     ])
   )
 )
+const storyCharacterColors = computed<Record<string, string>>(() =>
+  Object.fromEntries(
+    (stories.activeStory?.characterCustomizations ?? []).map((customization) => [
+      customization.characterId,
+      normalizeColor(customization.color, characters.colorOf(customization.characterId))
+    ])
+  )
+)
 const followingBottom = ref(true)
 let lastScrollTop = 0
 let autoScrollTarget: number | null = null
@@ -378,6 +386,7 @@ function openStoryPreferences() {
           {
             characterId,
             name: source.name?.trim() || characters.byId(characterId)?.name || '',
+            color: normalizeColor(source.color, characters.colorOf(characterId)),
             prompt: source.prompt,
             tags: [...source.tags]
           }
@@ -395,6 +404,7 @@ function addStoryCharacter(characterId: string) {
   storyCharacterCustomizations.value.push({
     characterId,
     name: character.name,
+    color: characters.colorOf(characterId),
     prompt: character.prompt,
     tags: [...character.tags]
   })
@@ -573,7 +583,7 @@ const visualSpeaker = computed(() => {
   if (frame.kind === 'dialogue' && speakerState) {
     return {
       name: storyCharacterNames.value[speakerState.characterId] ?? 'Personaje',
-      color: characters.colorOf(speakerState.characterId)
+      color: storyCharacterColors.value[speakerState.characterId] ?? characters.colorOf(speakerState.characterId)
     }
   }
   return {
@@ -1178,6 +1188,7 @@ onBeforeUnmount(() => {
               v-if="item.kind === 'message'"
               :message="item.message"
               :character-names="storyCharacterNames"
+              :character-colors="storyCharacterColors"
               :debug-trace="debugForMessage(item.message.id)"
               :editable="!stories.generating"
               :visual-mode="stories.activeStory.visualMode"
@@ -1460,6 +1471,18 @@ onBeforeUnmount(() => {
                   {{ storyCustomizationLabel(row) }}
                 </h3>
                 <div class="mt-3 grid gap-3">
+                  <div>
+                    <label
+                      class="label"
+                      :for="`story-settings-character-color-${row.customization.characterId}`"
+                    >
+                      Color del texto
+                    </label>
+                    <CharacterColorPicker
+                      :id="`story-settings-character-color-${row.customization.characterId}`"
+                      v-model="row.customization.color!"
+                    />
+                  </div>
                   <div>
                     <label
                       class="label"

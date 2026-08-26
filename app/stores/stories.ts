@@ -39,6 +39,7 @@ import { fetchChromeLlmChat } from '~/lib/chromeLlm'
 import { hideIncompleteVisualDirectivePrefix, parseSegments } from '~/lib/streamParser'
 import { selectCharacterImage } from '~/lib/imageSelection'
 import { sanitizeTags } from '~/lib/tags'
+import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { responseCharactersPerSecond } from '~/lib/responseSpeed'
 import {
   currentRevealLine,
@@ -65,6 +66,10 @@ function normalizeCharacterCustomizations(
           {
             characterId,
             name: source.name?.trim() || available.get(characterId)?.name || '',
+            color: normalizeColor(
+              source.color,
+              normalizeColor(available.get(characterId)?.color, DEFAULT_CHARACTER_COLOR)
+            ),
             prompt: source.prompt,
             tags: sanitizeTags(source.tags)
           }
@@ -81,7 +86,8 @@ function storyCharactersWithCustomNames(story: Story, characters: Character[]) {
     .filter((character) => story.characterIds.includes(character.id))
     .map((character) => ({
       ...character,
-      name: customizations.get(character.id)?.name?.trim() || character.name
+      name: customizations.get(character.id)?.name?.trim() || character.name,
+      color: normalizeColor(customizations.get(character.id)?.color, character.color)
     }))
 }
 

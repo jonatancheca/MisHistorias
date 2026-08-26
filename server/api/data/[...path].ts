@@ -68,6 +68,10 @@ function hasCharacterCustomizations(value: Record<string, unknown>) {
       return (
         typeof customization.characterId === 'string' &&
         (customization.name === undefined || typeof customization.name === 'string') &&
+        (
+          customization.color === undefined ||
+          (typeof customization.color === 'string' && /^#[0-9a-f]{6}$/i.test(customization.color))
+        ) &&
         typeof customization.prompt === 'string' &&
         Array.isArray(customization.tags) &&
         customization.tags.every((tag) => typeof tag === 'string')

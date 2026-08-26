@@ -64,6 +64,7 @@ const characterCustomizations = ref<Record<string, StoryCharacterCustomization>>
         {
           characterId: character.id,
           name: copied?.name ?? character.name,
+          color: copied?.color ?? character.color,
           prompt: copied?.prompt ?? character.prompt,
           tags: [...(copied?.tags ?? character.tags)]
         }

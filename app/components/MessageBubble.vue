@@ -10,6 +10,7 @@ const props = defineProps<{
   debugTrace?: LlmDebugTrace | null
   visualMode?: boolean
   characterNames?: Record<string, string>
+  characterColors?: Record<string, string>
 }>()
 const emit = defineEmits<{
   edit: [string]
@@ -171,7 +172,7 @@ const rows = computed<FlowRow[]>(() => {
       narration: false,
       text: segment.text,
       name: props.characterNames?.[segment.characterId] ?? characters.byId(segment.characterId)?.name ?? 'Personaje',
-      color: characters.colorOf(segment.characterId),
+      color: props.characterColors?.[segment.characterId] ?? characters.colorOf(segment.characterId),
       tag: primaryTag(image) ?? requestedTags[0] ?? null,
       imageTags: image?.tags ? [...image.tags] : [],
       requestedTags: [...requestedTags],

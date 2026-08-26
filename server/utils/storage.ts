@@ -64,7 +64,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 23
+const SCHEMA_VERSION = 24
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -146,6 +146,29 @@ function storyWithoutImageDescriptions(value: unknown) {
   const story = record(value)
   if (!Array.isArray(story.imageCatalogSnapshot)) return story
   return { ...story, imageCatalogSnapshot: imageCatalogSnapshot(story.imageCatalogSnapshot) }
+}
+
+function storyWithCharacterColors(
+  value: unknown,
+  colorFor: (characterId: string) => string | undefined
+) {
+  const story = record(value)
+  if (!Array.isArray(story.characterCustomizations)) return story
+  return {
+    ...story,
+    characterCustomizations: story.characterCustomizations.map((item) => {
+      const customization = record(item)
+      if (typeof customization.characterId !== 'string') return item
+      const stored = typeof customization.color === 'string' ? customization.color.trim() : ''
+      const fallback = colorFor(customization.characterId)?.trim() ?? ''
+      const color = /^#[0-9a-f]{6}$/i.test(stored)
+        ? stored.toLowerCase()
+        : /^#[0-9a-f]{6}$/i.test(fallback)
+          ? fallback.toLowerCase()
+          : ''
+      return color ? { ...customization, color } : customization
+    })
+  }
 }
 
 function rowToCharacter(row: SqliteRow) {
@@ -901,6 +924,57 @@ export class MisHistoriasStorage {
         for (const save of saves) {
           updateSave.run(
             json(storyWithoutImageDescriptions(parseJson(save.story_json, {}))),
+            save.scope,
+            save.id
+          )
+        }
+      }
+
+      if (version.user_version < 24) {
+        const characterColors = new Map(
+          (this.database.prepare('SELECT scope, id, color FROM characters').all() as Array<{
+            scope: string
+            id: string
+            color: string
+          }>).map((character) => [`${character.scope}\0${character.id}`, character.color])
+        )
+        const colorFor = (scope: string, characterId: string) =>
+          characterColors.get(`${scope}\0${characterId}`)
+
+        const stories = this.database.prepare(`
+          SELECT scope, id, character_customizations_json
+          FROM stories
+        `).all() as Array<{
+          scope: string
+          id: string
+          character_customizations_json: string
+        }>
+        const updateStory = this.database.prepare(`
+          UPDATE stories SET character_customizations_json = ? WHERE scope = ? AND id = ?
+        `)
+        for (const story of stories) {
+          const customizations = parseJson(story.character_customizations_json, [])
+          const normalized = storyWithCharacterColors(
+            { characterCustomizations: customizations },
+            (characterId) => colorFor(story.scope, characterId)
+          )
+          updateStory.run(json(normalized.characterCustomizations), story.scope, story.id)
+        }
+
+        const saves = this.database.prepare('SELECT scope, id, story_json FROM story_saves').all() as Array<{
+          scope: string
+          id: string
+          story_json: string
+        }>
+        const updateSave = this.database.prepare(
+          'UPDATE story_saves SET story_json = ? WHERE scope = ? AND id = ?'
+        )
+        for (const save of saves) {
+          updateSave.run(
+            json(storyWithCharacterColors(
+              parseJson(save.story_json, {}),
+              (characterId) => colorFor(save.scope, characterId)
+            )),
             save.scope,
             save.id
           )

@@ -284,6 +284,7 @@ export async function importBundle(raw: string) {
         {
           characterId,
           name: String(source?.name ?? character?.name ?? '').trim() || String(character?.name ?? ''),
+          color: normalizeColor(source?.color, character?.color ?? DEFAULT_CHARACTER_COLOR),
           prompt: String(source?.prompt ?? character?.prompt ?? ''),
           tags: sanitizeTags(source?.tags ?? character?.tags)
         }
@@ -389,6 +390,7 @@ export async function importBundle(raw: string) {
           return [{
             characterId,
             name: String(source?.name ?? character?.name ?? '').trim() || String(character?.name ?? ''),
+            color: normalizeColor(source?.color, character?.color ?? DEFAULT_CHARACTER_COLOR),
             prompt: String(source?.prompt ?? character?.prompt ?? ''),
             tags: sanitizeTags(source?.tags ?? character?.tags)
           }]
