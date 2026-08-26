@@ -66,6 +66,28 @@ test.describe('personajes', () => {
       .toBe(updatedPrompt)
   })
 
+  test('mantiene visibles las acciones a 320 y 390 px sin overflow', async ({ page, data }) => {
+    const character = await data.createCharacter()
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 700 })
+      await page.goto('/characters')
+      const card = page.locator('li').filter({ hasText: character.name })
+      const actions = card.locator('.character-actions')
+      for (const name of ['Copiar', 'Archivar', 'Exportar', 'Borrar']) {
+        await expect(actions.getByRole(name === 'Copiar' ? 'link' : 'button', { name }))
+          .toBeVisible()
+      }
+      const actionSize = await actions.evaluate((element) => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth
+      }))
+      expect(actionSize.scrollWidth).toBeLessThanOrEqual(actionSize.clientWidth)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(width)
+    }
+  })
+
   test('resalta imágenes sin etiquetas salvo la predeterminada', async ({ page, data }) => {
     const character = await data.createCharacter()
     const untagged = await data.createImage(character, ['neutral'])

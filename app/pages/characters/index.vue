@@ -202,7 +202,11 @@ function cancelImport() {
     </p>
 
     <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-      <li v-for="character in visibleCharacters" :key="character.id" class="card flex h-full flex-col">
+      <li
+        v-for="character in visibleCharacters"
+        :key="character.id"
+        class="character-card card flex h-full flex-col"
+      >
         <div class="flex items-start gap-3">
           <ImageLightbox
             v-if="characters.urlFor(characters.defaultImage(character.id)?.id)"
@@ -244,10 +248,10 @@ function cancelImport() {
             {{ tag }}
           </span>
         </div>
-        <div class="mt-auto flex flex-nowrap gap-2 pt-3">
+        <div class="character-actions mt-auto flex flex-nowrap gap-2 pt-3">
           <NuxtLink
             :to="{ path: '/characters/new', query: { copyFrom: character.id } }"
-            class="btn-ghost inline-flex items-center gap-1.5 max-[359px]:px-2"
+            class="character-action btn-ghost inline-flex items-center gap-1.5"
             aria-label="Copiar"
             title="Copiar"
           >
@@ -255,11 +259,11 @@ function cancelImport() {
               <rect x="9" y="9" width="11" height="11" rx="2" />
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
-            <span class="hidden min-[360px]:inline">Copiar</span>
+            <span class="character-action-label">Copiar</span>
           </NuxtLink>
           <button
             type="button"
-            class="btn-ghost inline-flex shrink-0 items-center gap-1.5 px-2"
+            class="character-action btn-ghost inline-flex shrink-0 items-center gap-1.5 px-2"
             :aria-label="character.archived ? 'Desarchivar' : 'Archivar'"
             :title="character.archived ? 'Desarchivar' : 'Archivar'"
             @click="setArchived(character.id, !character.archived)"
@@ -273,7 +277,7 @@ function cancelImport() {
           </button>
           <button
             type="button"
-            class="btn-ghost inline-flex items-center gap-1.5 max-[359px]:px-2"
+            class="character-action btn-ghost inline-flex items-center gap-1.5"
             aria-label="Exportar"
             title="Exportar"
             :disabled="Boolean(exportingId)"
@@ -283,13 +287,13 @@ function cancelImport() {
               <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
               <path d="M5 21h14" />
             </svg>
-            <span class="hidden min-[360px]:inline">
+            <span class="character-action-label">
               {{ exportingId === character.id ? 'Exportando…' : 'Exportar' }}
             </span>
           </button>
           <button
             type="button"
-            class="btn-danger inline-flex shrink-0 items-center gap-1.5 px-2"
+            class="character-action btn-danger inline-flex shrink-0 items-center gap-1.5 px-2"
             aria-label="Borrar"
             title="Borrar"
             @click="remove(character.id)"
@@ -312,3 +316,26 @@ function cancelImport() {
     />
   </div>
 </template>
+
+<style scoped>
+.character-card {
+  container-type: inline-size;
+}
+
+@container (max-width: 360px) {
+  .character-actions {
+    gap: 0.25rem;
+  }
+
+  .character-action {
+    width: 2.5rem;
+    flex: none;
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .character-action-label {
+    display: none;
+  }
+}
+</style>
