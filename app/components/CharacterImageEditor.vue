@@ -14,7 +14,7 @@ const confirmDialog = useConfirmStore()
 await settings.load()
 const pendingTags = ref<string[]>([])
 const pendingFiles = ref<File[]>([])
-const batchMode = ref<'original' | 'crop' | null>(null)
+const batchMode = ref<'original' | 'crop' | 'preview' | null>(null)
 const batchTags = ref<string[]>([])
 const processingCurrent = ref(false)
 const busy = ref(false)
@@ -139,7 +139,7 @@ function selectFiles(files: File[]) {
   failedCount = 0
   skippedCount = 0
   busy.value = true
-  batchMode.value = files.length === 1 ? 'crop' : null
+  batchMode.value = files.length === 1 ? 'preview' : null
 }
 
 async function addPendingImage(file: Blob) {
@@ -191,7 +191,7 @@ async function chooseBatchMode(mode: 'original' | 'crop' | 'cancel') {
   finishBatch()
 }
 
-async function processCrop(file: Blob) {
+async function processPendingImage(file: Blob) {
   if (processingCurrent.value || !pendingFile.value) return
   processingCurrent.value = true
   try {
@@ -516,10 +516,11 @@ async function remove(id: string) {
     />
 
     <ImageCropDialog
-      v-if="batchMode === 'crop' && pendingFile && !processingCurrent"
+      v-if="(batchMode === 'crop' || batchMode === 'preview') && pendingFile && !processingCurrent"
       :file="pendingFile"
+      :start-cropping="batchMode === 'crop'"
       @cancel="skipCrop"
-      @confirm="processCrop"
+      @confirm="processPendingImage"
     />
   </section>
 </template>

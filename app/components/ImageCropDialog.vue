@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import Cropper from 'cropperjs'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   file: File
-}>()
+  startCropping?: boolean
+}>(), {
+  startCropping: true
+})
 
 const emit = defineEmits<{
   cancel: []
@@ -14,7 +17,9 @@ const MAX_SIDE = 1920
 const QUALITY = 0.9
 const cropperContainer = ref<HTMLElement | null>(null)
 const sourceImage = ref<HTMLImageElement | null>(null)
+const addButton = ref<HTMLButtonElement | null>(null)
 const objectUrl = ref('')
+const cropping = ref(props.startCropping)
 const busy = ref(false)
 const ready = ref(false)
 const error = ref<string | null>(null)
@@ -85,8 +90,10 @@ function initializeSelection() {
   return true
 }
 
-onMounted(async () => {
-  objectUrl.value = URL.createObjectURL(props.file)
+async function beginCrop() {
+  cropping.value = true
+  ready.value = false
+  error.value = null
   await nextTick()
   if (!sourceImage.value || !cropperContainer.value) return
   try {
@@ -102,6 +109,15 @@ onMounted(async () => {
     })
   } catch {
     error.value = 'No se pudo abrir la imagen para recortarla.'
+  }
+}
+
+onMounted(async () => {
+  objectUrl.value = URL.createObjectURL(props.file)
+  if (props.startCropping) await beginCrop()
+  else {
+    await nextTick()
+    addButton.value?.focus()
   }
 })
 
@@ -158,27 +174,41 @@ function onKeydown(event: KeyboardEvent) {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-6"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="crop-title"
+      aria-labelledby="image-dialog-title"
       @keydown="onKeydown"
     >
       <section class="flex max-h-[96vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-[var(--color-surface)] shadow-2xl">
         <header class="border-b border-[var(--color-border-soft)] px-4 py-3">
-          <h2 id="crop-title" class="text-lg font-bold">Recortar imagen</h2>
-          <p class="text-xs text-[var(--color-fg-muted)]">Mueve y redimensiona selección. Recorte libre.</p>
+          <h2 id="image-dialog-title" class="text-lg font-bold">
+            {{ cropping ? 'Recortar imagen' : 'Añadir imagen' }}
+          </h2>
+          <p class="text-xs text-[var(--color-fg-muted)]">
+            {{ cropping ? 'Mueve y redimensiona selección. Recorte libre.' : 'Comprueba imagen antes de añadirla.' }}
+          </p>
         </header>
 
-        <div ref="cropperContainer" class="min-h-0 flex-1 bg-black">
+        <div v-if="cropping" ref="cropperContainer" class="min-h-0 flex-1 bg-black">
           <img ref="sourceImage" :src="objectUrl" alt="Imagen para recortar" class="hidden">
+        </div>
+        <div v-else class="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black/90 p-3">
+          <img :src="objectUrl" alt="Vista previa de imagen" class="max-h-[65vh] max-w-full object-contain">
         </div>
 
         <p v-if="error" class="px-4 pt-3 text-sm text-red-500" role="alert">{{ error }}</p>
-        <footer class="flex flex-wrap justify-end gap-2 border-t border-[var(--color-border-soft)] p-3">
+        <footer v-if="cropping" class="flex flex-wrap justify-end gap-2 border-t border-[var(--color-border-soft)] p-3">
           <button type="button" class="btn-ghost" :disabled="busy" @click="emit('cancel')">Cancelar</button>
           <button type="button" class="btn-ghost" :disabled="busy" @click="emit('confirm', file)">
             Usar original
           </button>
           <button type="button" class="btn-primary" :disabled="busy || !ready || Boolean(error)" @click="crop">
             {{ busy ? 'Recortando…' : 'Guardar recorte' }}
+          </button>
+        </footer>
+        <footer v-else class="flex flex-wrap justify-end gap-2 border-t border-[var(--color-border-soft)] p-3">
+          <button type="button" class="btn-ghost" @click="emit('cancel')">Cancelar</button>
+          <button type="button" class="btn-ghost" @click="beginCrop">Recortar</button>
+          <button ref="addButton" type="button" class="btn-primary" @click="emit('confirm', file)">
+            Añadir
           </button>
         </footer>
       </section>

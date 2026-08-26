@@ -66,6 +66,48 @@ test.describe('personajes', () => {
       .toBe(updatedPrompt)
   })
 
+  test('previsualiza una imagen y prioriza añadir originales', async ({ page, data }) => {
+    const character = await data.createCharacter()
+    await page.goto(`/characters/${character.id}`)
+    const upload = page.locator('input[type="file"][accept="image/*"]')
+
+    await upload.setInputFiles({ name: 'una.png', mimeType: 'image/png', buffer: PNG_BYTES })
+    const preview = page.getByRole('dialog', { name: 'Añadir imagen' })
+    await expect(preview.getByRole('img', { name: 'Vista previa de imagen' })).toBeVisible()
+    const add = preview.getByRole('button', { name: 'Añadir', exact: true })
+    await expect(add).toBeFocused()
+    expect(await add.getAttribute('class')).toContain('btn-primary')
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 700 })
+      const layout = await preview.locator('section').evaluate((section) => ({
+        clientWidth: section.clientWidth,
+        scrollWidth: section.scrollWidth,
+        pageScrollWidth: document.documentElement.scrollWidth
+      }))
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
+      expect(layout.pageScrollWidth).toBeLessThanOrEqual(width)
+    }
+    await preview.getByRole('button', { name: 'Recortar', exact: true }).click()
+
+    const crop = page.getByRole('dialog', { name: 'Recortar imagen' })
+    await expect(crop.getByRole('button', { name: 'Guardar recorte' })).toBeVisible()
+    await crop.getByRole('button', { name: 'Usar original' }).click()
+    await expect(page.getByRole('status').filter({ hasText: '1 imagen añadida' })).toBeVisible()
+
+    await upload.setInputFiles([
+      { name: 'dos.png', mimeType: 'image/png', buffer: PNG_BYTES },
+      { name: 'tres.png', mimeType: 'image/png', buffer: PNG_BYTES }
+    ])
+    const batch = page.getByRole('dialog', { name: 'Añadir 2 imágenes' })
+    const originals = batch.getByRole('button', { name: 'Usar originales' })
+    await expect(originals).toBeFocused()
+    expect(await originals.getAttribute('class')).toContain('btn-primary')
+    await originals.click()
+    await expect.poll(async () => (
+      await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
+    ).length).toBe(3)
+  })
+
   test('mantiene visibles las acciones a 320 y 390 px sin overflow', async ({ page, data }) => {
     const character = await data.createCharacter()
 

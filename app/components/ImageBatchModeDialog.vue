@@ -9,7 +9,7 @@ const cancelButton = ref<HTMLButtonElement | null>(null)
 const originalButton = ref<HTMLButtonElement | null>(null)
 const cropButton = ref<HTMLButtonElement | null>(null)
 
-onMounted(() => cancelButton.value?.focus())
+onMounted(() => originalButton.value?.focus())
 
 function trapFocus(event: KeyboardEvent) {
   const buttons = [cancelButton.value, originalButton.value, cropButton.value].filter(
@@ -46,10 +46,10 @@ function trapFocus(event: KeyboardEvent) {
           <button ref="cancelButton" type="button" class="btn-ghost" @click="emit('choose', 'cancel')">
             Cancelar
           </button>
-          <button ref="originalButton" type="button" class="btn-ghost" @click="emit('choose', 'original')">
+          <button ref="originalButton" type="button" class="btn-primary" @click="emit('choose', 'original')">
             Usar originales
           </button>
-          <button ref="cropButton" type="button" class="btn-primary" @click="emit('choose', 'crop')">
+          <button ref="cropButton" type="button" class="btn-ghost" @click="emit('choose', 'crop')">
             Recortar una por una
           </button>
         </div>
