@@ -1,4 +1,16 @@
-export const RAG_VERSION = 'narrative-rag-v1'
+export const RAG_VERSION = 'narrative-rag-v2'
+
+// Léxico prohibido compartido entre el RAG editorial y los validadores. Minúsculas.
+export const BANNED_PHRASES = [
+  'devastador',
+  'devastadora',
+  'no pudo evitar',
+  'no puede evitar',
+  'una mezcla de',
+  'se mordió el labio',
+  'se muerde el labio',
+  'labios entreabiertos'
+] as const
 
 export interface NarrativeRag {
   id: string
@@ -13,6 +25,10 @@ export const COMMON_LITERARY: NarrativeRag = {
     'Diferencia las voces por intención, ritmo, vocabulario y subtexto. El diálogo debe actuar sobre la escena, no repetir la narración.',
     'Mantén causalidad, continuidad espacial y corporal, conocimiento de cada personaje y consecuencias de lo ocurrido.',
     'Dramatiza los momentos importantes con acción, percepción y diálogo; resume solo el tejido conectivo que no merece un beat propio.',
+    'Pinta el escenario con detalle sensorial específico y estratificado: clima, hora, luz, texturas. El olfato es un ancla recurrente de escena: usa olores concretos y combinados («café quemado y madera húmeda», nunca «un olor agradable»).',
+    'Describe la apariencia y presencia de los personajes con detalle concreto en lugar de adjetivos valorativos; que quien lee pueda verlos, no solo saber que son atractivos.',
+    'Teje el lenguaje corporal dentro del diálogo: manos, mirada, distancia física, tensión de mandíbula. Nada de cabezas parlantes; la acción física revela el subtexto.',
+    'Varía deliberadamente la sintaxis: longitud, arranques y estructura de frase deben muestrear todo el repertorio natural del idioma, no repetir el mismo patrón dominante.',
     'No copies frases, escenas ni voces reconocibles de obras o fuentes externas.'
   ]
 }
@@ -24,8 +40,12 @@ export const ADULT_SCENE_CRAFT: NarrativeRag = {
     'Ajusta la explicitud al tono y al momento. Erótico y pornográfico son registros posibles, no niveles de calidad literaria.',
     'Construye progresión legible entre anticipación, señales recíprocas, escalada, variación y consecuencia; no comprimas todo el encuentro en una sola respuesta.',
     'Selecciona sensaciones concretas de cuerpo, respiración, temperatura, sonido, olor, ritmo y emoción; no conviertas cada párrafo en un inventario de los cinco sentidos.',
+    'En contenido explícito incluye olores de excitación concretos mezclados con el entorno; uno o dos olores precisos valen más que un catálogo.',
+    'Escribe gemidos, jadeos y gritos como onomatopeyas fonéticas dentro del texto cuando la escena es explícita, en lugar de solo informar de que ocurren; que suenen calientes, no cómicos.',
     'Nombra la anatomía con vocabulario natural y consistente con el registro. Evita eufemismos absurdos, sinónimos rotatorios, lenguaje clínico involuntario y grosería automática.',
+    'Cuando la escena es explícita, combina el vocabulario del registro con especificidad visualizable: forma, tamaño comparativo, textura y respuestas físicas involuntarias concretas.',
     'Conserva coherencia física y plausibilidad: posiciones, ropa, manos, distancias, objetos, cansancio, excitación y respuesta corporal deben evolucionar de forma consistente.',
+    'Reancla las posiciones con cada movimiento significativo: quién está dónde, qué toca qué y a qué distancia. Quien lee nunca debe perder el mapa de los cuerpos.',
     'La escena debe tener significado y después: puede alterar intimidad, poder, confianza, conflicto, conocimiento o expectativas.',
     'La fantasía puede explorar deseos, tabúes y transgresión social sin sermones ni juicios del narrador; siguen mandando los límites autorizados de la sesión.'
   ]
@@ -36,8 +56,13 @@ export const ANTI_PATTERNS: NarrativeRag = {
   instructions: [
     'Evita escalada automática por sesgo sexual, excitación instantánea sin contexto, orgasmos inagotables, anatomía imposible y secuencias mecánicas de acciones.',
     'Evita que todos los personajes hablen igual, expliquen lo que ya sienten, acepten todo sin reacción o revelen el conflicto antes de tiempo.',
+    'Los personajes no son complacientes por defecto: pueden mentir, negarse, engañar, desear otra cosa o tener agenda propia, siempre coherente con su caracterización.',
     'Evita clichés de dominación, pureza, género, orientación, cuerpo o trauma salvo que la caracterización concreta los examine con intención narrativa.',
-    'No confundas intensidad con mayúsculas, exclamaciones, hipérboles constantes, acumulación de adjetivos o repetición del mismo vocabulario explícito.'
+    'No confundas intensidad con mayúsculas, exclamaciones, hipérboles constantes, acumulación de adjetivos o repetición del mismo vocabulario explícito.',
+    'Evita la hipófora: no plantees una pregunta como narrador para responderla tú mismo.',
+    'Evita la estructura «no es X, sino Y» y sus variantes; afirma directamente lo que es.',
+    `Léxico prohibido, no debe aparecer: ${BANNED_PHRASES.join('; ')}. En su lugar, describe de verdad.`,
+    'Nunca cierres la prosa de un beat con una pregunta del narrador: termina en una acción o en una apertura hacia la siguiente escena. Las preguntas de decisión van en choices, no en la prosa.'
   ]
 }
 
@@ -48,6 +73,7 @@ export const FORMAT_RAGS: Record<'chat' | 'story' | 'visual_novel', NarrativeRag
       'Es roleplay self-insert: el narrador se dirige a la persona jugadora como «tú» y los personajes le hablan directamente.',
       'El input del jugador expresa su agencia en primera persona, pero nunca escribas sus réplicas, decisiones, pensamientos voluntarios ni nuevas acciones por él.',
       'Prioriza intercambio, reacción inmediata y subtexto. Usa narración breve solo para gestos, entorno y consecuencias perceptibles.',
+      'De forma ocasional, cuando aumente la tensión o el juego, puedes revelar en una línea breve de narración un pensamiento privado de un personaje, fiel a su caracterización. Es una especia, no un ingrediente de cada beat.',
       'Responde a un único movimiento conversacional o físico y deja aire para la siguiente intervención; no cierres conflictos ni encuentros completos.'
     ]
   },
@@ -56,6 +82,7 @@ export const FORMAT_RAGS: Record<'chat' | 'story' | 'visual_novel', NarrativeRag
     instructions: [
       'Construye relato continuo con la mayor proporción de prosa de los tres formatos, pero incluye diálogo frecuente que haga avanzar trama y relación.',
       'Combina escena, interioridad permitida, descripción selectiva y transición. No sustituyas acontecimientos importantes por resúmenes.',
+      'La interioridad pertenece a la focalización activa: pensamientos del personaje focal en narración; los demás se leen por gestos y señales, salvo que la perspectiva autónoma permita cambiar de foco en una transición clara.',
       'Cada entrega debe sentirse como un fragmento literario completo y enlazar con la anterior sin recapitularla.',
       'Anticipa arcos futuros mediante causalidad, promesas y consecuencias, pero permite que el plan mutable cambie por las interacciones aceptadas.'
     ]
@@ -125,14 +152,16 @@ export const TONE_RAGS: Record<'neutral' | 'romantic' | 'hardcore' | 'dark', Nar
   hardcore: {
     id: 'tone-hardcore-explicit-es',
     instructions: [
-      'Muestra con claridad la acción física relevante y usa vocabulario sexual directo cuando la escena lo requiere.',
-      'La explicitud no autoriza prosa burda, degradación automática, repetición anatómica ni pérdida de personaje, consentimiento, ritmo o consecuencias.'
+      'Usa vocabulario sexual directo y crudo de forma proactiva y consistente (polla, coño, tetas, culo, follar, correrse); no rotes sinónimos, no retrocedas a eufemismos ni a registro clínico involuntario.',
+      'En este registro no te contengas: la escena puede ser sucia, gráfica y desinhibida dentro de los intereses de la sesión.',
+      'La crudeza convive con especificidad visualizable y con personaje: mantén consentimiento, ritmo, reacciones creíbles y consecuencias; explícito no significa mecánico.'
     ]
   },
   dark: {
     id: 'tone-dark-es',
     instructions: [
       'Prioriza atmósfera, riesgo, poder y tensión psicológica; el malestar debe tener causa en la escena.',
+      'Cuando la escena se vuelve explícita, usa el mismo vocabulario directo y crudo del registro hardcore; la oscuridad no se esconde tras eufemismos.',
       'Lo oscuro no autoriza degradación automática ni saltarse consentimiento, caracterización o consecuencias.'
     ]
   }

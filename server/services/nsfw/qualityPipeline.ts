@@ -1,5 +1,6 @@
 import type { GenerationEnvelope } from '../../../shared/types/nsfw/envelope.ts'
 import type { NsfwStorySession, PlayerInput } from '../../../shared/types/nsfw/session.ts'
+import { BANNED_PHRASES } from './narrativeRag.ts'
 
 export interface QualityPassResult {
   name: 'planner' | 'writer' | 'critic' | 'revision' | 'validator'
@@ -25,6 +26,9 @@ function scoreEnvelope(session: NsfwStorySession, envelope: GenerationEnvelope) 
   const forbidden = session.exclusions.map((item) => item.toLocaleLowerCase())
   const prose = envelope.visibleUnits.map((unit) => unit.text).join(' ').toLocaleLowerCase()
   if (forbidden.some((term) => term && prose.includes(term))) score -= 40
+  if (BANNED_PHRASES.some((phrase) => prose.includes(phrase))) score -= 10
+  const lastUnit = envelope.visibleUnits[envelope.visibleUnits.length - 1]
+  if (lastUnit?.type === 'narration' && lastUnit.text.trim().endsWith('?')) score -= 10
   return Math.max(0, Math.min(100, score))
 }
 

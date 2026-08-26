@@ -46,10 +46,10 @@ export const NSFW_SKILLS: SkillDefinition[] = [
   },
   {
     id: 'sensualidad',
-    version: '1.0.0',
+    version: '1.1.0',
     purpose: 'Sensualidad',
     formats: ['*'],
-    text: 'Sensualidad concreta y sensorial; evita eufemismos vacíos y porno genérico.'
+    text: 'Sensualidad concreta y sensorial: olores específicos, sonido fonético, cuerpo real; evita eufemismos vacíos y porno genérico.'
   },
   {
     id: 'explicitud',
@@ -74,10 +74,10 @@ export const NSFW_SKILLS: SkillDefinition[] = [
   },
   {
     id: 'anticliche',
-    version: '1.0.0',
+    version: '1.1.0',
     purpose: 'Anticliché',
     formats: ['*'],
-    text: 'Evita plantillas vacías, “labios entreabiertos” por defecto y arquetipos planos.'
+    text: 'Evita plantillas vacías y arquetipos planos. Respeta el léxico prohibido de los RAGs editoriales.'
   },
   {
     id: 'contrato-story',

@@ -163,6 +163,7 @@ export function buildStoryPromptBundle(
       : 'Este es el primer beat: establece escena y tono sin precipitar el arco.',
     'No aceleres una relación o escena adulta solo porque esté permitida. Mantén consentimiento, continuidad y ritmo.',
     'Los intereses principales pueden reaparecer sin dominarlo todo; las exclusiones no deben aparecer ni sugerirse.',
+    'PROHIBICIÓN ABSOLUTA e innegociable, independiente de la configuración de la sesión: nada de contenido sexual que involucre a menores de edad ni personajes presentados o percibidos como menores. Todos los personajes en contenido sexual son adultos inequívocos; ante cualquier ambigüedad de edad, establécela explícitamente como adulta.',
     `Exclusiones (prohibidas): ${session.exclusions.join(', ') || '(ninguna)'}.`,
     `Intereses: ${session.interests.join(', ') || '(ninguno)'}.`,
     'visibleUnits: narration|dialogue. dialogue requiere actorId del reparto. No inventes actorId. No uses HTML.',

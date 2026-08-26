@@ -84,3 +84,26 @@ test('quality pipeline mock ejecuta planner-writer-critic-validator', () => {
   assert.equal(result.envelope.format, 'story')
   assert.ok(result.envelope.visibleUnits.length >= 1)
 })
+
+test('critic penaliza léxico prohibido y narración que acaba en pregunta', () => {
+  const input: PlayerInput = { kind: 'act', text: 'dar un paso' }
+  const result = runMockQualityPipeline(session, input, () => ({
+    schemaVersion: 1,
+    language: 'es-ES',
+    format: 'story',
+    visibleUnits: [
+      { type: 'narration', text: 'Su belleza era devastadora bajo la luz.' },
+      { type: 'narration', text: '¿Qué harás ahora?' }
+    ],
+    visualCues: [],
+    soundCues: [],
+    choices: [],
+    stateDelta: [],
+    planPatch: [],
+    stopReason: 'awaiting_player'
+  }))
+  const critic = result.passes.find((pass) => pass.name === 'critic')
+  assert.ok(critic)
+  assert.ok((critic.score ?? 100) < 72)
+  assert.equal(result.revised, true)
+})

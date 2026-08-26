@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  ANTI_PATTERNS,
+  BANNED_PHRASES,
   RAG_VERSION,
+  TONE_RAGS,
   selectNarrativeRags,
   resolveEffectivePerspective,
   normalizeTone
@@ -154,4 +157,34 @@ test('VN y tono dark seleccionan packs correctos; skill map registra RAGs', () =
   assert.equal(versions['narrative-rag'], RAG_VERSION)
   assert.equal(versions['format-visual-novel-es'], RAG_VERSION)
   assert.equal(versions['contrato-vn'], '1.0.0')
+})
+
+test('narrative-rag-v2 añade léxico prohibido, tonos crudos y prohibición absoluta', () => {
+  assert.equal(RAG_VERSION, 'narrative-rag-v2')
+  assert.ok(BANNED_PHRASES.includes('devastador'))
+
+  const antiPatterns = ANTI_PATTERNS.instructions.join(' ')
+  assert.ok(antiPatterns.includes('hipófora'))
+  assert.ok(antiPatterns.includes('no es X, sino Y'))
+  assert.ok(antiPatterns.includes('Léxico prohibido'))
+  assert.ok(antiPatterns.includes('Nunca cierres la prosa de un beat con una pregunta'))
+
+  assert.ok(TONE_RAGS.hardcore.instructions.some((line) => line.includes('vocabulario sexual directo y crudo')))
+  assert.ok(TONE_RAGS.dark.instructions.some((line) => line.includes('registro hardcore')))
+
+  const chat = selectNarrativeRags({
+    format: 'chat',
+    perspective: 'second',
+    tone: 'hardcore',
+    interactionPolicy: 'pause'
+  })
+  const chatRag = chat.find((rag) => rag.id === 'format-chat-rp-self-insert-es')
+  assert.ok(chatRag?.instructions.some((line) => line.includes('pensamiento privado')))
+
+  const bundle = buildStoryPromptBundle(base, { kind: 'continue', text: '' })
+  const system = bundle.messages[0]!.content
+  assert.ok(system.includes('PROHIBICIÓN ABSOLUTA'))
+  assert.ok(system.includes('Léxico prohibido'))
+  assert.equal(skillVersionMap('story', base).anticliche, '1.1.0')
+  assert.equal(skillVersionMap('story', base).sensualidad, '1.1.0')
 })
