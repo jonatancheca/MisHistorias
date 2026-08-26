@@ -34,12 +34,28 @@ test('configura SwarmUI, muestra catálogo y genera una vista temporal', async (
   await expect(swarm.getByText('LoRAs (1)')).toBeVisible()
   await expect(swarm.getByText('Presets (2)')).toBeVisible()
   await expect(swarm.getByLabel('Modelo de prueba')).toBeVisible()
+  await swarm.getByLabel('LoRA de prueba').selectOption('detail-lora')
 
   const prompt = 'Edited temporary prompt with standing pose, coat and joyful expression.'
   await swarm.getByLabel('Prompt de prueba').fill(prompt)
   await swarm.getByRole('button', { name: 'Generar imagen de prueba' }).click()
   await expect(swarm.getByTestId('swarm-test-preview')).toBeVisible()
-  expect(generationBody).toEqual({ prompt, preset: 'Retrato', model: 'model-a' })
+  expect(generationBody).toEqual({
+    prompt,
+    preset: 'Retrato',
+    model: 'model-a',
+    lora: 'detail-lora'
+  })
+  await swarm.getByRole('button', { name: 'Ampliar Resultado temporal de SwarmUI' }).click()
+  const previewDialog = page.getByRole('dialog', { name: 'Resultado temporal de SwarmUI' })
+  await expect(previewDialog).toBeVisible()
+  await previewDialog.getByRole('button', { name: 'Cerrar imagen' }).click()
+  await expect(previewDialog).toHaveCount(0)
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 800 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      .toBe(true)
+  }
 })
 
 test('crea prompt editable y guarda la imagen generada en WebP', async ({ page, data }) => {

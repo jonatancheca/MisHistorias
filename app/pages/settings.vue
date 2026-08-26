@@ -73,6 +73,7 @@ const swarmTestError = ref<string | null>(null)
 const swarmTestPrompt = ref('A cinematic portrait of a traveler standing confidently, wearing a weathered coat, with a calm determined expression.')
 const swarmTestPreset = ref('')
 const swarmTestModel = ref('')
+const swarmTestLora = ref('')
 const swarmGenerating = ref(false)
 const swarmPreviewUrl = ref<string | null>(null)
 const chromeLlmEnabled = ref(settings.activeUseChromeLlm)
@@ -399,11 +400,13 @@ async function generateSwarmPreview() {
     if (!swarmCatalog.value) await testSwarmConnection()
     const preset = swarmTestPreset.value.trim()
     const model = swarmTestModel.value.trim()
+    const lora = swarmTestLora.value.trim()
     if (!preset && !model) throw new Error('SwarmUI no ofrece presets ni modelos.')
     const blob = await fetchSwarmImage({
       prompt: swarmTestPrompt.value,
       ...(preset ? { preset } : {}),
-      ...(model ? { model } : {})
+      ...(model ? { model } : {}),
+      ...(lora ? { lora } : {})
     })
     if (swarmPreviewUrl.value) URL.revokeObjectURL(swarmPreviewUrl.value)
     swarmPreviewUrl.value = URL.createObjectURL(blob)
@@ -1077,7 +1080,7 @@ onBeforeRouteLeave(async () => {
           </details>
         </div>
 
-        <div v-if="swarmCatalog" class="grid gap-3 sm:grid-cols-2">
+        <div v-if="swarmCatalog" class="grid gap-3 md:grid-cols-3">
           <div>
             <label class="label" for="swarmTestPreset">Preset de prueba</label>
             <select id="swarmTestPreset" v-model="swarmTestPreset" class="field">
@@ -1093,6 +1096,15 @@ onBeforeRouteLeave(async () => {
               <option value="">Selecciona un modelo</option>
               <option v-for="model in swarmCatalog.models" :key="model" :value="model">
                 {{ model }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="label" for="swarmTestLora">LoRA de prueba</label>
+            <select id="swarmTestLora" v-model="swarmTestLora" class="field">
+              <option value="">Sin LoRA</option>
+              <option v-for="lora in swarmCatalog.loras" :key="lora" :value="lora">
+                {{ lora }}
               </option>
             </select>
           </div>
@@ -1115,13 +1127,14 @@ onBeforeRouteLeave(async () => {
         >
           {{ swarmGenerating ? 'Generando…' : 'Generar imagen de prueba' }}
         </button>
-        <img
-          v-if="swarmPreviewUrl"
-          :src="swarmPreviewUrl"
-          alt="Resultado temporal de SwarmUI"
-          data-testid="swarm-test-preview"
-          class="max-h-96 max-w-full rounded-lg object-contain"
-        >
+        <div v-if="swarmPreviewUrl" data-testid="swarm-test-preview">
+          <ImageLightbox
+            :src="swarmPreviewUrl"
+            alt="Resultado temporal de SwarmUI"
+            container-class="w-fit"
+            image-class="max-h-96 max-w-full rounded-lg object-contain"
+          />
+        </div>
       </div>
     </section>
 
