@@ -1229,6 +1229,12 @@ test.describe('selección de imágenes durante la historia', () => {
     const second = await data.createImage(character, ['seria', 'capa'])
     await data.createImage(otherCharacter, ['alerta'])
     const story = await data.createStory({ characters: [character, otherCharacter] })
+    const storyCharacterName = data.unique('Alias-Alicia')
+    story.characterCustomizations[0]!.name = storyCharacterName
+    const storyResponse = await page.request.put(`/api/data/stories/${story.id}?scope=normal`, {
+      data: story
+    })
+    expect(storyResponse.ok()).toBe(true)
     const message = await data.createMessage({
       story,
       role: 'assistant',
@@ -1247,13 +1253,16 @@ test.describe('selección de imágenes durante la historia', () => {
     })
 
     await page.goto(`/stories/${story.id}`)
-    await page.getByRole('button', { name: new RegExp(`Cambiar ${character.name}`) }).click()
+    await page.getByRole('button', { name: new RegExp(`Cambiar ${storyCharacterName}`) }).click()
     let dialog = page.getByRole('dialog', { name: 'Cambiar imagen' })
     await expect(dialog.getByLabel('Personaje para la imagen')).toHaveCount(0)
-    await expect(dialog.getByText(`Personaje: ${character.name}`, { exact: true })).toBeVisible()
+    await expect(dialog.getByText(`Personaje: ${storyCharacterName}`, { exact: true })).toBeVisible()
+    await expect(dialog.getByText(`Personaje: ${character.name}`, { exact: true })).toHaveCount(0)
     await expect(dialog.getByText(`Personaje: ${otherCharacter.name}`, { exact: true })).toHaveCount(0)
     await expect(dialog.getByRole('checkbox', { name: /Indicar a la IA/ })).toBeChecked()
-    await dialog.getByRole('button', { name: 'Seleccionar imagen [seria][capa]' }).dblclick()
+    await dialog.getByRole('button', {
+      name: `Seleccionar imagen de ${storyCharacterName} [seria][capa]`
+    }).dblclick()
     await expect(dialog).toBeHidden()
 
     let stored = await data.get<Message>('messages', message.id)
@@ -1265,20 +1274,24 @@ test.describe('selección de imágenes durante la historia', () => {
       tags: ['feliz'],
       text: 'Hola.'
     })
-    await expect(page.getByRole('button', { name: `Ver tags LLM de ${character.name}` })).toContainText(
-      `${character.name} · seria · capa`
+    await expect(page.getByRole('button', { name: `Ver tags LLM de ${storyCharacterName}` })).toContainText(
+      `${storyCharacterName} · seria · capa`
     )
 
     await page.getByTestId('visual-mode-toggle').click()
     await page.getByRole('button', { name: `Cambiar imagen de ${character.name}` }).click()
     dialog = page.getByRole('dialog', { name: 'Cambiar imagen' })
-    await dialog.getByRole('button', { name: 'Seleccionar imagen [feliz]' }).dblclick()
+    await dialog.getByRole('button', {
+      name: `Seleccionar imagen de ${storyCharacterName} [feliz]`
+    }).dblclick()
     await expect(dialog).toBeHidden()
     stored = await data.get<Message>('messages', message.id)
     expect(stored.segments[0]?.imageId).toBe(first.id)
 
     await page.reload()
-    await expect(page.getByRole('button', { name: `Cambiar imagen de ${character.name}` })).toBeVisible()
+    await expect(page.getByRole('button', {
+      name: `Cambiar imagen de ${character.name}`
+    })).toBeVisible()
   })
 
   test('propaga el cambio a imágenes siguientes con mismo personaje y etiquetas', async ({ page, data }) => {
@@ -1343,7 +1356,9 @@ test.describe('selección de imágenes durante la historia', () => {
     await page.goto(`/stories/${story.id}`)
     await page.getByRole('button', { name: new RegExp(`Cambiar ${character.name}`) }).nth(1).click()
     const dialog = page.getByRole('dialog', { name: 'Cambiar imagen' })
-    await dialog.getByRole('button', { name: 'Seleccionar imagen [seleccionada]' }).dblclick()
+    await dialog.getByRole('button', {
+      name: `Seleccionar imagen de ${character.name} [seleccionada]`
+    }).dblclick()
 
     const stored = await data.get<Message>('messages', message.id)
     expect(stored.segments.map((segment) => segment.imageId)).toEqual([
@@ -1403,6 +1418,12 @@ test.describe('selección de imágenes durante la historia', () => {
     await data.createImage(secondCharacter, ['alerta'])
     const preset = await data.createPreset()
     const story = await data.createStory({ characters: [firstCharacter, secondCharacter], preset })
+    const secondStoryName = data.unique('Alias-Bruno')
+    story.characterCustomizations[1]!.name = secondStoryName
+    const storyResponse = await page.request.put(`/api/data/stories/${story.id}?scope=normal`, {
+      data: story
+    })
+    expect(storyResponse.ok()).toBe(true)
     await data.patchSettings({
       mockMode: false,
       model: '',
@@ -1436,8 +1457,13 @@ test.describe('selección de imágenes durante la historia', () => {
     await page.goto(`/stories/${story.id}`)
     await page.getByTestId('pending-image-button').click()
     const dialog = page.getByRole('dialog', { name: 'Imagen para la próxima respuesta' })
-    await dialog.getByLabel('Personaje para la imagen').selectOption(firstCharacter.id)
-    await dialog.getByRole('button', { name: 'Seleccionar imagen [seria][capa]' }).click()
+    const characterSelect = dialog.getByLabel('Personaje para la imagen')
+    await expect(characterSelect.getByRole('option', { name: secondStoryName })).toBeAttached()
+    await expect(characterSelect.getByRole('option', { name: secondCharacter.name })).toHaveCount(0)
+    await characterSelect.selectOption(firstCharacter.id)
+    await dialog.getByRole('button', {
+      name: `Seleccionar imagen de ${firstCharacter.name} [seria][capa]`
+    }).click()
     await dialog.getByRole('button', { name: 'Preparar' }).click()
     await expect(page.getByTestId('pending-image-instructions')).toContainText('[seria][capa]')
     expect((await data.get<Story>('stories', story.id)).pendingImageInstructions).toEqual([

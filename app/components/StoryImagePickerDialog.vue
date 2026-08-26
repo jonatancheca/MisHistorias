@@ -3,9 +3,11 @@ const props = withDefaults(defineProps<{
   open: boolean
   mode: 'replace' | 'queue'
   characterIds: string[]
+  characterNames?: Record<string, string>
   initialCharacterId?: string | null
   initialImageId?: string | null
 }>(), {
+  characterNames: () => ({}),
   initialCharacterId: null,
   initialImageId: null
 })
@@ -35,6 +37,10 @@ const availableImages = computed(() =>
 const selectedImage = computed(() =>
   availableImages.value.find((image) => image.id === selectedImageId.value) ?? null
 )
+
+function characterName(characterId: string) {
+  return props.characterNames?.[characterId] ?? characters.byId(characterId)?.name ?? 'Personaje'
+}
 
 function selectCharacter(characterId: string) {
   selectedCharacterId.value = characterId
@@ -102,7 +108,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           </label>
 
           <p v-if="mode === 'replace' && availableCharacters[0]" class="mb-4 text-sm font-medium">
-            Personaje: {{ availableCharacters[0].name }}
+            Personaje: {{ characterName(availableCharacters[0].id) }}
           </p>
 
           <label v-else-if="availableCharacters.length > 1" class="mb-4 block text-sm font-medium">
@@ -115,7 +121,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             >
               <option value="">Selecciona un personaje</option>
               <option v-for="character in availableCharacters" :key="character.id" :value="character.id">
-                {{ character.name }}
+                {{ characterName(character.id) }}
               </option>
             </select>
           </label>
@@ -133,7 +139,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               type="button"
               class="overflow-hidden rounded-xl border-2 bg-black/5 p-2 text-left transition"
               :class="image.id === selectedImageId ? 'border-brand-500 ring-2 ring-brand-500/25' : 'border-[var(--color-border-soft)]'"
-              :aria-label="`Seleccionar imagen [${image.tags.join('][')}]`"
+              :aria-label="`Seleccionar imagen de ${characterName(selectedCharacterId)} [${image.tags.join('][')}]`"
               :aria-pressed="image.id === selectedImageId"
               @click="selectedImageId = image.id"
               @dblclick="selectAndConfirm(image.id)"

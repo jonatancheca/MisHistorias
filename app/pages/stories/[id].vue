@@ -1590,6 +1590,7 @@ onBeforeUnmount(() => {
       :open="Boolean(imagePickerTarget)"
       :mode="imagePickerTarget?.mode ?? 'queue'"
       :character-ids="stories.activeStory.characterIds"
+      :character-names="storyCharacterNames"
       :initial-character-id="imagePickerTarget?.characterId"
       :initial-image-id="imagePickerTarget?.imageId"
       @close="imagePickerTarget = null"
