@@ -498,7 +498,11 @@ test.describe('chat', () => {
       request: {
         provider: 'lmstudio',
         model: 'test-model',
-        messages: [{ role: 'user', content: 'Miro la escena.' }],
+        messages: [
+          { role: 'system', content: 'Narra con claridad.' },
+          { role: 'user', content: 'Miro la escena.' },
+          { role: 'assistant', content: 'La escena permanece en silencio.' }
+        ],
         temperature: 0.7,
         max_tokens: 100,
         stream: false
@@ -523,7 +527,25 @@ test.describe('chat', () => {
 
       const debugButton = page.getByRole('button', { name: 'Ver datos de debug de la llamada LLM' })
       await debugButton.click()
-      await expect(page.getByRole('dialog', { name: 'Debug LLM' })).toBeVisible()
+      const debugDialog = page.getByRole('dialog', { name: 'Debug LLM' })
+      await expect(debugDialog).toBeVisible()
+      await expect(debugDialog.getByTestId('llm-debug-request-sections')).toBeVisible()
+      await expect(debugDialog.getByText('Datos de llamada')).toBeVisible()
+      await expect(debugDialog.getByText('LM Studio', { exact: true })).toBeVisible()
+      await expect(debugDialog.getByText('test-model', { exact: true })).toBeVisible()
+      await expect(debugDialog.getByText('Sistema · Mensaje 1')).toBeVisible()
+      await expect(debugDialog.getByText('Narra con claridad.', { exact: true })).toBeVisible()
+      await expect(debugDialog.getByText('Usuario · Mensaje 2')).toBeVisible()
+      await expect(debugDialog.getByText('Miro la escena.', { exact: true })).toBeVisible()
+      await expect(debugDialog.getByText('Asistente · Mensaje 3')).toBeVisible()
+      await expect(debugDialog.getByTestId('llm-debug-response-json')).toContainText('Respuesta con dos imágenes.')
+      await expect(debugDialog.getByTestId('llm-debug-request-json')).toHaveCount(0)
+      await debugDialog.getByRole('button', { name: 'Ver JSON real' }).click()
+      await expect(debugDialog.getByTestId('llm-debug-request-json')).toContainText('"messages"')
+      await debugDialog.getByRole('button', { name: 'Ver vista sencilla' }).click()
+      await expect(debugDialog.getByTestId('llm-debug-request-sections')).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        .toBe(true)
       await page.getByRole('button', { name: 'Cerrar debug LLM' }).click()
 
       const editButton = page.getByRole('button', { name: 'Editar mensaje' }).first()
