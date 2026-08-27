@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { LlmDebugTrace } from '#shared/types'
 
-const props = defineProps<{ trace: LlmDebugTrace | null }>()
+const props = defineProps<{ trace: LlmDebugTrace | null; historyBudget: number }>()
 const emit = defineEmits<{ close: [] }>()
 const closeButton = ref<HTMLButtonElement | null>(null)
 const showRawRequest = ref(false)
@@ -10,6 +10,15 @@ const isCompaction = computed(() => props.trace?.request.purpose === 'compaction
 const formattedRequest = computed(() => JSON.stringify(props.trace?.request ?? {}, null, 2))
 const formattedResponse = computed(() => JSON.stringify(props.trace?.response ?? {}, null, 2))
 const requestMessages = computed(() => props.trace?.request.messages ?? [])
+const contextCharacters = computed(() =>
+  requestMessages.value.reduce((total, message) => total + message.content.length, 0)
+)
+const contextPercentage = computed(() => props.historyBudget > 0
+  ? (contextCharacters.value / props.historyBudget * 100).toLocaleString('es-ES', {
+      maximumFractionDigits: 1
+    })
+  : null
+)
 const providerLabel = computed(() => {
   if (props.trace?.request.provider === 'lmstudio') return 'LM Studio'
   if (props.trace?.request.provider === 'chrome') return 'Chrome integrado'
@@ -73,6 +82,19 @@ function keepFocus() {
         </header>
 
         <div class="min-h-0 overflow-y-auto p-4">
+          <section
+            data-testid="llm-debug-context-usage"
+            class="mb-4 rounded-xl border border-[var(--color-border-soft)] p-3 text-sm"
+          >
+            <h3 class="font-semibold">Contexto enviado (caracteres)</h3>
+            <p v-if="contextPercentage !== null">
+              {{ contextCharacters }} / {{ historyBudget }} caracteres · {{ contextPercentage }} % del límite
+            </p>
+            <p v-else>{{ contextCharacters }} caracteres · Sin límite</p>
+            <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+              Incluye instrucciones e historial de esta llamada. Máximo actual indicado en Ajustes.
+            </p>
+          </section>
           <div class="grid min-w-0 gap-4 lg:grid-cols-2">
             <section class="min-w-0">
               <div class="mb-2 flex flex-wrap items-center justify-between gap-2">

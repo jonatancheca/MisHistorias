@@ -676,6 +676,7 @@ test.describe('chat', () => {
     await expect(traceResponse).toBeOK()
 
     for (const width of [320, 390]) {
+      await data.patchSettings({ historyBudget: width === 320 ? 80 : 40 })
       await page.setViewportSize({ width, height: 760 })
       await page.goto(`/stories/${story.id}`)
 
@@ -689,6 +690,9 @@ test.describe('chat', () => {
       await debugButton.click()
       const debugDialog = page.getByRole('dialog', { name: 'Debug LLM' })
       await expect(debugDialog).toBeVisible()
+      await expect(debugDialog.getByTestId('llm-debug-context-usage')).toContainText(
+        width === 320 ? '66 / 80 caracteres · 82,5 % del límite' : '66 / 40 caracteres · 165 % del límite'
+      )
       await expect(debugDialog.getByTestId('llm-debug-request-sections')).toBeVisible()
       await expect(debugDialog.getByText('Datos de llamada')).toBeVisible()
       await expect(debugDialog.getByText('LM Studio', { exact: true })).toBeVisible()
@@ -701,6 +705,7 @@ test.describe('chat', () => {
       await expect(debugDialog.getByTestId('llm-debug-response-json')).toContainText('Respuesta con dos imágenes.')
       await expect(debugDialog.getByTestId('llm-debug-request-json')).toHaveCount(0)
       await debugDialog.getByRole('button', { name: 'Ver JSON real' }).click()
+      await expect(debugDialog.getByTestId('llm-debug-context-usage')).toBeVisible()
       await expect(debugDialog.getByTestId('llm-debug-request-json')).toContainText('"messages"')
       await debugDialog.getByRole('button', { name: 'Ver vista sencilla' }).click()
       await expect(debugDialog.getByTestId('llm-debug-request-sections')).toBeVisible()
@@ -732,6 +737,12 @@ test.describe('chat', () => {
         `${secondCharacter.name} · seria`
       )
     }
+
+    await data.patchSettings({ historyBudget: 0 })
+    await page.reload()
+    await page.getByRole('button', { name: 'Ver datos de debug de la llamada LLM' }).click()
+    await expect(page.getByTestId('llm-debug-context-usage')).toContainText('66 caracteres · Sin límite')
+    await page.getByRole('button', { name: 'Cerrar debug LLM' }).click()
 
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto(`/stories/${story.id}`)

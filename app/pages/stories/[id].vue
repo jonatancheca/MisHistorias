@@ -1618,7 +1618,11 @@ onBeforeUnmount(() => {
       </div>
     </Teleport>
 
-    <LlmDebugDialog :trace="selectedDebugTrace" @close="selectedDebugTrace = null" />
+    <LlmDebugDialog
+      :trace="selectedDebugTrace"
+      :history-budget="settings.activeHistoryBudget"
+      @close="selectedDebugTrace = null"
+    />
     <StoryImagePickerDialog
       :open="Boolean(imagePickerTarget)"
       :mode="imagePickerTarget?.mode ?? 'queue'"
