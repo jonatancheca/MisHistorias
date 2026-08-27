@@ -267,8 +267,14 @@ export function buildChatMessages(options: {
     ...pendingImageMessages,
     { role: 'system', content: formatReminder(options.generationMode, options.userName) }
   ]
+  const systemContent = messages
+    .filter((message) => message.role === 'system')
+    .map((message) => message.content.trim())
+    .filter(Boolean)
+    .join('\n\n')
+
   return [
-    ...messages.filter((message) => message.role === 'system'),
+    ...(systemContent ? [{ role: 'system' as const, content: systemContent }] : []),
     ...messages.filter((message) => message.role !== 'system')
   ]
 }

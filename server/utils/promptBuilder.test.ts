@@ -173,7 +173,7 @@ test('añade apertura, actualización de catálogo y reglas distintas para Sigue
 
   const opening = continued.find((message) => message.role === 'user')
   assert.match(opening?.content ?? '', /Comienza la historia/)
-  assert.ok(continued.some((message) => message.content === 'Catálogo actualizado.'))
+  assert.match(continued[0]?.content ?? '', /Catálogo actualizado\./)
   assert.ok(continued.some((message) => /No inventes acciones/.test(message.content)))
   assert.ok(automatic.some((message) => /Puedes inventar acciones/.test(message.content)))
   assert.match(automatic[0]?.content ?? '', /Puedes hablar y decidir por el protagonista/)
@@ -207,14 +207,29 @@ test('añade indicaciones visuales solo para la respuesta solicitada', () => {
   assert.match(instruction?.content ?? '', /termina después de esta respuesta/)
 })
 
-test('agrupa todos los mensajes system al principio para Qwen sin reordenar conversación', () => {
+test('combina todos los mensajes system para Qwen sin perder catálogo ni orden', () => {
   const messages = buildChatMessages({
     presetContent: 'Narra.',
     story,
     characters: [character],
-    images: [],
+    images: [{
+      id: 'image-1',
+      characterId: character.id,
+      tags: ['feliz', 'armadura'],
+      isDefault: true,
+      mimeType: 'image/png',
+      createdAt: 1,
+      blob: new Blob()
+    }],
     backgrounds: [],
-    sounds: [],
+    sounds: [{
+      id: 'sound-1',
+      tags: ['campana'],
+      characterId: character.id,
+      backgroundId: null,
+      mimeType: 'audio/ogg',
+      createdAt: 1
+    }],
     messages: [
       {
         id: 'instruction-1',
@@ -253,22 +268,25 @@ test('agrupa todos los mensajes system al principio para Qwen sin reordenar conv
     }]
   })
 
-  const firstConversation = messages.findIndex((message) => message.role !== 'system')
-  assert.ok(firstConversation > 0)
-  assert.ok(messages.slice(0, firstConversation).every((message) => message.role === 'system'))
-  assert.ok(messages.slice(firstConversation).every((message) => message.role !== 'system'))
+  assert.equal(messages.filter((message) => message.role === 'system').length, 1)
+  const systemContent = messages[0]?.content ?? ''
+  assert.match(systemContent, /### Lia/)
+  assert.match(systemContent, /Prompt exclusivo de la historia/)
+  assert.match(systemContent, /Etiquetas descriptivas[^\n]*misteriosa/)
+  assert.match(systemContent, /\[feliz\]\[armadura\]/)
+  assert.match(systemContent, /\[campana\] \(personaje Alicia\)/)
 
-  const systemContents = messages.slice(0, firstConversation).map((message) => message.content)
-  const instructionIndex = systemContents.findIndex((content) => content.includes('Habla en susurros.'))
-  const catalogIndex = systemContents.indexOf('Catálogo actualizado.')
-  const continuationIndex = systemContents.findIndex((content) => content.startsWith('Continúa la historia'))
-  const pendingIndex = systemContents.findIndex((content) => content.includes('INDICACIÓN VISUAL'))
-  const reminderIndex = systemContents.findIndex((content) => content.startsWith('Responde directamente'))
-  assert.deepEqual(
-    [instructionIndex, catalogIndex, continuationIndex, pendingIndex, reminderIndex],
-    [1, 2, 3, 4, 5]
-  )
-  assert.deepEqual(messages.slice(firstConversation), [
+  const instructionIndex = systemContent.indexOf('Habla en susurros.')
+  const catalogIndex = systemContent.indexOf('Catálogo actualizado.')
+  const continuationIndex = systemContent.indexOf('Continúa la historia')
+  const pendingIndex = systemContent.indexOf('INDICACIÓN VISUAL')
+  const reminderIndex = systemContent.indexOf('Responde directamente')
+  assert.ok(instructionIndex > 0)
+  assert.ok(instructionIndex < catalogIndex)
+  assert.ok(catalogIndex < continuationIndex)
+  assert.ok(continuationIndex < pendingIndex)
+  assert.ok(pendingIndex < reminderIndex)
+  assert.deepEqual(messages.slice(1), [
     { role: 'user', content: 'Vera: Entra en la sala.' },
     { role: 'assistant', content: 'La puerta se abre.' }
   ])

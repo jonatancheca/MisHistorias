@@ -347,8 +347,9 @@ test.describe('chat', () => {
     await expect(input).toHaveValue('Texto sin enviar')
   })
 
-  test('envía todos los mensajes system al principio para Qwen', async ({ page, data }) => {
-    const { story } = await createStoryFixture(data)
+  test('envía un único system con catálogo completo para Qwen', async ({ page, data }) => {
+    const { story, character } = await createStoryFixture(data)
+    const sound = await data.createSound(character, [data.unique('campana')])
     await data.createMessage({ story, role: 'user', raw: 'IA: Habla en susurros.' })
     await data.patchSettings({
       mockMode: false,
@@ -370,15 +371,15 @@ test.describe('chat', () => {
       await data.list<Message>('messages', 'normal', { storyId: story.id })
     ).some((message) => message.role === 'assistant')).toBe(true)
 
-    const firstConversation = requestMessages.findIndex((message) => message.role !== 'system')
-    expect(firstConversation).toBeGreaterThan(0)
-    expect(requestMessages.slice(0, firstConversation).every((message) => message.role === 'system'))
-      .toBe(true)
-    expect(requestMessages.slice(firstConversation).every((message) => message.role !== 'system'))
-      .toBe(true)
-    expect(requestMessages.slice(0, firstConversation).some((message) =>
-      message.content.includes('Habla en susurros.')
-    )).toBe(true)
+    expect(requestMessages.filter((message) => message.role === 'system')).toHaveLength(1)
+    const systemContent = requestMessages[0]?.content ?? ''
+    expect(systemContent).toContain(character.name)
+    expect(systemContent).toContain(character.prompt)
+    expect(systemContent).toContain(character.tags.join(', '))
+    expect(systemContent).toContain('[feliz][armadura]')
+    expect(systemContent).toContain(`[${sound.tags[0]}] (personaje ${character.name})`)
+    expect(systemContent).toContain('Habla en susurros.')
+    expect(requestMessages.slice(1).every((message) => message.role !== 'system')).toBe(true)
   })
 
   test('usa Chrome AI sin modelo LMStudio ni fallback', async ({ page, data }) => {
