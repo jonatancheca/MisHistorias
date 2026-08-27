@@ -348,7 +348,9 @@ test.describe('chat', () => {
   })
 
   test('envía un único system con catálogo completo para Qwen', async ({ page, data }) => {
-    const { story, character } = await createStoryFixture(data)
+    const { story, character, background } = await createStoryFixture(data)
+    await data.createImage(character, ['feliz', 'armadura'])
+    await data.createImage(character, ['feliz'])
     const sound = await data.createSound(character, [data.unique('campana')])
     await data.createMessage({ story, role: 'user', raw: 'IA: Habla en susurros.' })
     await data.patchSettings({
@@ -376,7 +378,10 @@ test.describe('chat', () => {
     expect(systemContent).toContain(character.name)
     expect(systemContent).toContain(character.prompt)
     expect(systemContent).toContain(character.tags.join(', '))
-    expect(systemContent).toContain('[feliz][armadura]')
+    expect(systemContent.match(/^ {2}- \[feliz\] \[armadura\]$/gm)).toHaveLength(1)
+    expect(systemContent.match(/^ {2}- \[feliz\]$/gm)).toHaveLength(1)
+    expect(systemContent).not.toContain(background.description)
+    expect(systemContent).not.toContain('sin descripción')
     expect(systemContent).toContain(`[${sound.tags[0]}] (personaje ${character.name})`)
     expect(systemContent).toContain('Habla en susurros.')
     expect(requestMessages.slice(1).every((message) => message.role !== 'system')).toBe(true)

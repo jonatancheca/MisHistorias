@@ -97,11 +97,44 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
   assert.match(prompt, /Etiquetas descriptivas[^\n]*misteriosa/)
   assert.doesNotMatch(prompt, /Etiquetas descriptivas[^\n]*global/)
   assert.match(prompt, /\[feliz\]/)
-  assert.match(prompt, /\[feliz\]\[armadura\]/)
+  assert.match(prompt, /\[feliz\] \[armadura\]/)
   assert.doesNotMatch(prompt, /\[feliz\] \/ \[armadura\]/)
   assert.doesNotMatch(prompt, /DESCRIPCIÓN LEGACY NO ENVIADA/)
   assert.match(prompt, /Sonido \[etiqueta\]:/)
   assert.match(prompt, /\[campana\] \(personaje Alicia\)/)
+})
+
+test('envía combinaciones de etiquetas únicas por personaje y fondo, sin descripciones de imágenes', () => {
+  const image = {
+    id: 'image', characterId: character.id, tags: ['criada'], isDefault: true,
+    description: 'DESCRIPCIÓN DE IMAGEN LEGACY', mimeType: 'image/png', createdAt: 1, blob: new Blob()
+  }
+  const background = {
+    id: 'background', tags: ['bosque', 'noche'], description: 'DESCRIPCIÓN DEL FONDO',
+    mimeType: 'image/png', createdAt: 1, blob: new Blob()
+  }
+  const payload = buildChatMessages({
+    presetContent: 'Narra.', story: { ...story, initialBackgroundId: background.id },
+    characters: [character, { ...character, id: 'second', name: 'Segunda' }],
+    images: [
+      image,
+      { ...image, id: 'duplicate', isDefault: false },
+      { ...image, id: 'working', tags: ['criada', 'trabajando'], isDefault: false },
+      { ...image, id: 'reordered', tags: ['TRABAJANDO', 'criada'], isDefault: false },
+      { ...image, id: 'crying', tags: ['llorando'], isDefault: false },
+      { ...image, id: 'other-character', characterId: 'second' }
+    ],
+    backgrounds: [background, { ...background, id: 'duplicate-background', tags: ['noche', 'bosque'] }],
+    sounds: [], messages: [], historyBudget: 0, userName: 'Usuario',
+    protagonistPreferences: '', generationMode: 'normal'
+  })
+  const prompt = payload[0]!.content
+  assert.match(prompt, /Etiquetas de imagen disponibles:\n {2}- \[criada\]\n {2}- \[criada\] \[trabajando\]\n {2}- \[llorando\]\nEtiqueta por defecto: \[criada\]/)
+  assert.equal(prompt.match(/^ {2}- \[criada\]$/gm)?.length, 2)
+  assert.equal(prompt.match(/^- \[bosque\] \[noche\]$/gm)?.length, 1)
+  assert.match(prompt, /Fondo inicial: \[bosque\]/)
+  assert.match(prompt, /Prompt exclusivo de la historia/)
+  assert.doesNotMatch(prompt, /DESCRIPCIÓN DE IMAGEN LEGACY|DESCRIPCIÓN DEL FONDO|sin descripción|por defecto\)/)
 })
 
 test('combina o reemplaza preferencias del protagonista', () => {
@@ -371,7 +404,7 @@ test('combina todos los mensajes system para Qwen sin perder catálogo ni orden'
   assert.match(systemContent, /### Lia/)
   assert.match(systemContent, /Prompt exclusivo de la historia/)
   assert.match(systemContent, /Etiquetas descriptivas[^\n]*misteriosa/)
-  assert.match(systemContent, /\[feliz\]\[armadura\]/)
+  assert.match(systemContent, /\[feliz\] \[armadura\]/)
   assert.match(systemContent, /\[campana\] \(personaje Alicia\)/)
 
   const instructionIndex = systemContent.indexOf('Habla en susurros.')

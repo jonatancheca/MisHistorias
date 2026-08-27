@@ -10,7 +10,7 @@ import type {
 import type { StoredBackground, StoredImage } from '~/lib/db'
 import { extractAiInstruction, isAiInstruction } from '~/lib/chatInstructions'
 import { serializeSegments } from '~/lib/streamParser'
-import { primaryTag } from '~/lib/tags'
+import { primaryTag, sanitizeTags, tagKey } from '~/lib/tags'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -19,6 +19,17 @@ export interface ChatMessage {
 
 function formatImageTags(tags: string[]) {
   return tags.map((tag) => `[${tag}]`).join('')
+}
+
+function imageTagCatalog(images: Array<{ tags: string[] }>, indent = '') {
+  const seen = new Set<string>()
+  return images.flatMap((image) => {
+    const tags = sanitizeTags(image.tags)
+    const key = JSON.stringify(tags.map(tagKey).sort())
+    if (seen.has(key)) return []
+    seen.add(key)
+    return [`${indent}- ${tags.map((tag) => `[${tag}]`).join(' ')}`]
+  }).join('\n')
 }
 
 function formatReminder(generationMode: GenerationMode, userName: string) {
@@ -67,9 +78,7 @@ function characterSheet(
   const own = images.filter((image) => image.characterId === character.id)
   const fallback = own.find((image) => image.isDefault) ?? own[0]
   const tags = own.length
-    ? own
-        .map((image) => `  - ${formatImageTags(image.tags)}${image.isDefault ? ' (por defecto)' : ''}`)
-        .join('\n')
+    ? imageTagCatalog(own, '  ')
     : '  - (sin imágenes; usa [neutral])'
 
   return [
@@ -85,12 +94,7 @@ function characterSheet(
 function backgroundSheet(story: Story, backgrounds: StoredBackground[]) {
   if (!backgrounds.length) return 'No hay fondos disponibles.'
   const initial = backgrounds.find((background) => background.id === story.initialBackgroundId)
-  const catalog = backgrounds
-    .map(
-      (background) =>
-        `- ${background.tags.map((tag) => `[${tag}]`).join(' / ')}: ${background.description || 'sin descripción'}`
-    )
-    .join('\n')
+  const catalog = imageTagCatalog(backgrounds)
   const initialRule = initial
     ? `Fondo inicial: [${primaryTag(initial)}]. No lo anuncies al comenzar; usa una directiva solo cuando cambie.`
     : 'No hay fondo inicial. Elige uno y comienza la primera respuesta con su directiva.'
