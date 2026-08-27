@@ -302,7 +302,7 @@ test.describe('historias', () => {
       version: number
       stories: Array<{ title: string; saves?: StorySaveSlot[] }>
     }
-    expect(bundle.version).toBe(18)
+    expect(bundle.version).toBe(19)
     expect(bundle.stories.find((item) => item.title === story.title)?.saves).toHaveLength(1)
   })
 })

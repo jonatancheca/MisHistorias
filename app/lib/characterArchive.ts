@@ -1,8 +1,9 @@
+import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
 import JSZip from 'jszip'
-import type { Character } from '../../shared/types/index.ts'
+import type { Character, ImageGenerationMetadata } from '../../shared/types/index.ts'
 import type { StoredImage, StoredSound } from './db.ts'
 
-export const CHARACTER_ARCHIVE_VERSION = 5
+export const CHARACTER_ARCHIVE_VERSION = 6
 export const MAX_CHARACTER_IMAGE_BYTES = 5 * 1024 * 1024
 export const MAX_CHARACTER_SOUND_BYTES = 10 * 1024 * 1024
 
@@ -18,6 +19,7 @@ interface ArchiveAsset {
 interface ArchiveImage extends ArchiveAsset {
   isDefault: boolean
   original?: ArchiveAsset
+  generation?: ImageGenerationMetadata
 }
 
 interface CharacterArchiveManifest {
@@ -79,6 +81,7 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
     manifest.version !== 2 &&
     manifest.version !== 3 &&
     manifest.version !== 4 &&
+    manifest.version !== 5 &&
     manifest.version !== CHARACTER_ARCHIVE_VERSION
   ) {
     throw new Error('Versión de personaje no compatible.')
@@ -104,6 +107,7 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
   if (!manifest.images.every((item) => {
     if (!isAsset(item, 'images/')) return false
     const image = item as unknown as Record<string, unknown>
+    readImageGeneration(image.generation)
     return typeof image.isDefault === 'boolean' &&
       (image.original === undefined || isAsset(image.original, 'images/'))
   })) {
@@ -179,6 +183,7 @@ export async function createCharacterArchive(
       path: `images/${index + 1}.${extensionFor(image.mimeType)}`,
       tags: [...image.tags],
       isDefault: image.isDefault,
+      ...(image.generation ? { generation: readImageGeneration(image.generation) } : {}),
       mimeType: image.mimeType,
       ...(image.originalBlob ? {
         original: {
@@ -233,6 +238,7 @@ export async function readCharacterArchive(file: Blob): Promise<ImportedCharacte
     images: await Promise.all(manifest.images.map(async (image) => ({
       tags: [...image.tags],
       isDefault: image.isDefault,
+      ...(image.generation ? { generation: readImageGeneration(image.generation) } : {}),
       mimeType: image.mimeType,
       blob: await archiveBlob(zip, image, IMAGE_TYPES, MAX_CHARACTER_IMAGE_BYTES, 'Una imagen'),
       ...(image.original ? {

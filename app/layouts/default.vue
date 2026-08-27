@@ -4,14 +4,16 @@ const privacy = usePrivacyStore()
 const { hidden: mobileChromeHidden } = useMobileChrome()
 const isStoryView = computed(() => route.path.startsWith('/stories/') && route.path !== '/stories/new')
 
-const links = [
+const settings = useSettingsStore()
+const links = computed(() => [
   { to: '/', label: 'Histórias' },
   { to: '/characters', label: 'Personajes' },
   { to: '/backgrounds', label: 'Fondos' },
   { to: '/sounds', label: 'Sonidos' },
   { to: '/prompts', label: 'Prompts' },
+  ...(settings.settings.swarmBaseUrl.trim() ? [{ to: '/swarm-prompts', label: 'Prompts SwarmUI' }] : []),
   { to: '/settings', label: 'Ajustes' }
-]
+])
 
 function isActive(to: string) {
   return to === '/' ? route.path === '/' || route.path.startsWith('/stories') : route.path.startsWith(to)
@@ -22,7 +24,7 @@ function iconFor(to: string) {
   if (to === '/characters') return 'users'
   if (to === '/backgrounds') return 'image'
   if (to === '/sounds') return 'sound'
-  if (to === '/prompts') return 'document'
+  if (to === '/prompts' || to === '/swarm-prompts') return 'document'
   return 'settings'
 }
 

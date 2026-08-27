@@ -1,3 +1,4 @@
+import { readImageGeneration } from '../../../shared/utils/imageGeneration.ts'
 import type { H3Event } from 'h3'
 import type {
   BinaryPayload,
@@ -16,7 +17,8 @@ const RESOURCES = new Set<DataResource>([
   'messages',
   'llmDebugTraces',
   'storySaves',
-  'presets'
+  'presets',
+  'swarmPrompts'
 ])
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_SOUND_BYTES = 10 * 1024 * 1024
@@ -153,6 +155,12 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         String(value.thumbnailDataUrl).length <= 2_000_000 &&
         hasNumber(value, 'createdAt')
       break
+    case 'swarmPrompts':
+      valid = hasString(value, 'name') && Boolean(String(value.name).trim()) &&
+        hasString(value, 'prompt') && Boolean(String(value.prompt).trim()) &&
+        String(value.prompt).length <= 100_000 && hasStringArray(value, 'tags') &&
+        hasNumber(value, 'createdAt') && hasNumber(value, 'updatedAt')
+      break
     case 'presets':
       valid =
         hasString(value, 'name') &&
@@ -161,6 +169,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasNumber(value, 'updatedAt')
       break
     case 'images':
+      validateGeneration(value.generation)
       valid =
         hasString(value, 'characterId') &&
         hasStringArray(value, 'tags') &&
@@ -252,6 +261,12 @@ function readOriginal(
   return { mimeType, data: part.data }
 }
 
+function validateGeneration(value: unknown) {
+  try { return readImageGeneration(value) } catch {
+    throw createError({ statusCode: 400, message: 'Metadatos de generación no válidos' })
+  }
+}
+
 function importAssets(
   rawAssets: unknown,
   parts: Awaited<ReturnType<typeof readMultipartFormData>>,
@@ -291,6 +306,7 @@ function importAssets(
       metadata: {
         tags: asset.tags,
         isDefault: kind === 'images' ? asset.isDefault : undefined,
+        generation: kind === 'images' ? validateGeneration(asset.generation) : undefined,
         mimeType
       },
       data: file.data,

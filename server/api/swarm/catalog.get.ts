@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   try {
     return await fetchSwarmCatalog(
       {
-        baseUrl: String(settings?.value.swarmBaseUrl ?? 'http://localhost:7801'),
+        baseUrl: String(settings?.value.swarmBaseUrl ?? ''),
         authToken: settings?.swarmAuthToken ?? ''
       },
       abortController.signal

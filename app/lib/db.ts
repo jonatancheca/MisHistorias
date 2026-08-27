@@ -10,7 +10,8 @@ import type {
   PromptPreset,
   Sound,
   Story,
-  StorySaveSlot
+  StorySaveSlot,
+  SwarmPrompt
 } from '#shared/types'
 
 export interface StoredImage extends CharacterImage {
@@ -83,14 +84,15 @@ async function fetchBlob(resource: 'images' | 'backgrounds' | 'sounds', id: stri
 
 async function putBinary<T extends { id: string; blob: Blob; originalBlob?: Blob }>(
   resource: 'images' | 'backgrounds' | 'sounds',
-  value: T
+  value: T,
+  scope: DataScope = activeDataScope.value
 ) {
   const { blob, originalBlob, ...metadata } = unwrap(value)
   const form = new FormData()
   form.append('metadata', JSON.stringify(metadata))
   form.append('file', blob, `${value.id}.bin`)
   if (resource === 'images' && originalBlob) form.append('original', originalBlob, 'original.bin')
-  return $fetch<Omit<T, 'blob' | 'originalBlob'>>(dataUrl(`${resource}/${encodeURIComponent(value.id)}`), {
+  return $fetch<Omit<T, 'blob' | 'originalBlob'>>(dataUrl(`${resource}/${encodeURIComponent(value.id)}`, scope), {
     method: 'PUT',
     body: form
   })
@@ -131,7 +133,7 @@ export async function importCharacterArchive(input: {
   targetId?: string
   name: string
   character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix'>
-  images: Array<Pick<StoredImage, 'tags' | 'isDefault' | 'mimeType' | 'blob' | 'originalBlob'>>
+  images: Array<Pick<StoredImage, 'tags' | 'isDefault' | 'mimeType' | 'blob' | 'originalBlob' | 'generation'>>
   sounds: Array<Pick<StoredSound, 'tags' | 'mimeType' | 'blob'>>
 }) {
   const form = new FormData()
@@ -143,6 +145,7 @@ export async function importCharacterArchive(input: {
       field,
       tags: image.tags,
       isDefault: image.isDefault,
+      generation: image.generation,
       mimeType: image.mimeType
     }
   })
@@ -181,8 +184,8 @@ export async function listAllImages() {
   return Promise.all(metadata.map(async (image) => ({ ...image, blob: await fetchBlob('images', image.id) })))
 }
 
-export async function putImage(image: StoredImage) {
-  const metadata = await putBinary('images', image)
+export async function putImage(image: StoredImage, scope: DataScope = activeDataScope.value) {
+  const metadata = await putBinary('images', image, scope)
   return { ...metadata, blob: image.blob }
 }
 
@@ -375,4 +378,16 @@ export async function restoreDatabaseBackup(name: string) {
 
 export async function clearAll(scope: DataScope = activeDataScope.value) {
   await $fetch(dataUrl('clear', scope), { method: 'POST' })
+}
+
+export async function listSwarmPrompts() {
+  return $fetch<SwarmPrompt[]>(dataUrl('swarmPrompts'))
+}
+
+export async function putSwarmPrompt(prompt: SwarmPrompt) {
+  return putJson('swarmPrompts', prompt)
+}
+
+export async function deleteSwarmPrompt(id: string) {
+  await deleteJson('swarmPrompts', id)
 }

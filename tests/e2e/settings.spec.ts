@@ -59,7 +59,7 @@ test('muestra en Ajustes un error al comprobar actualizaciones', async ({ page }
 })
 
 test('agrupa LLM y unifica controles de conexión y tokens', async ({ page, data }) => {
-  await data.patchSettings({ apiKey: 'lm-token', swarmAuthToken: 'swarm-token' })
+  await data.patchSettings({ apiKey: 'lm-token', swarmAuthToken: 'swarm-token', swarmBaseUrl: 'http://localhost:7801' })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/settings')
 

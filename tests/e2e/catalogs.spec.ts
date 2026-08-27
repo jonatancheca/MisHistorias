@@ -440,7 +440,7 @@ test.describe('personajes', () => {
       characters: Array<{ id: string; name: string; images: Array<{ dataUrl: string; originalDataUrl: string }> }>
       stories: unknown[]; backgrounds: unknown[]; presets: unknown[]
     }
-    expect(bundle.version).toBe(18)
+    expect(bundle.version).toBe(19)
     const exportedCharacter = bundle.characters.find((item) => item.id === source.id)!
     expect(Buffer.from(exportedCharacter.images[0]!.dataUrl.split(',')[1]!, 'base64')).toEqual(croppedBytes)
     expect(Buffer.from(exportedCharacter.images[0]!.originalDataUrl.split(',')[1]!, 'base64')).toEqual(PNG_BYTES)

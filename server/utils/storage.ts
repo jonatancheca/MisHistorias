@@ -10,6 +10,7 @@ import {
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
 import type {
   DatabaseBackup,
   DatabaseBackupKind,
@@ -30,6 +31,7 @@ export type DataResource =
   | 'llmDebugTraces'
   | 'storySaves'
   | 'presets'
+  | 'swarmPrompts'
 
 export interface ResourceQuery {
   storyId?: string
@@ -67,7 +69,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 27
+const SCHEMA_VERSION = 28
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -191,6 +193,17 @@ function rowToCharacter(row: SqliteRow) {
   }
 }
 
+function rowToSwarmPrompt(row: SqliteRow) {
+  return {
+    id: row.id,
+    name: text(row.name),
+    prompt: text(row.prompt),
+    tags: parseJson<string[]>(row.tags_json, []),
+    createdAt: integer(row.created_at),
+    updatedAt: integer(row.updated_at)
+  }
+}
+
 function rowToImage(row: SqliteRow) {
   return {
     id: row.id,
@@ -199,7 +212,8 @@ function rowToImage(row: SqliteRow) {
     isDefault: Boolean(row.is_default),
     mimeType: text(row.mime_type, 'application/octet-stream'),
     createdAt: integer(row.created_at),
-    hasOriginal: Boolean(row.has_original ?? row.original_data)
+    hasOriginal: Boolean(row.has_original ?? row.original_data),
+    generation: readImageGeneration(parseJson(row.generation_json, undefined))
   }
 }
 
@@ -1037,6 +1051,21 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 28) {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS swarm_prompts (
+            scope TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, prompt TEXT NOT NULL,
+            tags_json TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+            PRIMARY KEY(scope, id)
+          );
+          CREATE INDEX IF NOT EXISTS swarm_prompts_by_created_at ON swarm_prompts(scope, created_at);
+        `)
+        const columns = this.database.prepare('PRAGMA table_info(images)').all() as Array<{ name: string }>
+        if (!columns.some((column) => column.name === 'generation_json')) {
+          this.database.exec('ALTER TABLE images ADD COLUMN generation_json TEXT')
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -1107,12 +1136,12 @@ export class MisHistoriasStorage {
         const rows = query.characterId
           ? this.database
               .prepare(
-                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at, original_data IS NOT NULL AS has_original FROM images WHERE scope = ? AND character_id = ? ORDER BY created_at'
+                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at, generation_json, original_data IS NOT NULL AS has_original FROM images WHERE scope = ? AND character_id = ? ORDER BY created_at'
               )
               .all(scope, query.characterId)
           : this.database
               .prepare(
-                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at, original_data IS NOT NULL AS has_original FROM images WHERE scope = ? ORDER BY created_at'
+                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at, generation_json, original_data IS NOT NULL AS has_original FROM images WHERE scope = ? ORDER BY created_at'
               )
               .all(scope)
         return (rows as SqliteRow[]).map(rowToImage)
@@ -1149,6 +1178,9 @@ export class MisHistoriasStorage {
             'SELECT * FROM story_saves WHERE scope = ? AND story_id = ? ORDER BY created_at DESC'
           )
           .all(scope, query.storyId ?? '') as SqliteRow[]).map(rowToStorySave)
+      case 'swarmPrompts':
+        return (this.database.prepare('SELECT * FROM swarm_prompts WHERE scope = ? ORDER BY created_at, rowid')
+          .all(scope) as SqliteRow[]).map(rowToSwarmPrompt)
       case 'presets':
         return (this.database
           .prepare('SELECT * FROM presets WHERE scope = ? ORDER BY created_at')
@@ -1161,7 +1193,7 @@ export class MisHistoriasStorage {
       ? 'llm_debug_traces'
       : resource === 'storySaves'
         ? 'story_saves'
-        : resource
+        : resource === 'swarmPrompts' ? 'swarm_prompts' : resource
     const row = this.database
       .prepare(`SELECT * FROM ${table} WHERE scope = ? AND id = ?`)
       .get(scope, id) as SqliteRow | undefined
@@ -1183,6 +1215,8 @@ export class MisHistoriasStorage {
         return rowToTrace(row)
       case 'storySaves':
         return rowToStorySave(row)
+      case 'swarmPrompts':
+        return rowToSwarmPrompt(row)
       case 'presets':
         return rowToPreset(row)
     }
@@ -1263,7 +1297,7 @@ export class MisHistoriasStorage {
       })
       const sourceImages = this.database
         .prepare(`
-          SELECT tags_json, is_default, mime_type, created_at, blob_id, original_data, original_mime_type
+          SELECT tags_json, is_default, mime_type, created_at, blob_id, original_data, original_mime_type, generation_json
           FROM images
           WHERE scope = ? AND character_id = ?
           ORDER BY created_at, id
@@ -1276,12 +1310,13 @@ export class MisHistoriasStorage {
         blob_id: string
         original_data: Uint8Array | null
         original_mime_type: string | null
+        generation_json: string | null
       }>
       const insertImage = this.database.prepare(`
         INSERT INTO images(
           scope, id, character_id, tags_json, is_default,
-          mime_type, created_at, blob_id, original_data, original_mime_type
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          mime_type, created_at, blob_id, original_data, original_mime_type, generation_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const image of sourceImages) {
         insertImage.run(
@@ -1294,7 +1329,8 @@ export class MisHistoriasStorage {
           image.created_at,
           image.blob_id,
           image.original_data,
-          image.original_mime_type
+          image.original_mime_type,
+          image.generation_json
         )
       }
       return {
@@ -1345,8 +1381,8 @@ export class MisHistoriasStorage {
       const insertImage = this.database.prepare(`
         INSERT INTO images(
           scope, id, character_id, tags_json, is_default,
-          mime_type, created_at, blob_id, original_data, original_mime_type
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          mime_type, created_at, blob_id, original_data, original_mime_type, generation_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const [index, image] of payload.images.entries()) {
         const imageId = randomUUID()
@@ -1363,7 +1399,8 @@ export class MisHistoriasStorage {
           now + index,
           imageId,
           image.original?.data ?? null,
-          image.original?.mimeType ?? null
+          image.original?.mimeType ?? null,
+          json(readImageGeneration(image.metadata.generation))
         )
       }
 
@@ -1575,6 +1612,16 @@ export class MisHistoriasStorage {
             integer(value.createdAt)
           )
         break
+      case 'swarmPrompts':
+        if (!text(value.name).trim() || !text(value.prompt).trim()) throw new Error('Nombre y prompt obligatorios')
+        this.database.prepare(`
+          INSERT INTO swarm_prompts(scope, id, name, prompt, tags_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(scope, id) DO UPDATE SET name = excluded.name, prompt = excluded.prompt,
+            tags_json = excluded.tags_json, updated_at = excluded.updated_at
+        `).run(scope, id, text(value.name).trim(), text(value.prompt).trim(), json(tags(value.tags)),
+          integer(value.createdAt), integer(value.updatedAt))
+        break
       case 'presets':
         this.database
           .prepare(`
@@ -1647,8 +1694,8 @@ export class MisHistoriasStorage {
           .prepare(`
             INSERT INTO images(
               scope, id, character_id, tags_json, is_default,
-              mime_type, created_at, blob_id, original_data, original_mime_type
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              mime_type, created_at, blob_id, original_data, original_mime_type, generation_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               character_id = excluded.character_id,
               tags_json = excluded.tags_json,
@@ -1657,7 +1704,8 @@ export class MisHistoriasStorage {
               created_at = excluded.created_at,
               blob_id = excluded.blob_id,
               original_data = excluded.original_data,
-              original_mime_type = excluded.original_mime_type
+              original_mime_type = excluded.original_mime_type,
+              generation_json = excluded.generation_json
           `)
           .run(
             scope,
@@ -1669,7 +1717,8 @@ export class MisHistoriasStorage {
             integer(value.createdAt),
             blobId,
             original?.data ?? null,
-            original?.mimeType ?? null
+            original?.mimeType ?? null,
+            json(readImageGeneration(value.generation))
           )
         return this.get('images', scope, id)
       })
@@ -1778,7 +1827,7 @@ export class MisHistoriasStorage {
       ? 'llm_debug_traces'
       : resource === 'storySaves'
         ? 'story_saves'
-        : resource
+        : resource === 'swarmPrompts' ? 'swarm_prompts' : resource
     this.database.prepare(`DELETE FROM ${table} WHERE scope = ? AND id = ?`).run(scope, id)
   }
 
@@ -1875,7 +1924,8 @@ export class MisHistoriasStorage {
         'image_blobs',
         'characters',
         'backgrounds',
-        'presets'
+        'presets',
+        'swarm_prompts'
       ]) {
         this.database.prepare(`DELETE FROM ${table} WHERE scope = ?`).run(scope)
       }

@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
-import type { Character } from '#shared/types'
+import type { Character, ImageGenerationMetadata } from '#shared/types'
 import {
+  getActiveDataScope,
+  type DataScope,
   copyCharacter as copyStoredCharacter,
   deleteCharacter,
   deleteImage,
@@ -202,9 +204,12 @@ export const useCharactersStore = defineStore('characters', () => {
     return result.character
   }
 
-  async function addImage(characterId: string, file: Blob, tags: string[], originalFile?: Blob) {
-    const { blob, mimeType } = await normalizeImage(file)
+  async function addImage(characterId: string, file: Blob, tags: string[], originalFile?: Blob,
+    options: { scope?: DataScope; generation?: ImageGenerationMetadata; signal?: AbortSignal } = {}) {
+    const scope = options.scope ?? getActiveDataScope()
     const isFirst = imagesFor(characterId).length === 0
+    const { blob, mimeType } = await normalizeImage(file)
+    options.signal?.throwIfAborted()
     const image: StoredImage = {
       id: newId(),
       characterId,
@@ -213,9 +218,11 @@ export const useCharactersStore = defineStore('characters', () => {
       mimeType,
       createdAt: Date.now(),
       blob,
+      generation: options.generation,
       originalBlob: originalFile ? (await normalizeImage(originalFile)).blob : undefined
     }
-    const stored = await putImage(image)
+    const stored = await putImage(image, scope)
+    if (scope !== getActiveDataScope()) return stored
     images.value.push(stored)
     if (image.isDefault) applyDefaultLocally(image)
     syncUrls()

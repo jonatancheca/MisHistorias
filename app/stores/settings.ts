@@ -15,7 +15,7 @@ const DEFAULTS: AppSettings = {
   privateTemperature: null,
   privateMaxTokens: null,
   privateHistoryBudget: null,
-  swarmBaseUrl: 'http://localhost:7801',
+  swarmBaseUrl: '',
   swarmAuthToken: '',
   swarmAuthConfigured: false,
   useChromeLlm: false,

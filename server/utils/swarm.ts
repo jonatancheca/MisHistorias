@@ -16,6 +16,8 @@ export interface SwarmGenerationRequest {
   model?: string
   lora?: string
   seed?: number
+  variationSeed?: number
+  variationSeedStrength?: number
   signal?: AbortSignal
 }
 
@@ -241,6 +243,15 @@ export async function generateSwarmImage(
     throw swarmError('Semilla no válida')
   }
 
+  if (request.variationSeed !== undefined &&
+    (!Number.isInteger(request.variationSeed) || request.variationSeed < 0 || request.variationSeed > 0xffffffff)) {
+    throw swarmError('Semilla de variación no válida', 400)
+  }
+  if (request.variationSeedStrength !== undefined &&
+    (!Number.isFinite(request.variationSeedStrength) || request.variationSeedStrength < 0 || request.variationSeedStrength > 1 ||
+      (request.variationSeedStrength > 0 && request.variationSeed === undefined))) {
+    throw swarmError('Fuerza de variación no válida', 400)
+  }
   const client = createSessionClient(settings, request.signal)
   const generated = await client.call('GenerateText2Image', {
     images: 1,
@@ -251,7 +262,9 @@ export async function generateSwarmImage(
       prompt
     ].join('\n'),
     ...(model ? { model } : {}),
-    ...(seed !== undefined ? { seed } : {})
+    ...(seed !== undefined ? { seed } : {}),
+    ...(request.variationSeed !== undefined ? { variationseed: request.variationSeed } : {}),
+    ...(request.variationSeedStrength !== undefined ? { variationseedstrength: request.variationSeedStrength } : {})
   })
   const reference = Array.isArray(generated.images) ? generated.images[0] : null
   if (typeof reference !== 'string' || !reference) {

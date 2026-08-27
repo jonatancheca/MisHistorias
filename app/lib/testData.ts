@@ -409,7 +409,7 @@ async function seedNormalData() {
     ...backgrounds.map(putBackground),
     ...presets.map(putPreset)
   ])
-  await Promise.all(images.map(putImage))
+  await Promise.all(images.map((image) => putImage(image)))
   await Promise.all(sounds.map(putSound))
   await Promise.all(stories.map(putStory))
   await Promise.all(messages.map(putMessage))

@@ -1,5 +1,8 @@
+import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
 import type {
   Character,
+  ImageGenerationMetadata,
+  SwarmPrompt,
   Message,
   PromptPreset,
   Story,
@@ -13,6 +16,8 @@ import {
   listCharacters,
   listMessages,
   listPresets,
+  listSwarmPrompts,
+  putSwarmPrompt,
   listStories,
   listStorySaves,
   newId,
@@ -39,7 +44,7 @@ import {
   importImageGenerationSeed
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 18
+const EXPORT_VERSION = 19
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -49,6 +54,7 @@ interface ExportedImage {
   isDefault: boolean
   dataUrl: string
   originalDataUrl?: string
+  generation?: ImageGenerationMetadata
 }
 
 interface ExportedCharacter {
@@ -97,15 +103,17 @@ interface ExportBundle {
   backgrounds?: ExportedBackground[]
   stories: ExportedStory[]
   presets: Array<Pick<PromptPreset, 'id' | 'name' | 'content'>>
+  swarmPrompts?: SwarmPrompt[]
 }
 
 export async function exportBundle(): Promise<ExportBundle> {
-  const [characters, images, backgrounds, stories, presets] = await Promise.all([
+  const [characters, images, backgrounds, stories, presets, swarmPrompts] = await Promise.all([
     listCharacters(),
     listAllImages(),
     listBackgrounds(),
     listStories(),
-    listPresets()
+    listPresets(),
+    listSwarmPrompts()
   ])
 
   const exportedCharacters: ExportedCharacter[] = await Promise.all(
@@ -118,6 +126,7 @@ export async function exportBundle(): Promise<ExportBundle> {
             id: image.id,
             tags: image.tags,
             isDefault: image.isDefault,
+            generation: image.generation,
             dataUrl: await blobToDataUrl(image.blob),
             originalDataUrl: image.hasOriginal
               ? await blobToDataUrl(await getOriginalImageBlob(image.id))
@@ -166,6 +175,7 @@ export async function exportBundle(): Promise<ExportBundle> {
       }))
     ),
     stories: exportedStories,
+    swarmPrompts,
     presets: presets.map((preset) => ({ id: preset.id, name: preset.name, content: preset.content }))
   }
 }
@@ -183,9 +193,12 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
+  if (bundle.swarmPrompts !== undefined && (!Array.isArray(bundle.swarmPrompts) || bundle.swarmPrompts.some((item) =>
+    !item || typeof item.name !== 'string' || !item.name.trim() || typeof item.prompt !== 'string' || !item.prompt.trim() ||
+    !Array.isArray(item.tags) || item.tags.some((tag) => typeof tag !== 'string')))) throw new Error('Prompts SwarmUI no válidos')
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
     throw new Error('Fichero incompleto')
   }
@@ -196,6 +209,10 @@ export async function importBundle(raw: string) {
   assertBundle(parsed)
   const now = Date.now()
 
+  for (const [index, item] of (parsed.swarmPrompts ?? []).entries()) {
+    await putSwarmPrompt({ id: newId(), name: item.name.trim(), prompt: item.prompt.trim(),
+      tags: sanitizeTags(item.tags), createdAt: now + index, updatedAt: now + index })
+  }
   const presetIdMap = new Map<string, string>()
   for (const preset of parsed.presets ?? []) {
     const created: PromptPreset = {
@@ -253,6 +270,7 @@ export async function importBundle(raw: string) {
         characterId: character.id,
         tags: sanitizeTags(image.tags, image.tag, 'neutral'),
         isDefault: Boolean(image.isDefault),
+        generation: readImageGeneration(image.generation),
         mimeType: blob.type || 'image/webp',
         createdAt: now,
         blob,

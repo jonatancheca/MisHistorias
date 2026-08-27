@@ -103,6 +103,8 @@ test('cliente Swarm combina modelo, preset y LoRA sin contaminar el prompt edita
   let generatedPrompt = ''
   let generatedModel = ''
   let generatedSeed: unknown
+  let variationSeed: unknown
+  let variationStrength: unknown
   const server = createServer(async (request, response) => {
     const body = await readJson(request)
     response.setHeader('content-type', 'application/json')
@@ -112,6 +114,8 @@ test('cliente Swarm combina modelo, preset y LoRA sin contaminar el prompt edita
       generatedPrompt = String(body.prompt ?? '')
       generatedModel = String(body.model ?? '')
       generatedSeed = body.seed
+      variationSeed = body.variationseed
+      variationStrength = body.variationseedstrength
       response.end(JSON.stringify({ images: ['data:image/png;base64,iVBORw=='] }))
     }
   })
@@ -126,12 +130,16 @@ test('cliente Swarm combina modelo, preset y LoRA sin contaminar el prompt edita
         preset: 'Retrato',
         model: 'modelo',
         lora: 'detalle',
-        seed: 9243353
+        seed: 9243353,
+        variationSeed: 123,
+        variationSeedStrength: 0.5
       }
     )
     assert.equal(generatedPrompt, '<preset:Retrato>\n<lora:detalle>\neditable prompt')
     assert.equal(generatedModel, 'modelo')
     assert.equal(generatedSeed, 9243353)
+    assert.equal(variationSeed, 123)
+    assert.equal(variationStrength, 0.5)
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve())

@@ -1,3 +1,18 @@
+export interface ImageGenerationMetadata {
+  seed: number
+  variationSeed?: number
+  variationSeedStrength?: number
+}
+
+export interface SwarmPrompt {
+  id: string
+  name: string
+  prompt: string
+  tags: string[]
+  createdAt: number
+  updatedAt: number
+}
+
 export interface CharacterImage {
   id: string
   characterId: string
@@ -8,6 +23,7 @@ export interface CharacterImage {
   createdAt: number
   /** Existe una copia persistente anterior al primer recorte. */
   hasOriginal?: boolean
+  generation?: ImageGenerationMetadata
 }
 
 export interface Character {

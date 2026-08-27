@@ -77,11 +77,13 @@ test('crea y lee ZIP de personaje con imágenes y sonidos', async () => {
 })
 
 test('conserva el recorte y la original al exportar e importar ZIP', async () => {
+  const generation = { seed: 123, variationSeed: 456, variationSeedStrength: 0.5 }
   const originalBlob = new Blob([new Uint8Array([7, 8, 9, 10])], { type: 'image/webp' })
-  const archive = await createCharacterArchive(character, [{ ...image, hasOriginal: true, originalBlob }], [])
+  const archive = await createCharacterArchive(character, [{ ...image, hasOriginal: true, originalBlob, generation }], [])
   const imported = await readCharacterArchive(archive)
   assert.deepEqual(new Uint8Array(await imported.images[0]!.originalBlob!.arrayBuffer()), new Uint8Array([7, 8, 9, 10]))
   assert.equal(imported.images[0]!.originalBlob!.type, 'image/webp')
+  assert.deepEqual(imported.images[0]!.generation, generation)
   assert.deepEqual(new Uint8Array(await imported.images[0]!.blob.arrayBuffer()), new Uint8Array([1, 2, 3]))
 })
 

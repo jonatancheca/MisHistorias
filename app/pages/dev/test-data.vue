@@ -35,6 +35,7 @@ async function run(seed: boolean) {
     backgrounds.resetForScope()
     sounds.resetForScope()
     presets.resetForScope()
+    useSwarmPromptsStore().resetForScope()
 
     if (seed) {
       await Promise.all([

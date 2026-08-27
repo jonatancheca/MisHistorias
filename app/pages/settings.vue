@@ -594,7 +594,8 @@ async function onImportFile(event: Event) {
       characters.load(true),
       backgrounds.load(true),
       stories.load(true),
-      presets.load(true)
+      presets.load(true),
+      useSwarmPromptsStore().load(true)
     ])
     importMessage.value = 'Importación completada'
   } catch (caught) {
@@ -967,6 +968,7 @@ onBeforeRouteLeave(async () => {
               placeholder="http://localhost:7801"
             >
             <button
+              v-if="form.swarmBaseUrl.trim()"
               type="button"
               class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center gap-2 px-0 sm:w-auto sm:px-3"
               :aria-label="swarmTesting ? 'Probando conexión' : 'Probar conexión'"
@@ -990,151 +992,153 @@ onBeforeRouteLeave(async () => {
           </div>
         </div>
 
-        <div>
-          <label class="label" for="swarmAuthToken">Token de SwarmUI (opcional)</label>
-          <div class="flex min-w-0 gap-2">
-            <input
-              id="swarmAuthToken"
-              v-model="form.swarmAuthToken"
-              :type="swarmAuthTokenVisible ? 'text' : 'password'"
+        <template v-if="form.swarmBaseUrl.trim()">
+          <div>
+            <label class="label" for="swarmAuthToken">Token de SwarmUI (opcional)</label>
+            <div class="flex min-w-0 gap-2">
+              <input
+                id="swarmAuthToken"
+                v-model="form.swarmAuthToken"
+                :type="swarmAuthTokenVisible ? 'text' : 'password'"
+                autocomplete="off"
+                class="field min-w-0 flex-1"
+                :placeholder="form.swarmAuthConfigured ? 'Token configurado; escribe para cambiarlo' : 'swarm_token'"
+                @input="onSwarmAuthTokenInput"
+              >
+              <button
+                v-if="form.swarmAuthConfigured || form.swarmAuthToken"
+                type="button"
+                class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
+                :disabled="swarmAuthTokenLoading"
+                :aria-label="swarmAuthTokenVisible ? 'Ocultar token SwarmUI' : 'Mostrar token SwarmUI'"
+                :title="swarmAuthTokenVisible ? 'Ocultar token SwarmUI' : 'Mostrar token SwarmUI'"
+                @click="toggleSwarmAuthTokenVisibility"
+              >
+                <svg v-if="swarmAuthTokenVisible" aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 4.2A10.7 10.7 0 0 1 12 4c5.5 0 9 5.5 9 5.5a16.8 16.8 0 0 1-2.1 2.7M6.6 6.6C4.3 8 3 10 3 10s3.5 5.5 9 5.5c1 0 2-.2 2.8-.5" />
+                </svg>
+                <svg v-else aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+              <button
+                v-if="form.swarmAuthConfigured"
+                type="button"
+                class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
+                aria-label="Quitar token SwarmUI"
+                title="Quitar token SwarmUI"
+                @click="clearSwarmAuthToken"
+              >
+                <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" />
+                </svg>
+              </button>
+            </div>
+            <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+              Se guarda separado en SQLite y se envía como cookie <code>swarm_token</code>.
+            </p>
+            <p v-if="swarmAuthTokenError" class="mt-1 text-xs text-red-500" role="alert">
+              {{ swarmAuthTokenError }}
+            </p>
+          </div>
+
+          <p v-if="swarmTestMessage" class="text-xs text-brand-600" role="status">
+            {{ swarmTestMessage }}
+          </p>
+          <p v-if="swarmTestError" class="text-xs text-red-500" role="alert">
+            {{ swarmTestError }}
+          </p>
+
+          <div v-if="swarmCatalog" class="grid min-w-0 gap-3 sm:grid-cols-3">
+            <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
+              <summary class="cursor-pointer text-sm font-semibold">
+                Modelos ({{ swarmCatalog.models.length }})
+              </summary>
+              <ul class="mt-2 max-h-40 overflow-auto text-xs">
+                <li v-for="model in swarmCatalog.models" :key="model" class="break-all py-1">
+                  {{ model }}
+                </li>
+              </ul>
+            </details>
+            <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
+              <summary class="cursor-pointer text-sm font-semibold">
+                LoRAs ({{ swarmCatalog.loras.length }})
+              </summary>
+              <ul class="mt-2 max-h-40 overflow-auto text-xs">
+                <li v-for="lora in swarmCatalog.loras" :key="lora" class="break-all py-1">
+                  {{ lora }}
+                </li>
+              </ul>
+            </details>
+            <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
+              <summary class="cursor-pointer text-sm font-semibold">
+                Presets ({{ swarmCatalog.presets.length }})
+              </summary>
+              <ul class="mt-2 max-h-40 overflow-auto text-xs">
+                <li v-for="preset in swarmCatalog.presets" :key="preset" class="break-all py-1">
+                  {{ preset }}
+                </li>
+              </ul>
+            </details>
+          </div>
+
+          <div v-if="swarmCatalog" class="grid gap-3 md:grid-cols-3">
+            <div>
+              <label class="label" for="swarmTestPreset">Preset de prueba</label>
+              <select id="swarmTestPreset" v-model="swarmTestPreset" class="field">
+                <option value="">Sin preset</option>
+                <option v-for="preset in swarmCatalog.presets" :key="preset" :value="preset">
+                  {{ preset }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="label" for="swarmTestModel">Modelo de prueba</label>
+              <select id="swarmTestModel" v-model="swarmTestModel" class="field">
+                <option value="">Selecciona un modelo</option>
+                <option v-for="model in swarmCatalog.models" :key="model" :value="model">
+                  {{ model }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="label" for="swarmTestLora">LoRA de prueba</label>
+              <select id="swarmTestLora" v-model="swarmTestLora" class="field">
+                <option value="">Sin LoRA</option>
+                <option v-for="lora in swarmCatalog.loras" :key="lora" :value="lora">
+                  {{ lora }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="label" for="swarmTestPrompt">Prompt de prueba</label>
+            <textarea
+              id="swarmTestPrompt"
+              v-model="swarmTestPrompt"
+              class="field min-h-24"
               autocomplete="off"
-              class="field min-w-0 flex-1"
-              :placeholder="form.swarmAuthConfigured ? 'Token configurado; escribe para cambiarlo' : 'swarm_token'"
-              @input="onSwarmAuthTokenInput"
-            >
-            <button
-              v-if="form.swarmAuthConfigured || form.swarmAuthToken"
-              type="button"
-              class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
-              :disabled="swarmAuthTokenLoading"
-              :aria-label="swarmAuthTokenVisible ? 'Ocultar token SwarmUI' : 'Mostrar token SwarmUI'"
-              :title="swarmAuthTokenVisible ? 'Ocultar token SwarmUI' : 'Mostrar token SwarmUI'"
-              @click="toggleSwarmAuthTokenVisibility"
-            >
-              <svg v-if="swarmAuthTokenVisible" aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 4.2A10.7 10.7 0 0 1 12 4c5.5 0 9 5.5 9 5.5a16.8 16.8 0 0 1-2.1 2.7M6.6 6.6C4.3 8 3 10 3 10s3.5 5.5 9 5.5c1 0 2-.2 2.8-.5" />
-              </svg>
-              <svg v-else aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            </button>
-            <button
-              v-if="form.swarmAuthConfigured"
-              type="button"
-              class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
-              aria-label="Quitar token SwarmUI"
-              title="Quitar token SwarmUI"
-              @click="clearSwarmAuthToken"
-            >
-              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" />
-              </svg>
-            </button>
+            />
           </div>
-          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-            Se guarda separado en SQLite y se envía como cookie <code>swarm_token</code>.
-          </p>
-          <p v-if="swarmAuthTokenError" class="mt-1 text-xs text-red-500" role="alert">
-            {{ swarmAuthTokenError }}
-          </p>
-        </div>
-
-        <p v-if="swarmTestMessage" class="text-xs text-brand-600" role="status">
-          {{ swarmTestMessage }}
-        </p>
-        <p v-if="swarmTestError" class="text-xs text-red-500" role="alert">
-          {{ swarmTestError }}
-        </p>
-
-        <div v-if="swarmCatalog" class="grid min-w-0 gap-3 sm:grid-cols-3">
-          <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
-            <summary class="cursor-pointer text-sm font-semibold">
-              Modelos ({{ swarmCatalog.models.length }})
-            </summary>
-            <ul class="mt-2 max-h-40 overflow-auto text-xs">
-              <li v-for="model in swarmCatalog.models" :key="model" class="break-all py-1">
-                {{ model }}
-              </li>
-            </ul>
-          </details>
-          <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
-            <summary class="cursor-pointer text-sm font-semibold">
-              LoRAs ({{ swarmCatalog.loras.length }})
-            </summary>
-            <ul class="mt-2 max-h-40 overflow-auto text-xs">
-              <li v-for="lora in swarmCatalog.loras" :key="lora" class="break-all py-1">
-                {{ lora }}
-              </li>
-            </ul>
-          </details>
-          <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
-            <summary class="cursor-pointer text-sm font-semibold">
-              Presets ({{ swarmCatalog.presets.length }})
-            </summary>
-            <ul class="mt-2 max-h-40 overflow-auto text-xs">
-              <li v-for="preset in swarmCatalog.presets" :key="preset" class="break-all py-1">
-                {{ preset }}
-              </li>
-            </ul>
-          </details>
-        </div>
-
-        <div v-if="swarmCatalog" class="grid gap-3 md:grid-cols-3">
-          <div>
-            <label class="label" for="swarmTestPreset">Preset de prueba</label>
-            <select id="swarmTestPreset" v-model="swarmTestPreset" class="field">
-              <option value="">Sin preset</option>
-              <option v-for="preset in swarmCatalog.presets" :key="preset" :value="preset">
-                {{ preset }}
-              </option>
-            </select>
+          <button
+            type="button"
+            class="btn-primary justify-self-start"
+            :disabled="swarmGenerating || !swarmTestPrompt.trim()"
+            @click="generateSwarmPreview"
+          >
+            {{ swarmGenerating ? 'Generando…' : 'Generar imagen de prueba' }}
+          </button>
+          <div v-if="swarmPreviewUrl" data-testid="swarm-test-preview">
+            <ImageLightbox
+              :src="swarmPreviewUrl"
+              alt="Resultado temporal de SwarmUI"
+              container-class="w-fit"
+              image-class="max-h-96 max-w-full rounded-lg object-contain"
+            />
           </div>
-          <div>
-            <label class="label" for="swarmTestModel">Modelo de prueba</label>
-            <select id="swarmTestModel" v-model="swarmTestModel" class="field">
-              <option value="">Selecciona un modelo</option>
-              <option v-for="model in swarmCatalog.models" :key="model" :value="model">
-                {{ model }}
-              </option>
-            </select>
-          </div>
-          <div>
-            <label class="label" for="swarmTestLora">LoRA de prueba</label>
-            <select id="swarmTestLora" v-model="swarmTestLora" class="field">
-              <option value="">Sin LoRA</option>
-              <option v-for="lora in swarmCatalog.loras" :key="lora" :value="lora">
-                {{ lora }}
-              </option>
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label class="label" for="swarmTestPrompt">Prompt de prueba</label>
-          <textarea
-            id="swarmTestPrompt"
-            v-model="swarmTestPrompt"
-            class="field min-h-24"
-            autocomplete="off"
-          />
-        </div>
-        <button
-          type="button"
-          class="btn-primary justify-self-start"
-          :disabled="swarmGenerating || !swarmTestPrompt.trim()"
-          @click="generateSwarmPreview"
-        >
-          {{ swarmGenerating ? 'Generando…' : 'Generar imagen de prueba' }}
-        </button>
-        <div v-if="swarmPreviewUrl" data-testid="swarm-test-preview">
-          <ImageLightbox
-            :src="swarmPreviewUrl"
-            alt="Resultado temporal de SwarmUI"
-            container-class="w-fit"
-            image-class="max-h-96 max-w-full rounded-lg object-contain"
-          />
-        </div>
+        </template>
       </div>
     </section>
 

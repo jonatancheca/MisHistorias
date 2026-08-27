@@ -26,6 +26,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'La semilla debe ser un entero no negativo' })
   }
 
+  const variationSeed = body.variationSeed
+  const variationSeedStrength = body.variationSeedStrength
+  if ((variationSeed !== undefined && (typeof variationSeed !== 'number' || !Number.isInteger(variationSeed) || variationSeed < 0 || variationSeed > 0xffffffff)) ||
+    (variationSeedStrength !== undefined && (typeof variationSeedStrength !== 'number' || !Number.isFinite(variationSeedStrength) || variationSeedStrength < 0 || variationSeedStrength > 1 ||
+      (variationSeedStrength > 0 && variationSeed === undefined)))) {
+    throw createError({ statusCode: 400, message: 'Variación de semilla no válida' })
+  }
   const settings = getStorage().readSettings()
   const abortController = new AbortController()
   const abort = () => abortController.abort()
@@ -37,7 +44,7 @@ export default defineEventHandler(async (event) => {
   try {
     const image = await generateSwarmImage(
       {
-        baseUrl: String(settings?.value.swarmBaseUrl ?? 'http://localhost:7801'),
+        baseUrl: String(settings?.value.swarmBaseUrl ?? ''),
         authToken: settings?.swarmAuthToken ?? ''
       },
       {
@@ -46,6 +53,8 @@ export default defineEventHandler(async (event) => {
         ...(model.trim() ? { model } : {}),
         ...(lora.trim() ? { lora } : {}),
         ...(seedValue !== undefined ? { seed: seedValue } : {}),
+        ...(typeof variationSeed === 'number' ? { variationSeed } : {}),
+        ...(typeof variationSeedStrength === 'number' ? { variationSeedStrength } : {}),
         signal: abortController.signal
       }
     )

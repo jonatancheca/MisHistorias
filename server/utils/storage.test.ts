@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { DatabaseSync } from 'node:sqlite'
 import { MisHistoriasStorage } from './storage.ts'
+import type { CharacterImage, SwarmPrompt } from '../../shared/types/index.ts'
 
 function withStorage(run: (storage: MisHistoriasStorage, path: string) => void) {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-'))
@@ -150,14 +151,58 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
           ?.visualMode,
         true
       )
-      assert.equal(reopened.health().schemaVersion, 27)
+      assert.equal(reopened.health().schemaVersion, 28)
     } finally {
       reopened.close()
     }
   })
 })
 
-test('migra v1 a v27 copiando personajes y dejando modo visual desactivado', () => {
+test('catálogo SwarmUI conserva orden, aísla ámbitos y limpia solo el indicado', () => {
+  withStorage((storage) => {
+    const prompt = { id: 'p', name: 'Pose', prompt: 'standing', tags: ['Feliz', 'feliz'], createdAt: 1, updatedAt: 1 }
+    for (const scope of ['normal', 'private'] as const) storage.put('swarmPrompts', scope, 'p', prompt)
+    storage.put('swarmPrompts', 'normal', 'second', { ...prompt, id: 'second', createdAt: 2 })
+    storage.put('swarmPrompts', 'normal', 'p', { ...prompt, name: 'Editado', createdAt: 99 })
+    assert.deepEqual(storage.list('swarmPrompts', 'normal').map((item) => item.id), ['p', 'second'])
+    assert.equal((storage.get('swarmPrompts', 'private', 'p') as SwarmPrompt)?.name, 'Pose')
+    assert.deepEqual((storage.get('swarmPrompts', 'normal', 'p') as SwarmPrompt)?.tags, ['Feliz'])
+    storage.delete('swarmPrompts', 'normal', 'second')
+    assert.throws(() => storage.put('swarmPrompts', 'normal', 'bad', { ...prompt, name: ' ' }))
+    storage.clear('normal')
+    assert.equal(storage.list('swarmPrompts', 'normal').length, 0)
+    assert.equal(storage.list('swarmPrompts', 'private').length, 1)
+  })
+})
+
+test('migra v27 y conserva semillas al recortar, copiar, restaurar e importar', () => {
+  withStorage((storage, path) => {
+    storage.put('characters', 'normal', 'c', character('c'))
+    const metadata = { id: 'i', characterId: 'c', tags: ['feliz'], isDefault: true, mimeType: 'image/png', createdAt: 1 }
+    storage.putBinary('images', 'normal', 'i', { metadata, data: new Uint8Array([1]) })
+    storage.close()
+    const legacy = new DatabaseSync(path)
+    legacy.exec('DROP TABLE swarm_prompts; ALTER TABLE images DROP COLUMN generation_json; PRAGMA user_version = 27;')
+    legacy.close()
+    const migrated = new MisHistoriasStorage(path)
+    try {
+      assert.equal((migrated.get('images', 'normal', 'i') as CharacterImage)?.generation, undefined)
+      assert.equal(migrated.list('swarmPrompts', 'normal').length, 0)
+      assert.equal(migrationBackups(path).length, 1)
+      const generation = { seed: 123, variationSeed: 456, variationSeedStrength: 0.5 }
+      migrated.putBinary('images', 'normal', 'i', { metadata: { ...metadata, generation }, data: new Uint8Array([2]) })
+      const copied = migrated.copyCharacter('normal', 'c', character('copy'))!
+      assert.deepEqual((copied.images[0] as CharacterImage)?.generation, generation)
+      migrated.restoreImage('normal', 'i')
+      assert.deepEqual((migrated.get('images', 'normal', 'i') as CharacterImage)?.generation, generation)
+      const imported = migrated.importCharacter('normal', null, { ...character('import'),
+        images: [{ metadata: { ...metadata, generation }, data: new Uint8Array([3]) }], sounds: [] })!
+      assert.deepEqual((imported.images[0] as CharacterImage)?.generation, generation)
+    } finally { migrated.close() }
+  })
+})
+
+test('migra v1 a v28 copiando personajes y dejando modo visual desactivado', () => {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
   const path = join(directory, 'test.sqlite')
   const legacy = new DatabaseSync(path)
@@ -227,7 +272,7 @@ test('migra v1 a v27 copiando personajes y dejando modo visual desactivado', () 
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 27)
+    assert.equal(storage.health().schemaVersion, 28)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.archived, false)
     assert.equal(
       (storage.get('stories', 'normal', 'story-1') as { visualMode?: boolean } | null)
@@ -280,7 +325,7 @@ test('migra v5 añadiendo preset de personaje y secreto Swarm con backup previo'
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 27)
+    assert.equal(storage.health().schemaVersion, 28)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationPreset, '')
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationLora, '')
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationSeed, '')
@@ -332,7 +377,7 @@ test('migra v6 añadiendo indicaciones de imagen pendientes', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 27)
+    assert.equal(storage.health().schemaVersion, 28)
     assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.pendingImageInstructions, [])
     assert.equal(migrationBackups(path).length, 1)
   } finally {
@@ -401,7 +446,7 @@ test('migra v22 eliminando descripciones de imágenes en ambos ámbitos', () => 
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 27)
+    assert.equal(storage.health().schemaVersion, 28)
     const columns = storage.database.prepare('PRAGMA table_info(images)').all() as Array<{
       name: string
     }>
@@ -475,7 +520,7 @@ test('migra v23 copiando colores de personajes en historias y partidas', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 27)
+    assert.equal(storage.health().schemaVersion, 28)
     assert.equal(
       storage.get('stories', 'normal', normalStory.id)?.characterCustomizations[0]?.color,
       '#123456'
@@ -513,7 +558,7 @@ test('migra v24 añadiendo semilla y prefijo de imagen en ambos ámbitos', () =>
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 27)
+    assert.equal(storage.health().schemaVersion, 28)
     for (const scope of ['normal', 'private'] as const) {
       const stored = storage.get('characters', scope, `${scope}-character`)
       assert.equal(stored?.imageGenerationSeed, '')
@@ -543,7 +588,7 @@ test('migra v25 añadiendo resumen de contexto a las historias', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 27)
+    assert.equal(storage.health().schemaVersion, 28)
     const stored = storage.get('stories', 'normal', 'story-normal')
     assert.equal(stored?.contextSummary, '')
     assert.equal(stored?.contextSummaryThroughMessageId, undefined)
@@ -578,7 +623,7 @@ test('migra v19 y separa los ajustes privados de LMStudio', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 27)
+    assert.equal(storage.health().schemaVersion, 28)
     assert.equal(storage.readSettings()?.privateApiKey, '')
 
     storage.writeSettings({
@@ -689,7 +734,7 @@ test('migra imágenes v3 a BLOBs referenciados sin perder contenido', () => {
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 27)
+    assert.equal(storage.health().schemaVersion, 28)
     assert.deepEqual(Array.from(storage.getBinary('images', 'normal', 'image-1')!.data), [7, 8, 9])
     const row = storage.database
       .prepare('SELECT blob_id FROM images WHERE scope = ? AND id = ?')
@@ -720,7 +765,7 @@ test('conserva backup y revierte la base original si falla la migración', () =>
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /Falló la migración SQLite v3 a v27\. Backup:/
+      /Falló la migración SQLite v3 a v28\. Backup:/
     )
 
     const backups = migrationBackups(path)
@@ -761,7 +806,7 @@ test('no inicia la migración si no puede crear el backup', () => {
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /No se pudo crear el backup previo de SQLite\. Migración v3 a v27 no iniciada\./
+      /No se pudo crear el backup previo de SQLite\. Migración v3 a v28 no iniciada\./
     )
     const source = new DatabaseSync(path, { readOnly: true })
     try {
@@ -838,7 +883,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     const backup = storage.createManualBackup()
     assert.equal(backup.kind, 'manual')
     assert.equal(backup.valid, true)
-    assert.equal(backup.schemaVersion, 27)
+    assert.equal(backup.schemaVersion, 28)
     assert.equal(storage.listBackups().some((item) => item.name === backup.name), true)
 
     storage.put('characters', 'normal', 'normal-1', {

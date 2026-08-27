@@ -36,6 +36,7 @@ export const usePrivacyStore = defineStore('privacy', () => {
       backgrounds.resetForScope()
       sounds.resetForScope()
       presets.resetForScope()
+      useSwarmPromptsStore().resetForScope()
 
       await Promise.all([
         stories.load(),

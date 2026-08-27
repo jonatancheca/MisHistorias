@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { StoredImage } from '~/lib/db'
+import { activeDataScope, type StoredImage } from '~/lib/db'
+import { createSwarmBatch, runSwarmBatch } from '~/lib/swarmBatch'
 import { primaryTag, tagKey } from '~/lib/tags'
 import { generateCharacterImagePrompt } from '~/lib/characterImagePrompt'
 import { fetchSwarmCatalog, fetchSwarmImage, type SwarmCatalog } from '~/lib/swarm'
@@ -14,6 +15,7 @@ const imageGenerationPromptPrefix = defineModel<string>('imageGenerationPromptPr
 
 const characters = useCharactersStore()
 const settings = useSettingsStore()
+const swarmPrompts = useSwarmPromptsStore()
 const confirmDialog = useConfirmStore()
 await settings.load()
 const pendingTags = ref<string[]>([])
@@ -31,6 +33,16 @@ const catalogLoading = ref(false)
 const generationTags = ref<string[]>([])
 const generationNotes = ref('')
 const generationPrompt = ref('')
+const generationCount = ref('1')
+const generationCompleted = ref(0)
+const generationTotal = ref(0)
+let generationController: AbortController | null = null
+const swarmConfigured = computed(() => Boolean(settings.settings.swarmBaseUrl.trim()))
+function cancelGeneration() { generationController?.abort() }
+onBeforeUnmount(cancelGeneration)
+onBeforeRouteLeave(() => { cancelGeneration() })
+watch(activeDataScope, cancelGeneration, { flush: 'sync' })
+watch(swarmConfigured, (configured) => { if (!configured) { cancelGeneration(); generationOpen.value = false } })
 const generationModel = ref('')
 const promptBusy = ref(false)
 const generationBusy = ref(false)
@@ -76,7 +88,15 @@ async function loadSwarmCatalog() {
 
 async function toggleGeneration() {
   generationOpen.value = !generationOpen.value
-  if (generationOpen.value && !swarmCatalog.value) await loadSwarmCatalog()
+  if (!generationOpen.value) return
+  try {
+    await Promise.all([
+      swarmPrompts.load(true),
+      !swarmCatalog.value ? loadSwarmCatalog() : Promise.resolve()
+    ])
+  } catch (caught) {
+    generationError.value = (caught as Error).message || 'No se pudieron cargar los prompts SwarmUI.'
+  }
 }
 
 async function createGenerationPrompt() {
@@ -106,34 +126,58 @@ async function createGenerationPrompt() {
   }
 }
 
-async function generateImage() {
-  if (!generationPrompt.value.trim() || generationBusy.value) return
+async function generateImage(asSet = false) {
+  if (!generationPrompt.value.trim() || generationBusy.value || !swarmConfigured.value) return
   generationBusy.value = true
   generationError.value = null
   generationNotice.value = null
+  generationCompleted.value = 0
+  generationTotal.value = 0
+  const scope = activeDataScope.value
+  const characterId = props.characterId
+  const controller = new AbortController()
+  generationController = controller
   try {
-    if (!swarmCatalog.value && !await loadSwarmCatalog()) return
-    const preset = imageGenerationPreset.value.trim()
-    const model = generationModel.value.trim()
-    const lora = imageGenerationLora.value.trim()
-    const seed = imageGenerationSeed.value.trim()
-    const prompt = [imageGenerationPromptPrefix.value.trim(), generationPrompt.value.trim()]
-      .filter(Boolean)
-      .join('\n')
-    if (!preset && !model) throw new Error('Selecciona un preset o un modelo de SwarmUI.')
-    const blob = await fetchSwarmImage({
-      prompt,
-      ...(preset ? { preset } : {}),
-      ...(model ? { model } : {}),
-      ...(lora ? { lora } : {}),
-      ...(seed ? { seed } : {})
+    if (asSet) await swarmPrompts.load(true)
+    const batch = createSwarmBatch({
+      count: Number(generationCount.value), seed: imageGenerationSeed.value,
+      prefix: imageGenerationPromptPrefix.value, prompt: generationPrompt.value,
+      tags: generationTags.value, ...(asSet ? { prompts: swarmPrompts.prompts } : {})
     })
-    await characters.addImage(props.characterId, blob, [])
-    generationNotice.value = 'Imagen generada y guardada en la galería.'
+    generationTotal.value = batch.total
+    const preset = imageGenerationPreset.value.trim()
+    const lora = imageGenerationLora.value.trim()
+    if (asSet && !await confirmDialog.ask({
+      title: 'Crear conjunto de imágenes', confirmLabel: 'Crear conjunto',
+      message: `${generationCount.value} imágenes × ${swarmPrompts.prompts.length} prompts = ${batch.total} imágenes. ¿Crear el conjunto?`
+    })) return
+    controller.signal.throwIfAborted()
+    if (!swarmCatalog.value && !await loadSwarmCatalog()) {
+      throw new Error(generationError.value || 'No se pudo cargar el catálogo SwarmUI.')
+    }
+    const model = generationModel.value.trim()
+    if (!preset && !model) throw new Error('Selecciona un preset o un modelo de SwarmUI.')
+    await runSwarmBatch({
+      jobs: batch.jobs, signal: controller.signal,
+      generate: (job) => fetchSwarmImage({
+        prompt: job.prompt, ...(preset ? { preset } : {}), ...(model ? { model } : {}),
+        ...(lora ? { lora } : {}), seed: String(job.generation.seed),
+        variationSeed: job.generation.variationSeed,
+        variationSeedStrength: job.generation.variationSeedStrength ?? 0,
+        signal: controller.signal
+      }),
+      save: (blob, job) => characters.addImage(characterId, blob, job.tags, undefined, { scope, generation: job.generation, signal: controller.signal }),
+      progress: (completed) => { generationCompleted.value = completed }
+    })
+    generationNotice.value = batch.total === 1 ? 'Imagen generada y guardada en la galería.' :
+      `${batch.total} imágenes generadas y guardadas en la galería.`
   } catch (caught) {
-    generationError.value = (caught as Error).message || 'No se pudo generar la imagen.'
+    const summary = `${generationCompleted.value} guardadas; ${generationTotal.value - generationCompleted.value} pendientes.`
+    if (controller.signal.aborted) generationNotice.value = `Generación cancelada. ${summary}`
+    else generationError.value = `${(caught as Error).message || 'No se pudo generar la imagen.'} ${summary}`
   } finally {
     generationBusy.value = false
+    generationController = null
   }
 }
 
@@ -319,6 +363,7 @@ async function remove(id: string) {
     </p>
 
     <button
+      v-if="swarmConfigured"
       type="button"
       class="btn-primary mb-4"
       data-testid="character-swarm-toggle"
@@ -329,149 +374,170 @@ async function remove(id: string) {
     </button>
 
     <div
-      v-if="generationOpen"
+      v-if="swarmConfigured && generationOpen"
       class="card mb-4 grid min-w-0 gap-3"
       data-testid="character-swarm-generator"
     >
-      <div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
+      <fieldset :disabled="generationBusy" class="grid min-w-0 gap-3">
+        <div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
+          <div>
+            <h3 class="font-semibold">Generar imagen con SwarmUI</h3>
+            <p class="text-xs text-[var(--color-fg-muted)]">
+              Crea o edita el prompt y genera imágenes, solas o con todos los prompts predefinidos.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn-ghost shrink-0"
+            :disabled="catalogLoading"
+            @click="loadSwarmCatalog"
+          >
+            {{ catalogLoading ? 'Cargando…' : swarmCatalog ? 'Recargar catálogo SwarmUI' : 'Cargar catálogo SwarmUI' }}
+          </button>
+        </div>
+
+        <div class="grid min-w-0 gap-3 md:grid-cols-3">
+          <div>
+            <label class="label" for="character-swarm-preset">Preset SwarmUI</label>
+            <select
+              id="character-swarm-preset"
+              v-model="imageGenerationPreset"
+              class="field min-w-0"
+            >
+              <option value="">Sin preset</option>
+              <option
+                v-if="imageGenerationPreset && !swarmCatalog?.presets.includes(imageGenerationPreset)"
+                :value="imageGenerationPreset"
+              >
+                {{ imageGenerationPreset }} (no disponible)
+              </option>
+              <option v-for="preset in swarmCatalog?.presets ?? []" :key="preset" :value="preset">
+                {{ preset }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="label" for="character-swarm-model">Modelo SwarmUI</label>
+            <select id="character-swarm-model" v-model="generationModel" class="field min-w-0">
+              <option value="">Selecciona un modelo</option>
+              <option v-for="model in swarmCatalog?.models ?? []" :key="model" :value="model">
+                {{ model }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="label" for="character-swarm-lora">LoRA SwarmUI</label>
+            <select id="character-swarm-lora" v-model="imageGenerationLora" class="field min-w-0">
+              <option value="">Sin LoRA</option>
+              <option
+                v-if="imageGenerationLora && !swarmCatalog?.loras.includes(imageGenerationLora)"
+                :value="imageGenerationLora"
+              >
+                {{ imageGenerationLora }} (no disponible)
+              </option>
+              <option v-for="lora in swarmCatalog?.loras ?? []" :key="lora" :value="lora">
+                {{ lora }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid min-w-0 gap-3 md:grid-cols-2">
+          <div>
+            <label class="label" for="character-swarm-seed">Semilla SwarmUI</label>
+            <input
+              id="character-swarm-seed"
+              v-model="imageGenerationSeed"
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              autocomplete="off"
+              class="field min-w-0"
+              placeholder="Aleatoria"
+            >
+            <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+              Vacía usa una semilla aleatoria. Se recuerda para este personaje.
+            </p>
+          </div>
+          <div>
+            <label class="label" for="character-swarm-prompt-prefix">Prefijo del prompt</label>
+            <textarea
+              id="character-swarm-prompt-prefix"
+              v-model="imageGenerationPromptPrefix"
+              autocomplete="off"
+              class="field min-h-20"
+              placeholder="masterpiece, detailed character portrait"
+            />
+            <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+              Se antepone a prompts creados con IA o escritos manualmente.
+            </p>
+          </div>
+        </div>
+
         <div>
-          <h3 class="font-semibold">Generar imagen con SwarmUI</h3>
-          <p class="text-xs text-[var(--color-fg-muted)]">
-            Flujo manual: crea o edita el prompt y después genera una imagen.
-          </p>
+          <label class="label" for="generation-tags">Etiquetas para el prompt</label>
+          <TagInput
+            id="generation-tags"
+            v-model="generationTags"
+            :suggestions="imageTagSuggestions"
+            show-all-suggestions
+            placeholder="plano entero, enfadada"
+          />
+        </div>
+        <div>
+          <label class="label" for="generation-notes">Notas para el prompt</label>
+          <textarea
+            id="generation-notes"
+            v-model="generationNotes"
+            autocomplete="off"
+            class="field min-h-20"
+            placeholder="Postura, ropa, emoción o detalles de esta imagen."
+          />
         </div>
         <button
           type="button"
-          class="btn-ghost shrink-0"
-          :disabled="catalogLoading"
-          @click="loadSwarmCatalog"
+          class="btn-ghost justify-self-start"
+          :disabled="promptBusy"
+          @click="createGenerationPrompt"
         >
-          {{ catalogLoading ? 'Cargando…' : swarmCatalog ? 'Recargar catálogo SwarmUI' : 'Cargar catálogo SwarmUI' }}
+          {{ promptBusy ? 'Creando…' : 'Crear prompt con IA' }}
         </button>
-      </div>
-
-      <div class="grid min-w-0 gap-3 md:grid-cols-3">
         <div>
-          <label class="label" for="character-swarm-preset">Preset SwarmUI</label>
-          <select
-            id="character-swarm-preset"
-            v-model="imageGenerationPreset"
-            class="field min-w-0"
-          >
-            <option value="">Sin preset</option>
-            <option
-              v-if="imageGenerationPreset && !swarmCatalog?.presets.includes(imageGenerationPreset)"
-              :value="imageGenerationPreset"
-            >
-              {{ imageGenerationPreset }} (no disponible)
-            </option>
-            <option v-for="preset in swarmCatalog?.presets ?? []" :key="preset" :value="preset">
-              {{ preset }}
-            </option>
-          </select>
-        </div>
-        <div>
-          <label class="label" for="character-swarm-model">Modelo SwarmUI</label>
-          <select id="character-swarm-model" v-model="generationModel" class="field min-w-0">
-            <option value="">Selecciona un modelo</option>
-            <option v-for="model in swarmCatalog?.models ?? []" :key="model" :value="model">
-              {{ model }}
-            </option>
-          </select>
-        </div>
-        <div>
-          <label class="label" for="character-swarm-lora">LoRA SwarmUI</label>
-          <select id="character-swarm-lora" v-model="imageGenerationLora" class="field min-w-0">
-            <option value="">Sin LoRA</option>
-            <option
-              v-if="imageGenerationLora && !swarmCatalog?.loras.includes(imageGenerationLora)"
-              :value="imageGenerationLora"
-            >
-              {{ imageGenerationLora }} (no disponible)
-            </option>
-            <option v-for="lora in swarmCatalog?.loras ?? []" :key="lora" :value="lora">
-              {{ lora }}
-            </option>
-          </select>
-        </div>
-      </div>
-
-      <div class="grid min-w-0 gap-3 md:grid-cols-2">
-        <div>
-          <label class="label" for="character-swarm-seed">Semilla SwarmUI</label>
-          <input
-            id="character-swarm-seed"
-            v-model="imageGenerationSeed"
-            type="text"
-            inputmode="numeric"
-            pattern="[0-9]*"
-            autocomplete="off"
-            class="field min-w-0"
-            placeholder="Aleatoria"
-          >
-          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-            Vacía usa una semilla aleatoria. Se recuerda para este personaje.
-          </p>
-        </div>
-        <div>
-          <label class="label" for="character-swarm-prompt-prefix">Prefijo del prompt</label>
+          <label class="label" for="generation-prompt">Prompt de imagen (inglés y editable)</label>
           <textarea
-            id="character-swarm-prompt-prefix"
-            v-model="imageGenerationPromptPrefix"
+            id="generation-prompt"
+            v-model="generationPrompt"
             autocomplete="off"
-            class="field min-h-20"
-            placeholder="masterpiece, detailed character portrait"
+            class="field min-h-28"
+            placeholder="Describe pose, clothing and emotion…"
           />
-          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-            Se antepone a prompts creados con IA o escritos manualmente.
-          </p>
         </div>
+        <div>
+          <label class="label" for="generation-count">Número de imágenes</label>
+          <input id="generation-count" v-model="generationCount" class="field" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+        </div>
+        <button
+          type="button"
+          class="btn-primary justify-self-start"
+          :disabled="generationBusy || !generationPrompt.trim()"
+          @click="generateImage(false)"
+        >
+          {{ generationBusy ? 'Generando…' : 'Generar imagen' }}
+        </button>
+        <button
+          type="button" class="btn-primary justify-self-start"
+          :disabled="generationBusy || !generationPrompt.trim() || !swarmPrompts.prompts.length"
+          @click="generateImage(true)">Crear conjunto de imágenes</button>
+        <p v-if="!swarmPrompts.prompts.length" class="text-sm text-[var(--color-fg-muted)]">
+          Crea al menos un <NuxtLink to="/swarm-prompts" class="underline">prompt SwarmUI</NuxtLink> para generar un conjunto.
+        </p>
+        <p v-else-if="!generationPrompt.trim()" class="text-sm text-[var(--color-fg-muted)]">Indica el prompt base para crear el conjunto.</p>
+        <NuxtLink v-else to="/swarm-prompts" class="text-sm underline">Gestionar prompts SwarmUI</NuxtLink>
+      </fieldset>
+      <div v-if="generationBusy" class="flex flex-wrap items-center gap-3">
+        <p role="status">Generando: {{ generationCompleted }} de {{ generationTotal }} guardadas.</p>
+        <button type="button" class="btn-ghost" @click="cancelGeneration">Cancelar generación</button>
       </div>
-
-      <div>
-        <label class="label" for="generation-tags">Etiquetas para el prompt</label>
-        <TagInput
-          id="generation-tags"
-          v-model="generationTags"
-          placeholder="plano entero, enfadada"
-        />
-      </div>
-      <div>
-        <label class="label" for="generation-notes">Notas para el prompt</label>
-        <textarea
-          id="generation-notes"
-          v-model="generationNotes"
-          autocomplete="off"
-          class="field min-h-20"
-          placeholder="Postura, ropa, emoción o detalles de esta imagen."
-        />
-      </div>
-      <button
-        type="button"
-        class="btn-ghost justify-self-start"
-        :disabled="promptBusy"
-        @click="createGenerationPrompt"
-      >
-        {{ promptBusy ? 'Creando…' : 'Crear prompt con IA' }}
-      </button>
-      <div>
-        <label class="label" for="generation-prompt">Prompt de imagen (inglés y editable)</label>
-        <textarea
-          id="generation-prompt"
-          v-model="generationPrompt"
-          autocomplete="off"
-          class="field min-h-28"
-          placeholder="Describe pose, clothing and emotion…"
-        />
-      </div>
-      <button
-        type="button"
-        class="btn-primary justify-self-start"
-        :disabled="generationBusy || !generationPrompt.trim()"
-        @click="generateImage"
-      >
-        {{ generationBusy ? 'Generando…' : 'Generar imagen' }}
-      </button>
       <p v-if="generationError" class="text-sm text-red-500" role="alert">
         {{ generationError }}
       </p>
