@@ -59,7 +59,7 @@ const galleryItems = computed(() => {
   return images.value.map((image) => ({
     id: image.id,
     src: characters.urlFor(image.id)!,
-    alt: `${characterName} ${primaryTag(image) ?? ''}`.trim(),
+    alt: characterName,
     downloadName: downloadName(image),
     tags: [...image.tags]
   }))
@@ -358,7 +358,7 @@ async function remove(id: string) {
   <section>
     <h2 class="mb-1 text-lg font-semibold">Imágenes</h2>
     <p class="mb-4 text-sm text-[var(--color-fg-muted)]">
-      Etiquetas indican al modelo qué imagen usar. Pulsa badges o escribe una etiqueta nueva.
+      Pulsa una imagen para ampliarla y editar sus etiquetas.
       Imágenes se limitan a 1920px y se guardan en WebP.
     </p>
 
@@ -574,11 +574,11 @@ async function remove(id: string) {
       Sin imágenes todavía.
     </p>
 
-    <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <ul class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <li
         v-for="image in images"
         :key="image.id"
-        class="card flex min-w-0 flex-col gap-3 sm:flex-row"
+        class="card flex min-w-0 flex-col gap-4"
         :class="{
           'border-amber-400 bg-amber-50/70 ring-2 ring-amber-300/60 dark:bg-amber-950/20':
             visibleImageTags(image.tags).length === 0 && !image.isDefault
@@ -588,10 +588,10 @@ async function remove(id: string) {
         <ImageLightbox
           :src="characters.urlFor(image.id)!"
           alt=""
-          container-class="w-full shrink-0 sm:h-24 sm:w-24"
-          image-class="max-h-56 w-full rounded-lg object-contain sm:h-24 sm:w-24"
-        :download-name="downloadName(image)"
-        :gallery-items="galleryItems"
+          container-class="w-full shrink-0"
+          image-class="h-56 w-full rounded-lg bg-black/5 object-contain sm:h-72"
+          :download-name="downloadName(image)"
+          :gallery-items="galleryItems"
         >
           <template #details="{ item }">
             <div v-if="item.id" class="grid gap-3">
@@ -621,14 +621,6 @@ async function remove(id: string) {
           >
             Sin etiqueta
           </span>
-          <TagInput
-            :model-value="visibleImageTags(image.tags)"
-            :suggestions="imageTagSuggestions"
-            show-all-suggestions
-            aria-label="Nueva etiqueta de imagen"
-            placeholder="Nueva etiqueta"
-            @update:model-value="updateImage(image.id, { tags: $event })"
-          />
           <div class="flex flex-wrap items-center justify-between gap-2">
             <label class="flex items-center gap-2 text-xs text-[var(--color-fg-muted)]">
               <input
