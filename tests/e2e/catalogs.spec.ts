@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import JSZip from 'jszip'
 import type { Background, Character, CharacterImage, Sound } from '../../shared/types'
-import { expect, PNG_BYTES, test } from './fixtures'
+import { createPng, expect, PNG_BYTES, test } from './fixtures'
 
 async function characterZip(name: string, prompt = 'Prompt desde ZIP') {
   const zip = new JSZip()
@@ -106,6 +106,69 @@ test.describe('personajes', () => {
     await expect.poll(async () => (
       await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
     ).length).toBe(3)
+  })
+
+  test('recorta imágenes guardadas y restaura siempre la primera original', async ({ page, data }) => {
+    const character = await data.createCharacter()
+    await page.goto(`/characters/${character.id}`)
+    await page.locator('input[type="file"][accept="image/*"]').setInputFiles({
+      name: 'original.png', mimeType: 'image/png', buffer: createPng(128, 96)
+    })
+    await page.getByRole('dialog', { name: 'Añadir imagen' }).getByRole('button', { name: 'Añadir', exact: true }).click()
+    const card = page.getByTestId('character-image-card')
+    await expect(card).toHaveCount(1)
+    const image = (await data.list<CharacterImage>('images', 'normal', { characterId: character.id }))[0]!
+    const contentUrl = `/api/data/images/${image.id}/content?scope=normal`
+    const original = await (await page.request.get(contentUrl)).body()
+    const originalUrl = `/api/data/images/${image.id}/original?scope=normal`
+    const preview = card.locator('img').first()
+    await expect(preview).toHaveJSProperty('naturalWidth', 128)
+
+    await card.getByRole('button', { name: 'Recortar', exact: true }).click()
+    await page.getByRole('dialog', { name: 'Recortar imagen' }).getByRole('button', { name: 'Cancelar' }).click()
+    expect(await (await page.request.get(contentUrl)).body()).toEqual(original)
+    expect((await data.get<CharacterImage>('images', image.id)).hasOriginal).toBe(false)
+
+    let previousWidth = 128
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 760 })
+      await card.getByRole('button', { name: 'Recortar', exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: 'Recortar imagen' })
+      const save = dialog.getByRole('button', { name: 'Guardar recorte' })
+      await expect(save).toBeEnabled()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      await save.click()
+      await expect(dialog).toHaveCount(0)
+      await expect.poll(() => preview.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+        .toBeLessThan(previousWidth)
+      const croppedWidth = await preview.evaluate((image) => (image as HTMLImageElement).naturalWidth)
+      expect(croppedWidth).toBeGreaterThan(0)
+      previousWidth = croppedWidth
+      expect(await (await page.request.get(contentUrl)).body()).not.toEqual(original)
+      expect(await (await page.request.get(originalUrl)).body()).toEqual(original)
+      expect((await data.get<CharacterImage>('images', image.id)).hasOriginal).toBe(true)
+      await page.reload()
+      await expect(card.getByRole('button', { name: 'Restaurar original' })).toBeVisible()
+      await expect(preview).toHaveJSProperty('naturalWidth', croppedWidth)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    }
+    await card.getByRole('button', { name: 'Restaurar original' }).click()
+    await expect(preview).toHaveJSProperty('naturalWidth', 128)
+    expect(await (await page.request.get(contentUrl)).body()).toEqual(original)
+    await page.reload()
+    await expect(preview).toHaveJSProperty('naturalWidth', 128)
+    expect(await data.list<CharacterImage>('images', 'normal', { characterId: character.id })).toHaveLength(1)
+
+    await page.locator('input[type="file"][accept="image/*"]').setInputFiles({
+      name: 'recorte-inicial.png', mimeType: 'image/png', buffer: createPng(128, 96)
+    })
+    await page.getByRole('dialog', { name: 'Añadir imagen' }).getByRole('button', { name: 'Recortar', exact: true }).click()
+    await page.getByRole('dialog', { name: 'Recortar imagen' }).getByRole('button', { name: 'Guardar recorte' }).click()
+    await expect(card).toHaveCount(2)
+    const added = (await data.list<CharacterImage>('images', 'normal', { characterId: character.id }))
+      .find((item) => item.id !== image.id)!
+    expect(added.hasOriginal).toBe(true)
+    expect(await (await page.request.get(`/api/data/images/${added.id}/original?scope=normal`)).body()).toEqual(original)
   })
 
   test('mantiene visibles las acciones a 320 y 390 px sin overflow', async ({ page, data }) => {
@@ -304,7 +367,15 @@ test.describe('personajes', () => {
       imageGenerationSeed: '12345',
       imageGenerationPromptPrefix: 'masterpiece'
     })
-    await data.createImage(source, ['feliz'])
+    const image = await data.createImage(source, ['feliz'])
+    const croppedBytes = createPng(1, 1)
+    const cropResponse = await page.request.put(`/api/data/images/${image.id}?scope=normal`, {
+      multipart: {
+        metadata: JSON.stringify(image),
+        file: { name: 'crop.png', mimeType: 'image/png', buffer: croppedBytes }
+      }
+    })
+    await expect(cropResponse).toBeOK()
     await data.createSound(source, ['saludo-exportado'])
     await page.goto('/characters')
 
@@ -325,7 +396,7 @@ test.describe('personajes', () => {
         imageGenerationSeed: string
         imageGenerationPromptPrefix: string
       }
-      images: Array<{ path: string; tags: string[] }>
+      images: Array<{ path: string; tags: string[]; original: { path: string } }>
       sounds: Array<{ path: string; tags: string[] }>
     }
     expect(manifest.character).toMatchObject({
@@ -339,6 +410,7 @@ test.describe('personajes', () => {
     expect(manifest.images[0]).toMatchObject({ tags: ['feliz'] })
     expect(manifest.sounds[0]).toMatchObject({ tags: ['saludo-exportado'] })
     expect(zip.file(manifest.images[0]!.path)).not.toBeNull()
+    expect(await zip.file(manifest.images[0]!.original.path)!.async('nodebuffer')).toEqual(PNG_BYTES)
     expect(zip.file(manifest.sounds[0]!.path)).not.toBeNull()
 
     const importedName = data.unique('Importada')
@@ -350,9 +422,42 @@ test.describe('personajes', () => {
 
     const imported = (await data.list<Character>('characters')).find((item) => item.name === importedName)
     expect(imported).toBeDefined()
-    expect(await data.list<CharacterImage>('images', 'normal', { characterId: imported!.id })).toHaveLength(1)
+    const importedImages = await data.list<CharacterImage>('images', 'normal', { characterId: imported!.id })
+    expect(importedImages).toHaveLength(1)
+    const importedImage = importedImages[0]!
+    expect(importedImage.hasOriginal).toBe(true)
+    expect(await (await page.request.get(`/api/data/images/${importedImage.id}/content?scope=normal`)).body()).toEqual(croppedBytes)
+    expect(await (await page.request.get(`/api/data/images/${importedImage.id}/original?scope=normal`)).body()).toEqual(PNG_BYTES)
     expect((await data.list<Sound>('sounds')).filter((item) => item.characterId === imported!.id))
       .toHaveLength(1)
+
+    await page.goto('/settings')
+    const jsonDownloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Exportar JSON' }).click()
+    const jsonPath = await (await jsonDownloadPromise).path()
+    const bundle = JSON.parse(await readFile(jsonPath!, 'utf8')) as {
+      version: number
+      characters: Array<{ id: string; name: string; images: Array<{ dataUrl: string; originalDataUrl: string }> }>
+      stories: unknown[]; backgrounds: unknown[]; presets: unknown[]
+    }
+    expect(bundle.version).toBe(18)
+    const exportedCharacter = bundle.characters.find((item) => item.id === source.id)!
+    expect(Buffer.from(exportedCharacter.images[0]!.dataUrl.split(',')[1]!, 'base64')).toEqual(croppedBytes)
+    expect(Buffer.from(exportedCharacter.images[0]!.originalDataUrl.split(',')[1]!, 'base64')).toEqual(PNG_BYTES)
+    const jsonName = data.unique('Original-JSON')
+    bundle.characters = [{ ...exportedCharacter, name: jsonName }]
+    bundle.stories = []
+    bundle.backgrounds = []
+    bundle.presets = []
+    await page.locator('input[type="file"][accept="application/json"]').setInputFiles({
+      name: 'original.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bundle))
+    })
+    await expect(page.getByText('Importación completada', { exact: true })).toBeVisible()
+    const jsonCharacter = (await data.list<Character>('characters')).find((item) => item.name === jsonName)!
+    const jsonImage = (await data.list<CharacterImage>('images', 'normal', { characterId: jsonCharacter.id }))[0]!
+    expect(await (await page.request.get(`/api/data/images/${jsonImage.id}/original?scope=normal`)).body()).toEqual(PNG_BYTES)
+    expect(await (await page.request.post(`/api/data/images/${jsonImage.id}/original?scope=normal`)).ok()).toBe(true)
+    expect(await (await page.request.get(`/api/data/images/${jsonImage.id}/content?scope=normal`)).body()).toEqual(PNG_BYTES)
   })
 
   test('resuelve homónimos al cancelar, crear o reemplazar', async ({ page, data }) => {

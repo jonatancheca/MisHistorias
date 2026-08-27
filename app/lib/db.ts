@@ -15,6 +15,7 @@ import type {
 
 export interface StoredImage extends CharacterImage {
   blob: Blob
+  originalBlob?: Blob
 }
 
 export interface StoredBackground extends Background {
@@ -80,15 +81,16 @@ async function fetchBlob(resource: 'images' | 'backgrounds' | 'sounds', id: stri
   return response.blob()
 }
 
-async function putBinary<T extends { id: string; blob: Blob }>(
+async function putBinary<T extends { id: string; blob: Blob; originalBlob?: Blob }>(
   resource: 'images' | 'backgrounds' | 'sounds',
   value: T
 ) {
-  const { blob, ...metadata } = unwrap(value)
+  const { blob, originalBlob, ...metadata } = unwrap(value)
   const form = new FormData()
   form.append('metadata', JSON.stringify(metadata))
   form.append('file', blob, `${value.id}.bin`)
-  return $fetch<Omit<T, 'blob'>>(dataUrl(`${resource}/${encodeURIComponent(value.id)}`), {
+  if (resource === 'images' && originalBlob) form.append('original', originalBlob, 'original.bin')
+  return $fetch<Omit<T, 'blob' | 'originalBlob'>>(dataUrl(`${resource}/${encodeURIComponent(value.id)}`), {
     method: 'PUT',
     body: form
   })
@@ -129,13 +131,14 @@ export async function importCharacterArchive(input: {
   targetId?: string
   name: string
   character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix'>
-  images: Array<Pick<StoredImage, 'tags' | 'isDefault' | 'mimeType' | 'blob'>>
+  images: Array<Pick<StoredImage, 'tags' | 'isDefault' | 'mimeType' | 'blob' | 'originalBlob'>>
   sounds: Array<Pick<StoredSound, 'tags' | 'mimeType' | 'blob'>>
 }) {
   const form = new FormData()
   const images = input.images.map((image, index) => {
     const field = `image-${index}`
     form.append(field, image.blob, field)
+    if (image.originalBlob) form.append(`${field}-original`, image.originalBlob, 'original.bin')
     return {
       field,
       tags: image.tags,
@@ -179,8 +182,21 @@ export async function listAllImages() {
 }
 
 export async function putImage(image: StoredImage) {
-  await putBinary('images', image)
-  return image
+  const metadata = await putBinary('images', image)
+  return { ...metadata, blob: image.blob }
+}
+
+export async function getOriginalImageBlob(id: string) {
+  const response = await fetch(dataUrl(`images/${encodeURIComponent(id)}/original`))
+  if (!response.ok) throw new Error('No se pudo cargar la imagen original')
+  return response.blob()
+}
+
+export async function restoreImage(id: string): Promise<StoredImage> {
+  const metadata = await $fetch<CharacterImage>(dataUrl(`images/${encodeURIComponent(id)}/original`), {
+    method: 'POST'
+  })
+  return { ...metadata, blob: await fetchBlob('images', id) }
 }
 
 export async function deleteImage(id: string) {

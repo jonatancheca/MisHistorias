@@ -22,6 +22,8 @@ const batchMode = ref<'original' | 'crop' | 'preview' | null>(null)
 const batchTags = ref<string[]>([])
 const processingCurrent = ref(false)
 const busy = ref(false)
+const editingImage = ref<StoredImage | null>(null)
+const editingBusy = ref(false)
 const error = ref<string | null>(null)
 const notice = ref<string | null>(null)
 const swarmCatalog = ref<SwarmCatalog | null>(null)
@@ -140,7 +142,7 @@ function visibleImageTags(tags: string[]) {
 }
 
 function selectFiles(files: File[]) {
-  if (busy.value || files.length === 0) return
+  if (busy.value || editingImage.value || editingBusy.value || files.length === 0) return
   error.value = null
   notice.value = null
   batchTags.value = [...pendingTags.value]
@@ -152,8 +154,8 @@ function selectFiles(files: File[]) {
   batchMode.value = files.length === 1 ? 'preview' : null
 }
 
-async function addPendingImage(file: Blob) {
-  await characters.addImage(props.characterId, file, batchTags.value)
+async function addPendingImage(file: Blob, originalFile?: Blob) {
+  await characters.addImage(props.characterId, file, batchTags.value, originalFile)
 }
 
 function finishBatch() {
@@ -205,7 +207,7 @@ async function processPendingImage(file: Blob) {
   if (processingCurrent.value || !pendingFile.value) return
   processingCurrent.value = true
   try {
-    await addPendingImage(file)
+    await addPendingImage(file, file !== pendingFile.value ? pendingFile.value : undefined)
     addedCount++
   } catch {
     failedCount++
@@ -221,6 +223,43 @@ function skipCrop() {
   pendingFiles.value = pendingFiles.value.slice(1)
   skippedCount++
   if (pendingFiles.value.length === 0) finishBatch()
+}
+
+function editCrop(image: StoredImage) {
+  if (busy.value || editingBusy.value) return
+  error.value = null
+  notice.value = null
+  editingImage.value = image
+}
+
+async function saveCrop(blob: Blob) {
+  if (!editingImage.value || editingBusy.value) return
+  editingBusy.value = true
+  error.value = null
+  try {
+    await characters.cropImage(editingImage.value.id, blob)
+    editingImage.value = null
+    notice.value = 'Recorte guardado. Original conservada.'
+  } catch (caught) {
+    error.value = (caught as Error).message || 'No se pudo guardar el recorte.'
+  } finally {
+    editingBusy.value = false
+  }
+}
+
+async function restoreOriginal(image: StoredImage) {
+  if (busy.value || editingBusy.value) return
+  editingBusy.value = true
+  error.value = null
+  notice.value = null
+  try {
+    await characters.restoreImage(image.id)
+    notice.value = 'Imagen original restaurada.'
+  } catch (caught) {
+    error.value = (caught as Error).message || 'No se pudo restaurar la original.'
+  } finally {
+    editingBusy.value = false
+  }
 }
 
 function downloadPart(value: string) {
@@ -537,6 +576,18 @@ async function remove(id: string) {
               Por defecto
             </label>
             <div class="flex flex-wrap gap-2">
+              <button type="button" class="btn-ghost" :disabled="busy || editingBusy" @click="editCrop(image)">
+                Recortar
+              </button>
+              <button
+                v-if="image.hasOriginal"
+                type="button"
+                class="btn-ghost"
+                :disabled="busy || editingBusy"
+                @click="restoreOriginal(image)"
+              >
+                Restaurar original
+              </button>
               <a
                 :href="characters.urlFor(image.id)!"
                 :download="downloadName(image)"
@@ -555,6 +606,16 @@ async function remove(id: string) {
       v-if="busy && pendingFiles.length > 1 && batchMode === null"
       :count="pendingFiles.length"
       @choose="chooseBatchMode"
+    />
+
+    <ImageCropDialog
+      v-if="editingImage"
+      :file="editingImage.blob"
+      :saving="editingBusy"
+      :save-error="error"
+      :allow-original="false"
+      @cancel="editingImage = null"
+      @confirm="saveCrop"
     />
 
     <ImageCropDialog

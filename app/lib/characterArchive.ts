@@ -2,7 +2,7 @@ import JSZip from 'jszip'
 import type { Character } from '../../shared/types/index.ts'
 import type { StoredImage, StoredSound } from './db.ts'
 
-export const CHARACTER_ARCHIVE_VERSION = 4
+export const CHARACTER_ARCHIVE_VERSION = 5
 export const MAX_CHARACTER_IMAGE_BYTES = 5 * 1024 * 1024
 export const MAX_CHARACTER_SOUND_BYTES = 10 * 1024 * 1024
 
@@ -17,6 +17,7 @@ interface ArchiveAsset {
 
 interface ArchiveImage extends ArchiveAsset {
   isDefault: boolean
+  original?: ArchiveAsset
 }
 
 interface CharacterArchiveManifest {
@@ -32,7 +33,7 @@ interface CharacterArchiveManifest {
 
 export interface ImportedCharacterArchive {
   character: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix'>
-  images: Array<Omit<ArchiveImage, 'path'> & { blob: Blob }>
+  images: Array<Omit<ArchiveImage, 'path' | 'original'> & { blob: Blob; originalBlob?: Blob }>
   sounds: Array<Omit<ArchiveAsset, 'path'> & { blob: Blob }>
 }
 
@@ -77,6 +78,7 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
     manifest.version !== 1 &&
     manifest.version !== 2 &&
     manifest.version !== 3 &&
+    manifest.version !== 4 &&
     manifest.version !== CHARACTER_ARCHIVE_VERSION
   ) {
     throw new Error('Versión de personaje no compatible.')
@@ -102,7 +104,8 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
   if (!manifest.images.every((item) => {
     if (!isAsset(item, 'images/')) return false
     const image = item as unknown as Record<string, unknown>
-    return typeof image.isDefault === 'boolean'
+    return typeof image.isDefault === 'boolean' &&
+      (image.original === undefined || isAsset(image.original, 'images/'))
   })) {
     throw new Error('El ZIP contiene imágenes no válidas.')
   }
@@ -113,6 +116,9 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
     throw new Error('El ZIP contiene varias imágenes predeterminadas.')
   }
   const paths = [...manifest.images, ...manifest.sounds].map((item) => item.path)
+  for (const image of manifest.images as ArchiveImage[]) {
+    if (image.original) paths.push(image.original.path)
+  }
   if (new Set(paths).size !== paths.length) throw new Error('El ZIP contiene archivos duplicados.')
 }
 
@@ -154,6 +160,9 @@ export async function createCharacterArchive(
   sounds: StoredSound[]
 ) {
   const zip = new JSZip()
+  if (images.some((image) => image.hasOriginal && !image.originalBlob)) {
+    throw new Error('Falta cargar una imagen original para exportar.')
+  }
   const manifest: CharacterArchiveManifest = {
     version: CHARACTER_ARCHIVE_VERSION,
     character: {
@@ -170,7 +179,14 @@ export async function createCharacterArchive(
       path: `images/${index + 1}.${extensionFor(image.mimeType)}`,
       tags: [...image.tags],
       isDefault: image.isDefault,
-      mimeType: image.mimeType
+      mimeType: image.mimeType,
+      ...(image.originalBlob ? {
+        original: {
+          path: `images/${index + 1}-original.${extensionFor(image.originalBlob.type)}`,
+          tags: [],
+          mimeType: image.originalBlob.type
+        }
+      } : {})
     })),
     sounds: sounds.map((sound, index) => ({
       path: `sounds/${index + 1}.${extensionFor(sound.mimeType)}`,
@@ -180,6 +196,9 @@ export async function createCharacterArchive(
   }
   await Promise.all(manifest.images.map(async (image, index) => {
     zip.file(image.path, await images[index]!.blob.arrayBuffer())
+    if (image.original) {
+      zip.file(image.original.path, await images[index]!.originalBlob!.arrayBuffer())
+    }
   }))
   await Promise.all(manifest.sounds.map(async (sound, index) => {
     zip.file(sound.path, await sounds[index]!.blob.arrayBuffer())
@@ -215,7 +234,10 @@ export async function readCharacterArchive(file: Blob): Promise<ImportedCharacte
       tags: [...image.tags],
       isDefault: image.isDefault,
       mimeType: image.mimeType,
-      blob: await archiveBlob(zip, image, IMAGE_TYPES, MAX_CHARACTER_IMAGE_BYTES, 'Una imagen')
+      blob: await archiveBlob(zip, image, IMAGE_TYPES, MAX_CHARACTER_IMAGE_BYTES, 'Una imagen'),
+      ...(image.original ? {
+        originalBlob: await archiveBlob(zip, image.original, IMAGE_TYPES, MAX_CHARACTER_IMAGE_BYTES, 'La original')
+      } : {})
     }))),
     sounds: await Promise.all(manifest.sounds.map(async (sound) => ({
       tags: [...sound.tags],

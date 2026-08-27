@@ -6,6 +6,8 @@ export interface CharacterImage {
   isDefault: boolean
   mimeType: string
   createdAt: number
+  /** Existe una copia persistente anterior al primer recorte. */
+  hasOriginal?: boolean
 }
 
 export interface Character {

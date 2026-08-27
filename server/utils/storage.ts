@@ -39,6 +39,7 @@ export interface ResourceQuery {
 export interface BinaryPayload {
   metadata: Record<string, unknown>
   data: Uint8Array
+  original?: { mimeType: string; data: Uint8Array }
 }
 
 export interface CharacterImportPayload {
@@ -66,7 +67,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 26
+const SCHEMA_VERSION = 27
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -197,7 +198,8 @@ function rowToImage(row: SqliteRow) {
     tags: parseJson<string[]>(row.tags_json, []),
     isDefault: Boolean(row.is_default),
     mimeType: text(row.mime_type, 'application/octet-stream'),
-    createdAt: integer(row.created_at)
+    createdAt: integer(row.created_at),
+    hasOriginal: Boolean(row.has_original ?? row.original_data)
   }
 }
 
@@ -1025,6 +1027,16 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 27) {
+        const columns = this.database.prepare('PRAGMA table_info(images)').all() as Array<{ name: string }>
+        if (!columns.some((column) => column.name === 'original_data')) {
+          this.database.exec('ALTER TABLE images ADD COLUMN original_data BLOB')
+        }
+        if (!columns.some((column) => column.name === 'original_mime_type')) {
+          this.database.exec('ALTER TABLE images ADD COLUMN original_mime_type TEXT')
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -1095,12 +1107,12 @@ export class MisHistoriasStorage {
         const rows = query.characterId
           ? this.database
               .prepare(
-                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at FROM images WHERE scope = ? AND character_id = ? ORDER BY created_at'
+                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at, original_data IS NOT NULL AS has_original FROM images WHERE scope = ? AND character_id = ? ORDER BY created_at'
               )
               .all(scope, query.characterId)
           : this.database
               .prepare(
-                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at FROM images WHERE scope = ? ORDER BY created_at'
+                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at, original_data IS NOT NULL AS has_original FROM images WHERE scope = ? ORDER BY created_at'
               )
               .all(scope)
         return (rows as SqliteRow[]).map(rowToImage)
@@ -1197,6 +1209,24 @@ export class MisHistoriasStorage {
     return row ? { mimeType: row.mime_type, data: row.data } : null
   }
 
+  getOriginalImage(scope: DataScope, id: string) {
+    const row = this.database.prepare(`
+      SELECT original_mime_type, original_data FROM images
+      WHERE scope = ? AND id = ? AND original_data IS NOT NULL
+    `).get(scope, id) as { original_mime_type: string; original_data: Uint8Array } | undefined
+    return row ? { mimeType: row.original_mime_type, data: row.original_data } : null
+  }
+
+  restoreImage(scope: DataScope, id: string) {
+    const original = this.getOriginalImage(scope, id)
+    const metadata = this.get('images', scope, id)
+    if (!original || !metadata) return null
+    return this.putBinary('images', scope, id, {
+      metadata: { ...metadata, mimeType: original.mimeType },
+      data: original.data
+    })
+  }
+
   copyCharacter(scope: DataScope, sourceId: string, rawValue: unknown) {
     const source = this.get('characters', scope, sourceId)
     if (!source) return null
@@ -1233,7 +1263,7 @@ export class MisHistoriasStorage {
       })
       const sourceImages = this.database
         .prepare(`
-          SELECT tags_json, is_default, mime_type, created_at, blob_id
+          SELECT tags_json, is_default, mime_type, created_at, blob_id, original_data, original_mime_type
           FROM images
           WHERE scope = ? AND character_id = ?
           ORDER BY created_at, id
@@ -1244,12 +1274,14 @@ export class MisHistoriasStorage {
         mime_type: string
         created_at: number
         blob_id: string
+        original_data: Uint8Array | null
+        original_mime_type: string | null
       }>
       const insertImage = this.database.prepare(`
         INSERT INTO images(
           scope, id, character_id, tags_json, is_default,
-          mime_type, created_at, blob_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          mime_type, created_at, blob_id, original_data, original_mime_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const image of sourceImages) {
         insertImage.run(
@@ -1260,7 +1292,9 @@ export class MisHistoriasStorage {
           image.is_default,
           image.mime_type,
           image.created_at,
-          image.blob_id
+          image.blob_id,
+          image.original_data,
+          image.original_mime_type
         )
       }
       return {
@@ -1311,8 +1345,8 @@ export class MisHistoriasStorage {
       const insertImage = this.database.prepare(`
         INSERT INTO images(
           scope, id, character_id, tags_json, is_default,
-          mime_type, created_at, blob_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          mime_type, created_at, blob_id, original_data, original_mime_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const [index, image] of payload.images.entries()) {
         const imageId = randomUUID()
@@ -1327,7 +1361,9 @@ export class MisHistoriasStorage {
           bool(image.metadata.isDefault),
           text(image.metadata.mimeType),
           now + index,
-          imageId
+          imageId,
+          image.original?.data ?? null,
+          image.original?.mimeType ?? null
         )
       }
 
@@ -1576,18 +1612,27 @@ export class MisHistoriasStorage {
         const isDefault = Boolean(value.isDefault)
         const current = this.database
           .prepare(`
-            SELECT images.blob_id, image_blobs.data
+            SELECT images.blob_id, images.mime_type, images.original_data, images.original_mime_type, image_blobs.data
             FROM images
             INNER JOIN image_blobs
               ON image_blobs.scope = images.scope AND image_blobs.id = images.blob_id
             WHERE images.scope = ? AND images.id = ?
           `)
-          .get(scope, id) as { blob_id: string; data: Uint8Array } | undefined
+          .get(scope, id) as {
+            blob_id: string; data: Uint8Array; mime_type: string
+            original_data: Uint8Array | null; original_mime_type: string | null
+          } | undefined
         const blobId = current && sameBinary(current.data, payload.data)
           ? current.blob_id
           : current
             ? randomUUID()
             : id
+        // La copia inicial es inmutable, también al restaurar o volver a recortar.
+        const original = current?.original_data
+          ? { data: current.original_data, mimeType: current.original_mime_type! }
+          : current && blobId !== current.blob_id
+            ? { data: current.data, mimeType: current.mime_type }
+            : payload.original
         if (!current || blobId !== current.blob_id) {
           this.database
             .prepare('INSERT INTO image_blobs(scope, id, data) VALUES (?, ?, ?)')
@@ -1602,15 +1647,17 @@ export class MisHistoriasStorage {
           .prepare(`
             INSERT INTO images(
               scope, id, character_id, tags_json, is_default,
-              mime_type, created_at, blob_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              mime_type, created_at, blob_id, original_data, original_mime_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               character_id = excluded.character_id,
               tags_json = excluded.tags_json,
               is_default = excluded.is_default,
               mime_type = excluded.mime_type,
               created_at = excluded.created_at,
-              blob_id = excluded.blob_id
+              blob_id = excluded.blob_id,
+              original_data = excluded.original_data,
+              original_mime_type = excluded.original_mime_type
           `)
           .run(
             scope,
@@ -1620,7 +1667,9 @@ export class MisHistoriasStorage {
             bool(isDefault),
             text(value.mimeType, 'application/octet-stream'),
             integer(value.createdAt),
-            blobId
+            blobId,
+            original?.data ?? null,
+            original?.mimeType ?? null
           )
         return this.get('images', scope, id)
       })

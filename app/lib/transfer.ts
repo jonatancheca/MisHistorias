@@ -7,6 +7,7 @@ import type {
   StorySaveSlot
 } from '#shared/types'
 import {
+  getOriginalImageBlob,
   listBackgrounds,
   listAllImages,
   listCharacters,
@@ -38,7 +39,7 @@ import {
   importImageGenerationSeed
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 17
+const EXPORT_VERSION = 18
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -47,6 +48,7 @@ interface ExportedImage {
   tag?: string
   isDefault: boolean
   dataUrl: string
+  originalDataUrl?: string
 }
 
 interface ExportedCharacter {
@@ -116,7 +118,10 @@ export async function exportBundle(): Promise<ExportBundle> {
             id: image.id,
             tags: image.tags,
             isDefault: image.isDefault,
-            dataUrl: await blobToDataUrl(image.blob)
+            dataUrl: await blobToDataUrl(image.blob),
+            originalDataUrl: image.hasOriginal
+              ? await blobToDataUrl(await getOriginalImageBlob(image.id))
+              : undefined
           }))
       )
     }))
@@ -178,7 +183,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -233,6 +238,16 @@ export async function importBundle(raw: string) {
       if (typeof image.dataUrl !== 'string' || image.dataUrl.length > MAX_IMAGE_BYTES * 1.4) continue
       const blob = await dataUrlToBlob(image.dataUrl)
       if (blob.size > MAX_IMAGE_BYTES) continue
+      let originalBlob: Blob | undefined
+      if (image.originalDataUrl !== undefined) {
+        if (typeof image.originalDataUrl !== 'string' || image.originalDataUrl.length > MAX_IMAGE_BYTES * 1.4) {
+          throw new Error('Imagen original no válida o demasiado grande.')
+        }
+        originalBlob = await dataUrlToBlob(image.originalDataUrl)
+        if (!originalBlob.size || originalBlob.size > MAX_IMAGE_BYTES) {
+          throw new Error('Imagen original vacía o demasiado grande.')
+        }
+      }
       const stored: StoredImage = {
         id: newId(),
         characterId: character.id,
@@ -240,7 +255,8 @@ export async function importBundle(raw: string) {
         isDefault: Boolean(image.isDefault),
         mimeType: blob.type || 'image/webp',
         createdAt: now,
-        blob
+        blob,
+        originalBlob
       }
       importedImages.push(stored)
       if (image.id) imageIdMap.set(String(image.id), stored.id)

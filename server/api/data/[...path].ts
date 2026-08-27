@@ -233,7 +233,23 @@ async function readBinaryPayload(event: H3Event, resource: 'images' | 'backgroun
   } catch {
     throw createError({ statusCode: 400, message: 'Metadatos no válidos' })
   }
-  return { metadata: asRecord(metadata), data: filePart.data }
+  return {
+    metadata: asRecord(metadata), data: filePart.data,
+    original: resource === 'images' ? readOriginal(parts, 'original') : undefined
+  }
+}
+
+function readOriginal(
+  parts: Awaited<ReturnType<typeof readMultipartFormData>>,
+  field: string
+) {
+  const part = parts?.find((part) => part.name === field)
+  if (!part) return undefined
+  const mimeType = part.type?.toLocaleLowerCase() ?? ''
+  if (!IMAGE_TYPES.has(mimeType) || !part.data.byteLength || part.data.byteLength > MAX_IMAGE_BYTES) {
+    throw createError({ statusCode: 400, message: 'Imagen original no válida o demasiado grande' })
+  }
+  return { mimeType, data: part.data }
 }
 
 function importAssets(
@@ -277,7 +293,8 @@ function importAssets(
         isDefault: kind === 'images' ? asset.isDefault : undefined,
         mimeType
       },
-      data: file.data
+      data: file.data,
+      original: kind === 'images' ? readOriginal(parts, `${field}-original`) : undefined
     }
   })
 }
@@ -446,6 +463,22 @@ export default defineEventHandler(async (event) => {
     const resource = asResource(segments[0])
     const id = segments[1]
 
+    if (resource === 'images' && id && segments[2] === 'original') {
+      if (event.method === 'POST') {
+        const restored = storage.restoreImage(scope, asId(id))
+        if (!restored) throw createError({ statusCode: 404, message: 'Imagen original no encontrada' })
+        return restored
+      }
+      if (event.method === 'GET') {
+        const original = storage.getOriginalImage(scope, asId(id))
+        if (!original) throw createError({ statusCode: 404, message: 'Imagen original no encontrada' })
+        setResponseHeader(event, 'content-type', original.mimeType)
+        setResponseHeader(event, 'cache-control', 'no-store')
+        return original.data
+      }
+      throw createError({ statusCode: 405, message: 'Método no permitido' })
+    }
+
     if (
       (resource === 'images' || resource === 'backgrounds' || resource === 'sounds') &&
       id &&
@@ -455,7 +488,7 @@ export default defineEventHandler(async (event) => {
       const binary = storage.getBinary(resource, scope, asId(id))
       if (!binary) throw createError({ statusCode: 404, statusMessage: 'Archivo no encontrado' })
       setResponseHeader(event, 'content-type', binary.mimeType)
-      setResponseHeader(event, 'cache-control', 'private, max-age=300')
+      setResponseHeader(event, 'cache-control', resource === 'images' ? 'no-store' : 'private, max-age=300')
       return binary.data
     }
 

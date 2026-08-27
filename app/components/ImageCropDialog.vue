@@ -2,10 +2,16 @@
 import Cropper from 'cropperjs'
 
 const props = withDefaults(defineProps<{
-  file: File
+  file: Blob
   startCropping?: boolean
+  saving?: boolean
+  allowOriginal?: boolean
+  saveError?: string | null
 }>(), {
-  startCropping: true
+  startCropping: true,
+  saving: false,
+  allowOriginal: true,
+  saveError: null
 })
 
 const emit = defineEmits<{
@@ -164,7 +170,7 @@ async function crop() {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && !busy.value) emit('cancel')
+  if (event.key === 'Escape' && !busy.value && !props.saving) emit('cancel')
 }
 </script>
 
@@ -194,14 +200,14 @@ function onKeydown(event: KeyboardEvent) {
           <img :src="objectUrl" alt="Vista previa de imagen" class="max-h-[65vh] max-w-full object-contain">
         </div>
 
-        <p v-if="error" class="px-4 pt-3 text-sm text-red-500" role="alert">{{ error }}</p>
+        <p v-if="error || saveError" class="px-4 pt-3 text-sm text-red-500" role="alert">{{ error || saveError }}</p>
         <footer v-if="cropping" class="flex flex-wrap justify-end gap-2 border-t border-[var(--color-border-soft)] p-3">
-          <button type="button" class="btn-ghost" :disabled="busy" @click="emit('cancel')">Cancelar</button>
-          <button type="button" class="btn-ghost" :disabled="busy" @click="emit('confirm', file)">
+          <button type="button" class="btn-ghost" :disabled="busy || saving" @click="emit('cancel')">Cancelar</button>
+          <button v-if="allowOriginal" type="button" class="btn-ghost" :disabled="busy || saving" @click="emit('confirm', file)">
             Usar original
           </button>
-          <button type="button" class="btn-primary" :disabled="busy || !ready || Boolean(error)" @click="crop">
-            {{ busy ? 'Recortando…' : 'Guardar recorte' }}
+          <button type="button" class="btn-primary" :disabled="busy || saving || !ready || Boolean(error)" @click="crop">
+            {{ saving ? 'Guardando…' : busy ? 'Recortando…' : 'Guardar recorte' }}
           </button>
         </footer>
         <footer v-else class="flex flex-wrap justify-end gap-2 border-t border-[var(--color-border-soft)] p-3">

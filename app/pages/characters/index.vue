@@ -7,7 +7,7 @@ import {
   readCharacterArchive,
   type ImportedCharacterArchive
 } from '~/lib/characterArchive'
-import { listSounds, listStories } from '~/lib/db'
+import { getOriginalImageBlob, listSounds, listStories } from '~/lib/db'
 
 const characters = useCharactersStore()
 const confirmDialog = useConfirmStore()
@@ -85,7 +85,11 @@ async function exportCharacter(id: string) {
   transferSuccess.value = null
   try {
     const sounds = (await listSounds()).filter((sound) => sound.characterId === id)
-    const blob = await createCharacterArchive(character, characters.imagesFor(id), sounds)
+    const images = await Promise.all(characters.imagesFor(id).map(async (image) => ({
+      ...image,
+      originalBlob: image.hasOriginal ? await getOriginalImageBlob(image.id) : undefined
+    })))
+    const blob = await createCharacterArchive(character, images, sounds)
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url

@@ -34,17 +34,20 @@ function pngChunk(type: string, data: Buffer) {
   return Buffer.concat([length, name, data, checksum])
 }
 
-function createPng() {
+export function createPng(width = 2, height = 2) {
   const header = Buffer.alloc(13)
-  header.writeUInt32BE(2, 0)
-  header.writeUInt32BE(2, 4)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
   header[8] = 8
   header[9] = 6
-  const row = Buffer.from([0, 219, 39, 119, 255, 37, 99, 235, 255])
+  const row = Buffer.alloc(1 + width * 4)
+  for (let x = 0; x < width; x++) {
+    row.set(x % 2 === 0 ? [219, 39, 119, 255] : [37, 99, 235, 255], 1 + x * 4)
+  }
   return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     pngChunk('IHDR', header),
-    pngChunk('IDAT', deflateSync(Buffer.concat([row, row]))),
+    pngChunk('IDAT', deflateSync(Buffer.concat(Array.from({ length: height }, () => row)))),
     pngChunk('IEND', Buffer.alloc(0))
   ])
 }

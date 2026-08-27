@@ -10,6 +10,7 @@ import {
   newId,
   putCharacter,
   putImage,
+  restoreImage as restoreStoredImage,
   type StoredImage
 } from '~/lib/db'
 import type { ImportedCharacterArchive } from '~/lib/characterArchive'
@@ -25,15 +26,20 @@ export const useCharactersStore = defineStore('characters', () => {
   const characters = ref<Character[]>([])
   const images = ref<StoredImage[]>([])
   const urls = ref<Record<string, string>>({})
+  const urlBlobs = new Map<string, Blob>()
   const loaded = ref(false)
 
   function syncUrls() {
     const next: Record<string, string> = {}
     for (const image of images.value) {
-      next[image.id] = urls.value[image.id] ?? URL.createObjectURL(image.blob)
+      next[image.id] = urlBlobs.get(image.id) === image.blob && urls.value[image.id]
+        ? urls.value[image.id]!
+        : URL.createObjectURL(image.blob)
+      urlBlobs.set(image.id, image.blob)
     }
     for (const [id, url] of Object.entries(urls.value)) {
-      if (!next[id]) URL.revokeObjectURL(url)
+      if (next[id] !== url) URL.revokeObjectURL(url)
+      if (!next[id]) urlBlobs.delete(id)
     }
     urls.value = next
   }
@@ -196,7 +202,7 @@ export const useCharactersStore = defineStore('characters', () => {
     return result.character
   }
 
-  async function addImage(characterId: string, file: Blob, tags: string[]) {
+  async function addImage(characterId: string, file: Blob, tags: string[], originalFile?: Blob) {
     const { blob, mimeType } = await normalizeImage(file)
     const isFirst = imagesFor(characterId).length === 0
     const image: StoredImage = {
@@ -206,13 +212,14 @@ export const useCharactersStore = defineStore('characters', () => {
       isDefault: isFirst,
       mimeType,
       createdAt: Date.now(),
-      blob
+      blob,
+      originalBlob: originalFile ? (await normalizeImage(originalFile)).blob : undefined
     }
-    await putImage(image)
-    images.value.push(image)
+    const stored = await putImage(image)
+    images.value.push(stored)
     if (image.isDefault) applyDefaultLocally(image)
     syncUrls()
-    return image
+    return stored
   }
 
   function applyDefaultLocally(image: StoredImage) {
@@ -253,6 +260,21 @@ export const useCharactersStore = defineStore('characters', () => {
     syncUrls()
   }
 
+  async function cropImage(id: string, blob: Blob) {
+    const current = images.value.find((image) => image.id === id)
+    if (!current) throw new Error('Imagen no encontrada.')
+    const normalized = await normalizeImage(blob)
+    const updated = await putImage({ ...current, ...normalized })
+    images.value = images.value.map((image) => image.id === id ? updated : image)
+    syncUrls()
+  }
+
+  async function restoreImage(id: string) {
+    const updated = await restoreStoredImage(id)
+    images.value = images.value.map((image) => image.id === id ? updated : image)
+    syncUrls()
+  }
+
   return {
     characters,
     images,
@@ -271,6 +293,8 @@ export const useCharactersStore = defineStore('characters', () => {
     setArchived,
     addImage,
     updateImage,
+    cropImage,
+    restoreImage,
     removeImage,
     syncUrls,
     resetForScope

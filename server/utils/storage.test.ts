@@ -150,14 +150,14 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
           ?.visualMode,
         true
       )
-      assert.equal(reopened.health().schemaVersion, 26)
+      assert.equal(reopened.health().schemaVersion, 27)
     } finally {
       reopened.close()
     }
   })
 })
 
-test('migra v1 a v26 copiando personajes y dejando modo visual desactivado', () => {
+test('migra v1 a v27 copiando personajes y dejando modo visual desactivado', () => {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
   const path = join(directory, 'test.sqlite')
   const legacy = new DatabaseSync(path)
@@ -227,7 +227,7 @@ test('migra v1 a v26 copiando personajes y dejando modo visual desactivado', () 
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 26)
+    assert.equal(storage.health().schemaVersion, 27)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.archived, false)
     assert.equal(
       (storage.get('stories', 'normal', 'story-1') as { visualMode?: boolean } | null)
@@ -280,7 +280,7 @@ test('migra v5 añadiendo preset de personaje y secreto Swarm con backup previo'
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 26)
+    assert.equal(storage.health().schemaVersion, 27)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationPreset, '')
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationLora, '')
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationSeed, '')
@@ -332,7 +332,7 @@ test('migra v6 añadiendo indicaciones de imagen pendientes', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 26)
+    assert.equal(storage.health().schemaVersion, 27)
     assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.pendingImageInstructions, [])
     assert.equal(migrationBackups(path).length, 1)
   } finally {
@@ -401,7 +401,7 @@ test('migra v22 eliminando descripciones de imágenes en ambos ámbitos', () => 
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 26)
+    assert.equal(storage.health().schemaVersion, 27)
     const columns = storage.database.prepare('PRAGMA table_info(images)').all() as Array<{
       name: string
     }>
@@ -475,7 +475,7 @@ test('migra v23 copiando colores de personajes en historias y partidas', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 26)
+    assert.equal(storage.health().schemaVersion, 27)
     assert.equal(
       storage.get('stories', 'normal', normalStory.id)?.characterCustomizations[0]?.color,
       '#123456'
@@ -513,7 +513,7 @@ test('migra v24 añadiendo semilla y prefijo de imagen en ambos ámbitos', () =>
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 26)
+    assert.equal(storage.health().schemaVersion, 27)
     for (const scope of ['normal', 'private'] as const) {
       const stored = storage.get('characters', scope, `${scope}-character`)
       assert.equal(stored?.imageGenerationSeed, '')
@@ -543,7 +543,7 @@ test('migra v25 añadiendo resumen de contexto a las historias', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 26)
+    assert.equal(storage.health().schemaVersion, 27)
     const stored = storage.get('stories', 'normal', 'story-normal')
     assert.equal(stored?.contextSummary, '')
     assert.equal(stored?.contextSummaryThroughMessageId, undefined)
@@ -578,7 +578,7 @@ test('migra v19 y separa los ajustes privados de LMStudio', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 26)
+    assert.equal(storage.health().schemaVersion, 27)
     assert.equal(storage.readSettings()?.privateApiKey, '')
 
     storage.writeSettings({
@@ -689,7 +689,7 @@ test('migra imágenes v3 a BLOBs referenciados sin perder contenido', () => {
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 26)
+    assert.equal(storage.health().schemaVersion, 27)
     assert.deepEqual(Array.from(storage.getBinary('images', 'normal', 'image-1')!.data), [7, 8, 9])
     const row = storage.database
       .prepare('SELECT blob_id FROM images WHERE scope = ? AND id = ?')
@@ -720,7 +720,7 @@ test('conserva backup y revierte la base original si falla la migración', () =>
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /Falló la migración SQLite v3 a v26\. Backup:/
+      /Falló la migración SQLite v3 a v27\. Backup:/
     )
 
     const backups = migrationBackups(path)
@@ -761,7 +761,7 @@ test('no inicia la migración si no puede crear el backup', () => {
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /No se pudo crear el backup previo de SQLite\. Migración v3 a v26 no iniciada\./
+      /No se pudo crear el backup previo de SQLite\. Migración v3 a v27 no iniciada\./
     )
     const source = new DatabaseSync(path, { readOnly: true })
     try {
@@ -838,7 +838,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     const backup = storage.createManualBackup()
     assert.equal(backup.kind, 'manual')
     assert.equal(backup.valid, true)
-    assert.equal(backup.schemaVersion, 26)
+    assert.equal(backup.schemaVersion, 27)
     assert.equal(storage.listBackups().some((item) => item.name === backup.name), true)
 
     storage.put('characters', 'normal', 'normal-1', {
@@ -1111,6 +1111,52 @@ test('guarda sonidos asociados o sueltos y borra asociaciones en cascada', () =>
     assert.deepEqual(Array.from(storage.getBinary('sounds', 'normal', 'sound-loose')!.data), [4, 5])
     storage.delete('characters', 'normal', 'character-1')
     assert.deepEqual(storage.list('sounds', 'normal').map((sound) => sound.id), ['sound-loose'])
+  })
+})
+
+test('conserva la primera original al recortar, copiar, reabrir y restaurar en cada ámbito', () => {
+  withStorage((storage, path) => {
+    const original = new Uint8Array([1, 2, 3])
+    for (const scope of ['normal', 'private'] as const) {
+      storage.put('characters', scope, 'crop-character', character('crop-character'))
+      const metadata = {
+        characterId: 'crop-character', tags: ['feliz'], isDefault: true,
+        mimeType: 'image/png', createdAt: 5
+      }
+      storage.putBinary('images', scope, 'crop-image', { metadata, data: original })
+      assert.equal(storage.getOriginalImage(scope, 'crop-image'), null)
+      storage.putBinary('images', scope, 'crop-image', {
+        metadata: { ...metadata, mimeType: 'image/webp' }, data: new Uint8Array([4, 5])
+      })
+      storage.putBinary('images', scope, 'crop-image', {
+        metadata: { ...metadata, mimeType: 'image/webp' }, data: new Uint8Array([6]),
+        original: { mimeType: 'image/webp', data: new Uint8Array([99]) }
+      })
+      assert.deepEqual(storage.getOriginalImage(scope, 'crop-image'), { data: original, mimeType: 'image/png' })
+      assert.equal(storage.get('images', scope, 'crop-image')?.hasOriginal, true)
+      const copied = storage.copyCharacter(scope, 'crop-character', character('copy'))!
+      const copiedImage = copied.images[0]!
+      storage.delete('characters', scope, 'crop-character')
+      assert.deepEqual(storage.getOriginalImage(scope, String(copiedImage.id))?.data, original)
+      storage.restoreImage(scope, String(copiedImage.id))
+      assert.deepEqual(storage.getBinary('images', scope, String(copiedImage.id)), { data: original, mimeType: 'image/png' })
+      assert.equal(storage.getOriginalImage(scope === 'normal' ? 'private' : 'normal', String(copiedImage.id)), null)
+      storage.putBinary('images', scope, String(copiedImage.id), {
+        metadata: copiedImage, data: new Uint8Array([7, 8])
+      })
+    }
+    storage.close()
+    const reopened = new MisHistoriasStorage(path)
+    try {
+      for (const scope of ['normal', 'private'] as const) {
+        const image = reopened.list('images', scope)[0]!
+        reopened.restoreImage(scope, String(image.id))
+        assert.deepEqual(reopened.getBinary('images', scope, String(image.id))?.data, original)
+        assert.deepEqual(reopened.getOriginalImage(scope, String(image.id))?.data, original)
+      }
+    } finally {
+      reopened.close()
+    }
   })
 })
 
