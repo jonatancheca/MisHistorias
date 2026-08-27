@@ -382,6 +382,88 @@ test.describe('chat', () => {
     expect(requestMessages.slice(1).every((message) => message.role !== 'system')).toBe(true)
   })
 
+  test('compacta historial, bloquea envíos y permite revisar su debug', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data)
+    const firstAction = data.unique('Accion-que-sera-resumida')
+    const nextAction = data.unique('Accion-posterior')
+    const summary = 'La protagonista abrió la puerta y avanzó por el pasillo.'
+    await data.patchSettings({
+      mockMode: false,
+      model: 'qwen-test',
+      responseSpeed: 'instant',
+      historyBudget: 100,
+      useChromeLlm: false,
+      privateUseChromeLlm: null
+    })
+    let releaseCompaction!: () => void
+    const compactionGate = new Promise<void>((resolve) => {
+      releaseCompaction = resolve
+    })
+    const chatRequests: Array<Array<{ role: string; content: string }>> = []
+    let compactionRequest: Array<{ role: string; content: string }> = []
+    await page.route('**/api/llm/chat', async (route) => {
+      const request = route.request().postDataJSON() as {
+        messages: Array<{ role: string; content: string }>
+      }
+      if (request.messages[0]?.content.includes('Resume el historial de esta historia')) {
+        compactionRequest = request.messages
+        await compactionGate
+        await route.fulfill({ json: { content: summary, finishReason: 'stop' } })
+        return
+      }
+      chatRequests.push(request.messages)
+      await route.fulfill({
+        json: { content: 'Narración: La historia avanza.', finishReason: 'stop' }
+      })
+    })
+
+    await page.setViewportSize({ width: 320, height: 760 })
+    await page.goto(`/stories/${story.id}`)
+    const input = page.getByPlaceholder('Escribe lo que haces o dices…')
+    await input.fill(firstAction)
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+
+    await expect(page.getByText('Narración: La historia avanza.', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('compacting-indicator')).toContainText(
+      'El Narrador está compactando el historial'
+    )
+    await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toBeDisabled()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      .toBe(true)
+    expect(JSON.stringify(compactionRequest)).toContain(firstAction)
+    releaseCompaction()
+
+    await expect(page.getByTestId('compacting-indicator')).toBeHidden()
+    await expect.poll(async () => await data.get<Story>('stories', story.id)).toMatchObject({
+      contextSummary: summary
+    })
+    const compactionTrace = (await data.list<LlmDebugTrace>('llmDebugTraces', 'normal', {
+      storyId: story.id
+    })).find((trace) => trace.request.purpose === 'compaction')
+    expect(compactionTrace?.response).toMatchObject({ content: summary })
+
+    await page.getByRole('button', { name: 'Ver datos de debug de la compactación' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Debug compactación' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByText('Resume el historial de esta historia', { exact: false }))
+      .toBeVisible()
+    await expect(dialog.getByTestId('llm-debug-response-json')).toContainText(summary)
+    await dialog.getByRole('button', { name: 'Cerrar debug LLM' }).click()
+
+    await data.patchSettings({ historyBudget: 1_000_000 })
+    await page.setViewportSize({ width: 390, height: 760 })
+    await page.reload()
+    await page.getByPlaceholder('Escribe lo que haces o dices…').fill(nextAction)
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+    await expect.poll(() => chatRequests.length).toBe(2)
+    const secondRequest = JSON.stringify(chatRequests[1])
+    expect(secondRequest).toContain(summary)
+    expect(secondRequest).toContain(nextAction)
+    expect(secondRequest).not.toContain(firstAction)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      .toBe(true)
+  })
+
   test('aplica Narrador solo hasta recibir la siguiente respuesta', async ({ page, data }) => {
     const { story, character } = await createStoryFixture(data)
     await data.patchSettings({

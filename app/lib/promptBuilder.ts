@@ -185,13 +185,17 @@ export function buildHistory(
   messages: Message[],
   characters: Character[],
   budget: number,
-  userName: string
+  userName: string,
+  afterMessageId?: string
 ): ChatMessage[] {
   const history: ChatMessage[] = []
   const lastAssistantIndex = messages.findLastIndex((message) => message.role === 'assistant')
   let used = 0
+  const startIndex = afterMessageId
+    ? Math.max(0, messages.findIndex((message) => message.id === afterMessageId) + 1)
+    : 0
 
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
+  for (let index = messages.length - 1; index >= startIndex; index -= 1) {
     const message = messages[index]!
     const isInstruction = message.role === 'user' && isAiInstruction(message.raw)
     if (isInstruction && index < lastAssistantIndex) continue
@@ -214,6 +218,39 @@ export function buildHistory(
   return history
 }
 
+export function buildCompactionMessages(options: {
+  previousSummary?: string
+  throughMessageId?: string
+  messages: Message[]
+  characters: Character[]
+  userName: string
+}): ChatMessage[] {
+  const history = buildHistory(
+    options.messages,
+    options.characters,
+    0,
+    options.userName,
+    options.throughMessageId
+  )
+  const systemParts = [
+    [
+      'Resume el historial de esta historia interactiva.',
+      'Conserva hechos, decisiones, relaciones, estado de personajes, lugares, objetos y asuntos pendientes.',
+      'No inventes información. El resumen sustituirá todo el diálogo recibido en esta llamada.',
+      'Devuelve únicamente el resumen, sin título ni comentarios.'
+    ].join(' '),
+    options.previousSummary?.trim()
+      ? `Resumen anterior que debes integrar:\n${options.previousSummary.trim()}`
+      : '',
+    ...history.filter((message) => message.role === 'system').map((message) => message.content)
+  ].filter(Boolean)
+
+  return [
+    { role: 'system', content: systemParts.join('\n\n') },
+    ...history.filter((message) => message.role !== 'system')
+  ]
+}
+
 export function buildChatMessages(options: {
   presetContent: string
   story: Story
@@ -234,9 +271,16 @@ export function buildChatMessages(options: {
     options.messages,
     options.characters,
     options.historyBudget,
-    options.userName
+    options.userName,
+    options.story.contextSummaryThroughMessageId
   )
-  const opening: ChatMessage[] = history.length
+  const contextSummary: ChatMessage[] = options.story.contextSummary?.trim()
+    ? [{
+        role: 'system',
+        content: `Resumen del historial anterior:\n${options.story.contextSummary.trim()}`
+      }]
+    : []
+  const opening: ChatMessage[] = history.length || contextSummary.length
     ? []
     : [
         {
@@ -262,6 +306,7 @@ export function buildChatMessages(options: {
 
   const messages: ChatMessage[] = [
     { role: 'system', content: system },
+    ...contextSummary,
     ...history,
     ...opening,
     ...imageCatalogChange,

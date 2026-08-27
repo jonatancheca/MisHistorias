@@ -66,7 +66,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 25
+const SCHEMA_VERSION = 26
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -255,6 +255,10 @@ function rowToStory(row: SqliteRow) {
         ? undefined
         : imageCatalogSnapshot(parseJson(row.image_catalog_snapshot_json, undefined)),
     pendingImageInstructions: parseJson(row.pending_image_instructions_json, []),
+    contextSummary: text(row.context_summary),
+    ...(typeof row.context_summary_through_message_id === 'string'
+      ? { contextSummaryThroughMessageId: row.context_summary_through_message_id }
+      : {}),
     createdAt: integer(row.created_at),
     updatedAt: integer(row.updated_at)
   }
@@ -642,6 +646,8 @@ export class MisHistoriasStorage {
           preset_id TEXT,
           image_catalog_snapshot_json TEXT,
           pending_image_instructions_json TEXT NOT NULL DEFAULT '[]',
+          context_summary TEXT NOT NULL DEFAULT '',
+          context_summary_through_message_id TEXT,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
           PRIMARY KEY (scope, id)
@@ -999,6 +1005,22 @@ export class MisHistoriasStorage {
         if (!characterColumns.some((column) => column.name === 'image_generation_prompt_prefix')) {
           this.database.exec(
             "ALTER TABLE characters ADD COLUMN image_generation_prompt_prefix TEXT NOT NULL DEFAULT ''"
+          )
+        }
+      }
+
+      if (version.user_version < 26) {
+        const storyColumns = this.database
+          .prepare('PRAGMA table_info(stories)')
+          .all() as Array<{ name: string }>
+        if (!storyColumns.some((column) => column.name === 'context_summary')) {
+          this.database.exec(
+            "ALTER TABLE stories ADD COLUMN context_summary TEXT NOT NULL DEFAULT ''"
+          )
+        }
+        if (!storyColumns.some((column) => column.name === 'context_summary_through_message_id')) {
+          this.database.exec(
+            'ALTER TABLE stories ADD COLUMN context_summary_through_message_id TEXT'
           )
         }
       }
@@ -1397,8 +1419,9 @@ export class MisHistoriasStorage {
               scope, id, title, premise, visual_mode, protagonist_preferences,
               protagonist_preferences_mode, character_ids_json, character_customizations_json,
               initial_background_id, preset_id, image_catalog_snapshot_json,
-              pending_image_instructions_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              pending_image_instructions_json, context_summary,
+              context_summary_through_message_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
@@ -1411,6 +1434,8 @@ export class MisHistoriasStorage {
               preset_id = excluded.preset_id,
               image_catalog_snapshot_json = excluded.image_catalog_snapshot_json,
               pending_image_instructions_json = excluded.pending_image_instructions_json,
+              context_summary = excluded.context_summary,
+              context_summary_through_message_id = excluded.context_summary_through_message_id,
               created_at = excluded.created_at,
               updated_at = excluded.updated_at
           `)
@@ -1428,6 +1453,10 @@ export class MisHistoriasStorage {
             typeof value.presetId === 'string' ? value.presetId : null,
             value.imageCatalogSnapshot === undefined ? null : json(value.imageCatalogSnapshot),
             json(Array.isArray(value.pendingImageInstructions) ? value.pendingImageInstructions : []),
+            text(value.contextSummary),
+            typeof value.contextSummaryThroughMessageId === 'string'
+              ? value.contextSummaryThroughMessageId
+              : null,
             integer(value.createdAt),
             integer(value.updatedAt)
           )
@@ -1756,12 +1785,16 @@ export class MisHistoriasStorage {
       for (const id of ids) deleteMessage.run(scope, id)
 
       const traces = this.database
-        .prepare('SELECT id, status, request_message_id, response_message_id FROM llm_debug_traces WHERE scope = ?')
+        .prepare(`
+          SELECT id, status, request_message_id, response_message_id, request_json
+          FROM llm_debug_traces WHERE scope = ?
+        `)
         .all(scope) as Array<{
         id: string
         status: 'success' | 'error'
         request_message_id: string | null
         response_message_id: string | null
+        request_json: string
       }>
       const idSet = new Set(ids)
       const deleteTrace = this.database.prepare(
@@ -1770,7 +1803,8 @@ export class MisHistoriasStorage {
       for (const trace of traces) {
         if (
           (trace.response_message_id && idSet.has(trace.response_message_id)) ||
-          (trace.status === 'error' &&
+          ((trace.status === 'error' ||
+            parseJson<{ purpose?: string }>(trace.request_json, {}).purpose === 'compaction') &&
             trace.request_message_id &&
             idSet.has(trace.request_message_id))
         ) {

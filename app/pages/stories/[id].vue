@@ -126,7 +126,10 @@ const timeline = computed<TimelineItem[]>(() => {
       message
     })),
     ...stories.debugTraces
-      .filter((trace) => trace.status === 'error' || !trace.responseMessageId)
+      .filter((trace) =>
+        trace.request.purpose !== 'compaction' &&
+        (trace.status === 'error' || !trace.responseMessageId)
+      )
       .map((trace) => ({
         kind: 'trace' as const,
         id: trace.id,
@@ -137,7 +140,15 @@ const timeline = computed<TimelineItem[]>(() => {
 })
 
 function debugForMessage(id: string) {
-  return stories.debugTraces.find((trace) => trace.responseMessageId === id) ?? null
+  return stories.debugTraces.find((trace) =>
+    trace.request.purpose !== 'compaction' && trace.responseMessageId === id
+  ) ?? null
+}
+
+function compactionDebugForMessage(id: string) {
+  return stories.debugTraces.find((trace) =>
+    trace.request.purpose === 'compaction' && trace.requestMessageId === id
+  ) ?? null
 }
 
 function traceErrorMessage(trace: LlmDebugTrace) {
@@ -1231,6 +1242,7 @@ onBeforeUnmount(() => {
               :character-names="storyCharacterNames"
               :character-colors="storyCharacterColors"
               :debug-trace="debugForMessage(item.message.id)"
+              :compaction-trace="compactionDebugForMessage(item.message.id)"
               :editable="!stories.generating"
               :visual-mode="stories.activeStory.visualMode"
               @debug="selectedDebugTrace = $event"
@@ -1284,6 +1296,27 @@ onBeforeUnmount(() => {
               />
               <span
                 class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
+                style="animation-delay: 240ms"
+              />
+            </span>
+          </div>
+
+          <div
+            v-if="stories.compacting"
+            data-testid="compacting-indicator"
+            class="flex min-w-0 items-center gap-3 rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] px-4 py-3 text-sm text-[var(--color-fg-muted)]"
+            role="status"
+            aria-live="polite"
+          >
+            <span>El Narrador está compactando el historial</span>
+            <span class="flex items-center gap-1" aria-hidden="true">
+              <span class="h-2 w-2 animate-bounce rounded-full bg-violet-500 motion-reduce:animate-none" />
+              <span
+                class="h-2 w-2 animate-bounce rounded-full bg-violet-500 motion-reduce:animate-none"
+                style="animation-delay: 120ms"
+              />
+              <span
+                class="h-2 w-2 animate-bounce rounded-full bg-violet-500 motion-reduce:animate-none"
                 style="animation-delay: 240ms"
               />
             </span>

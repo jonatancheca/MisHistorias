@@ -98,6 +98,10 @@ export interface Story {
   imageCatalogSnapshot?: StoryImageCatalogEntry[]
   /** Indicaciones visuales pendientes para la próxima respuesta nueva. */
   pendingImageInstructions?: StoryPendingImageInstruction[]
+  /** Último resumen generado para sustituir el historial anterior en llamadas al LLM. */
+  contextSummary?: string
+  /** Último mensaje incluido en contextSummary. */
+  contextSummaryThroughMessageId?: string
   createdAt: number
   updatedAt: number
 }
@@ -150,6 +154,8 @@ export interface Message {
 export interface LlmDebugRequest {
   /** Proveedor usado para generar la respuesta; ausente en trazas antiguas. */
   provider?: 'lmstudio' | 'chrome'
+  /** Finalidad de la llamada; ausente equivale a una respuesta normal del chat. */
+  purpose?: 'chat' | 'compaction'
   model: string
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   temperature: number

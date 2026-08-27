@@ -8,6 +8,7 @@ const props = defineProps<{
   message: Message
   editable?: boolean
   debugTrace?: LlmDebugTrace | null
+  compactionTrace?: LlmDebugTrace | null
   visualMode?: boolean
   characterNames?: Record<string, string>
   characterColors?: Record<string, string>
@@ -203,7 +204,7 @@ function confirmEdit() {
     :data-story-message-id="message.id"
   >
     <div
-      v-if="!editing && (editable || debugTrace)"
+      v-if="!editing && (editable || debugTrace || compactionTrace)"
       class="flex w-8 shrink-0 flex-col gap-1 text-[var(--color-fg-muted)] opacity-100 transition max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
     >
       <button
@@ -218,6 +219,18 @@ function confirmEdit() {
           <path d="M8 2h8M9 2v3m6-3v3M4 13h3m10 0h3M5 7l3 2m11-2-3 2M5 19l3-2m11 2-3-2" />
           <rect x="7" y="5" width="10" height="16" rx="5" />
           <path d="M9 11h6m-6 4h6" />
+        </svg>
+      </button>
+      <button
+        v-if="compactionTrace"
+        type="button"
+        class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-violet-500/10 hover:text-violet-600"
+        aria-label="Ver datos de debug de la compactación"
+        title="Debug compactación"
+        @click="emit('debug', compactionTrace)"
+      >
+        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 8h16M7 4h10M7 12h10M9 16h6M11 20h2" />
         </svg>
       </button>
       <button

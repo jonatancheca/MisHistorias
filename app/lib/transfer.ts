@@ -38,7 +38,7 @@ import {
   importImageGenerationSeed
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 16
+const EXPORT_VERSION = 17
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -80,9 +80,11 @@ interface ExportedStory {
   characterIds: string[]
   characterCustomizations?: StoryCharacterCustomization[]
   pendingImageInstructions?: Story['pendingImageInstructions']
+  contextSummary?: string
+  contextSummaryThroughMessageId?: string
   initialBackgroundId?: string | null
   presetId: string | null
-  messages: Array<Pick<Message, 'role' | 'raw' | 'segments' | 'generationMode' | 'createdAt'>>
+  messages: Array<Pick<Message, 'id' | 'role' | 'raw' | 'segments' | 'generationMode' | 'createdAt'>>
   saves?: StorySaveSlot[]
 }
 
@@ -130,9 +132,12 @@ export async function exportBundle(): Promise<ExportBundle> {
       characterIds: story.characterIds,
       characterCustomizations: story.characterCustomizations,
       pendingImageInstructions: story.pendingImageInstructions ?? [],
+      contextSummary: story.contextSummary ?? '',
+      contextSummaryThroughMessageId: story.contextSummaryThroughMessageId,
       initialBackgroundId: story.initialBackgroundId ?? null,
       presetId: story.presetId,
       messages: (await listMessages(story.id)).map((message) => ({
+        id: message.id,
         role: message.role,
         raw: stripSoundDirectives(message.raw),
         segments: stripSoundSegments(message.segments),
@@ -173,7 +178,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
@@ -323,11 +328,13 @@ export async function importBundle(raw: string) {
         importedCharacters,
         importedImages
       ),
+      contextSummary: String(item.contextSummary ?? ''),
       createdAt: now,
       updatedAt: now
     }
     await putStory(story)
 
+    const messageIdMap = new Map<string, string>()
     for (const message of item.messages ?? []) {
       const stored: Message = {
         id: newId(),
@@ -364,7 +371,15 @@ export async function importBundle(raw: string) {
         })),
         createdAt: Number(message.createdAt) || now
       }
+      if (message.id) messageIdMap.set(String(message.id), stored.id)
       await putMessage(stored)
+    }
+    const summaryThroughId = item.contextSummaryThroughMessageId
+      ? messageIdMap.get(String(item.contextSummaryThroughMessageId))
+      : undefined
+    if (story.contextSummary && summaryThroughId) {
+      story.contextSummaryThroughMessageId = summaryThroughId
+      await putStory(story)
     }
 
     for (const save of item.saves ?? []) {
@@ -423,6 +438,7 @@ export async function importBundle(raw: string) {
           importedCharacters,
           importedImages
         ),
+        contextSummary: String(save.story.contextSummary ?? ''),
         createdAt: story.createdAt,
         updatedAt: Number(save.story.updatedAt) || story.updatedAt
       }
@@ -470,6 +486,11 @@ export async function importBundle(raw: string) {
           ? messageIdMap.get(String(trace.responseMessageId))
           : undefined
       }))
+      if (storySnapshot.contextSummary && save.story.contextSummaryThroughMessageId) {
+        storySnapshot.contextSummaryThroughMessageId = messageIdMap.get(
+          String(save.story.contextSummaryThroughMessageId)
+        )
+      }
       await putStorySave({
         id: newId(),
         storyId: story.id,

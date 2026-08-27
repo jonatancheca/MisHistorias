@@ -32,7 +32,11 @@ import {
   putMessage,
   putStory
 } from '~/lib/db'
-import { buildChatMessages, resolveProtagonistPreferences } from '~/lib/promptBuilder'
+import {
+  buildChatMessages,
+  buildCompactionMessages,
+  resolveProtagonistPreferences
+} from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
 import { fetchLlmChat, type LlmCallError } from '~/lib/llm'
 import { fetchChromeLlmChat } from '~/lib/chromeLlm'
@@ -149,6 +153,7 @@ export const useStoriesStore = defineStore('stories', () => {
   const saveSlots = ref<StorySaveSlot[]>([])
   const generating = ref(false)
   const waitingForResponse = ref(false)
+  const compacting = ref(false)
   const pendingAssistantMessage = ref<Message | null>(null)
   const visualRevealWaitingForAdvance = ref(false)
   const visualRevealNavigationPaused = ref(false)
@@ -173,6 +178,7 @@ export const useStoriesStore = defineStore('stories', () => {
     debugTraces.value = []
     saveSlots.value = []
     pendingAssistantMessage.value = null
+    compacting.value = false
     visualRevealWaitingForAdvance.value = false
     visualRevealNavigationPaused.value = false
     error.value = null
@@ -323,6 +329,20 @@ export const useStoriesStore = defineStore('stories', () => {
     stories.value = stories.value.map((story) => (story.id === updated.id ? updated : story))
   }
 
+  async function invalidateContextSummaryFromIndex(index: number) {
+    if (!activeStory.value?.contextSummaryThroughMessageId || index < 0) return
+    const throughIndex = messages.value.findIndex(
+      (message) => message.id === activeStory.value?.contextSummaryThroughMessageId
+    )
+    if (throughIndex < 0 || index > throughIndex) return
+    await persistStoryState({
+      ...activeStory.value,
+      contextSummary: undefined,
+      contextSummaryThroughMessageId: undefined,
+      updatedAt: Date.now()
+    })
+  }
+
   async function addUserMessage(text: string) {
     if (!activeStory.value) return null
     const message: Message = {
@@ -340,6 +360,7 @@ export const useStoriesStore = defineStore('stories', () => {
   async function updateMessage(id: string, raw: string) {
     const current = messages.value.find((message) => message.id === id)
     if (!current) return
+    await invalidateContextSummaryFromIndex(messages.value.findIndex((message) => message.id === id))
     const characters = useCharactersStore()
     const backgrounds = useBackgroundsStore()
     const sounds = useSoundsStore()
@@ -426,6 +447,7 @@ export const useStoriesStore = defineStore('stories', () => {
   }
 
   async function removeMessage(id: string) {
+    await invalidateContextSummaryFromIndex(messages.value.findIndex((message) => message.id === id))
     await dbDeleteMessage(id)
     messages.value = messages.value.filter((message) => message.id !== id)
     removeLocalTracesForMessages([id])
@@ -451,6 +473,114 @@ export const useStoriesStore = defineStore('stories', () => {
     }
   }
 
+  async function compactHistoryIfNeeded(options: {
+    story: Story
+    presetContent: string
+    storyCharacters: Character[]
+    images: CharacterImage[]
+    backgrounds: Background[]
+    sounds: Sound[]
+    historyBudget: number
+    userName: string
+    protagonistPreferences: string
+    model: string
+    temperature: number
+    maxTokens: number
+    mock: boolean
+    useChromeLlm: boolean
+    signal: AbortSignal
+    triggerMessageId: string
+  }) {
+    if (options.historyBudget <= 0 || options.mock || options.signal.aborted) return
+    const story = activeStory.value?.id === options.story.id ? activeStory.value : options.story
+    const fullContext = buildChatMessages({
+      presetContent: options.presetContent,
+      story,
+      characters: options.storyCharacters,
+      images: options.images,
+      backgrounds: options.backgrounds,
+      sounds: options.sounds,
+      messages: messages.value,
+      historyBudget: 0,
+      userName: options.userName,
+      protagonistPreferences: options.protagonistPreferences,
+      generationMode: 'normal'
+    })
+    const contextSize = fullContext.reduce((total, message) => total + message.content.length, 0)
+    const throughIndex = story.contextSummaryThroughMessageId
+      ? messages.value.findIndex((message) => message.id === story.contextSummaryThroughMessageId)
+      : -1
+    if (contextSize <= options.historyBudget || throughIndex >= messages.value.length - 1) return
+
+    const compactionMessages = buildCompactionMessages({
+      previousSummary: story.contextSummary,
+      throughMessageId: story.contextSummaryThroughMessageId,
+      messages: messages.value,
+      characters: options.storyCharacters,
+      userName: options.userName
+    })
+    const debugRequest: LlmDebugRequest = {
+      provider: options.useChromeLlm ? 'chrome' : 'lmstudio',
+      purpose: 'compaction',
+      model: options.useChromeLlm ? 'chrome-prompt-api' : options.model,
+      messages: compactionMessages,
+      temperature: options.temperature,
+      max_tokens: options.maxTokens,
+      stream: false
+    }
+    compacting.value = true
+
+    try {
+      const result = options.useChromeLlm
+        ? await fetchChromeLlmChat({ messages: compactionMessages, signal: options.signal })
+        : await fetchLlmChat({
+            model: options.model,
+            messages: compactionMessages,
+            temperature: options.temperature,
+            maxTokens: options.maxTokens,
+            signal: options.signal
+          })
+      const summary = result.content.trim()
+      if (!summary) throw new Error('El modelo no devolvió un resumen visible.')
+      await persistStoryState({
+        ...story,
+        contextSummary: summary,
+        contextSummaryThroughMessageId: options.triggerMessageId,
+        updatedAt: Date.now()
+      })
+      const stored = await persistDebugTrace({
+        id: newId(),
+        storyId: story.id,
+        requestMessageId: options.triggerMessageId,
+        status: 'success',
+        request: debugRequest,
+        response: { content: result.content, finishReason: result.finishReason },
+        createdAt: Date.now()
+      })
+      if (!stored) error.value = 'El historial se compactó, pero no se pudo guardar su traza de debug.'
+    } catch (caught) {
+      if ((caught as Error).name === 'AbortError') return
+      const callError = caught as LlmCallError
+      const message = callError.message || 'No se pudo compactar el historial.'
+      await persistDebugTrace({
+        id: newId(),
+        storyId: story.id,
+        requestMessageId: options.triggerMessageId,
+        status: 'error',
+        request: debugRequest,
+        response: {
+          error: message,
+          status: callError.status,
+          detail: callError.detail
+        },
+        createdAt: Date.now()
+      })
+      error.value = message
+    } finally {
+      compacting.value = false
+    }
+  }
+
   async function persistImageCatalogSnapshot(story: Story, snapshot: Story['imageCatalogSnapshot']) {
     if (!snapshot) return false
     try {
@@ -471,7 +601,7 @@ export const useStoriesStore = defineStore('stories', () => {
       (trace) =>
         !(trace.responseMessageId && idSet.has(trace.responseMessageId)) &&
         !(
-          trace.status === 'error' &&
+          (trace.status === 'error' || trace.request.purpose === 'compaction') &&
           trace.requestMessageId &&
           idSet.has(trace.requestMessageId)
         )
@@ -558,13 +688,15 @@ export const useStoriesStore = defineStore('stories', () => {
     if (options.preserveAutoResponse && generationModeInProgress === 'auto') return
 
     const wasWaiting = waitingForResponse.value
+    const wasCompacting = compacting.value
     const draft = animationDraft
     const wasAnimating = finishAnimation !== null
-    if (!wasWaiting && !wasAnimating) return
+    if (!wasWaiting && !wasAnimating && !wasCompacting) return
 
-    if (wasWaiting) controller?.abort()
+    if (wasWaiting || wasCompacting) controller?.abort()
     controller = null
     waitingForResponse.value = false
+    compacting.value = false
     cancelAnimation()
     animationDraft = null
     pendingAssistantMessage.value = null
@@ -908,6 +1040,7 @@ export const useStoriesStore = defineStore('stories', () => {
 
         debugRequest = {
           provider: useChromeLlm ? 'chrome' : 'lmstudio',
+          purpose: 'chat',
           model: useChromeLlm ? 'chrome-prompt-api' : model,
           messages: payload,
           temperature,
@@ -998,6 +1131,30 @@ export const useStoriesStore = defineStore('stories', () => {
           messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
           return
         }
+        if (!mock) {
+          await compactHistoryIfNeeded({
+            story: activeStory.value ?? story,
+            presetContent: preset!.content,
+            storyCharacters,
+            images: charactersStore.images,
+            backgrounds: backgroundsStore.backgrounds,
+            sounds: storySounds,
+            historyBudget,
+            userName: settingsStore.activeUserName,
+            protagonistPreferences: resolveProtagonistPreferences(
+              settingsStore.activeProtagonistPreferences,
+              story.protagonistPreferences ?? '',
+              story.protagonistPreferencesMode ?? 'append'
+            ),
+            model,
+            temperature,
+            maxTokens,
+            mock,
+            useChromeLlm,
+            signal: requestController.signal,
+            triggerMessageId: completedMessage.id
+          })
+        }
       }
       if (finishReason === 'length' && raw.trim()) {
         error.value = 'La respuesta alcanzó el máximo de tokens. Se ha conservado el contenido parcial.'
@@ -1052,6 +1209,7 @@ export const useStoriesStore = defineStore('stories', () => {
     if (index < 0 || messages.value[index]?.role !== 'assistant') return
     const generationMode = messages.value[index]?.generationMode ?? 'normal'
     const ids = messages.value.slice(index).map((message) => message.id)
+    await invalidateContextSummaryFromIndex(index)
     await dbDeleteMessages(ids)
     messages.value = messages.value.slice(0, index)
     removeLocalTracesForMessages(ids)
@@ -1067,6 +1225,7 @@ export const useStoriesStore = defineStore('stories', () => {
     const traceIds = debugTraces.value
       .filter((trace) => trace.requestMessageId === id)
       .map((trace) => trace.id)
+    await invalidateContextSummaryFromIndex(index + 1)
     await dbDeleteMessages(ids)
     await Promise.all(traceIds.map((traceId) => dbDeleteLlmDebugTrace(traceId)))
     messages.value = messages.value.slice(0, index + 1)
@@ -1086,6 +1245,7 @@ export const useStoriesStore = defineStore('stories', () => {
     saveSlots,
     generating,
     waitingForResponse,
+    compacting,
     pendingAssistantMessage,
     visualRevealWaitingForAdvance,
     error,

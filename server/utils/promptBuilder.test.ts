@@ -14,6 +14,7 @@ const jiti = createJiti(import.meta.url, {
 })
 const {
   buildChatMessages,
+  buildCompactionMessages,
   buildHistory,
   buildSystemPrompt,
   resolveProtagonistPreferences
@@ -152,6 +153,103 @@ test('recorta historial conservando mensajes recientes y serializa segmentos', (
   ])
 
   assert.equal(buildHistory(messages, [character], 0, 'Vera').length, messages.length)
+})
+
+test('envía último resumen y solo mensajes posteriores', () => {
+  const messages: Message[] = [
+    {
+      id: 'user-old',
+      storyId: story.id,
+      role: 'user',
+      raw: 'Mensaje ya resumido.',
+      segments: [],
+      createdAt: 1
+    },
+    {
+      id: 'assistant-old',
+      storyId: story.id,
+      role: 'assistant',
+      raw: 'Respuesta ya resumida.',
+      segments: [],
+      createdAt: 2
+    },
+    {
+      id: 'user-new',
+      storyId: story.id,
+      role: 'user',
+      raw: 'Mensaje posterior.',
+      segments: [],
+      createdAt: 3
+    }
+  ]
+  const payload = buildChatMessages({
+    presetContent: 'Narra.',
+    story: {
+      ...story,
+      contextSummary: 'Alicia abrió la puerta.',
+      contextSummaryThroughMessageId: 'assistant-old'
+    },
+    characters: [character],
+    images: [],
+    backgrounds: [],
+    sounds: [],
+    messages,
+    historyBudget: 1000,
+    userName: 'Vera',
+    protagonistPreferences: '',
+    generationMode: 'normal'
+  })
+
+  assert.match(payload[0]?.content ?? '', /Resumen del historial anterior:\nAlicia abrió/)
+  assert.doesNotMatch(JSON.stringify(payload), /Mensaje ya resumido/)
+  assert.doesNotMatch(JSON.stringify(payload), /Respuesta ya resumida/)
+  assert.match(JSON.stringify(payload), /Mensaje posterior/)
+  assert.doesNotMatch(JSON.stringify(payload), /Comienza la historia/)
+})
+
+test('prepara compactación integrando resumen anterior y diálogo posterior', () => {
+  const messages: Message[] = [
+    {
+      id: 'assistant-old',
+      storyId: story.id,
+      role: 'assistant',
+      raw: 'Respuesta ya resumida.',
+      segments: [],
+      createdAt: 1
+    },
+    {
+      id: 'user-new',
+      storyId: story.id,
+      role: 'user',
+      raw: 'Abro la ventana.',
+      segments: [],
+      createdAt: 2
+    },
+    {
+      id: 'assistant-new',
+      storyId: story.id,
+      role: 'assistant',
+      raw: 'Entra aire frío.',
+      segments: [],
+      createdAt: 3
+    }
+  ]
+  const payload = buildCompactionMessages({
+    previousSummary: 'Alicia abrió la puerta.',
+    throughMessageId: 'assistant-old',
+    messages,
+    characters: [character],
+    userName: 'Vera'
+  })
+
+  assert.equal(payload.filter((message) => message.role === 'system').length, 1)
+  assert.match(payload[0]?.content ?? '', /Resumen anterior que debes integrar/)
+  assert.match(payload[0]?.content ?? '', /Alicia abrió la puerta/)
+  assert.doesNotMatch(JSON.stringify(payload), /Respuesta ya resumida/)
+  assert.deepEqual(payload.slice(1), [
+    { role: 'user', content: 'Vera: Abro la ventana.' },
+    { role: 'assistant', content: 'Entra aire frío.' }
+  ])
 })
 
 test('añade apertura, actualización de catálogo y reglas distintas para Sigue y Auto', () => {

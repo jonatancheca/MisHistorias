@@ -5,6 +5,7 @@ const props = defineProps<{ trace: LlmDebugTrace | null }>()
 const emit = defineEmits<{ close: [] }>()
 const closeButton = ref<HTMLButtonElement | null>(null)
 const showRawRequest = ref(false)
+const isCompaction = computed(() => props.trace?.request.purpose === 'compaction')
 
 const formattedRequest = computed(() => JSON.stringify(props.trace?.request ?? {}, null, 2))
 const formattedResponse = computed(() => JSON.stringify(props.trace?.response ?? {}, null, 2))
@@ -53,7 +54,9 @@ function keepFocus() {
       >
         <header class="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border-soft)] p-4">
           <div class="min-w-0">
-            <h2 id="llm-debug-dialog-title" class="text-lg font-bold">Debug LLM</h2>
+            <h2 id="llm-debug-dialog-title" class="text-lg font-bold">
+              {{ isCompaction ? 'Debug compactación' : 'Debug LLM' }}
+            </h2>
             <p class="truncate text-xs text-[var(--color-fg-muted)]">
               {{ trace.status === 'success' ? 'Respuesta recibida' : 'Llamada fallida' }}
             </p>

@@ -111,6 +111,9 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         (value.initialBackgroundId === null || typeof value.initialBackgroundId === 'string') &&
         (value.presetId === null || typeof value.presetId === 'string') &&
         (value.imageCatalogSnapshot === undefined || Array.isArray(value.imageCatalogSnapshot)) &&
+        (value.contextSummary === undefined || typeof value.contextSummary === 'string') &&
+        (value.contextSummaryThroughMessageId === undefined ||
+          typeof value.contextSummaryThroughMessageId === 'string') &&
         hasNumber(value, 'createdAt') &&
         hasNumber(value, 'updatedAt')
       break
