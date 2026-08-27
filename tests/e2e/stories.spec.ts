@@ -323,6 +323,10 @@ test.describe('chat', () => {
       await page.getByRole('button', { name: 'Enviar', exact: true }).click()
       const indicator = page.getByTestId('thinking-indicator')
       try {
+        if (visualMode) {
+          await expect(page.getByTestId('visual-message-actions').getByRole('button', { name: 'Editar mensaje' })).toHaveCount(0)
+          await expect(page.getByTestId('visual-message-actions').getByRole('button', { name: 'Borrar mensaje' })).toHaveCount(0)
+        }
         for (const width of [1280, 320, 390]) {
           await page.setViewportSize({ width, height: 900 })
           await expect(indicator).toBeVisible()
@@ -830,6 +834,117 @@ test.describe('chat', () => {
 })
 
 test.describe('novela visual y responsive', () => {
+  test('acciones avanzadas operan sobre el mensaje visible completo', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data, true)
+    await data.patchSettings({ mockMode: true, responseSpeed: 'instant', visualNovelManualAdvance: false })
+    await data.createMessage({ story, role: 'user', raw: 'Mensaje inicial.' })
+    const assistant = await data.createMessage({
+      story, role: 'assistant', raw: 'Primera frase.\nSegunda frase.',
+      segments: [
+        { type: 'narration', text: 'Primera frase.' },
+        { type: 'narration', text: 'Segunda frase.' }
+      ]
+    })
+    await data.createMessage({ story, role: 'user', raw: 'Mensaje posterior.' })
+    const trace: LlmDebugTrace = {
+      id: data.unique('trace'), storyId: story.id, responseMessageId: assistant.id,
+      status: 'success', createdAt: Date.now(),
+      request: { provider: 'lmstudio', model: 'test-model', messages: [], temperature: 0.7, max_tokens: 100, stream: false },
+      response: { content: assistant.raw, finishReason: 'stop' }
+    }
+    for (const entry of [trace, {
+      ...trace, id: data.unique('compaction'), requestMessageId: assistant.id,
+      request: { ...trace.request, purpose: 'compaction' },
+      response: { content: 'Resumen de prueba.', finishReason: 'stop' }
+    }]) {
+      await expect(await page.request.put(`/api/data/llmDebugTraces/${entry.id}?scope=normal`, { data: entry })).toBeOK()
+    }
+
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('visual-novel-previous').click()
+    const frame = page.getByTestId('visual-novel-frame')
+    await expect(frame).toContainText('Segunda frase.')
+    const actions = page.getByTestId('visual-message-actions')
+    await page.mouse.move(0, 0)
+    await expect(actions).toHaveCSS('opacity', '0')
+    await frame.hover()
+    await expect(actions).toHaveCSS('opacity', '1')
+    const bounds = await actions.boundingBox()
+    const sceneBounds = await page.getByTestId('visual-novel-view').boundingBox()
+    const dialogueBounds = await page.getByTestId('visual-novel-dialogue').boundingBox()
+    expect(sceneBounds!.x + sceneBounds!.width - bounds!.x - bounds!.width).toBeLessThan(20)
+    expect(dialogueBounds!.y - bounds!.y - bounds!.height).toBeLessThan(20)
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(dialogueBounds!.y)
+    await actions.getByRole('button', { name: 'Ver datos de debug de la llamada LLM' }).click()
+    await expect(page.getByTestId('llm-debug-response-json')).toContainText('Segunda frase.')
+    await page.getByRole('button', { name: 'Cerrar debug LLM' }).click()
+    await actions.getByRole('button', { name: 'Ver datos de debug de la compactación' }).click()
+    await expect(page.getByTestId('llm-debug-response-json')).toContainText('Resumen de prueba.')
+    await page.getByRole('button', { name: 'Cerrar debug LLM' }).click()
+
+    await actions.getByRole('button', { name: 'Editar mensaje' }).click()
+    const editor = page.getByRole('dialog', { name: 'Editar mensaje' })
+    const text = editor.getByLabel('Texto completo del mensaje')
+    await expect(text).toHaveValue(assistant.raw)
+    await expect(text).toBeFocused()
+    await text.press('PageUp')
+    await expect(frame).toContainText('Segunda frase.')
+    await text.fill('No guardar esto.')
+    await text.press('Escape')
+    await expect(editor).toHaveCount(0)
+    expect((await data.get<Message>('messages', assistant.id)).raw).toBe(assistant.raw)
+    await actions.getByRole('button', { name: 'Editar mensaje' }).click()
+    await text.fill('Primera editada.\nSegunda editada.')
+    await editor.getByRole('button', { name: 'Guardar' }).click()
+    await expect(editor).toHaveCount(0)
+    await expect(frame).toContainText('Segunda editada.')
+    expect((await data.get<Message>('messages', assistant.id)).raw).toBe('Primera editada.\nSegunda editada.')
+
+    await actions.getByRole('button', { name: 'Regenerar desde este mensaje' }).click()
+    await expect(page.getByRole('alertdialog')).toContainText('1 mensajes posteriores')
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Regenerar' }).click()
+    await expect.poll(async () => {
+      const messages = await data.list<Message>('messages', 'normal', { storyId: story.id })
+      return messages.length === 2 && messages[1]?.role === 'assistant' && messages[1]?.id !== assistant.id
+    }).toBe(true)
+    const lastFrame = page.getByRole('button', { name: 'Ir a la última frase', exact: true })
+    if (await lastFrame.isEnabled()) await lastFrame.click()
+    await frame.hover()
+    await actions.getByRole('button', { name: 'Borrar mensaje' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar', exact: true }).click()
+    await expect(frame).toContainText('Mensaje inicial.')
+    await frame.hover()
+    await actions.getByRole('button', { name: 'Reenviar este mensaje' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Reenviar', exact: true }).click()
+    await expect.poll(async () => (await data.list<Message>('messages', 'normal', { storyId: story.id })).length).toBe(2)
+  })
+
+  test('oculta acciones avanzadas de Visual Novel en móvil sin overflow', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data, true)
+    await data.createMessage({ story, role: 'user', raw: 'Mensaje móvil.' })
+    await page.goto(`/stories/${story.id}`)
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 760 })
+      await expect(page.getByTestId('visual-novel-frame')).toContainText('Mensaje móvil.')
+      await expect(page.getByTestId('visual-message-actions')).toBeHidden()
+      await expect(page.getByRole('button', { name: 'Editar mensaje' })).toHaveCount(0)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    }
+  })
+
+  test.describe('pantalla táctil', () => {
+    test.use({ hasTouch: true })
+    test('oculta acciones avanzadas incluso con anchura de tablet', async ({ page, data }) => {
+      const { story } = await createStoryFixture(data, true)
+      await data.createMessage({ story, role: 'user', raw: 'Mensaje táctil.' })
+      await page.setViewportSize({ width: 1024, height: 768 })
+      await page.goto(`/stories/${story.id}`)
+      await expect(page.getByTestId('visual-novel-frame')).toContainText('Mensaje táctil.')
+      await expect(page.getByTestId('visual-message-actions')).toBeHidden()
+    })
+  })
+
   test('activa modo privado con tres pulsaciones desde una historia inexistente', async ({ page }) => {
     await page.goto('/stories/historia-inexistente')
     const trigger = page.getByTestId('missing-story-private-trigger')

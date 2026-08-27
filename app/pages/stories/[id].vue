@@ -46,6 +46,24 @@ const timelineContent = ref<HTMLElement | null>(null)
 const canScrollToTop = ref(false)
 const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
+const editingVisualMessage = ref<Message | null>(null)
+
+async function saveVisualMessage(id: string, raw: string) {
+  if (stories.generating) return
+  const segmentIndex = activeVisualFrame.value?.segmentIndex
+  await stories.updateMessage(id, raw)
+  await nextTick()
+  const messageFrames = visualFrames.value.flatMap((frame, index) =>
+    frame.messageId === id ? [{ frame, index }] : []
+  )
+  const editedFrame = messageFrames.find(({ frame }) => frame.segmentIndex === segmentIndex)
+    ?? messageFrames.at(-1)
+  if (editedFrame) {
+    visualFrameIndex.value = editedFrame.index
+    followingVisualReveal.value = false
+  }
+  editingVisualMessage.value = null
+}
 const storySavesOpen = ref(false)
 const storySavesBusy = ref(false)
 const storySavesError = ref<string | null>(null)
@@ -551,6 +569,9 @@ const visualFrameTotal = computed(() =>
 const visualFrameIndex = ref(Math.max(0, visualFrames.value.length - 1))
 const followingVisualReveal = ref(true)
 const activeVisualFrame = computed(() => visualFrames.value[visualFrameIndex.value] ?? null)
+const activeVisualMessage = computed(() =>
+  stories.messages.find((message) => message.id === activeVisualFrame.value?.messageId) ?? null
+)
 const canShowPreviousVisualFrame = computed(() => visualFrameIndex.value > 0)
 const canShowNextVisualFrame = computed(
   () => visualFrameIndex.value < visualFrames.value.length - 1
@@ -855,7 +876,7 @@ function onVisualNovelKeydown(event: KeyboardEvent) {
   if (!stories.activeStory) return
   if (
     event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
-    storyPreferencesOpen.value || selectedDebugTrace.value || imagePickerTarget.value ||
+    storyPreferencesOpen.value || selectedDebugTrace.value || imagePickerTarget.value || editingVisualMessage.value ||
     confirmDialog.dialog
   ) return
 
@@ -1073,7 +1094,7 @@ onBeforeUnmount(() => {
         <div
           v-if="stories.activeStory.visualMode"
           data-testid="visual-novel-view"
-          class="flex h-full min-h-0 flex-col bg-slate-950"
+          class="visual-novel-view flex h-full min-h-0 flex-col bg-slate-950"
         >
           <div class="relative min-h-0 flex-1">
             <VisualNovelStage
@@ -1082,6 +1103,21 @@ onBeforeUnmount(() => {
               :background-id="visualBackground.id"
               :background-tag="visualBackground.tag"
               @select-image="openImageReplacement"
+            />
+
+            <MessageActions
+              v-if="activeVisualMessage"
+              :message="activeVisualMessage"
+              :editable="!stories.generating"
+              :debug-trace="debugForMessage(activeVisualMessage.id)"
+              :compaction-trace="compactionDebugForMessage(activeVisualMessage.id)"
+              data-testid="visual-message-actions"
+              class="visual-message-actions absolute right-3 bottom-3 z-20 rounded-xl border border-white/15 bg-slate-950/80 p-1 text-slate-300 shadow-lg backdrop-blur-sm"
+              @debug="selectedDebugTrace = $event"
+              @edit="editingVisualMessage = activeVisualMessage"
+              @remove="removeMessage(activeVisualMessage.id)"
+              @regenerate="regenerateFrom(activeVisualMessage.id)"
+              @resend="resendFrom(activeVisualMessage.id)"
             />
 
             <div
@@ -1593,6 +1629,12 @@ onBeforeUnmount(() => {
       </div>
     </Teleport>
 
+    <MessageEditDialog
+      :message="editingVisualMessage"
+      :disabled="stories.generating"
+      @close="editingVisualMessage = null"
+      @save="saveVisualMessage"
+    />
     <LlmDebugDialog
       :trace="selectedDebugTrace"
       :history-budget="settings.activeHistoryBudget"
@@ -1610,3 +1652,24 @@ onBeforeUnmount(() => {
     />
   </div>
 </template>
+
+<style scoped>
+.visual-message-actions {
+  display: none;
+}
+
+@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
+  .visual-message-actions {
+    display: flex;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+  }
+
+  .visual-novel-view:hover .visual-message-actions,
+  .visual-message-actions:focus-within {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+</style>
