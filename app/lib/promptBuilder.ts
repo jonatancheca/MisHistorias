@@ -157,7 +157,7 @@ export function buildSystemPrompt(options: {
     '',
     '## EL PROTAGONISTA',
     `El protagonista se llama "${userName}". Sus mensajes llegan con el prefijo \`${userName}:\`.`,
-    'Los mensajes del usuario que empiecen por `IA: ` son instrucciones para cambiar tu comportamiento o lo que debes hacer. No forman parte del chat ni de las acciones del protagonista; aplica únicamente el texto posterior al prefijo y no lo muestres ni lo menciones.',
+    'Los mensajes del usuario que empiecen por `IA: ` o `Narrador: ` son instrucciones solo para tu siguiente respuesta. No forman parte del chat ni de las acciones del protagonista; aplica únicamente el texto posterior al prefijo y no lo muestres ni lo menciones.',
     protagonistPreferences.trim()
       ? `Preferencias del protagonista:\n${protagonistPreferences.trim()}`
       : 'Preferencias del protagonista: (sin preferencias adicionales)',
@@ -188,11 +188,13 @@ export function buildHistory(
   userName: string
 ): ChatMessage[] {
   const history: ChatMessage[] = []
+  const lastAssistantIndex = messages.findLastIndex((message) => message.role === 'assistant')
   let used = 0
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!
     const isInstruction = message.role === 'user' && isAiInstruction(message.raw)
+    if (isInstruction && index < lastAssistantIndex) continue
     const instruction = isInstruction ? extractAiInstruction(message.raw) : null
     if (isInstruction && !instruction) continue
 

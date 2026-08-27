@@ -382,6 +382,49 @@ test.describe('chat', () => {
     expect(requestMessages.slice(1).every((message) => message.role !== 'system')).toBe(true)
   })
 
+  test('aplica Narrador solo hasta recibir la siguiente respuesta', async ({ page, data }) => {
+    const { story, character } = await createStoryFixture(data)
+    await data.patchSettings({
+      mockMode: false,
+      model: 'qwen-test',
+      responseSpeed: 'instant',
+      useChromeLlm: false,
+      privateUseChromeLlm: null
+    })
+    const requests: Array<Array<{ role: string; content: string }>> = []
+    await page.route('**/api/llm/chat', async (route) => {
+      requests.push(route.request().postDataJSON().messages)
+      await route.fulfill({
+        json: {
+          content: `${character.name} [feliz][armadura]: La escena continúa.`,
+          finishReason: 'stop'
+        }
+      })
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    const input = page.getByPlaceholder('Escribe lo que haces o dices…')
+    const instruction = 'Narrador: Habla en susurros.'
+    await input.fill(instruction)
+    await page.getByRole('button', { name: 'Enviar' }).click()
+    await expect.poll(async () => (
+      await data.list<Message>('messages', 'normal', { storyId: story.id })
+    ).filter((message) => message.role === 'assistant').length).toBe(1)
+
+    await input.fill('Entra en la sala.')
+    await page.getByRole('button', { name: 'Enviar' }).click()
+    await expect.poll(async () => (
+      await data.list<Message>('messages', 'normal', { storyId: story.id })
+    ).filter((message) => message.role === 'assistant').length).toBe(2)
+
+    expect(requests).toHaveLength(2)
+    expect(requests[0]?.filter((message) => message.role === 'system')).toHaveLength(1)
+    expect(requests[0]?.[0]?.content).toContain('Habla en susurros.')
+    expect(requests[1]?.filter((message) => message.role === 'system')).toHaveLength(1)
+    expect(requests[1]?.[0]?.content).not.toContain('Habla en susurros.')
+    await expect(page.getByText(instruction, { exact: true })).toHaveCount(0)
+  })
+
   test('usa Chrome AI sin modelo LMStudio ni fallback', async ({ page, data }) => {
     const { story } = await createStoryFixture(data)
     const localResponse = 'Narración: respuesta local de Chrome.'

@@ -1,4 +1,4 @@
-const AI_INSTRUCTION_PREFIX = /^\s*IA:\s*/
+const AI_INSTRUCTION_PREFIX = /^\s*(?:IA|Narrador):\s*/
 
 export function isAiInstruction(value: string) {
   return AI_INSTRUCTION_PREFIX.test(value)

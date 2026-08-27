@@ -232,26 +232,26 @@ test('combina todos los mensajes system para Qwen sin perder catálogo ni orden'
     }],
     messages: [
       {
+        id: 'assistant-1',
+        storyId: story.id,
+        role: 'assistant',
+        raw: 'La puerta se abre.',
+        segments: [],
+        createdAt: 1
+      },
+      {
         id: 'instruction-1',
         storyId: story.id,
         role: 'user',
         raw: 'IA: Habla en susurros.',
         segments: [],
-        createdAt: 1
+        createdAt: 2
       },
       {
         id: 'user-1',
         storyId: story.id,
         role: 'user',
         raw: 'Entra en la sala.',
-        segments: [],
-        createdAt: 2
-      },
-      {
-        id: 'assistant-1',
-        storyId: story.id,
-        role: 'assistant',
-        raw: 'La puerta se abre.',
         segments: [],
         createdAt: 3
       }
@@ -287,38 +287,56 @@ test('combina todos los mensajes system para Qwen sin perder catálogo ni orden'
   assert.ok(continuationIndex < pendingIndex)
   assert.ok(pendingIndex < reminderIndex)
   assert.deepEqual(messages.slice(1), [
-    { role: 'user', content: 'Vera: Entra en la sala.' },
-    { role: 'assistant', content: 'La puerta se abre.' }
+    { role: 'assistant', content: 'La puerta se abre.' },
+    { role: 'user', content: 'Vera: Entra en la sala.' }
   ])
 })
 
-test('convierte mensajes IA en instrucciones ocultas del historial', () => {
-  const history = buildHistory(
-    [
-      {
-        id: 'instruction-1',
-        storyId: 'story-1',
-        role: 'user',
-        raw: 'IA: Haz que todos hablen en susurros.',
-        segments: [],
-        createdAt: 1
-      },
-      {
-        id: 'user-1',
-        storyId: 'story-1',
-        role: 'user',
-        raw: 'Entra en la sala.',
-        segments: [],
-        createdAt: 2
-      }
-    ],
-    [],
-    1000,
-    'Usuario'
-  )
+test('mantiene instrucciones IA y Narrador solo hasta una respuesta válida', () => {
+  const instruction = {
+    id: 'instruction-1',
+    storyId: 'story-1',
+    role: 'user' as const,
+    raw: 'Narrador: Haz que todos hablen en susurros.',
+    segments: [],
+    createdAt: 1
+  }
+  const response = {
+    id: 'assistant-1',
+    storyId: 'story-1',
+    role: 'assistant' as const,
+    raw: 'La escena continúa.',
+    segments: [],
+    createdAt: 2
+  }
+  const action = {
+    id: 'user-1',
+    storyId: 'story-1',
+    role: 'user' as const,
+    raw: 'Entra en la sala.',
+    segments: [],
+    createdAt: 3
+  }
 
-  assert.deepEqual(history, [
+  const pending = buildHistory([instruction, action], [], 1000, 'Usuario')
+  assert.deepEqual(pending, [
     { role: 'system', content: 'Instrucción del usuario para la IA:\nHaz que todos hablen en susurros.' },
     { role: 'user', content: 'Usuario: Entra en la sala.' }
+  ])
+
+  const consumed = buildHistory([instruction, response, action], [], 1000, 'Usuario')
+  assert.deepEqual(consumed, [
+    { role: 'assistant', content: 'La escena continúa.' },
+    { role: 'user', content: 'Usuario: Entra en la sala.' }
+  ])
+
+  const regenerated = buildHistory([instruction], [], 1000, 'Usuario')
+  assert.deepEqual(regenerated, [
+    { role: 'system', content: 'Instrucción del usuario para la IA:\nHaz que todos hablen en susurros.' }
+  ])
+
+  const aiPending = buildHistory([{ ...instruction, raw: 'IA: Responde brevemente.' }], [], 1000, 'Usuario')
+  assert.deepEqual(aiPending, [
+    { role: 'system', content: 'Instrucción del usuario para la IA:\nResponde brevemente.' }
   ])
 })

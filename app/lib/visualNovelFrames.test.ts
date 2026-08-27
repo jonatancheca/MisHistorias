@@ -54,7 +54,7 @@ describe('pasos de novela visual', () => {
     assert.equal(frames[1]?.backgroundId, 'forest')
   })
 
-  it('omite instrucciones IA de los pasos visibles', () => {
+  it('omite instrucciones IA y Narrador de los pasos visibles', () => {
     const frames = buildVisualNovelFrames([
       messages[0]!,
       {
@@ -65,6 +65,14 @@ describe('pasos de novela visual', () => {
         segments: [],
         createdAt: 1.5
       },
+      {
+        id: 'instruction-2',
+        storyId: 'story-1',
+        role: 'user',
+        raw: 'Narrador: Usa frases breves.',
+        segments: [],
+        createdAt: 1.6
+      },
       messages[1]!
     ], {
       initialBackgroundId: null,
@@ -72,6 +80,7 @@ describe('pasos de novela visual', () => {
     })
 
     assert.equal(frames.filter((frame) => frame.text.includes('Cambia el tono.')).length, 0)
+    assert.equal(frames.filter((frame) => frame.text.includes('Usa frases breves.')).length, 0)
     assert.equal(frames.filter((frame) => frame.kind === 'user').length, 1)
   })
 
