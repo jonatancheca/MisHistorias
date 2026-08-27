@@ -1095,30 +1095,6 @@ onBeforeUnmount(() => {
               <span> o escribe tú el primer movimiento.</span>
             </div>
 
-            <div
-              v-if="stories.waitingForResponse"
-              data-testid="visual-thinking-indicator"
-              class="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center px-4"
-              role="status"
-              aria-live="polite"
-            >
-              <div
-                class="flex items-center gap-3 rounded-full border border-white/25 bg-slate-950/85 px-4 py-2 text-sm text-white shadow-lg backdrop-blur-sm"
-              >
-                <span>El Narrador está pensando…</span>
-                <span class="flex items-center gap-1" aria-hidden="true">
-                  <span class="h-2 w-2 animate-bounce rounded-full bg-brand-400 motion-reduce:animate-none" />
-                  <span
-                    class="h-2 w-2 animate-bounce rounded-full bg-brand-400 motion-reduce:animate-none"
-                    style="animation-delay: 120ms"
-                  />
-                  <span
-                    class="h-2 w-2 animate-bounce rounded-full bg-brand-400 motion-reduce:animate-none"
-                    style="animation-delay: 240ms"
-                  />
-                </span>
-              </div>
-            </div>
           </div>
 
           <section
@@ -1281,27 +1257,6 @@ onBeforeUnmount(() => {
           </template>
 
           <div
-            v-if="stories.waitingForResponse"
-            data-testid="thinking-indicator"
-            class="flex min-w-0 items-center gap-3 rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] px-4 py-3 text-sm text-[var(--color-fg-muted)]"
-            role="status"
-            aria-live="polite"
-          >
-            <span>El Narrador está pensando…</span>
-            <span class="flex items-center gap-1" aria-hidden="true">
-              <span class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none" />
-              <span
-                class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
-                style="animation-delay: 120ms"
-              />
-              <span
-                class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
-                style="animation-delay: 240ms"
-              />
-            </span>
-          </div>
-
-          <div
             v-if="stories.compacting"
             data-testid="compacting-indicator"
             class="flex min-w-0 items-center gap-3 rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] px-4 py-3 text-sm text-[var(--color-fg-muted)]"
@@ -1336,6 +1291,26 @@ onBeforeUnmount(() => {
       <footer
         class="border-t border-[var(--color-border-soft)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4"
       >
+        <div
+          v-if="stories.waitingForResponse"
+          data-testid="thinking-indicator"
+          class="mb-2 flex min-w-0 items-center gap-3 text-sm text-[var(--color-fg-muted)]"
+          role="status"
+          aria-live="polite"
+        >
+          <span>El Narrador está pensando…</span>
+          <span class="flex shrink-0 items-center gap-1" aria-hidden="true">
+            <span class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none" />
+            <span
+              class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
+              style="animation-delay: 120ms"
+            />
+            <span
+              class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
+              style="animation-delay: 240ms"
+            />
+          </span>
+        </div>
         <div v-if="visiblePendingImageInstructions.length" class="mb-2 flex flex-wrap gap-2" data-testid="pending-image-instructions">
           <span
             v-for="instruction in visiblePendingImageInstructions"

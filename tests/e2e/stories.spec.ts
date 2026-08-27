@@ -308,6 +308,38 @@ test.describe('historias', () => {
 })
 
 test.describe('chat', () => {
+  for (const visualMode of [false, true]) {
+    test(`muestra pensando sobre escritura en ${visualMode ? 'Visual Novel' : 'chat'}`, async ({ page, data }) => {
+      const { story } = await createStoryFixture(data, visualMode)
+      await data.patchSettings({ mockMode: false, model: 'test-model', useChromeLlm: false, privateUseChromeLlm: null, responseSpeed: 'instant' })
+      let releaseResponse!: () => void
+      const responseReady = new Promise<void>((resolve) => { releaseResponse = resolve })
+      await page.route('**/api/llm/chat', async (route) => {
+        await responseReady
+        await route.fulfill({ json: { content: 'La espera termina.', finishReason: 'stop' } })
+      })
+      await page.goto(`/stories/${story.id}`)
+      await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Comienza.')
+      await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+      const indicator = page.getByTestId('thinking-indicator')
+      try {
+        for (const width of [1280, 320, 390]) {
+          await page.setViewportSize({ width, height: 900 })
+          await expect(indicator).toBeVisible()
+          await expect(indicator).toHaveText('El Narrador está pensando…')
+          await expect(page.locator('footer').getByTestId('thinking-indicator')).toHaveCount(1)
+          const statusBounds = await indicator.boundingBox()
+          const inputBounds = await page.getByPlaceholder('Escribe lo que haces o dices…').boundingBox()
+          expect(statusBounds!.y + statusBounds!.height).toBeLessThanOrEqual(inputBounds!.y)
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+        }
+      } finally {
+        releaseResponse()
+      }
+      await expect(indicator).toHaveCount(0)
+    })
+  }
+
   test('PageUp y PageDown navegan mensajes desde el cuadro de escritura', async ({ page, data }) => {
     const { story } = await createStoryFixture(data)
     const messages = []
