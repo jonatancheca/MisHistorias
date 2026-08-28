@@ -7,11 +7,21 @@ export interface LlmCallError extends Error {
 
 export interface LlmChatRequest {
   model: string
-  messages: Array<{ role: string; content: string }>
+  messages: LlmMessage[]
   temperature?: number
   maxTokens?: number
   scope?: DataScope
   signal?: AbortSignal
+}
+
+export type LlmMessageContent = string | Array<
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+>
+
+export interface LlmMessage {
+  role: string
+  content: LlmMessageContent
 }
 
 function normalizeError(caught: unknown): LlmCallError {

@@ -18,11 +18,16 @@ export interface LlmProxySettings {
 
 export interface LlmProxyRequest {
   model: string
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{ role: string; content: LlmMessageContent }>
   temperature: number
   maxTokens: number
   signal?: AbortSignal
 }
+
+export type LlmMessageContent = string | Array<
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+>
 
 interface ChatCompletionResponse {
   choices?: Array<{

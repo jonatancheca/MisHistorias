@@ -1276,6 +1276,7 @@ onBeforeRouteLeave(async () => {
           {{ importing ? 'Importando…' : 'Importar JSON' }}
         </button>
         <NuxtLink to="/dev/test-data" class="btn-ghost">Datos de prueba</NuxtLink>
+        <NuxtLink to="/lora-assistant" class="btn-ghost">Asistente LoRA</NuxtLink>
       </div>
 
       <p v-if="importMessage" class="mt-2 text-xs text-[var(--color-fg-muted)]">{{ importMessage }}</p>

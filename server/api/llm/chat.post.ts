@@ -1,4 +1,4 @@
-import { fetchProxyChat, type LlmProxyError } from '../../utils/llm'
+import { fetchProxyChat, type LlmMessageContent, type LlmProxyError } from '../../utils/llm'
 import { getStorage } from '../../utils/storage'
 
 function numberInRange(value: unknown, fallback: number, min: number, max: number) {
@@ -12,14 +12,28 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Petición no válida' })
   }
   const value = body as Record<string, unknown>
+  const isContent = (content: unknown): content is LlmMessageContent => {
+    if (typeof content === 'string') return true
+    if (!Array.isArray(content) || content.length === 0 || content.length > 4) return false
+    return content.every((part) => {
+      if (!part || typeof part !== 'object' || typeof (part as Record<string, unknown>).type !== 'string') {
+        return false
+      }
+      const item = part as Record<string, unknown>
+      if (item.type === 'text') return typeof item.text === 'string' && item.text.length <= 100_000
+      if (item.type !== 'image_url' || !item.image_url || typeof item.image_url !== 'object') return false
+      const url = (item.image_url as Record<string, unknown>).url
+      return typeof url === 'string' && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(url) && url.length <= 20_000_000
+    })
+  }
   const messages = Array.isArray(value.messages)
     ? value.messages
         .filter(
-          (message): message is { role: string; content: string } =>
+          (message): message is { role: string; content: LlmMessageContent } =>
             Boolean(message) &&
             typeof message === 'object' &&
             typeof (message as Record<string, unknown>).role === 'string' &&
-            typeof (message as Record<string, unknown>).content === 'string'
+            isContent((message as Record<string, unknown>).content)
         )
         .map((message) => ({ role: message.role, content: message.content }))
     : []

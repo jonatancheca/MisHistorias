@@ -59,6 +59,40 @@ test('proxy envía JSON no streaming y conserva finishReason', async () => {
   }
 })
 
+test('proxy conserva bloques multimodales de imagen', async () => {
+  let received: Record<string, unknown> | null = null
+  const server = createServer(async (request, response) => {
+    received = await readJson(request)
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({ choices: [{ message: { content: 'caption' }, finish_reason: 'stop' }] }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('Puerto de prueba no disponible')
+  try {
+    await fetchProxyChat(
+      { baseUrl: `http://127.0.0.1:${address.port}`, apiKey: '' },
+      {
+        model: 'vision',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'caption this' },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }
+          ]
+        }]
+      }
+    )
+    const messages = received?.messages as Array<{ content: unknown }>
+    assert.deepEqual(messages[0]?.content, [
+      { type: 'text', text: 'caption this' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }
+    ])
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+  }
+})
+
 test('proxy propaga cancelación', async () => {
   const server = createServer((_request, response) => {
     setTimeout(() => response.end('{"choices":[]}'), 250)
