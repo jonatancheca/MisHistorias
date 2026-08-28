@@ -37,6 +37,16 @@ async function save() {
   }
 }
 
+async function addDefault() {
+  saving.value = true
+  try {
+    const preset = await presets.addCurrentDefaultPreset()
+    selectedId.value = preset.id
+  } finally {
+    saving.value = false
+  }
+}
+
 async function remove() {
   if (!selectedId.value) return
   const accepted = await confirmDialog.ask({
@@ -63,7 +73,18 @@ async function setActive() {
           Instrucciones base que reciben todas las historias.
         </p>
       </div>
-      <button type="button" class="btn-primary" @click="startNew">Nuevo prompt</button>
+      <div class="flex flex-wrap justify-end gap-2">
+        <button
+          v-if="!presets.hasCurrentDefaultPreset"
+          type="button"
+          class="btn-ghost"
+          :disabled="saving"
+          @click="addDefault"
+        >
+          Añadir prompt por defecto
+        </button>
+        <button type="button" class="btn-primary" :disabled="saving" @click="startNew">Nuevo prompt</button>
+      </div>
     </header>
 
     <div class="grid gap-6 md:grid-cols-[240px_minmax(0,1fr)]">

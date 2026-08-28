@@ -1,4 +1,5 @@
 import type { AppSettings, Character, DatabaseBackup, PromptPreset } from '../../shared/types'
+import { DEFAULT_PRESET_CONTENT, DEFAULT_PRESET_NAME } from '../../app/lib/defaultPreset'
 import { expect, test } from './fixtures'
 
 test('avisa de una actualización, permite descartarla y comprobarla en Ajustes', async ({ page }) => {
@@ -337,6 +338,50 @@ test('crea, edita, activa y borra prompt', async ({ page, data }) => {
   await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar' }).click()
   await expect(page.getByRole('button', { name })).toHaveCount(0)
   expect((await data.list<PromptPreset>('presets')).some((preset) => preset.name === name)).toBe(false)
+})
+
+test('ofrece añadir prompt fuente sin sobrescribir el personalizado', async ({ page, data }) => {
+  const settingsBefore = await data.patchSettings({})
+  const originalDefault = (await data.list<PromptPreset>('presets'))
+    .find((preset) => preset.name === DEFAULT_PRESET_NAME && preset.content === DEFAULT_PRESET_CONTENT)
+  const customContent = 'Contenido personalizado.'
+  const custom = originalDefault
+    ? { ...originalDefault, content: customContent, updatedAt: Date.now() }
+    : await data.createPreset({ name: DEFAULT_PRESET_NAME, content: customContent })
+
+  if (originalDefault) {
+    await expect(await page.request.put(`/api/data/presets/${custom.id}?scope=normal`, { data: custom })).toBeOK()
+  }
+  await data.patchSettings({ activePresetId: custom.id })
+
+  try {
+    await page.goto('/prompts')
+    const addDefault = page.getByRole('button', { name: 'Añadir prompt por defecto', exact: true })
+    await expect(addDefault).toBeVisible()
+    await addDefault.click()
+
+    await expect(page.getByLabel('Contenido')).toHaveValue(DEFAULT_PRESET_CONTENT)
+    const stored = await data.list<PromptPreset>('presets')
+    expect(stored).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: DEFAULT_PRESET_NAME, content: customContent }),
+      expect.objectContaining({ name: DEFAULT_PRESET_NAME, content: DEFAULT_PRESET_CONTENT })
+    ]))
+    const settings = await (await page.request.get('/api/settings')).json() as AppSettings
+    expect(settings.activePresetId).toBe(stored
+      .find((preset) => preset.name === DEFAULT_PRESET_NAME && preset.content === DEFAULT_PRESET_CONTENT)?.id)
+  } finally {
+    const addedDefault = (await data.list<PromptPreset>('presets'))
+      .find((preset) => preset.id !== custom.id && preset.name === DEFAULT_PRESET_NAME && preset.content === DEFAULT_PRESET_CONTENT)
+    if (addedDefault) {
+      await expect(await page.request.delete(`/api/data/presets/${addedDefault.id}?scope=normal`)).toBeOK()
+    }
+    if (originalDefault) {
+      await expect(await page.request.put(`/api/data/presets/${originalDefault.id}?scope=normal`, { data: originalDefault })).toBeOK()
+    } else {
+      await expect(await page.request.delete(`/api/data/presets/${custom.id}?scope=normal`)).toBeOK()
+    }
+    await data.patchSettings({ activePresetId: settingsBefore.activePresetId })
+  }
 })
 
 test('separa datos normales y privados', async ({ page, data }) => {

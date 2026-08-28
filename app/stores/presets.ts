@@ -1,15 +1,17 @@
 import { defineStore } from 'pinia'
-import type { AppSettings, PromptPreset } from '#shared/types'
-import { deletePreset, getActiveDataScope, listPresets, newId, putPreset } from '~/lib/db'
+import type { PromptPreset } from '#shared/types'
+import { deletePreset, listPresets, newId, putPreset } from '~/lib/db'
 import {
   DEFAULT_PRESET_CONTENT,
-  DEFAULT_PRESET_NAME,
-  DEFAULT_PRESET_VERSION
+  DEFAULT_PRESET_NAME
 } from '~/lib/defaultPreset'
 
 export const usePresetsStore = defineStore('presets', () => {
   const presets = ref<PromptPreset[]>([])
   const loaded = ref(false)
+  const hasCurrentDefaultPreset = computed(() => presets.value.some((preset) =>
+    preset.name === DEFAULT_PRESET_NAME && preset.content === DEFAULT_PRESET_CONTENT
+  ))
 
   function resetForScope() {
     presets.value = []
@@ -33,23 +35,6 @@ export const usePresetsStore = defineStore('presets', () => {
       }
       await putPreset(seed)
       all = [seed]
-    }
-
-    const versionKey =
-      getActiveDataScope() === 'private'
-        ? ('privateDefaultPresetVersion' as const)
-        : ('defaultPresetVersion' as const)
-    if (settings.settings[versionKey] < DEFAULT_PRESET_VERSION) {
-      const now = Date.now()
-      all = await Promise.all(
-        all.map(async (preset) => {
-          if (preset.name !== DEFAULT_PRESET_NAME) return preset
-          const migrated = { ...preset, content: DEFAULT_PRESET_CONTENT, updatedAt: now }
-          await putPreset(migrated)
-          return migrated
-        })
-      )
-      await settings.save({ [versionKey]: DEFAULT_PRESET_VERSION } as Partial<AppSettings>)
     }
 
     presets.value = all
@@ -83,6 +68,12 @@ export const usePresetsStore = defineStore('presets', () => {
     return preset
   }
 
+  async function addCurrentDefaultPreset() {
+    const preset = await savePreset({ name: DEFAULT_PRESET_NAME, content: DEFAULT_PRESET_CONTENT })
+    await useSettingsStore().setActivePresetId(preset.id)
+    return preset
+  }
+
   async function removePreset(id: string) {
     await deletePreset(id)
     presets.value = presets.value.filter((preset) => preset.id !== id)
@@ -92,5 +83,15 @@ export const usePresetsStore = defineStore('presets', () => {
     }
   }
 
-  return { presets, loaded, load, byId, savePreset, removePreset, resetForScope }
+  return {
+    presets,
+    loaded,
+    hasCurrentDefaultPreset,
+    load,
+    byId,
+    savePreset,
+    addCurrentDefaultPreset,
+    removePreset,
+    resetForScope
+  }
 })
