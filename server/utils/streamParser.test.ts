@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createJiti } from 'jiti'
+import type { Character } from '../../shared/types/index.ts'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const jiti = createJiti(import.meta.url, {
@@ -15,13 +16,18 @@ const { hideIncompleteVisualDirectivePrefix, parseSegments, serializeSegments } 
   typeof import('../../app/lib/streamParser.ts')
 >('../../app/lib/streamParser.ts')
 
-const characters = [
+const characters: Character[] = [
   {
     id: 'alicia',
     name: 'Alicia',
     prompt: '',
     tags: [],
     color: '#000000',
+    imageGenerationPreset: '',
+    imageGenerationLora: '',
+    imageGenerationSeed: '',
+    imageGenerationPromptPrefix: '',
+    archived: false,
     createdAt: 1,
     updatedAt: 1
   }

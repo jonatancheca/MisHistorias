@@ -57,7 +57,9 @@ function hasNumber(value: Record<string, unknown>, key: string) {
   return Number.isFinite(value[key])
 }
 
-function hasStringArray(value: Record<string, unknown>, key: string) {
+function hasStringArray<K extends string>(
+  value: Record<string, unknown>, key: K
+): value is Record<string, unknown> & Record<K, string[]> {
   return Array.isArray(value[key]) && value[key].every((item) => typeof item === 'string')
 }
 

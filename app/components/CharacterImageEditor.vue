@@ -55,6 +55,7 @@ watch(swarmConfigured, (configured) => { if (!configured) { cancelGeneration(); 
 const generationModel = ref('')
 const promptBusy = ref(false)
 const generationBusy = ref(false)
+const generationProgressOpen = ref(false)
 const generationError = ref<string | null>(null)
 const generationNotice = ref<string | null>(null)
 const generationOpen = ref(false)
@@ -163,6 +164,7 @@ async function generateImage(asSet = false) {
       message: `${generationCount.value} imágenes × ${swarmPrompts.prompts.length} prompts = ${batch.total} imágenes. ¿Crear el conjunto?`
     })) return
     controller.signal.throwIfAborted()
+    generationProgressOpen.value = true
     if (!swarmCatalog.value && !await loadSwarmCatalog()) {
       throw new Error(generationError.value || 'No se pudo cargar el catálogo SwarmUI.')
     }
@@ -195,6 +197,7 @@ async function generateImage(asSet = false) {
     else generationError.value = `${(caught as Error).message || 'No se pudo generar la imagen.'} ${summary}`
   } finally {
     generationBusy.value = false
+    generationProgressOpen.value = false
     generationController = null
     revokeGenerationLastImage()
   }
@@ -562,7 +565,7 @@ async function remove(id: string) {
         <p v-else-if="!generationPrompt.trim()" class="text-sm text-[var(--color-fg-muted)]">Indica el prompt base para crear el conjunto.</p>
       </fieldset>
       <ImageGenerationProgressDialog
-        v-if="generationBusy"
+        v-if="generationProgressOpen"
         :completed="generationCompleted"
         :total="generationTotal"
         :current-prompt="generationCurrentPrompt"

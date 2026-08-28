@@ -1,5 +1,7 @@
 import type {
+  Background,
   Character,
+  CharacterImage,
   GenerationMode,
   Message,
   Sound,
@@ -7,7 +9,6 @@ import type {
   StoryCharacterCustomization,
   StoryPendingImageInstruction
 } from '#shared/types'
-import type { StoredBackground, StoredImage } from '~/lib/db'
 import { extractAiInstruction, isAiInstruction } from '~/lib/chatInstructions'
 import { serializeSegments } from '~/lib/streamParser'
 import { primaryTag, sanitizeTags, tagKey } from '~/lib/tags'
@@ -72,7 +73,7 @@ function pendingImageInstructionMessage(
 
 function characterSheet(
   character: Character,
-  images: StoredImage[],
+  images: CharacterImage[],
   customization?: StoryCharacterCustomization
 ) {
   const own = images.filter((image) => image.characterId === character.id)
@@ -91,7 +92,7 @@ function characterSheet(
   ].join('\n')
 }
 
-function backgroundSheet(story: Story, backgrounds: StoredBackground[]) {
+function backgroundSheet(story: Story, backgrounds: Background[]) {
   if (!backgrounds.length) return 'No hay fondos disponibles.'
   const initial = backgrounds.find((background) => background.id === story.initialBackgroundId)
   const catalog = imageTagCatalog(backgrounds)
@@ -106,7 +107,7 @@ function backgroundSheet(story: Story, backgrounds: StoredBackground[]) {
   ].join('\n')
 }
 
-function soundSheet(sounds: Sound[], characters: Character[], backgrounds: StoredBackground[]) {
+function soundSheet(sounds: Sound[], characters: Character[], backgrounds: Background[]) {
   if (!sounds.length) return 'No hay sonidos disponibles.'
   const characterNames = new Map(characters.map((character) => [character.id, character.name]))
   const backgroundTags = new Map(
@@ -132,8 +133,8 @@ export function buildSystemPrompt(options: {
   presetContent: string
   story: Story
   characters: Character[]
-  images: StoredImage[]
-  backgrounds: StoredBackground[]
+  images: CharacterImage[]
+  backgrounds: Background[]
   sounds: Sound[]
   userName: string
   protagonistPreferences: string
@@ -259,8 +260,8 @@ export function buildChatMessages(options: {
   presetContent: string
   story: Story
   characters: Character[]
-  images: StoredImage[]
-  backgrounds: StoredBackground[]
+  images: CharacterImage[]
+  backgrounds: Background[]
   sounds: Sound[]
   messages: Message[]
   historyBudget: number

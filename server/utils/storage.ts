@@ -33,6 +33,21 @@ export type DataResource =
   | 'presets'
   | 'swarmPrompts'
 
+interface DataRecordMap {
+  characters: ReturnType<typeof rowToCharacter>
+  images: ReturnType<typeof rowToImage>
+  backgrounds: ReturnType<typeof rowToBackground>
+  sounds: ReturnType<typeof rowToSound>
+  stories: ReturnType<typeof rowToStory>
+  messages: ReturnType<typeof rowToMessage>
+  llmDebugTraces: ReturnType<typeof rowToTrace>
+  storySaves: ReturnType<typeof rowToStorySave>
+  presets: ReturnType<typeof rowToPreset>
+  swarmPrompts: ReturnType<typeof rowToSwarmPrompt>
+}
+
+type JsonResource = Exclude<DataResource, 'images' | 'backgrounds' | 'sounds'>
+
 export interface ResourceQuery {
   storyId?: string
   characterId?: string
@@ -262,7 +277,7 @@ function rowToStory(row: SqliteRow) {
     protagonistPreferencesMode:
       row.protagonist_preferences_mode === 'replace' ? 'replace' : 'append',
     characterIds: parseJson<string[]>(row.character_ids_json, []),
-    characterCustomizations: parseJson(row.character_customizations_json, []),
+    characterCustomizations: parseJson<Story['characterCustomizations']>(row.character_customizations_json, []),
     initialBackgroundId:
       typeof row.initial_background_id === 'string' ? row.initial_background_id : null,
     presetId: typeof row.preset_id === 'string' ? row.preset_id : null,
@@ -1126,6 +1141,7 @@ export class MisHistoriasStorage {
     return { ok: true, schemaVersion: version.user_version }
   }
 
+  list<R extends DataResource>(resource: R, scope: DataScope, query?: ResourceQuery): DataRecordMap[R][]
   list(resource: DataResource, scope: DataScope, query: ResourceQuery = {}) {
     switch (resource) {
       case 'characters':
@@ -1188,6 +1204,7 @@ export class MisHistoriasStorage {
     }
   }
 
+  get<R extends DataResource>(resource: R, scope: DataScope, id: string): DataRecordMap[R] | null
   get(resource: DataResource, scope: DataScope, id: string) {
     const table = resource === 'llmDebugTraces'
       ? 'llm_debug_traces'
@@ -1440,8 +1457,14 @@ export class MisHistoriasStorage {
     })
   }
 
+  put<R extends JsonResource>(
+    resource: R,
+    scope: DataScope,
+    id: string,
+    rawValue: unknown
+  ): DataRecordMap[R]
   put(
-    resource: Exclude<DataResource, 'images' | 'backgrounds' | 'sounds'>,
+    resource: JsonResource,
     scope: DataScope,
     id: string,
     rawValue: unknown
@@ -1643,7 +1666,9 @@ export class MisHistoriasStorage {
           )
         break
     }
-    return this.get(resource, scope, id)
+    const saved = this.get(resource, scope, id)
+    if (!saved) throw new Error(`No se pudo recuperar ${resource}/${id} tras guardarlo`)
+    return saved
   }
 
   putBinary(

@@ -96,7 +96,7 @@ test('rechaza versión incompatible y archivos ausentes', async () => {
     sounds: []
   }))
   await assert.rejects(
-    readCharacterArchive(new Blob([await incompatible.generateAsync({ type: 'uint8array' })])),
+    readCharacterArchive(new Blob([await incompatible.generateAsync({ type: 'arraybuffer' })])),
     /Versión de personaje no compatible/
   )
 
@@ -111,7 +111,7 @@ test('rechaza versión incompatible y archivos ausentes', async () => {
     sounds: []
   }))
   await assert.rejects(
-    readCharacterArchive(new Blob([await missing.generateAsync({ type: 'uint8array' })])),
+    readCharacterArchive(new Blob([await missing.generateAsync({ type: 'arraybuffer' })])),
     /Falta el archivo images\/1.png/
   )
 })

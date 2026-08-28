@@ -457,10 +457,11 @@ test('migra v22 eliminando descripciones de imágenes en ambos ámbitos', () => 
       'description' in storage.get('stories', 'normal', 'story-1')!.imageCatalogSnapshot![0]!,
       false
     )
-    assert.equal(
-      'description' in storage.get('storySaves', 'normal', 'save-1')!.story.imageCatalogSnapshot![0]!,
-      false
-    )
+    const savedCatalog = storage.get('storySaves', 'normal', 'save-1')!.story.imageCatalogSnapshot
+    assert.ok(Array.isArray(savedCatalog))
+    const savedImage: unknown = savedCatalog[0]
+    assert.ok(savedImage && typeof savedImage === 'object')
+    assert.equal('description' in savedImage, false)
     const persisted = storage.database.prepare(`
       SELECT image_catalog_snapshot_json AS catalog FROM stories WHERE id = 'story-1'
     `).get() as { catalog: string }
@@ -529,10 +530,9 @@ test('migra v23 copiando colores de personajes en historias y partidas', () => {
       storage.get('stories', 'private', privateStory.id)?.characterCustomizations[0]?.color,
       '#abcdef'
     )
-    assert.equal(
-      storage.get('storySaves', 'normal', 'save-v23')?.story.characterCustomizations[0]?.color,
-      '#123456'
-    )
+    assert.partialDeepStrictEqual(storage.get('storySaves', 'normal', 'save-v23')?.story, {
+      characterCustomizations: [{ color: '#123456' }]
+    })
     assert.equal(migrationBackups(path).length, 1)
   } finally {
     storage.close()

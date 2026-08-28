@@ -30,7 +30,7 @@ test('cliente Swarm rechaza URLs vacías, inválidas o con otro protocolo', () =
 test('cliente Swarm renueva sesión, lista catálogo, autentica y descarga imagen', async () => {
   let sessions = 0
   let paramsCalls = 0
-  let generationBody: Record<string, unknown> | null = null
+  const generationBodies: Record<string, unknown>[] = []
   const cookies: string[] = []
   const server = createServer(async (request, response) => {
     cookies.push(String(request.headers.cookie ?? ''))
@@ -57,7 +57,7 @@ test('cliente Swarm renueva sesión, lista catálogo, autentica y descarga image
     } else if (request.url === '/API/GetMyUserData') {
       response.end(JSON.stringify({ presets: [{ title: 'Retrato' }] }))
     } else if (request.url === '/API/GenerateText2Image') {
-      generationBody = body
+      generationBodies.push(body)
       response.end(JSON.stringify({ images: ['/generated.png'] }))
     } else {
       response.statusCode = 404
@@ -88,9 +88,10 @@ test('cliente Swarm renueva sesión, lista catálogo, autentica y descarga image
     })
     assert.equal(image.mimeType, 'image/png')
     assert.deepEqual(Array.from(image.bytes), [137, 80, 78, 71])
-    assert.equal(generationBody?.images, 1)
-    assert.equal(generationBody?.donotsave, true)
-    assert.equal(generationBody?.model, 'a-model')
+    assert.equal(generationBodies.length, 1)
+    assert.equal(generationBodies[0]?.images, 1)
+    assert.equal(generationBodies[0]?.donotsave, true)
+    assert.equal(generationBodies[0]?.model, 'a-model')
     assert.equal(cookies.every((cookie) => cookie === 'swarm_token=token%20privado'), true)
   } finally {
     await new Promise<void>((resolve, reject) =>

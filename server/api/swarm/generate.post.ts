@@ -59,7 +59,7 @@ export default defineEventHandler(async (event) => {
       }
     )
     setResponseHeader(event, 'content-type', image.mimeType)
-    setResponseHeader(event, 'content-length', String(image.bytes.byteLength))
+    setResponseHeader(event, 'content-length', image.bytes.byteLength)
     setResponseHeader(event, 'cache-control', 'no-store, max-age=0')
     return image.bytes
   } catch (caught) {

@@ -117,9 +117,14 @@ test('mantiene catálogo y crea conjunto con semillas compartidas, etiquetas y t
   await page.getByRole('button', { name: 'Crear conjunto de imágenes', exact: true }).click()
   const dialog = page.getByRole('alertdialog')
   await expect(dialog).toContainText('2 imágenes × 2 prompts = 4 imágenes')
+  await expect(page.getByRole('dialog', { name: 'Generando imágenes' })).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'Generando imágenes' })).toHaveCount(0)
   expect(bodies).toHaveLength(0)
   await page.getByRole('button', { name: 'Crear conjunto de imágenes', exact: true }).click()
+  await expect(dialog).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Generando imágenes' })).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Crear conjunto', exact: true }).click()
   await expect(page.getByText('4 imágenes generadas y guardadas en la galería.')).toBeVisible()
   expect(bodies.map((body) => body.prompt)).toEqual(['quality\nportrait, sitting', 'quality\nportrait, sitting',
@@ -151,7 +156,11 @@ test('mantiene catálogo y crea conjunto con semillas compartidas, etiquetas y t
   await expect.poll(async () => (await data.list<SwarmPrompt>('swarmPrompts')).length).toBe(4)
   await expect.poll(async () => (await data.list<CharacterImage>('images')).length).toBe(8)
   const importedImages = (await data.list<CharacterImage>('images')).filter((image) => image.characterId !== character.id)
-  expect(importedImages.map((image) => image.generation)).toEqual(images.map((image) => image.generation))
+  // Imported images share a timestamp, so their list order is not guaranteed.
+  const imageMetadata = (items: CharacterImage[]) => items.map((image) => JSON.stringify({
+    tags: image.tags, isDefault: image.isDefault, generation: image.generation
+  })).sort()
+  expect(imageMetadata(importedImages)).toEqual(imageMetadata(images))
 })
 
 test('muestra progreso, prompt actual y última imagen al generar un lote', async ({ page, data }) => {
@@ -178,6 +187,12 @@ test('muestra progreso, prompt actual y última imagen al generar un lote', asyn
   await expect(progress).toContainText('portrait')
   await expect(progress.getByRole('img', { name: 'Última imagen generada' })).toBeVisible()
   await expect(progress.getByRole('button', { name: 'Cancelar generación' })).toBeVisible()
+
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect(progress.getByRole('button', { name: 'Cancelar generación' })).toBeInViewport()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
 
   await progress.getByRole('button', { name: 'Cancelar generación' }).click()
   release?.()
@@ -220,7 +235,9 @@ test('detiene lotes al fallar, cancelar o salir sin borrar éxitos', async ({ pa
     await new Promise<void>((resolve) => { release = resolve })
     await route.fulfill({ contentType: 'image/png', body: PNG_BYTES }).catch(() => {})
   })
-  await page.goto(`/characters/${character.id}`)
+  await page.goto('/characters')
+  await page.getByRole('link', { name: character.name, exact: true }).click()
+  await expect(page).toHaveURL(`/characters/${character.id}`)
   await page.getByTestId('character-swarm-toggle').click()
   await page.getByLabel('Prompt de imagen (inglés y editable)').fill('portrait')
   await page.getByLabel('Número de imágenes').fill('3')
@@ -234,7 +251,8 @@ test('detiene lotes al fallar, cancelar o salir sin borrar éxitos', async ({ pa
   await expect(page.getByText(/Generación cancelada/)).toBeVisible()
   await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
   await expect.poll(() => calls).toBe(4)
-  await page.getByRole('link', { name: 'Personajes', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Generando imágenes' })).toBeVisible()
+  await page.goBack()
   release!()
   await expect(page).toHaveURL(/\/characters$/)
   expect(await data.list<CharacterImage>('images', 'normal', { characterId: character.id })).toHaveLength(1)

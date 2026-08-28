@@ -51,7 +51,7 @@ export function normalizeSwarmBaseUrl(rawBaseUrl: unknown) {
   return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
 }
 
-function cookieHeader(rawToken: unknown) {
+function cookieHeader(rawToken: unknown): Record<string, string> {
   if (typeof rawToken !== 'string') return {}
   const token = rawToken.replace(/[\r\n]/g, '').trim()
   return token ? { cookie: `swarm_token=${encodeURIComponent(token)}` } : {}

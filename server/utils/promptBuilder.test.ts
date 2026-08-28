@@ -349,8 +349,7 @@ test('combina todos los mensajes system para Qwen sin perder catálogo ni orden'
       tags: ['feliz', 'armadura'],
       isDefault: true,
       mimeType: 'image/png',
-      createdAt: 1,
-      blob: new Blob()
+      createdAt: 1
     }],
     backgrounds: [],
     sounds: [{

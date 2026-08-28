@@ -137,7 +137,7 @@ async function archiveBlob(
   if (!allowedTypes.has(mimeType)) throw new Error(`${label} usa un formato no permitido.`)
   const entry = zip.file(asset.path)
   if (!entry) throw new Error(`Falta el archivo ${asset.path}.`)
-  const bytes = await entry.async('uint8array')
+  const bytes = await entry.async('arraybuffer')
   if (bytes.byteLength === 0 || bytes.byteLength > maximumBytes) {
     throw new Error(`${label} supera el tamaño permitido o está vacío.`)
   }

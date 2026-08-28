@@ -16,11 +16,11 @@ test('elimina razonamiento cerrado, mayúsculo y sin cierre', () => {
 })
 
 test('proxy envía JSON no streaming y conserva finishReason', async () => {
-  let received: Record<string, unknown> | null = null
+  const received: Record<string, unknown>[] = []
   let authorization = ''
   const server = createServer(async (request, response) => {
     authorization = String(request.headers.authorization ?? '')
-    received = await readJson(request)
+    received.push(await readJson(request))
     response.setHeader('content-type', 'application/json')
     response.end(
       JSON.stringify({
@@ -49,7 +49,8 @@ test('proxy envía JSON no streaming y conserva finishReason', async () => {
     )
     assert.equal(result.content, 'Respuesta')
     assert.equal(result.finishReason, 'stop')
-    assert.equal(received?.stream, false)
+    assert.equal(received.length, 1)
+    assert.equal(received[0]?.stream, false)
     assert.equal(authorization, 'Bearer token')
   } finally {
     await new Promise<void>((resolve, reject) =>

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import type { Page } from '@playwright/test'
 import type {
   CharacterImage,
   LlmDebugTrace,
@@ -20,6 +21,49 @@ async function createStoryFixture(data: TestDataFactory, visualMode = false) {
     visualMode
   })
   return { character, image, background, preset, story }
+}
+
+async function prepareVisualResponse(
+  page: Page,
+  data: TestDataFactory,
+  content: string,
+  manualAdvance = true
+) {
+  await data.patchSettings({
+    mockMode: false,
+    model: 'test-model',
+    useChromeLlm: false,
+    privateUseChromeLlm: null,
+    responseSpeed: 'slow',
+    visualNovelManualAdvance: manualAdvance,
+    userName: 'Vera',
+    historyBudget: 100_000
+  })
+  const responseReady = Promise.withResolvers<undefined>()
+  const responseRequested = Promise.withResolvers<undefined>()
+  await page.route('**/api/llm/chat', async (route) => {
+    responseRequested.resolve(undefined)
+    await responseReady.promise
+    await route.fulfill({ json: { content, finishReason: 'stop' } })
+  })
+  await page.clock.install()
+  return {
+    requested: responseRequested.promise,
+    release: () => responseReady.resolve(undefined)
+  }
+}
+
+async function pauseVisualClock(page: Page) {
+  await page.clock.pauseAt(new Date(Date.now() + 60_000))
+}
+
+async function focusVisualKeyboard(page: Page) {
+  // Los atajos globales excluyen controles interactivos: no pulsar el botón
+  // que conserve el foco tras iniciar la generación.
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  })
+  await expect(page.locator('body')).toBeFocused()
 }
 
 test.describe('historias', () => {
@@ -1089,27 +1133,44 @@ test.describe('novela visual y responsive', () => {
   })
 
   test('no muestra prefijos de imagen mientras pinta una respuesta visual', async ({ page, data }) => {
-    const { story } = await createStoryFixture(data, true)
-    await data.patchSettings({ mockMode: true, responseSpeed: 'slow' })
+    const { story, character, background } = await createStoryFixture(data, true)
+    const sound = await data.createSound(character, [data.unique('pasos-prueba')])
+    const response = await prepareVisualResponse(page, data, [
+      `Fondo [${background.tags[0]}]:`,
+      `${character.name} [feliz][armadura]: Primera intervención completa.`,
+      `Sonido [${sound.tags[0]}]:`,
+      'Vera: Segunda intervención completa.',
+      `${character.name} [feliz]: Última intervención completa.`
+    ].join('\n'), false)
 
     await page.goto(`/stories/${story.id}`)
+    await pauseVisualClock(page)
     await page.evaluate(() => {
       const seen: string[] = []
       Object.assign(window, { __visualFrameTexts: seen })
       new MutationObserver(() => {
-        const text = document.querySelector('[data-testid="visual-novel-frame"]')?.textContent ?? ''
+        // El reproductor «Sonido [etiqueta]» es un fotograma válido, no un
+        // prefijo de imagen filtrado al texto del diálogo o la narración.
+        const text = document.querySelector('[data-testid="visual-novel-frame"] > p')?.textContent ?? ''
         if (text.trim()) seen.push(text)
       }).observe(document.body, { childList: true, characterData: true, subtree: true })
     })
 
     await page.getByTestId('continue-button').click()
+    await response.requested
+    response.release()
     await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
-    await page.waitForTimeout(5_000)
-    await page.getByRole('button', { name: 'Parar', exact: true }).click()
+    await expect(page.getByTestId('visual-novel-counter')).toHaveText('1 / 4')
+    await page.clock.runFor(60_000)
+    await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeHidden()
+    await expect(page.getByTestId('visual-novel-counter')).toHaveText('4 / 4')
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('Última intervención completa.')
 
     const seen = await page.evaluate(() =>
       (window as typeof window & { __visualFrameTexts?: string[] }).__visualFrameTexts ?? []
     )
+    expect(seen.some((text) => text.includes('Primera intervención completa.'))).toBe(true)
+    expect(seen.some((text) => text.includes('Segunda intervención completa.'))).toBe(true)
     expect(seen.some((text) => text.includes('['))).toBe(false)
   })
 
@@ -1143,43 +1204,60 @@ test.describe('novela visual y responsive', () => {
   })
 
   test('completa solo la intervención actual al pulsar el texto', async ({ page, data }) => {
-    const { story } = await createStoryFixture(data, true)
-    await data.patchSettings({ mockMode: true, responseSpeed: 'slow' })
+    const { story, character } = await createStoryFixture(data, true)
+    const firstLine = `${character.name}: Primera intervención suficientemente larga para completar.`
+    const response = await prepareVisualResponse(page, data, [
+      firstLine,
+      'Segunda intervención que debe seguir pintándose progresivamente.'
+    ].join('\n'), false)
 
     await page.goto(`/stories/${story.id}`)
+    await pauseVisualClock(page)
     await page.getByTestId('continue-button').click()
+    await response.requested
+    response.release()
     const frame = page.getByTestId('visual-novel-frame')
-    await expect.poll(async () => (await frame.innerText()).trim(), { timeout: 15_000 })
-      .not.toBe('La historia aún no ha empezado.')
-    const before = (await frame.innerText()).trim()
+    const counter = page.getByTestId('visual-novel-counter')
+    await expect(counter).toHaveText('1 / 2')
+    await page.clock.runFor(500)
+    await expect(frame).not.toHaveText(firstLine)
 
     await frame.click()
-    const after = (await frame.innerText()).trim()
-    expect(after.length).toBeGreaterThan(before.length + 5)
-    await page.waitForTimeout(300)
+    await expect(frame).toHaveText(firstLine)
+    await expect(counter).toHaveText('1 / 2')
+    await page.clock.runFor(300)
     await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Parar', exact: true }).click()
   })
 
   test('completa la intervención actual con flecha derecha antes de avanzar', async ({ page, data }) => {
-    const { story } = await createStoryFixture(data, true)
-    await data.patchSettings({
-      mockMode: true,
-      responseSpeed: 'slow',
-      visualNovelManualAdvance: true
-    })
+    const { story, character } = await createStoryFixture(data, true)
+    const firstLine = `${character.name}: Primera intervención suficientemente larga para completar.`
+    const response = await prepareVisualResponse(page, data, [
+      firstLine,
+      'Segunda intervención que debe seguir pintándose progresivamente.'
+    ].join('\n'))
 
     await page.goto(`/stories/${story.id}`)
+    await pauseVisualClock(page)
     await page.getByTestId('continue-button').click()
+    await response.requested
+    response.release()
     const frame = page.getByTestId('visual-novel-frame')
-    await expect.poll(async () => (await frame.innerText()).trim(), { timeout: 15_000 })
-      .not.toBe('La historia aún no ha empezado.')
-    const before = (await frame.innerText()).trim()
+    const counter = page.getByTestId('visual-novel-counter')
+    await expect(counter).toHaveText('1 / 2')
+    await page.clock.runFor(500)
+    await expect(frame).not.toHaveText(firstLine)
+    await focusVisualKeyboard(page)
 
     await page.keyboard.press('ArrowRight')
-    const after = (await frame.innerText()).trim()
-    expect(after.length).toBeGreaterThan(before.length + 5)
-    await page.waitForTimeout(300)
+    await expect(frame).toHaveText(firstLine)
+    await expect(counter).toHaveText('1 / 2')
+    await page.clock.runFor(5_000)
+    await expect(frame).toHaveText(firstLine)
+    await expect(counter).toHaveText('1 / 2')
+    await page.keyboard.press('ArrowRight')
+    await expect(counter).toHaveText('2 / 2')
     await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Parar', exact: true }).click()
   })
@@ -1329,28 +1407,32 @@ test.describe('novela visual y responsive', () => {
   })
 
   test('espacio y Enter controlan una frase manual sin dobles avances', async ({ page, data }) => {
-    const { story } = await createStoryFixture(data, true)
-    await data.patchSettings({
-      mockMode: true,
-      responseSpeed: 'slow',
-      visualNovelManualAdvance: true
-    })
+    const { story, character } = await createStoryFixture(data, true)
+    const firstLine = `${character.name}: Primera frase suficientemente larga para comprobar el revelado.`
+    const secondLine = 'Vera: Segunda frase suficientemente larga para comprobar el avance.'
+    const response = await prepareVisualResponse(page, data, [
+      `${character.name} [feliz]: Primera frase suficientemente larga para comprobar el revelado.`,
+      secondLine,
+      'La escena termina.'
+    ].join('\n'))
 
     await page.goto(`/stories/${story.id}`)
-    await page.evaluate(() => {
-      Math.random = () => 0
-    })
+    await pauseVisualClock(page)
     await page.getByTestId('continue-button').click()
+    await response.requested
+    response.release()
     const frame = page.getByTestId('visual-novel-frame')
     const counter = page.getByTestId('visual-novel-counter')
-    await expect.poll(async () => (await frame.innerText()).trim(), { timeout: 15_000 })
-      .not.toBe('La historia aún no ha empezado.')
+    await expect(counter).toHaveText('1 / 3')
+    await page.clock.runFor(500)
+    await expect(frame).not.toHaveText(firstLine)
+    await focusVisualKeyboard(page)
 
     await page.keyboard.press('Space')
-    const completedText = (await frame.innerText()).trim()
-    const completedIndex = Number((await counter.innerText()).split('/')[0]?.trim())
-    await page.waitForTimeout(500)
-    await expect(frame).toHaveText(completedText)
+    await expect(frame).toHaveText(firstLine)
+    await expect(counter).toHaveText('1 / 3')
+    await page.clock.runFor(5_000)
+    await expect(frame).toHaveText(firstLine)
 
     await page.evaluate(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', {
@@ -1359,20 +1441,24 @@ test.describe('novela visual y responsive', () => {
         bubbles: true
       }))
     })
-    await expect(frame).toHaveText(completedText)
+    await expect(frame).toHaveText(firstLine)
+    await expect(counter).toHaveText('1 / 3')
 
     const input = page.getByPlaceholder('Escribe lo que haces o dices…')
     await input.press('Enter')
-    await expect(frame).toHaveText(completedText)
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await expect(frame).toHaveText(firstLine)
+    await expect(counter).toHaveText('1 / 3')
+    await focusVisualKeyboard(page)
 
     await page.keyboard.press('Enter')
-    await expect.poll(async () =>
-      Number((await counter.innerText()).split('/')[0]?.trim())
-    ).toBeGreaterThan(completedIndex)
+    await expect(counter).toHaveText('2 / 3')
     const startedText = (await frame.innerText()).trim()
-    await page.waitForTimeout(500)
+    await page.clock.runFor(500)
     expect((await frame.innerText()).trim().length).toBeGreaterThan(startedText.length)
+    await expect(counter).toHaveText('2 / 3')
+    await page.keyboard.press('Enter')
+    await expect(frame).toHaveText(secondLine)
+    await expect(counter).toHaveText('2 / 3')
 
     await page.getByRole('button', { name: 'Parar', exact: true }).click()
   })
@@ -1391,50 +1477,48 @@ test.describe('novela visual y responsive', () => {
         text: 'Frase anterior.'
       }]
     })
-    await data.patchSettings({
-      mockMode: true,
-      responseSpeed: 'slow',
-      visualNovelManualAdvance: true,
-      userName: 'Vera'
-    })
+    const response = await prepareVisualResponse(page, data, [
+      `${character.name} [feliz]: Primera frase nueva suficientemente larga.`,
+      'Vera: Decido seguir adelante con mucha cautela.',
+      'La escena termina.'
+    ].join('\n'))
 
     await page.goto(`/stories/${story.id}`)
-    await page.evaluate(() => {
-      Math.random = () => 0
-    })
+    await pauseVisualClock(page)
     const frame = page.getByTestId('visual-novel-frame')
     const counter = page.getByTestId('visual-novel-counter')
     await expect(counter).toHaveText('1 / 1')
     await page.getByTestId('auto-button').click()
+    await response.requested
+    response.release()
 
-    await expect.poll(async () =>
-      Number((await counter.innerText()).split('/')[0]?.trim())
-    ).toBe(2)
+    await expect(counter).toHaveText('2 / 4')
     await expect(frame).not.toContainText('Frase anterior.')
     const firstStartedText = (await frame.innerText()).trim()
-    await page.waitForTimeout(500)
+    await page.clock.runFor(500)
     expect((await frame.innerText()).trim().length).toBeGreaterThan(firstStartedText.length)
 
+    await focusVisualKeyboard(page)
     await page.keyboard.press('Space')
+    await expect(frame).toHaveText(`${character.name}: Primera frase nueva suficientemente larga.`)
+    await expect(counter).toHaveText('2 / 4')
     await page.keyboard.press('Space')
-    await expect.poll(async () =>
-      Number((await counter.innerText()).split('/')[0]?.trim())
-    ).toBe(3)
+    await expect(counter).toHaveText('3 / 4')
     await expect(frame).toContainText('Vera:')
     const protagonistStartedText = (await frame.innerText()).trim()
-    await page.waitForTimeout(500)
+    await page.clock.runFor(500)
     expect((await frame.innerText()).trim().length).toBeGreaterThan(protagonistStartedText.length)
+    await expect(counter).toHaveText('3 / 4')
 
     await page.getByRole('button', { name: 'Parar', exact: true }).click()
   })
 
   test('muestra el mensaje escrito aunque el avance manual esté activo', async ({ page, data }) => {
     const { story, character, image } = await createStoryFixture(data, true)
-    await data.patchSettings({
-      mockMode: true,
-      responseSpeed: 'slow',
-      visualNovelManualAdvance: true
-    })
+    const response = await prepareVisualResponse(page, data, [
+      `${character.name} [feliz]: Respuesta nueva suficientemente larga.`,
+      'Vera: Seguimos adelante.'
+    ].join('\n'))
     await data.createMessage({ story, role: 'user', raw: 'Mensaje anterior.' })
     await data.createMessage({
       story,
@@ -1452,13 +1536,27 @@ test.describe('novela visual y responsive', () => {
     })
 
     await page.goto(`/stories/${story.id}`)
+    await pauseVisualClock(page)
     await page.getByTestId('visual-novel-previous').click()
     await expect(page.getByTestId('visual-novel-frame')).toContainText('Mensaje anterior.')
 
     const submitted = data.unique('Nuevo-mensaje-manual')
     await page.getByPlaceholder('Escribe lo que haces o dices…').fill(submitted)
     await page.getByRole('button', { name: 'Enviar', exact: true }).click()
-    await expect(page.getByTestId('visual-novel-frame')).toContainText(submitted)
+    await response.requested
+    const frame = page.getByTestId('visual-novel-frame')
+    const counter = page.getByTestId('visual-novel-counter')
+    await expect(frame).toHaveText(`Vera: ${submitted}`)
+    await expect(counter).toHaveText('3 / 3')
+    await page.clock.runFor(5_000)
+    await expect(frame).toHaveText(`Vera: ${submitted}`)
+    response.release()
+    await expect(counter).toHaveText('4 / 5')
+    await expect(frame).toContainText(`${character.name}:`)
+    await expect(frame).not.toContainText(submitted)
+    const startedText = (await frame.innerText()).trim()
+    await page.clock.runFor(500)
+    expect((await frame.innerText()).trim().length).toBeGreaterThan(startedText.length)
     await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Parar', exact: true }).click()
   })
