@@ -36,10 +36,19 @@ const generationPrompt = ref('')
 const generationCount = ref('1')
 const generationCompleted = ref(0)
 const generationTotal = ref(0)
+const generationCurrentPrompt = ref('')
+const generationLastImageUrl = ref<string | null>(null)
 let generationController: AbortController | null = null
 const swarmConfigured = computed(() => Boolean(settings.settings.swarmBaseUrl.trim()))
 function cancelGeneration() { generationController?.abort() }
-onBeforeUnmount(cancelGeneration)
+function revokeGenerationLastImage() {
+  if (generationLastImageUrl.value) URL.revokeObjectURL(generationLastImageUrl.value)
+  generationLastImageUrl.value = null
+}
+onBeforeUnmount(() => {
+  cancelGeneration()
+  revokeGenerationLastImage()
+})
 onBeforeRouteLeave(() => { cancelGeneration() })
 watch(activeDataScope, cancelGeneration, { flush: 'sync' })
 watch(swarmConfigured, (configured) => { if (!configured) { cancelGeneration(); generationOpen.value = false } })
@@ -133,6 +142,8 @@ async function generateImage(asSet = false) {
   generationNotice.value = null
   generationCompleted.value = 0
   generationTotal.value = 0
+  generationCurrentPrompt.value = ''
+  revokeGenerationLastImage()
   const scope = activeDataScope.value
   const characterId = props.characterId
   const controller = new AbortController()
@@ -159,14 +170,21 @@ async function generateImage(asSet = false) {
     if (!preset && !model) throw new Error('Selecciona un preset o un modelo de SwarmUI.')
     await runSwarmBatch({
       jobs: batch.jobs, signal: controller.signal,
-      generate: (job) => fetchSwarmImage({
-        prompt: job.prompt, ...(preset ? { preset } : {}), ...(model ? { model } : {}),
-        ...(lora ? { lora } : {}), seed: String(job.generation.seed),
-        variationSeed: job.generation.variationSeed,
-        variationSeedStrength: job.generation.variationSeedStrength ?? 0,
-        signal: controller.signal
-      }),
-      save: (blob, job) => characters.addImage(characterId, blob, job.tags, undefined, { scope, generation: job.generation, signal: controller.signal }),
+      generate: (job) => {
+        generationCurrentPrompt.value = job.prompt
+        return fetchSwarmImage({
+          prompt: job.prompt, ...(preset ? { preset } : {}), ...(model ? { model } : {}),
+          ...(lora ? { lora } : {}), seed: String(job.generation.seed),
+          variationSeed: job.generation.variationSeed,
+          variationSeedStrength: job.generation.variationSeedStrength ?? 0,
+          signal: controller.signal
+        })
+      },
+      save: async (blob, job) => {
+        await characters.addImage(characterId, blob, job.tags, undefined, { scope, generation: job.generation, signal: controller.signal })
+        if (generationLastImageUrl.value) URL.revokeObjectURL(generationLastImageUrl.value)
+        generationLastImageUrl.value = URL.createObjectURL(blob)
+      },
       progress: (completed) => { generationCompleted.value = completed }
     })
     generationNotice.value = batch.total === 1 ? 'Imagen generada y guardada en la galería.' :
@@ -178,6 +196,7 @@ async function generateImage(asSet = false) {
   } finally {
     generationBusy.value = false
     generationController = null
+    revokeGenerationLastImage()
   }
 }
 
@@ -516,28 +535,40 @@ async function remove(id: string) {
           <label class="label" for="generation-count">Número de imágenes</label>
           <input id="generation-count" v-model="generationCount" class="field" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
         </div>
-        <button
-          type="button"
-          class="btn-primary justify-self-start"
-          :disabled="generationBusy || !generationPrompt.trim()"
-          @click="generateImage(false)"
-        >
-          {{ generationBusy ? 'Generando…' : 'Generar imagen' }}
-        </button>
-        <button
-          type="button" class="btn-primary justify-self-start"
-          :disabled="generationBusy || !generationPrompt.trim() || !swarmPrompts.prompts.length"
-          @click="generateImage(true)">Crear conjunto de imágenes</button>
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="btn-primary"
+            :disabled="generationBusy || !generationPrompt.trim()"
+            @click="generateImage(false)"
+          >
+            {{ generationBusy ? 'Generando…' : 'Generar imagen' }}
+          </button>
+          <button
+            type="button"
+            class="btn-primary"
+            :disabled="generationBusy || !generationPrompt.trim() || !swarmPrompts.prompts.length"
+            @click="generateImage(true)"
+          >
+            Crear conjunto de imágenes
+          </button>
+          <NuxtLink v-if="swarmPrompts.prompts.length" to="/swarm-prompts" class="text-sm underline">
+            Gestionar prompts SwarmUI
+          </NuxtLink>
+        </div>
         <p v-if="!swarmPrompts.prompts.length" class="text-sm text-[var(--color-fg-muted)]">
           Crea al menos un <NuxtLink to="/swarm-prompts" class="underline">prompt SwarmUI</NuxtLink> para generar un conjunto.
         </p>
         <p v-else-if="!generationPrompt.trim()" class="text-sm text-[var(--color-fg-muted)]">Indica el prompt base para crear el conjunto.</p>
-        <NuxtLink v-else to="/swarm-prompts" class="text-sm underline">Gestionar prompts SwarmUI</NuxtLink>
       </fieldset>
-      <div v-if="generationBusy" class="flex flex-wrap items-center gap-3">
-        <p role="status">Generando: {{ generationCompleted }} de {{ generationTotal }} guardadas.</p>
-        <button type="button" class="btn-ghost" @click="cancelGeneration">Cancelar generación</button>
-      </div>
+      <ImageGenerationProgressDialog
+        v-if="generationBusy"
+        :completed="generationCompleted"
+        :total="generationTotal"
+        :current-prompt="generationCurrentPrompt"
+        :last-image-url="generationLastImageUrl"
+        @cancel="cancelGeneration"
+      />
       <p v-if="generationError" class="text-sm text-red-500" role="alert">
         {{ generationError }}
       </p>

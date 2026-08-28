@@ -154,6 +154,36 @@ test('mantiene catálogo y crea conjunto con semillas compartidas, etiquetas y t
   expect(importedImages.map((image) => image.generation)).toEqual(images.map((image) => image.generation))
 })
 
+test('muestra progreso, prompt actual y última imagen al generar un lote', async ({ page, data }) => {
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  const character = await data.createCharacter()
+  let calls = 0
+  let release: (() => void) | undefined
+  await page.route('**/api/swarm/catalog', (route) => route.fulfill({ json: CATALOG }))
+  await page.route('**/api/swarm/generate', async (route) => {
+    calls++
+    if (calls === 2) await new Promise<void>((resolve) => { release = resolve })
+    await route.fulfill({ contentType: 'image/png', body: PNG_BYTES }).catch(() => {})
+  })
+
+  await page.goto(`/characters/${character.id}`)
+  await page.getByRole('button', { name: 'Crear imagen con SwarmUI' }).click()
+  await page.getByLabel('Prompt de imagen (inglés y editable)').fill('portrait')
+  await page.getByLabel('Número de imágenes').fill('2')
+  await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
+
+  const progress = page.getByRole('dialog', { name: 'Generando imágenes' })
+  await expect(progress).toBeVisible()
+  await expect(progress).toContainText('Imagen 1 de 2 completadas.')
+  await expect(progress).toContainText('portrait')
+  await expect(progress.getByRole('img', { name: 'Última imagen generada' })).toBeVisible()
+  await expect(progress.getByRole('button', { name: 'Cancelar generación' })).toBeVisible()
+
+  await progress.getByRole('button', { name: 'Cancelar generación' }).click()
+  release?.()
+  await expect(page.getByText(/Generación cancelada/)).toBeVisible()
+})
+
 test('edita y borra prompts sin mezclar catálogo normal y privado', async ({ page, data }) => {
   await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
   const prompt = { id: data.unique('prompt'), name: 'Prompt normal', prompt: 'portrait', tags: [], createdAt: 1, updatedAt: 1 }
