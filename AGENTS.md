@@ -9,7 +9,7 @@
 ## Datos de prueba
 
 - Antes de empezar cada tarea, usa únicamente el navegador de pruebas y abre `http://localhost:3000/dev/test-data`.
-- Ejecuta `Limpiar y cargar datos de prueba` antes de trabajar. Para tareas sobre estado vacío, ejecuta solo `Limpiar`. No hace falta pidas confirmación.
+- Ejecuta `Limpiar y cargar datos de prueba` antes de trabajar, sin pedir confirmación. Es una base de datos de pruebas, no hay peligro. 
 - La rutina limpia únicamente la colección normal. No se ha de limpiar nunca la colección privada.
 - No borres datos de prueba uno a uno ni al terminar la tarea; la siguiente tarea hará una limpieza completa al empezar.
 
