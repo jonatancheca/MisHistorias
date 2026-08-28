@@ -614,6 +614,21 @@ async function remove(id: string) {
           </template>
         </ImageLightbox>
         <div class="min-w-0 flex-1 space-y-2">
+          <div
+            v-if="visibleImageTags(image.tags).length"
+            class="flex flex-wrap gap-1.5"
+            role="group"
+            aria-label="Etiquetas de la imagen"
+            data-testid="character-image-tags"
+          >
+            <span
+              v-for="tag in visibleImageTags(image.tags)"
+              :key="tagKey(tag)"
+              class="inline-flex max-w-full truncate rounded-full bg-brand-500/15 px-2 py-1 text-xs"
+            >
+              {{ tag }}
+            </span>
+          </div>
           <span
             v-if="visibleImageTags(image.tags).length === 0 && !image.isDefault"
             class="inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900 dark:bg-amber-900 dark:text-amber-100"
@@ -621,7 +636,7 @@ async function remove(id: string) {
           >
             Sin etiqueta
           </span>
-          <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border-soft)] pt-3">
             <label class="flex items-center gap-2 text-xs text-[var(--color-fg-muted)]">
               <input
                 type="radio"
