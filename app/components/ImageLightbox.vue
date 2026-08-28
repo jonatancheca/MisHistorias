@@ -62,8 +62,7 @@ function move(offset: number) {
 
 function onKeydown(event: KeyboardEvent) {
   if (!open.value) return
-  if (event.key === 'Escape') close()
-  else if (event.key === 'ArrowLeft') {
+  if (event.key === 'ArrowLeft') {
     event.preventDefault()
     move(-1)
   } else if (event.key === 'ArrowRight') {
@@ -71,6 +70,11 @@ function onKeydown(event: KeyboardEvent) {
     move(1)
   }
 }
+
+useDialogEscape(
+  () => open.value,
+  close
+)
 
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))

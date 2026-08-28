@@ -9,6 +9,8 @@ defineProps<{
 const emit = defineEmits<{ cancel: [] }>()
 const cancelButton = ref<HTMLButtonElement | null>(null)
 
+useDialogEscape(() => true, () => emit('cancel'))
+
 onMounted(() => cancelButton.value?.focus())
 
 function trapFocus(event: KeyboardEvent) {

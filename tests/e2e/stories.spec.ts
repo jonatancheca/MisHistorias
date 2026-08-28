@@ -305,6 +305,23 @@ test.describe('historias', () => {
     expect(bundle.version).toBe(19)
     expect(bundle.stories.find((item) => item.title === story.title)?.saves).toHaveLength(1)
   })
+
+  test('cierra diálogos con Escape aunque el disparador conserve el foco', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data)
+    await page.goto(`/stories/${story.id}`)
+
+    await page.getByRole('button', { name: 'Partidas', exact: true }).click()
+    const saves = page.getByRole('dialog', { name: 'Partidas' })
+    await expect(saves).toBeVisible()
+    await page.getByRole('button', { name: 'Partidas', exact: true }).press('Escape')
+    await expect(saves).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Ajustes de la historia', exact: true }).click()
+    const preferences = page.getByRole('heading', { name: 'Ajustes de la historia' })
+    await expect(preferences).toBeVisible()
+    await page.getByRole('button', { name: 'Ajustes de la historia', exact: true }).press('Escape')
+    await expect(preferences).toHaveCount(0)
+  })
 })
 
 test.describe('chat', () => {

@@ -8,6 +8,11 @@ const textarea = ref<HTMLTextAreaElement | null>(null)
 const cancelButton = ref<HTMLButtonElement | null>(null)
 let previousFocus: HTMLElement | null = null
 
+useDialogEscape(
+  () => Boolean(props.message),
+  () => emit('close')
+)
+
 watch(() => props.message, async (message) => {
   if (!message) {
     previousFocus?.focus()

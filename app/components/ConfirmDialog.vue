@@ -3,6 +3,11 @@ const confirm = useConfirmStore()
 const cancelButton = ref<HTMLButtonElement | null>(null)
 const confirmButton = ref<HTMLButtonElement | null>(null)
 
+useDialogEscape(
+  () => Boolean(confirm.dialog),
+  () => confirm.respond(false)
+)
+
 watch(
   () => confirm.dialog,
   async (dialog) => {

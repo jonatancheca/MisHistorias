@@ -7,6 +7,11 @@ const closeButton = ref<HTMLButtonElement | null>(null)
 const showRawRequest = ref(false)
 const isCompaction = computed(() => props.trace?.request.purpose === 'compaction')
 
+useDialogEscape(
+  () => Boolean(props.trace),
+  () => emit('close')
+)
+
 const formattedRequest = computed(() => JSON.stringify(props.trace?.request ?? {}, null, 2))
 const formattedResponse = computed(() => JSON.stringify(props.trace?.response ?? {}, null, 2))
 const requestMessages = computed(() => props.trace?.request.messages ?? [])

@@ -9,6 +9,8 @@ const cancelButton = ref<HTMLButtonElement | null>(null)
 const originalButton = ref<HTMLButtonElement | null>(null)
 const cropButton = ref<HTMLButtonElement | null>(null)
 
+useDialogEscape(() => true, () => emit('choose', 'cancel'))
+
 onMounted(() => originalButton.value?.focus())
 
 function trapFocus(event: KeyboardEvent) {

@@ -17,6 +17,8 @@ const phase = ref<'choice' | 'create' | 'select' | 'confirm'>('choice')
 const newName = ref(props.importedName)
 const replaceId = ref(props.matches[0]?.id ?? '')
 
+useDialogEscape(() => true, () => emit('cancel'))
+
 async function focusFirst() {
   await nextTick()
   panel.value?.querySelector<HTMLElement>('button, input')?.focus()

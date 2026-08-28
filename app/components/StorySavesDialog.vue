@@ -20,6 +20,11 @@ const dateFormatter = new Intl.DateTimeFormat('es-ES', {
   timeStyle: 'medium'
 })
 
+useDialogEscape(
+  () => props.open,
+  () => emit('close')
+)
+
 watch(
   () => props.open,
   (open) => {

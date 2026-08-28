@@ -80,6 +80,11 @@ const storyTitle = ref('')
 const storyPremise = ref('')
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
+
+useDialogEscape(
+  () => storyPreferencesOpen.value,
+  () => { storyPreferencesOpen.value = false }
+)
 const storyCharacterIds = ref<string[]>([])
 const storyCharacterCustomizations = ref<StoryCharacterCustomization[]>([])
 const storyCustomizationRows = computed(() =>

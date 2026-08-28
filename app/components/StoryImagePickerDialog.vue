@@ -74,13 +74,12 @@ function selectAndConfirm(imageId: string) {
   confirm(imageId)
 }
 
-function onKeydown(event: KeyboardEvent) {
-  if (props.open && event.key === 'Escape') emit('close')
-}
+useDialogEscape(
+  () => props.open,
+  () => emit('close')
+)
 
 watch(() => props.open, initialize)
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>

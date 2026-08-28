@@ -31,6 +31,12 @@ const ready = ref(false)
 const error = ref<string | null>(null)
 let cropper: Cropper | null = null
 
+useDialogEscape(
+  () => true,
+  () => emit('cancel'),
+  () => !busy.value && !props.saving
+)
+
 const CROPPER_TEMPLATE = `
   <cropper-canvas background>
     <cropper-image></cropper-image>
