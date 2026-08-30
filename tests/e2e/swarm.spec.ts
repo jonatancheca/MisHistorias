@@ -111,6 +111,7 @@ test('mantiene catálogo y crea conjunto con semillas compartidas, etiquetas y t
   await page.goto(`/characters/${character.id}`)
   await page.getByTestId('character-swarm-toggle').click()
   await page.getByLabel('Prompt de imagen (inglés y editable)').fill('portrait, ')
+  await page.getByLabel('Modelo SwarmUI').selectOption('model-b')
   await page.getByLabel('Etiquetas para el prompt').fill('feliz')
   await page.getByLabel('Etiquetas para el prompt').press('Enter')
   await page.getByLabel('Número de imágenes').fill('2')
@@ -137,8 +138,8 @@ test('mantiene catálogo y crea conjunto con semillas compartidas, etiquetas y t
   const images = await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
   expect(images).toHaveLength(4)
   expect(images.map((image) => image.tags)).toEqual([['feliz', 'sentada'], ['feliz', 'sentada'], ['feliz', 'de pie'], ['feliz', 'de pie']])
-  expect(images[0]!.generation).toEqual({ seed: 42, model: 'model-a', prompt: 'quality\nportrait, sitting' })
-  expect(images[1]!.generation).toEqual({ seed: 42, model: 'model-a', prompt: 'quality\nportrait, sitting', variationSeed: bodies[1]!.variationSeed, variationSeedStrength: 0.5 })
+  expect(images[0]!.generation).toEqual({ seed: 42, model: 'model-b', prompt: 'quality\nportrait, sitting' })
+  expect(images[1]!.generation).toEqual({ seed: 42, model: 'model-b', prompt: 'quality\nportrait, sitting', variationSeed: bodies[1]!.variationSeed, variationSeedStrength: 0.5 })
   await expect(page.getByRole('button', { name: 'Mostrar metadatos de IA' })).toHaveCount(4)
   await page.getByRole('button', { name: 'Mostrar metadatos de IA' }).first().click()
   await expect(page.getByTestId('image-generation-metadata').first()).toContainText('quality')
@@ -290,6 +291,7 @@ test('crea prompt editable y guarda la imagen generada en WebP', async ({ page, 
   await expect(page.getByTestId('character-swarm-generator')).toBeVisible()
   await page.getByLabel('Preset SwarmUI').selectOption('Retrato')
   await expect(page.getByLabel('Modelo SwarmUI')).toBeVisible()
+  await page.getByLabel('Modelo SwarmUI').selectOption('model-b')
   await page.getByLabel('LoRA SwarmUI').selectOption('detail-lora')
   await page.getByLabel('Semilla SwarmUI').fill('9243353')
   await page.getByLabel('Prefijo del prompt').fill(promptPrefix)
@@ -306,7 +308,7 @@ test('crea prompt editable y guarda la imagen generada en WebP', async ({ page, 
   expect(generationBody).toEqual({
     prompt: `${promptPrefix}\n${editedPrompt}`,
     preset: 'Retrato',
-    model: 'model-a',
+    model: 'model-b',
     lora: 'detail-lora',
     seed: '9243353',
     variationSeedStrength: 0
@@ -317,13 +319,15 @@ test('crea prompt editable y guarda la imagen generada en WebP', async ({ page, 
       preset: stored.imageGenerationPreset,
       lora: stored.imageGenerationLora,
       seed: stored.imageGenerationSeed,
-      prefix: stored.imageGenerationPromptPrefix
+      prefix: stored.imageGenerationPromptPrefix,
+      model: stored.imageGenerationModel
     }
   }).toEqual({
     preset: 'Retrato',
     lora: 'detail-lora',
     seed: '9243353',
-    prefix: promptPrefix
+    prefix: promptPrefix,
+    model: 'model-b'
   })
   const images = await data.list<CharacterImage>('images', 'normal', {
     characterId: character.id

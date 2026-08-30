@@ -64,11 +64,16 @@ function dataUrl(path: string, scope: DataScope = activeDataScope.value) {
   return `/api/data/${path}${separator}scope=${scope}`
 }
 
-async function putJson<T extends { id: string }>(resource: string, value: T) {
-  return $fetch<T>(dataUrl(`${resource}/${encodeURIComponent(value.id)}`), {
-    method: 'PUT',
-    body: unwrap(value)
-  })
+async function putJson<T extends { id: string }>(
+  resource: string,
+  value: T,
+  scope: DataScope = activeDataScope.value,
+  signal?: AbortSignal
+) {
+  const url = dataUrl(`${resource}/${encodeURIComponent(value.id)}`, scope)
+  const body = unwrap(value)
+  if (signal) return $fetch<T>(url, { method: 'PUT', body, signal })
+  return $fetch<T>(url, { method: 'PUT', body })
 }
 
 async function deleteJson(resource: string, id: string) {
@@ -116,7 +121,7 @@ export async function putCharacter(character: Character) {
 
 export async function copyCharacter(
   sourceId: string,
-  input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix'>
+  input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel'>
 ) {
   return $fetch<{ character: Character; images: CharacterImage[] }>(
     dataUrl(`characters/${encodeURIComponent(sourceId)}/copy`),
@@ -131,7 +136,7 @@ export async function importCharacterArchive(input: {
   mode: 'new' | 'replace'
   targetId?: string
   name: string
-  character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix'>
+  character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel'>
   images: Array<Pick<StoredImage, 'tags' | 'isDefault' | 'mimeType' | 'blob' | 'originalBlob' | 'generation'>>
   sounds: Array<Pick<StoredSound, 'tags' | 'mimeType' | 'blob'>>
 }) {
@@ -258,6 +263,14 @@ export async function getStory(id: string) {
 
 export async function putStory(story: Story) {
   return putJson('stories', story)
+}
+
+export async function putStoryInScope(
+  story: Story,
+  scope: DataScope,
+  signal?: AbortSignal
+) {
+  return putJson('stories', story, scope, signal)
 }
 
 export async function deleteStory(id: string) {

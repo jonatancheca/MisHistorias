@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { activeDataScope, type StoredImage } from '~/lib/db'
-import { createSwarmBatch, runSwarmBatch } from '~/lib/swarmBatch'
+import {
+  createCharacterImageBatch,
+  runCharacterImageJobs
+} from '~/lib/storyImageGeneration'
 import { primaryTag, tagKey } from '~/lib/tags'
 import { generateCharacterImagePrompt } from '~/lib/characterImagePrompt'
-import { fetchSwarmCatalog, fetchSwarmImage, type SwarmCatalog } from '~/lib/swarm'
+import { fetchSwarmCatalog, type SwarmCatalog } from '~/lib/swarm'
 
 const props = defineProps<{ characterId: string }>()
 const imageGenerationPreset = defineModel<string>('imageGenerationPreset', { required: true })
@@ -12,6 +15,7 @@ const imageGenerationSeed = defineModel<string>('imageGenerationSeed', { require
 const imageGenerationPromptPrefix = defineModel<string>('imageGenerationPromptPrefix', {
   required: true
 })
+const imageGenerationModel = defineModel<string>('imageGenerationModel', { required: true })
 
 const characters = useCharactersStore()
 const settings = useSettingsStore()
@@ -52,7 +56,10 @@ onBeforeUnmount(() => {
 onBeforeRouteLeave(() => { cancelGeneration() })
 watch(activeDataScope, cancelGeneration, { flush: 'sync' })
 watch(swarmConfigured, (configured) => { if (!configured) { cancelGeneration(); generationOpen.value = false } })
-const generationModel = ref('')
+const generationModel = computed({
+  get: () => imageGenerationModel.value || swarmCatalog.value?.models[0] || '',
+  set: (value: string) => { imageGenerationModel.value = value }
+})
 const promptBusy = ref(false)
 const generationBusy = ref(false)
 const generationProgressOpen = ref(false)
@@ -86,9 +93,6 @@ async function loadSwarmCatalog() {
   generationError.value = null
   try {
     swarmCatalog.value = await fetchSwarmCatalog()
-    if (!generationModel.value && swarmCatalog.value.models[0]) {
-      generationModel.value = swarmCatalog.value.models[0]
-    }
     return true
   } catch (caught) {
     generationError.value = (caught as Error).message || 'No se pudo conectar con SwarmUI.'
@@ -153,14 +157,26 @@ async function generateImage(asSet = false) {
   generationController = controller
   try {
     if (asSet) await swarmPrompts.load(true)
-    const batch = createSwarmBatch({
-      count: Number(generationCount.value), seed: imageGenerationSeed.value,
-      prefix: imageGenerationPromptPrefix.value, prompt: generationPrompt.value,
-      tags: generationTags.value, ...(asSet ? { prompts: swarmPrompts.prompts } : {})
+    const character = characters.byId(characterId)
+    if (!character) throw new Error('Personaje no encontrado.')
+    const generationCharacter = {
+      ...character,
+      imageGenerationPreset: imageGenerationPreset.value,
+      imageGenerationLora: imageGenerationLora.value,
+      imageGenerationSeed: imageGenerationSeed.value,
+      imageGenerationPromptPrefix: imageGenerationPromptPrefix.value
+    }
+    const batch = createCharacterImageBatch({
+      characterId,
+      characterName: character.name,
+      character: generationCharacter,
+      count: Number(generationCount.value),
+      prompt: generationPrompt.value,
+      tags: generationTags.value,
+      prompts: asSet ? swarmPrompts.prompts : undefined
     })
     generationTotal.value = batch.total
     const preset = imageGenerationPreset.value.trim()
-    const lora = imageGenerationLora.value.trim()
     if (asSet && !await confirmDialog.ask({
       title: 'Crear conjunto de imágenes', confirmLabel: 'Crear conjunto',
       message: `${generationCount.value} imágenes × ${swarmPrompts.prompts.length} prompts = ${batch.total} imágenes. ¿Crear el conjunto?`
@@ -172,32 +188,20 @@ async function generateImage(asSet = false) {
     }
     const model = generationModel.value.trim()
     if (!preset && !model) throw new Error('Selecciona un preset o un modelo de SwarmUI.')
-    await runSwarmBatch({
-      jobs: batch.jobs, signal: controller.signal,
-      generate: (job) => {
+    await runCharacterImageJobs({
+      jobs: batch.jobs,
+      characters: [{ ...generationCharacter, imageGenerationModel: model }],
+      modelFor: () => model,
+      signal: controller.signal,
+      save: async (generated, job) => {
         generationCurrentPrompt.value = job.prompt
-        return fetchSwarmImage({
-          prompt: job.prompt, ...(preset ? { preset } : {}), ...(model ? { model } : {}),
-          ...(lora ? { lora } : {}), seed: String(job.generation.seed),
-          variationSeed: job.generation.variationSeed,
-          variationSeedStrength: job.generation.variationSeedStrength ?? 0,
-          signal: controller.signal
-        })
-      },
-      save: async (blob, job) => {
-        await characters.addImage(characterId, blob, job.tags, undefined, {
+        await characters.addImage(characterId, generated.blob, job.tags, undefined, {
           scope,
-          generation: {
-            ...job.generation,
-            prompt: job.prompt,
-            ...(lora ? { lora } : {}),
-            ...(model ? { model } : {}),
-            ...(preset ? { preset } : {})
-          },
+          generation: generated.generation,
           signal: controller.signal
         })
         if (generationLastImageUrl.value) URL.revokeObjectURL(generationLastImageUrl.value)
-        generationLastImageUrl.value = URL.createObjectURL(blob)
+        generationLastImageUrl.value = URL.createObjectURL(generated.blob)
       },
       progress: (completed) => { generationCompleted.value = completed }
     })

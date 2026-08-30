@@ -78,6 +78,7 @@ const imagePickerTarget = ref<ImagePickerTarget | null>(null)
 const storyPreferencesOpen = ref(false)
 const storyTitle = ref('')
 const storyPremise = ref('')
+const autoGenerateImages = ref(false)
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
 
@@ -407,6 +408,7 @@ function openStoryPreferences() {
   if (!stories.activeStory) return
   storyTitle.value = stories.activeStory.title
   storyPremise.value = stories.activeStory.premise
+  autoGenerateImages.value = stories.activeStory.autoGenerateImages === true
   storyPreferences.value = stories.activeStory.protagonistPreferences ?? ''
   storyPreferencesMode.value = stories.activeStory.protagonistPreferencesMode ?? 'append'
   storyCharacterIds.value = [...stories.activeStory.characterIds]
@@ -449,6 +451,7 @@ async function saveStoryPreferences() {
   await stories.updateStorySettings(
     storyTitle.value,
     storyPremise.value,
+    autoGenerateImages.value,
     storyPreferences.value,
     storyPreferencesMode.value,
     storyCharacterIds.value,
@@ -915,6 +918,7 @@ function onVisualNovelKeydown(event: KeyboardEvent) {
 }
 
 onBeforeUnmount(() => {
+  stories.cancelImageGeneration({ abandonResponse: true })
   timelineContent.value?.removeEventListener('load', onTimelineAssetLoad, true)
   timelineResizeObserver?.disconnect()
   window.removeEventListener('keydown', onVisualNovelKeydown)
@@ -922,6 +926,10 @@ onBeforeUnmount(() => {
   if (followSettleFrame !== null) cancelAnimationFrame(followSettleFrame)
   if (missingStoryPrivateClickTimer) clearTimeout(missingStoryPrivateClickTimer)
   showMobileChrome()
+})
+
+onBeforeRouteLeave(() => {
+  stories.cancelImageGeneration({ abandonResponse: true })
 })
 </script>
 
@@ -1352,6 +1360,35 @@ onBeforeUnmount(() => {
             />
           </span>
         </div>
+        <div
+          v-if="stories.generatingImages"
+          class="mb-2 flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-brand-500/20 bg-brand-500/5 px-3 py-2 text-sm text-[var(--color-fg-muted)]"
+          data-testid="image-generation-status"
+          role="status"
+          aria-live="polite"
+        >
+          <span class="min-w-0 flex-1 break-words">
+            Creando imagen de {{ stories.imageGenerationCharacter }}
+            {{ stories.imageGenerationTags.map((tag) => `[${tag}]`).join('') }}
+            ({{ stories.imageGenerationCompleted }} / {{ stories.imageGenerationTotal }})
+          </span>
+          <button
+            type="button"
+            class="btn-ghost shrink-0 px-2 py-1 text-xs"
+            data-testid="cancel-image-generation"
+            @click="stories.cancelImageGeneration()"
+          >
+            Cancelar imágenes
+          </button>
+        </div>
+        <p
+          v-if="stories.imageGenerationError"
+          class="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
+          data-testid="image-generation-warning"
+          role="alert"
+        >
+          {{ stories.imageGenerationError }}
+        </p>
         <div v-if="visiblePendingImageInstructions.length" class="mb-2 flex flex-wrap gap-2" data-testid="pending-image-instructions">
           <span
             v-for="instruction in visiblePendingImageInstructions"
@@ -1512,6 +1549,15 @@ onBeforeUnmount(() => {
                 class="field min-h-32"
               />
             </div>
+            <label class="flex items-start gap-2 text-sm">
+              <input v-model="autoGenerateImages" type="checkbox" class="mt-0.5 h-4 w-4">
+              <span>
+                <span class="block font-medium">Crear imágenes nuevas durante la historia</span>
+                <span class="block text-xs text-[var(--color-fg-muted)]">
+                  El LLM podrá pedir una imagen nueva por personaje y respuesta.
+                </span>
+              </span>
+            </label>
             <div>
               <label class="label" for="storyProtagonistPreferencesMode">Combinar con globales</label>
               <select

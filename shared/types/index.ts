@@ -47,6 +47,8 @@ export interface Character {
   imageGenerationSeed: string
   /** Texto antepuesto al prompt enviado a SwarmUI. */
   imageGenerationPromptPrefix: string
+  /** Modelo de SwarmUI usado para generar imágenes automáticamente. */
+  imageGenerationModel?: string
   /** Oculta el personaje de catálogos y selectores sin romper historias existentes. */
   archived: boolean
   createdAt: number
@@ -115,6 +117,8 @@ export interface Story {
   characterCustomizations: StoryCharacterCustomization[]
   /** Fondo inicial; null permite que el modelo decida */
   initialBackgroundId: string | null
+  /** Permite que el modelo solicite imágenes nuevas durante la historia. */
+  autoGenerateImages?: boolean
   /** Legacy field ignored after narrative preset retirement. */
   presetId?: string | null
   /** Catálogo de imágenes comunicado en la última llamada válida al modelo. */

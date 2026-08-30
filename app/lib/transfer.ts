@@ -36,12 +36,13 @@ import { stripSoundDirectives, stripSoundSegments } from '~/lib/soundTransfer'
 import {
   exportCharacterTransferFields,
   importImageGenerationLora,
+  importImageGenerationModel,
   importImageGenerationPromptPrefix,
   importImageGenerationPreset,
   importImageGenerationSeed
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 19
+const EXPORT_VERSION = 20
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -64,6 +65,7 @@ interface ExportedCharacter {
   imageGenerationLora?: string
   imageGenerationSeed?: string
   imageGenerationPromptPrefix?: string
+  imageGenerationModel?: string
   archived?: boolean
   images: ExportedImage[]
 }
@@ -80,6 +82,7 @@ interface ExportedStory {
   title: string
   premise: string
   visualMode?: boolean
+  autoGenerateImages?: boolean
   protagonistPreferences?: string
   protagonistPreferencesMode?: 'append' | 'replace'
   characterIds: string[]
@@ -135,6 +138,7 @@ export async function exportBundle(): Promise<ExportBundle> {
       title: story.title,
       premise: story.premise,
       visualMode: story.visualMode,
+      autoGenerateImages: story.autoGenerateImages === true,
       protagonistPreferences: story.protagonistPreferences ?? '',
       protagonistPreferencesMode: story.protagonistPreferencesMode ?? 'append',
       characterIds: story.characterIds,
@@ -185,7 +189,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (bundle.swarmPrompts !== undefined && (!Array.isArray(bundle.swarmPrompts) || bundle.swarmPrompts.some((item) =>
@@ -222,6 +226,7 @@ export async function importBundle(raw: string) {
       imageGenerationPromptPrefix: importImageGenerationPromptPrefix(
         item.imageGenerationPromptPrefix
       ),
+      imageGenerationModel: importImageGenerationModel(item.imageGenerationModel),
       archived: item.archived === true,
       createdAt: now,
       updatedAt: now
@@ -321,6 +326,7 @@ export async function importBundle(raw: string) {
       title: String(item.title ?? 'Historia importada'),
       premise: String(item.premise ?? ''),
       visualMode: item.visualMode === true,
+      autoGenerateImages: item.autoGenerateImages === true,
       protagonistPreferences: String(item.protagonistPreferences ?? ''),
       protagonistPreferencesMode:
         item.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
@@ -413,6 +419,7 @@ export async function importBundle(raw: string) {
         title: String(save.story.title ?? story.title),
         premise: String(save.story.premise ?? story.premise),
         visualMode: save.story.visualMode === true,
+        autoGenerateImages: save.story.autoGenerateImages === true,
         protagonistPreferences: String(save.story.protagonistPreferences ?? ''),
         protagonistPreferencesMode:
           save.story.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',

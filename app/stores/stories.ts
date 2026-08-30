@@ -30,7 +30,11 @@ import {
   newId,
   putLlmDebugTrace,
   putMessage,
-  putStory
+  putStory,
+  putStoryInScope,
+  getActiveDataScope,
+  type DataScope,
+  type StoredImage
 } from '~/lib/db'
 import {
   buildChatMessages,
@@ -56,6 +60,12 @@ import {
   compareStoryImageCatalogs,
   formatStoryImageCatalogChange
 } from '~/lib/imageCatalog'
+import {
+  createStoryImageJobs,
+  generateCharacterImage,
+  parseStoryImageRequests,
+  type CharacterImageJob
+} from '~/lib/storyImageGeneration'
 
 function normalizeCharacterCustomizations(
   characterIds: string[],
@@ -144,6 +154,38 @@ function playNewSounds(
   })
 }
 
+interface ImageGenerationProgress {
+  completed: number
+  total: number
+  error?: Error
+  canceled?: boolean
+}
+
+interface ImageGenerationBatch {
+  pending: number
+  progress: ImageGenerationProgress
+  stopped: boolean
+  resolve: (result: ImageGenerationBatchResult) => void
+  result?: ImageGenerationBatchResult
+}
+
+interface ImageGenerationBatchResult {
+  completed: number
+  error?: Error
+  canceled?: boolean
+}
+
+interface QueuedImageGenerationTask {
+  batch: ImageGenerationBatch
+  priority: number
+  storyId: string
+  scope: DataScope
+  character: Character
+  job: CharacterImageJob
+  charactersStore: ReturnType<typeof useCharactersStore>
+  onSaved?: (image: StoredImage, job: CharacterImageJob, signal: AbortSignal) => void | Promise<void>
+}
+
 export const useStoriesStore = defineStore('stories', () => {
   const stories = ref<Story[]>([])
   const loaded = ref(false)
@@ -159,6 +201,12 @@ export const useStoriesStore = defineStore('stories', () => {
   const visualRevealWaitingForAdvance = ref(false)
   const visualRevealNavigationPaused = ref(false)
   const error = ref<string | null>(null)
+  const generatingImages = ref(false)
+  const imageGenerationCharacter = ref('')
+  const imageGenerationTags = ref<string[]>([])
+  const imageGenerationCompleted = ref(0)
+  const imageGenerationTotal = ref(0)
+  const imageGenerationError = ref<string | null>(null)
 
   let controller: AbortController | null = null
   let animationFrame: number | null = null
@@ -169,8 +217,204 @@ export const useStoriesStore = defineStore('stories', () => {
   let startNextRevealLine: (() => boolean) | null = null
   let animationDraft: Message | null = null
   let generationModeInProgress: GenerationMode | null = null
+  let imageQueue: QueuedImageGenerationTask[] = []
+  let imageQueueRunning = false
+  let imageTaskController: AbortController | null = null
+  let imageTask: QueuedImageGenerationTask | null = null
+  let imageGenerationLifecycle = 0
+
+  function imageCancellationError() {
+    const cancellation = new Error('Generación de imágenes cancelada.')
+    cancellation.name = 'AbortError'
+    return cancellation
+  }
+
+  function isImageTaskActive(task: QueuedImageGenerationTask) {
+    return task.scope === getActiveDataScope() && activeStory.value?.id === task.storyId
+  }
+
+  function updateImageQueueState() {
+    generatingImages.value = Boolean(imageTaskController || imageQueue.length)
+    if (!generatingImages.value) {
+      imageGenerationCharacter.value = ''
+      imageGenerationTags.value = []
+    }
+  }
+
+  function finishImageBatchTask(task: QueuedImageGenerationTask) {
+    task.batch.pending -= 1
+    if (task.batch.pending > 0 || task.batch.result) return
+    const result: ImageGenerationBatchResult = {
+      completed: task.batch.progress.completed,
+      ...(task.batch.progress.error ? { error: task.batch.progress.error } : {}),
+      ...(task.batch.progress.canceled ? { canceled: true } : {})
+    }
+    task.batch.result = result
+    task.batch.resolve(result)
+  }
+
+  function stopQueuedImageBatch(batch: ImageGenerationBatch, cause: unknown, canceled: boolean) {
+    const pending = imageQueue.filter((task) => task.batch === batch)
+    imageQueue = imageQueue.filter((task) => task.batch !== batch)
+    if (canceled) batch.progress.canceled = true
+    if (cause instanceof Error && !batch.progress.error) batch.progress.error = cause
+    pending.forEach(() => { batch.pending -= 1 })
+    if (batch.pending <= 0 && !batch.result) {
+      const result: ImageGenerationBatchResult = {
+        completed: batch.progress.completed,
+        ...(batch.progress.error ? { error: batch.progress.error } : {}),
+        ...(batch.progress.canceled ? { canceled: true } : {})
+      }
+      batch.result = result
+      batch.resolve(result)
+    }
+    updateImageQueueState()
+  }
+
+  async function processImageQueue() {
+    if (imageQueueRunning) return
+    imageQueueRunning = true
+    updateImageQueueState()
+    try {
+      while (imageQueue.length) {
+        imageQueue.sort((left, right) => left.priority - right.priority)
+        const task = imageQueue.shift()!
+        if (task.batch.stopped) {
+          finishImageBatchTask(task)
+          continue
+        }
+        if (!isImageTaskActive(task)) {
+          task.batch.stopped = true
+          stopQueuedImageBatch(task.batch, imageCancellationError(), true)
+          finishImageBatchTask(task)
+          continue
+        }
+        imageTask = task
+        imageGenerationCharacter.value = task.job.characterName
+        imageGenerationTags.value = [...task.job.tags]
+        imageGenerationCompleted.value = task.batch.progress.completed
+        imageGenerationTotal.value = task.batch.progress.total
+        const taskController = new AbortController()
+        imageTaskController = taskController
+        updateImageQueueState()
+        try {
+          const generated = await generateCharacterImage({
+            character: task.character,
+            job: task.job,
+            signal: taskController.signal
+          })
+          if (taskController.signal.aborted || !isImageTaskActive(task)) {
+            throw imageCancellationError()
+          }
+          const stored = await task.charactersStore.addImage(
+            task.job.characterId,
+            generated.blob,
+            task.job.tags,
+            undefined,
+            {
+              scope: task.scope,
+              generation: generated.generation,
+              signal: taskController.signal
+            }
+          )
+          if (!isImageTaskActive(task)) throw imageCancellationError()
+          task.batch.progress.completed += 1
+          imageGenerationCompleted.value = task.batch.progress.completed
+          await task.onSaved?.(stored, task.job, taskController.signal)
+        } catch (caught) {
+          const cancellation = (caught as Error).name === 'AbortError' || taskController.signal.aborted
+          task.batch.stopped = true
+          stopQueuedImageBatch(task.batch, caught, cancellation)
+        } finally {
+          imageTask = null
+          imageTaskController = null
+          finishImageBatchTask(task)
+          updateImageQueueState()
+        }
+      }
+    } finally {
+      imageQueueRunning = false
+      updateImageQueueState()
+    }
+  }
+
+  function enqueueImageJobs(input: {
+    storyId: string
+    scope: DataScope
+    jobs: CharacterImageJob[]
+    priority: number
+    charactersStore: ReturnType<typeof useCharactersStore>
+    characters: Character[]
+    progress: ImageGenerationProgress
+    onSaved?: (image: StoredImage, job: CharacterImageJob, signal: AbortSignal) => void | Promise<void>
+  }) {
+    if (!input.jobs.length) {
+      return Promise.resolve<ImageGenerationBatchResult>({
+        completed: input.progress.completed,
+        ...(input.progress.error ? { error: input.progress.error } : {}),
+        ...(input.progress.canceled ? { canceled: true } : {})
+      })
+    }
+    let resolve!: (result: ImageGenerationBatchResult) => void
+    const promise = new Promise<ImageGenerationBatchResult>((done) => { resolve = done })
+    const batch: ImageGenerationBatch = {
+      pending: input.jobs.length,
+      progress: input.progress,
+      stopped: false,
+      resolve
+    }
+    input.jobs.forEach((job) => {
+      const character = input.characters.find((candidate) => candidate.id === job.characterId)
+      if (!character) {
+        batch.progress.error ??= new Error(`Personaje no disponible: ${job.characterName}.`)
+        batch.pending -= 1
+        return
+      }
+      imageQueue.push({
+        batch,
+        priority: input.priority,
+        storyId: input.storyId,
+        scope: input.scope,
+        character,
+        job,
+        charactersStore: input.charactersStore,
+        onSaved: input.onSaved
+      })
+    })
+    if (batch.pending <= 0) {
+      const result: ImageGenerationBatchResult = {
+        completed: input.progress.completed,
+        ...(input.progress.error ? { error: input.progress.error } : {})
+      }
+      batch.result = result
+      resolve(result)
+    } else {
+      void processImageQueue()
+    }
+    updateImageQueueState()
+    return promise
+  }
+
+  function cancelImageGeneration(options: { abandonResponse?: boolean } = {}) {
+    if (options.abandonResponse) imageGenerationLifecycle += 1
+    const batches = new Set<ImageGenerationBatch>()
+    if (imageTask) batches.add(imageTask.batch)
+    imageQueue.forEach((task) => batches.add(task.batch))
+    if (!batches.size) return
+    batches.forEach((batch) => {
+      batch.stopped = true
+      batch.progress.canceled = true
+      stopQueuedImageBatch(batch, imageCancellationError(), true)
+    })
+    imageTaskController?.abort()
+    imageGenerationError.value = 'Generación de imágenes cancelada.'
+    updateImageQueueState()
+  }
+
+  watch(getActiveDataScope, () => cancelImageGeneration(), { flush: 'sync' })
 
   async function resetForScope() {
+    cancelImageGeneration({ abandonResponse: true })
     await stop()
     stories.value = []
     loaded.value = false
@@ -183,6 +427,12 @@ export const useStoriesStore = defineStore('stories', () => {
     visualRevealWaitingForAdvance.value = false
     visualRevealNavigationPaused.value = false
     error.value = null
+    generatingImages.value = false
+    imageGenerationCharacter.value = ''
+    imageGenerationTags.value = []
+    imageGenerationCompleted.value = 0
+    imageGenerationTotal.value = 0
+    imageGenerationError.value = null
   }
 
   async function load(force = false) {
@@ -195,6 +445,7 @@ export const useStoriesStore = defineStore('stories', () => {
     title: string
     premise: string
     visualMode?: boolean
+    autoGenerateImages?: boolean
     protagonistPreferences: string
     protagonistPreferencesMode: ProtagonistPreferencesMode
     characterIds: string[]
@@ -209,6 +460,7 @@ export const useStoriesStore = defineStore('stories', () => {
       title: input.title.trim() || 'Historia sin título',
       premise: input.premise.trim(),
       visualMode: input.visualMode === true,
+      autoGenerateImages: input.autoGenerateImages === true,
       protagonistPreferences: input.protagonistPreferences.trim(),
       protagonistPreferencesMode: input.protagonistPreferencesMode,
       characterIds: [...input.characterIds],
@@ -580,12 +832,19 @@ export const useStoriesStore = defineStore('stories', () => {
     }
   }
 
-  async function persistImageCatalogSnapshot(story: Story, snapshot: Story['imageCatalogSnapshot']) {
+  async function persistImageCatalogSnapshot(
+    story: Story,
+    snapshot: Story['imageCatalogSnapshot'],
+    scope: DataScope = getActiveDataScope(),
+    signal?: AbortSignal
+  ) {
     if (!snapshot) return false
+    if (scope !== getActiveDataScope() || signal?.aborted) return false
     try {
       const source = activeStory.value?.id === story.id ? activeStory.value : story
       const updated = { ...source, imageCatalogSnapshot: snapshot }
-      await putStory(updated)
+      await putStoryInScope(updated, scope, signal)
+      if (scope !== getActiveDataScope() || signal?.aborted) return false
       if (activeStory.value?.id === story.id) activeStory.value = updated
       stories.value = stories.value.map((item) => (item.id === story.id ? updated : item))
       return true
@@ -610,6 +869,7 @@ export const useStoriesStore = defineStore('stories', () => {
   async function updateStorySettings(
     title: string,
     premise: string,
+    autoGenerateImages: boolean,
     protagonistPreferences: string,
     protagonistPreferencesMode: ProtagonistPreferencesMode,
     characterIds: string[],
@@ -622,6 +882,7 @@ export const useStoriesStore = defineStore('stories', () => {
       ...activeStory.value,
       title: title.trim(),
       premise: premise.trim(),
+      autoGenerateImages,
       protagonistPreferences: protagonistPreferences.trim(),
       protagonistPreferencesMode,
       characterIds: [...characterIds],
@@ -910,6 +1171,8 @@ export const useStoriesStore = defineStore('stories', () => {
   ) {
     if (!activeStory.value || generating.value) return
     const story = activeStory.value
+    const scope = getActiveDataScope()
+    const generationLifecycle = imageGenerationLifecycle
     const settingsStore = useSettingsStore()
     const charactersStore = useCharactersStore()
     const backgroundsStore = useBackgroundsStore()
@@ -970,14 +1233,20 @@ export const useStoriesStore = defineStore('stories', () => {
       ? compareStoryImageCatalogs(story.imageCatalogSnapshot, currentImageCatalog)
       : null
     if (!story.imageCatalogSnapshot) {
-      await persistImageCatalogSnapshot(story, currentImageCatalog)
+      await persistImageCatalogSnapshot(story, currentImageCatalog, scope)
     }
 
     error.value = null
+    imageGenerationError.value = null
     generating.value = true
     generationModeInProgress = generationMode
     const requestController = new AbortController()
     controller = requestController
+    const generationStillActive = () =>
+      !requestController.signal.aborted &&
+      generationLifecycle === imageGenerationLifecycle &&
+      scope === getActiveDataScope() &&
+      activeStory.value?.id === story.id
     const assistantMessage: Message = {
       id: newId(),
       storyId: story.id,
@@ -991,6 +1260,24 @@ export const useStoriesStore = defineStore('stories', () => {
       .reverse()
       .find((message) => message.role === 'user')?.id
     let debugRequest: LlmDebugRequest | null = null
+    let visibleRaw: string
+    let pendingVariantJobs: CharacterImageJob[] = []
+    let imageProgress: ImageGenerationProgress | null = null
+    let imageBatchWarnings: string[] = []
+
+    const persistGeneratedImageCatalog = async (
+      _image: StoredImage,
+      _job: CharacterImageJob,
+      signal: AbortSignal
+    ) => {
+      if (scope !== getActiveDataScope() || activeStory.value?.id !== story.id) return
+      await persistImageCatalogSnapshot(
+        story,
+        buildStoryImageCatalog(story.characterIds, charactersStore.characters, charactersStore.images),
+        scope,
+        signal
+      )
+    }
 
     try {
       let raw = ''
@@ -1057,16 +1344,33 @@ export const useStoriesStore = defineStore('stories', () => {
         finishReason = result.finishReason
         waitingForResponse.value = false
 
-        const snapshotStored = await persistImageCatalogSnapshot(story, currentImageCatalog)
+        if (!generationStillActive()) return
+
+        const snapshotStored = await persistImageCatalogSnapshot(
+          story,
+          currentImageCatalog,
+          scope,
+          requestController.signal
+        )
         if (!snapshotStored) {
           error.value = 'La respuesta llegó, pero no se pudo actualizar el catálogo de imágenes.'
         }
 
+      }
+
+      const parsedImageResponse = parseStoryImageRequests(
+        raw,
+        storyCharacters,
+        story.autoGenerateImages === true
+      )
+      visibleRaw = parsedImageResponse.visibleRaw
+      imageBatchWarnings = [...parsedImageResponse.warnings]
+      if (debugRequest) {
         const stored = await persistDebugTrace({
           id: newId(),
           storyId: story.id,
           requestMessageId,
-          responseMessageId: raw.trim() ? assistantMessage.id : undefined,
+          responseMessageId: visibleRaw.trim() ? assistantMessage.id : undefined,
           status: 'success',
           request: debugRequest,
           response: { content: raw, finishReason },
@@ -1074,11 +1378,54 @@ export const useStoriesStore = defineStore('stories', () => {
         })
         if (!stored) error.value = 'La respuesta llegó, pero no se pudo guardar su traza de debug.'
       }
+      if (story.autoGenerateImages === true && parsedImageResponse.requests.length) {
+        if (!settings.swarmBaseUrl.trim()) {
+          imageBatchWarnings.push('No se pueden crear imágenes: configura SwarmUI en Ajustes.')
+        } else {
+          const eligibleRequests = parsedImageResponse.requests.flatMap((request) => {
+            const character = storyCharacters.find((candidate) => candidate.id === request.characterId)
+            if (!character) return []
+            if (!character.imageGenerationPreset?.trim() && !character.imageGenerationModel?.trim()) {
+              imageBatchWarnings.push(`No se creó la imagen de ${character.name}: configura un preset o modelo de SwarmUI.`)
+              return []
+            }
+            return [request]
+          })
+          if (eligibleRequests.length) {
+            const created = createStoryImageJobs(eligibleRequests, storyCharacters)
+            const firstJobs = created.jobs.filter((job) => job.generation.variationSeed === undefined)
+            pendingVariantJobs = created.jobs.filter((job) => job.generation.variationSeed !== undefined)
+            imageProgress = { completed: 0, total: created.total }
+            const firstResult = await enqueueImageJobs({
+              storyId: story.id,
+              scope,
+              jobs: firstJobs,
+              priority: 0,
+              charactersStore,
+              characters: storyCharacters,
+              progress: imageProgress,
+              onSaved: persistGeneratedImageCatalog
+            })
+            if (firstResult.error) imageBatchWarnings.push(firstResult.error.message)
+            if (firstResult.canceled) imageBatchWarnings.push('Generación de imágenes cancelada; se detuvieron las pendientes.')
+            if (!generationStillActive()) return
+            await persistImageCatalogSnapshot(
+              story,
+              buildStoryImageCatalog(story.characterIds, charactersStore.characters, charactersStore.images),
+              scope,
+              requestController.signal
+            )
+          }
+        }
+      }
+      imageGenerationError.value = imageBatchWarnings.length
+        ? [...new Set(imageBatchWarnings)].join(' ')
+        : null
 
-      if (raw.trim()) {
-        if (requestController.signal.aborted) return
+      if (visibleRaw.trim()) {
+        if (!generationStillActive()) return
         const segments = parseSegments(
-          raw,
+          visibleRaw,
           storyCharacters,
           backgroundsStore.backgrounds,
           settingsStore.activeUserName,
@@ -1088,13 +1435,13 @@ export const useStoriesStore = defineStore('stories', () => {
         )
         const completedMessage: Message = {
           ...assistantMessage,
-          raw,
+          raw: visibleRaw,
           segments
         }
         if (settings.responseSpeed !== 'instant') {
           pendingAssistantMessage.value = completedMessage
           const completed = await revealAssistantResponse(
-            raw,
+            visibleRaw,
             assistantMessage,
             storyCharacters,
             backgroundsStore.backgrounds,
@@ -1111,19 +1458,19 @@ export const useStoriesStore = defineStore('stories', () => {
         }
         await persist(completedMessage)
         pendingAssistantMessage.value = null
-        if (requestController.signal.aborted) {
+        if (!generationStillActive()) {
           await dbDeleteMessage(assistantMessage.id)
           messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
           return
         }
         if (pendingForRequest.length) await consumePendingImageInstructions(pendingForRequest)
         else await touchStory()
-        if (requestController.signal.aborted) {
+        if (!generationStillActive()) {
           await dbDeleteMessage(assistantMessage.id)
           messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
           return
         }
-        if (!mock) {
+        if (!mock && generationStillActive()) {
           await compactHistoryIfNeeded({
             story: activeStory.value ?? story,
             presetContent: DEFAULT_PRESET_CONTENT,
@@ -1148,9 +1495,31 @@ export const useStoriesStore = defineStore('stories', () => {
           })
         }
       }
-      if (finishReason === 'length' && raw.trim()) {
+      if (pendingVariantJobs.length && imageProgress && !imageProgress.error && !imageProgress.canceled) {
+        const variantJobs = pendingVariantJobs
+        pendingVariantJobs = []
+        void enqueueImageJobs({
+          storyId: story.id,
+          scope,
+          jobs: variantJobs,
+          priority: 1,
+          charactersStore,
+          characters: storyCharacters,
+          progress: imageProgress,
+          onSaved: persistGeneratedImageCatalog
+        }).then((result) => {
+          if (scope !== getActiveDataScope() || activeStory.value?.id !== story.id) return
+          const warnings = [
+            ...(imageBatchWarnings.length ? imageBatchWarnings : []),
+            ...(result.error ? [result.error.message] : []),
+            ...(result.canceled ? ['Generación de imágenes cancelada; se detuvieron las pendientes.'] : [])
+          ]
+          imageGenerationError.value = warnings.length ? [...new Set(warnings)].join(' ') : null
+        })
+      }
+      if (finishReason === 'length' && visibleRaw.trim()) {
         error.value = 'La respuesta alcanzó el máximo de tokens. Se ha conservado el contenido parcial.'
-      } else if (!raw.trim() && !debugRequest) {
+      } else if (!visibleRaw.trim() && !debugRequest && !imageBatchWarnings.length) {
         error.value = 'El modelo no devolvió contenido visible.'
       }
     } catch (caught) {
@@ -1241,6 +1610,12 @@ export const useStoriesStore = defineStore('stories', () => {
     pendingAssistantMessage,
     visualRevealWaitingForAdvance,
     error,
+    generatingImages,
+    imageGenerationCharacter,
+    imageGenerationTags,
+    imageGenerationCompleted,
+    imageGenerationTotal,
+    imageGenerationError,
     load,
     createStory,
     updateStorySettings,
@@ -1258,6 +1633,7 @@ export const useStoriesStore = defineStore('stories', () => {
     removeMessage,
     send,
     generate,
+    cancelImageGeneration,
     regenerateFrom,
     resendFrom,
     stop,

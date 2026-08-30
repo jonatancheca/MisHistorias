@@ -64,6 +64,7 @@ interface CharacterInput {
   imageGenerationLora?: string
   imageGenerationSeed?: string
   imageGenerationPromptPrefix?: string
+  imageGenerationModel?: string
   scope?: DataScope
 }
 
@@ -83,6 +84,7 @@ interface StoryInput {
   title?: string
   premise?: string
   visualMode?: boolean
+  autoGenerateImages?: boolean
   protagonistPreferences?: string
   protagonistPreferencesMode?: 'append' | 'replace'
   characters: Character[]
@@ -182,6 +184,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
           imageGenerationLora: input.imageGenerationLora ?? '',
           imageGenerationSeed: input.imageGenerationSeed ?? '',
           imageGenerationPromptPrefix: input.imageGenerationPromptPrefix ?? '',
+          imageGenerationModel: input.imageGenerationModel ?? '',
           archived: false,
           createdAt: now,
           updatedAt: now
@@ -238,6 +241,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
           title: input.title ?? unique('Historia'),
           premise: input.premise ?? 'Planteamiento exclusivo para esta prueba.',
           visualMode: input.visualMode ?? false,
+          autoGenerateImages: input.autoGenerateImages ?? false,
           protagonistPreferences: input.protagonistPreferences ?? '',
           protagonistPreferencesMode: input.protagonistPreferencesMode ?? 'append',
           characterIds: input.characters.map((character) => character.id),

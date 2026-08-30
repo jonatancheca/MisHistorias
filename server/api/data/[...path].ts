@@ -98,6 +98,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'imageGenerationLora') &&
         hasString(value, 'imageGenerationSeed') &&
         hasString(value, 'imageGenerationPromptPrefix') &&
+        (value.imageGenerationModel === undefined || hasString(value, 'imageGenerationModel')) &&
         typeof value.archived === 'boolean' &&
         hasNumber(value, 'createdAt') &&
         hasNumber(value, 'updatedAt')
@@ -107,13 +108,14 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'title') &&
         hasString(value, 'premise') &&
         typeof value.visualMode === 'boolean' &&
+        (value.autoGenerateImages === undefined || typeof value.autoGenerateImages === 'boolean') &&
         hasString(value, 'protagonistPreferences') &&
         (value.protagonistPreferencesMode === 'append' ||
           value.protagonistPreferencesMode === 'replace') &&
         hasStringArray(value, 'characterIds') &&
         hasCharacterCustomizations(value) &&
         (value.initialBackgroundId === null || typeof value.initialBackgroundId === 'string') &&
-        (value.presetId === null || typeof value.presetId === 'string') &&
+        (value.presetId === undefined || value.presetId === null || typeof value.presetId === 'string') &&
         (value.imageCatalogSnapshot === undefined || Array.isArray(value.imageCatalogSnapshot)) &&
         (value.contextSummary === undefined || typeof value.contextSummary === 'string') &&
         (value.contextSummaryThroughMessageId === undefined ||
@@ -217,7 +219,8 @@ function validateCharacterCopy(rawValue: unknown) {
     !hasString(value, 'imageGenerationPreset') ||
     !hasString(value, 'imageGenerationLora') ||
     !hasString(value, 'imageGenerationSeed') ||
-    !hasString(value, 'imageGenerationPromptPrefix')
+    !hasString(value, 'imageGenerationPromptPrefix') ||
+    (value.imageGenerationModel !== undefined && !hasString(value, 'imageGenerationModel'))
   ) {
     throw createError({ statusCode: 400, message: 'Datos no válidos' })
   }
@@ -339,7 +342,8 @@ async function readCharacterImport(event: H3Event) {
     !hasString(character, 'imageGenerationPreset') ||
     !hasString(character, 'imageGenerationLora') ||
     !hasString(character, 'imageGenerationSeed') ||
-    !hasString(character, 'imageGenerationPromptPrefix')
+    !hasString(character, 'imageGenerationPromptPrefix') ||
+    (character.imageGenerationModel !== undefined && !hasString(character, 'imageGenerationModel'))
   ) {
     throw createError({ statusCode: 400, message: 'Personaje no válido' })
   }
@@ -353,6 +357,9 @@ async function readCharacterImport(event: H3Event) {
     imageGenerationLora: String(character.imageGenerationLora),
     imageGenerationSeed: String(character.imageGenerationSeed),
     imageGenerationPromptPrefix: String(character.imageGenerationPromptPrefix),
+    imageGenerationModel: typeof character.imageGenerationModel === 'string'
+      ? character.imageGenerationModel
+      : '',
     images: importAssets(metadata.images, parts, 'images'),
     sounds: importAssets(metadata.sounds, parts, 'sounds')
   }

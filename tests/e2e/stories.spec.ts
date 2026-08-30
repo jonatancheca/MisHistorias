@@ -7,7 +7,7 @@ import type {
   Story,
   StorySaveSlot
 } from '../../shared/types'
-import { expect, test, type TestDataFactory } from './fixtures'
+import { expect, PNG_BYTES, test, type TestDataFactory } from './fixtures'
 
 async function createStoryFixture(data: TestDataFactory, visualMode = false) {
   const character = await data.createCharacter()
@@ -70,7 +70,6 @@ test.describe('historias', () => {
   test('crea historia con configuración propia y la edita', async ({ page, data }) => {
     const character = await data.createCharacter()
     const background = await data.createBackground()
-    const preset = await data.createPreset()
     const title = data.unique('Historia-UI')
     const premise = data.unique('Planteamiento')
     const storyPrompt = data.unique('Prompt-historia')
@@ -89,7 +88,7 @@ test.describe('historias', () => {
     await page.locator(`#story-character-tags-${character.id}`).fill(storyTag)
     await page.locator(`#story-character-tags-${character.id}`).press('Enter')
     await page.getByRole('button', { name: new RegExp(background.tags[0]!) }).click()
-    await page.getByLabel('Prompt de preparación').selectOption(preset.id)
+    await page.getByRole('checkbox', { name: 'Crear imágenes nuevas durante la historia' }).check()
     await page.getByRole('button', { name: 'Empezar historia' }).click()
 
     await expect(page).toHaveURL(/\/stories\/[^/]+$/)
@@ -105,7 +104,7 @@ test.describe('historias', () => {
       protagonistPreferencesMode: 'replace',
       characterIds: [character.id],
       initialBackgroundId: background.id,
-      presetId: preset.id
+      autoGenerateImages: true
     })
     expect(stored.characterCustomizations[0]?.prompt).toBe(storyPrompt)
     expect(stored.characterCustomizations[0]?.name).toBe(storyCharacterName)
@@ -122,6 +121,7 @@ test.describe('historias', () => {
     })).toBeVisible()
     await form.getByLabel('Título').fill(updatedTitle)
     await form.getByLabel('Planteamiento').fill(updatedPremise)
+    await form.getByRole('checkbox', { name: 'Crear imágenes nuevas durante la historia' }).uncheck()
     await form.locator(`#story-settings-character-name-${character.id}`).fill(updatedCharacterName)
     await form.locator(`#story-settings-character-color-${character.id}`).fill(storyCharacterColor)
     await expect(form.getByRole('heading', {
@@ -133,6 +133,7 @@ test.describe('historias', () => {
     await expect.poll(async () => await data.get<Story>('stories', storyId)).toMatchObject({
       title: updatedTitle,
       premise: updatedPremise,
+      autoGenerateImages: false,
       characterCustomizations: [{
         characterId: character.id,
         name: updatedCharacterName,
@@ -346,7 +347,7 @@ test.describe('historias', () => {
       version: number
       stories: Array<{ title: string; saves?: StorySaveSlot[] }>
     }
-    expect(bundle.version).toBe(19)
+    expect(bundle.version).toBe(20)
     expect(bundle.stories.find((item) => item.title === story.title)?.saves).toHaveLength(1)
   })
 
@@ -854,6 +855,209 @@ test.describe('chat', () => {
     await desktopFigure.hover()
     await expect(desktopCaption.locator('..')).toHaveCSS('opacity', '1')
     await expect(desktopCaption).toContainText('LLM: seria · capa')
+  })
+
+  test('crea imágenes en caliente, fija la primera y prioriza el turno siguiente', async ({ page, data }) => {
+    const firstCharacter = await data.createCharacter({
+      name: data.unique('Alicia-caliente'),
+      imageGenerationPreset: 'Retrato',
+      imageGenerationModel: 'model-a',
+      imageGenerationLora: 'detail-lora',
+      imageGenerationSeed: '42',
+      imageGenerationPromptPrefix: 'quality'
+    })
+    const secondCharacter = await data.createCharacter({
+      name: data.unique('Bruno-caliente'),
+      imageGenerationPreset: 'Retrato',
+      imageGenerationModel: 'model-a',
+      imageGenerationSeed: '84',
+      imageGenerationPromptPrefix: 'quality'
+    })
+    await data.createImage(firstCharacter, ['neutral'])
+    await data.createImage(secondCharacter, ['neutral'])
+    const story = await data.createStory({
+      characters: [firstCharacter, secondCharacter],
+      autoGenerateImages: true
+    })
+    await data.patchSettings({
+      mockMode: false,
+      model: 'qwen-test',
+      useChromeLlm: false,
+      privateUseChromeLlm: null,
+      responseSpeed: 'instant',
+      swarmBaseUrl: 'http://localhost:7801'
+    })
+
+    const firstResponse = [
+      `Imagen ${firstCharacter.name} [nueva]: standing in a forest`,
+      `${firstCharacter.name} [nueva]: Primera respuesta.`,
+      `Imagen ${secondCharacter.name} [nueva]: standing in a forest`,
+      `${secondCharacter.name} [nueva]: Segunda voz.`
+    ].join('\n')
+    const secondResponse = [
+      `Imagen ${firstCharacter.name} [otra]: sitting in a tavern`,
+      `${firstCharacter.name} [otra]: Respuesta del segundo turno.`
+    ].join('\n')
+    let llmCalls = 0
+    const llmBodies: Array<Record<string, unknown>> = []
+    await page.route('**/api/llm/chat', async (route) => {
+      llmBodies.push(route.request().postDataJSON() as Record<string, unknown>)
+      const response = llmCalls++ === 0 ? firstResponse : secondResponse
+      await route.fulfill({ json: { content: response, finishReason: 'stop' } })
+    })
+    const bodies: Array<Record<string, unknown>> = []
+    let releaseFirst!: () => void
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve })
+    let releaseVariant!: () => void
+    const variantGate = new Promise<void>((resolve) => { releaseVariant = resolve })
+    await page.route('**/api/swarm/generate', async (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      bodies.push(body)
+      if (bodies.length <= 2) await firstGate
+      else if (bodies.length === 3) await variantGate
+      await route.fulfill({ contentType: 'image/png', body: PNG_BYTES })
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    const input = page.getByPlaceholder('Escribe lo que haces o dices…')
+    await input.fill('Primer turno.')
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+    await expect(page.getByTestId('image-generation-status')).toBeVisible()
+    await expect(page.getByText('Primera respuesta.', { exact: true })).toHaveCount(0)
+
+    releaseFirst()
+    await expect(page.getByText('Primera respuesta.', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('image-generation-status')).toBeVisible()
+    const firstAssistantBeforeVariants = (await data.list<Message>('messages', 'normal', {
+      storyId: story.id
+    })).find((message) => message.role === 'assistant')
+    const firstImageIdsBeforeVariants = firstAssistantBeforeVariants?.segments
+      .filter((segment) => segment.type === 'dialogue')
+      .map((segment) => segment.imageId)
+
+    await input.fill('Segundo turno.')
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+    await expect.poll(() => llmCalls).toBe(2)
+    releaseVariant()
+    await expect.poll(() => bodies.length).toBe(9)
+    await expect(page.getByText('Respuesta del segundo turno.', { exact: true })).toBeVisible()
+    expect(JSON.stringify(llmBodies[1])).toContain('[nueva]')
+
+    expect(bodies[0]?.variationSeed).toBeUndefined()
+    expect(bodies[1]?.variationSeed).toBeUndefined()
+    expect(bodies[2]?.variationSeed).toEqual(expect.any(Number))
+    expect(bodies[2]?.variationSeedStrength).toBe(0.5)
+    expect(bodies[3]?.variationSeed).toBeUndefined()
+    expect(String(bodies[3]?.prompt)).toContain('sitting in a tavern')
+    expect(bodies[0]).toMatchObject({
+      model: 'model-a',
+      preset: 'Retrato',
+      lora: 'detail-lora',
+      seed: '42'
+    })
+
+    const messages = await data.list<Message>('messages', 'normal', { storyId: story.id })
+    const assistants = messages.filter((message) => message.role === 'assistant')
+    expect(assistants).toHaveLength(2)
+    expect(assistants.every((message) => !message.raw.includes('Imagen '))).toBe(true)
+    expect(assistants[0]?.segments.filter((segment) => segment.type === 'dialogue').map((segment) => segment.imageId))
+      .toEqual(firstImageIdsBeforeVariants)
+    const traces = await data.list<LlmDebugTrace>('llmDebugTraces', 'normal', { storyId: story.id })
+    expect(traces.find((trace) => trace.responseMessageId === assistants[0]?.id)?.response).toMatchObject({
+      content: firstResponse
+    })
+    const generated = (await data.list<CharacterImage>('images', 'normal'))
+      .filter((image) => image.generation)
+    expect(generated).toHaveLength(9)
+    expect(generated.every((image) => image.generation?.preset === 'Retrato')).toBe(true)
+    expect(generated.every((image) => image.generation?.model === 'model-a')).toBe(true)
+    expect(generated.every((image) => image.generation?.lora === (image.characterId === firstCharacter.id ? 'detail-lora' : undefined))).toBe(true)
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 800 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    }
+  })
+
+  test('avisa si falta modelo o preset y muestra la respuesta sin generar', async ({ page, data }) => {
+    const character = await data.createCharacter({
+      imageGenerationPreset: '',
+      imageGenerationModel: ''
+    })
+    await data.createImage(character, ['neutral'])
+    const story = await data.createStory({ characters: [character], autoGenerateImages: true })
+    await data.patchSettings({
+      mockMode: false,
+      model: 'qwen-test',
+      useChromeLlm: false,
+      privateUseChromeLlm: null,
+      responseSpeed: 'instant',
+      swarmBaseUrl: 'http://localhost:7801'
+    })
+    const response = [
+      `Imagen ${character.name} [nueva]: standing in a forest`,
+      `${character.name} [nueva]: Respuesta conservada.`
+    ].join('\n')
+    let swarmCalls = 0
+    await page.route('**/api/llm/chat', (route) =>
+      route.fulfill({ json: { content: response, finishReason: 'stop' } }))
+    await page.route('**/api/swarm/generate', (route) => {
+      swarmCalls += 1
+      return route.fulfill({ contentType: 'image/png', body: PNG_BYTES })
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Empiezo.')
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+    await expect(page.getByText('Respuesta conservada.', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('image-generation-warning')).toContainText('configura un preset o modelo')
+    expect(swarmCalls).toBe(0)
+    const messages = await data.list<Message>('messages', 'normal', { storyId: story.id })
+    expect(messages.find((message) => message.role === 'assistant')?.raw).toBe(`${character.name} [nueva]: Respuesta conservada.`)
+  })
+
+  test('cancela variantes y conserva el texto y las imágenes guardadas', async ({ page, data }) => {
+    const character = await data.createCharacter({
+      imageGenerationPreset: 'Retrato',
+      imageGenerationModel: 'model-a',
+      imageGenerationSeed: '42',
+      imageGenerationPromptPrefix: 'quality'
+    })
+    await data.createImage(character, ['neutral'])
+    const story = await data.createStory({ characters: [character], autoGenerateImages: true })
+    await data.patchSettings({
+      mockMode: false,
+      model: 'qwen-test',
+      useChromeLlm: false,
+      privateUseChromeLlm: null,
+      responseSpeed: 'instant',
+      swarmBaseUrl: 'http://localhost:7801'
+    })
+    const response = [
+      `Imagen ${character.name} [nueva]: standing in a forest`,
+      `${character.name} [nueva]: Texto visible antes de cancelar.`
+    ].join('\n')
+    let swarmCalls = 0
+    let releaseVariant!: () => void
+    const variantGate = new Promise<void>((resolve) => { releaseVariant = resolve })
+    await page.route('**/api/llm/chat', (route) =>
+      route.fulfill({ json: { content: response, finishReason: 'stop' } }))
+    await page.route('**/api/swarm/generate', async (route) => {
+      swarmCalls += 1
+      if (swarmCalls > 1) await variantGate
+      await route.fulfill({ contentType: 'image/png', body: PNG_BYTES }).catch(() => {})
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Empiezo.')
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+    await expect(page.getByText('Texto visible antes de cancelar.', { exact: true })).toBeVisible()
+    await expect.poll(() => swarmCalls).toBe(2)
+    await page.getByTestId('cancel-image-generation').click()
+    releaseVariant()
+    await expect(page.getByTestId('image-generation-warning')).toContainText('Generación de imágenes cancelada')
+    expect(await data.list<CharacterImage>('images', 'normal', { characterId: character.id })).toHaveLength(2)
+    const messages = await data.list<Message>('messages', 'normal', { storyId: story.id })
+    expect(messages.find((message) => message.role === 'assistant')?.raw).toBe(`${character.name} [nueva]: Texto visible antes de cancelar.`)
   })
 
   test('Sigue continúa sin decidir por protagonista', async ({ page, data }) => {

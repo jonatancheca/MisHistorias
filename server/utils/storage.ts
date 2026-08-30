@@ -68,6 +68,7 @@ export interface CharacterImportPayload {
   imageGenerationLora: string
   imageGenerationSeed: string
   imageGenerationPromptPrefix: string
+  imageGenerationModel?: string
   images: BinaryPayload[]
   sounds: BinaryPayload[]
 }
@@ -84,7 +85,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 29
+const SCHEMA_VERSION = 30
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -202,6 +203,7 @@ function rowToCharacter(row: SqliteRow) {
     imageGenerationLora: text(row.image_generation_lora),
     imageGenerationSeed: text(row.image_generation_seed),
     imageGenerationPromptPrefix: text(row.image_generation_prompt_prefix),
+    imageGenerationModel: text(row.image_generation_model),
     archived: integer(row.archived) === 1,
     createdAt: integer(row.created_at),
     updatedAt: integer(row.updated_at)
@@ -273,6 +275,7 @@ function rowToStory(row: SqliteRow) {
     title: text(row.title),
     premise: text(row.premise),
     visualMode: row.visual_mode === 1,
+    autoGenerateImages: row.auto_generate_images === 1,
     protagonistPreferences: text(row.protagonist_preferences),
     protagonistPreferencesMode:
       row.protagonist_preferences_mode === 'replace' ? 'replace' : 'append',
@@ -600,6 +603,7 @@ export class MisHistoriasStorage {
           image_generation_lora TEXT NOT NULL DEFAULT '',
           image_generation_seed TEXT NOT NULL DEFAULT '',
           image_generation_prompt_prefix TEXT NOT NULL DEFAULT '',
+          image_generation_model TEXT NOT NULL DEFAULT '',
           archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
@@ -669,6 +673,7 @@ export class MisHistoriasStorage {
           title TEXT NOT NULL,
           premise TEXT NOT NULL,
           visual_mode INTEGER NOT NULL DEFAULT 0 CHECK (visual_mode IN (0, 1)),
+          auto_generate_images INTEGER NOT NULL DEFAULT 0 CHECK (auto_generate_images IN (0, 1)),
           protagonist_preferences TEXT NOT NULL,
           protagonist_preferences_mode TEXT NOT NULL CHECK (protagonist_preferences_mode IN ('append', 'replace')),
           character_ids_json TEXT NOT NULL,
@@ -1099,6 +1104,25 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 30) {
+        const characterColumns = this.database
+          .prepare('PRAGMA table_info(characters)')
+          .all() as Array<{ name: string }>
+        if (!characterColumns.some((column) => column.name === 'image_generation_model')) {
+          this.database.exec(
+            "ALTER TABLE characters ADD COLUMN image_generation_model TEXT NOT NULL DEFAULT ''"
+          )
+        }
+        const storyColumns = this.database
+          .prepare('PRAGMA table_info(stories)')
+          .all() as Array<{ name: string }>
+        if (!storyColumns.some((column) => column.name === 'auto_generate_images')) {
+          this.database.exec(
+            'ALTER TABLE stories ADD COLUMN auto_generate_images INTEGER NOT NULL DEFAULT 0 CHECK (auto_generate_images IN (0, 1))'
+          )
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -1326,6 +1350,10 @@ export class MisHistoriasStorage {
           typeof value.imageGenerationPromptPrefix === 'string'
             ? value.imageGenerationPromptPrefix
             : source.imageGenerationPromptPrefix,
+        imageGenerationModel:
+          typeof value.imageGenerationModel === 'string'
+            ? value.imageGenerationModel
+            : source.imageGenerationModel,
         archived: false,
         createdAt: now,
         updatedAt: now
@@ -1405,6 +1433,7 @@ export class MisHistoriasStorage {
         imageGenerationLora: payload.imageGenerationLora,
         imageGenerationSeed: payload.imageGenerationSeed,
         imageGenerationPromptPrefix: payload.imageGenerationPromptPrefix,
+        imageGenerationModel: payload.imageGenerationModel,
         archived: existing?.archived ?? false,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now
@@ -1494,9 +1523,10 @@ export class MisHistoriasStorage {
           .prepare(`
             INSERT INTO characters(
               scope, id, name, prompt, tags_json, color, image_generation_preset,
-              image_generation_lora, image_generation_seed, image_generation_prompt_prefix, archived,
+              image_generation_lora, image_generation_seed, image_generation_prompt_prefix,
+              image_generation_model, archived,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               name = excluded.name,
               prompt = excluded.prompt,
@@ -1506,6 +1536,7 @@ export class MisHistoriasStorage {
               image_generation_lora = excluded.image_generation_lora,
               image_generation_seed = excluded.image_generation_seed,
               image_generation_prompt_prefix = excluded.image_generation_prompt_prefix,
+              image_generation_model = excluded.image_generation_model,
               archived = excluded.archived,
               created_at = excluded.created_at,
               updated_at = excluded.updated_at
@@ -1521,6 +1552,7 @@ export class MisHistoriasStorage {
             text(value.imageGenerationLora),
             text(value.imageGenerationSeed),
             text(value.imageGenerationPromptPrefix),
+            text(value.imageGenerationModel),
             bool(value.archived),
             integer(value.createdAt),
             integer(value.updatedAt)
@@ -1530,16 +1562,17 @@ export class MisHistoriasStorage {
         this.database
           .prepare(`
             INSERT INTO stories(
-              scope, id, title, premise, visual_mode, protagonist_preferences,
+              scope, id, title, premise, visual_mode, auto_generate_images, protagonist_preferences,
               protagonist_preferences_mode, character_ids_json, character_customizations_json,
               initial_background_id, preset_id, image_catalog_snapshot_json,
               pending_image_instructions_json, context_summary,
               context_summary_through_message_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
               visual_mode = excluded.visual_mode,
+              auto_generate_images = excluded.auto_generate_images,
               protagonist_preferences = excluded.protagonist_preferences,
               protagonist_preferences_mode = excluded.protagonist_preferences_mode,
               character_ids_json = excluded.character_ids_json,
@@ -1559,6 +1592,7 @@ export class MisHistoriasStorage {
             text(value.title),
             text(value.premise),
             value.visualMode === true ? 1 : 0,
+            value.autoGenerateImages === true ? 1 : 0,
             text(value.protagonistPreferences),
             value.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
             json(stringArray(value.characterIds)),

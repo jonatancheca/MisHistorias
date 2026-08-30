@@ -20,6 +20,7 @@ const character: Character = {
   imageGenerationLora: 'Detalle',
   imageGenerationSeed: '9243353',
   imageGenerationPromptPrefix: 'masterpiece, detailed portrait',
+  imageGenerationModel: 'test-model',
   archived: false,
   createdAt: 1,
   updatedAt: 2
@@ -57,7 +58,8 @@ test('crea y lee ZIP de personaje con imágenes y sonidos', async () => {
     imageGenerationPreset: character.imageGenerationPreset,
     imageGenerationLora: character.imageGenerationLora,
     imageGenerationSeed: character.imageGenerationSeed,
-    imageGenerationPromptPrefix: character.imageGenerationPromptPrefix
+    imageGenerationPromptPrefix: character.imageGenerationPromptPrefix,
+    imageGenerationModel: character.imageGenerationModel
   })
   assert.deepEqual(imported.images[0], {
     tags: ['feliz'],

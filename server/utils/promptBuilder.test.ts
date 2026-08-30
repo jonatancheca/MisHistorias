@@ -137,6 +137,26 @@ test('envía combinaciones de etiquetas únicas por personaje y fondo, sin descr
   assert.doesNotMatch(prompt, /DESCRIPCIÓN DE IMAGEN LEGACY|DESCRIPCIÓN DEL FONDO|sin descripción|por defecto\)/)
 })
 
+test('activa directivas de imágenes y conserva el prefijo inmutable', () => {
+  const prompt = buildSystemPrompt({
+    presetContent: 'No inventes etiquetas de imagen.',
+    story: { ...story, autoGenerateImages: true },
+    characters: [{ ...character, imageGenerationPromptPrefix: 'quality, red hair' }],
+    images: [],
+    backgrounds: [],
+    sounds: [],
+    userName: 'Vera',
+    protagonistPreferences: '',
+    generationMode: 'normal'
+  })
+
+  assert.match(prompt, /Imagen Nombre \[etiqueta\]: prompt en inglés/)
+  assert.match(prompt, /solo puede describir postura, ropa, expresión y escena/)
+  assert.match(prompt, /quality, red hair/)
+  assert.match(prompt, /como máximo una línea independiente/)
+  assert.match(prompt, /para las líneas normales; para una imagen nueva utiliza la directiva Imagen indicada/)
+})
+
 test('combina o reemplaza preferencias del protagonista', () => {
   assert.equal(resolveProtagonistPreferences(' Global ', ' Historia ', 'append'), 'Global\nHistoria')
   assert.equal(resolveProtagonistPreferences('Global', 'Historia', 'replace'), 'Historia')

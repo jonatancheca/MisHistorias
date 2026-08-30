@@ -33,12 +33,22 @@ function imageTagCatalog(images: Array<{ tags: string[] }>, indent = '') {
   }).join('\n')
 }
 
-function formatReminder(generationMode: GenerationMode, userName: string) {
+function formatReminder(
+  generationMode: GenerationMode,
+  userName: string,
+  autoGenerateImages = false
+) {
   const protagonistFormat =
     generationMode === 'auto'
       ? ` El protagonista es la única excepción al catálogo: escribe su diálogo como \`${userName}: texto\`, sin etiqueta visual.`
       : ''
-  return `Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa \`Nombre [etiqueta][otra etiqueta]: texto\` para diálogo, con cada etiqueta visual en sus propios corchetes, \`Fondo [etiqueta]:\` solo cuando cambie el fondo y \`Sonido [etiqueta]:\` cuando deba reproducirse un sonido disponible. Las etiquetas combinadas deben pertenecer a la misma imagen del personaje. Usa una línea sin prefijo para narración y solo personajes, fondos, sonidos y etiquetas listados.${protagonistFormat} Las etiquetas visuales representan el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje las últimas etiquetas usadas mientras su aspecto no cambie; no vuelvas a \`[neutral]\` por defecto en intervenciones posteriores. Usa otras etiquetas solo cuando la historia cambie realmente su aspecto o ropa.`
+  const imageGenerationFormat = autoGenerateImages
+    ? ' Puedes incluir como máximo una línea independiente `Imagen Nombre [etiqueta]: prompt en inglés` por personaje y respuesta. Esa línea solo describe postura, ropa, expresión y escena; no es relato ni diálogo.'
+    : ''
+  const catalogRule = autoGenerateImages
+    ? ' usa solo personajes, fondos, sonidos y etiquetas listados para las líneas normales; para una imagen nueva utiliza la directiva Imagen indicada.'
+    : ' usa solo personajes, fondos, sonidos y etiquetas listados.'
+  return `Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa \`Nombre [etiqueta][otra etiqueta]: texto\` para diálogo, con cada etiqueta visual en sus propios corchetes, \`Fondo [etiqueta]:\` solo cuando cambie el fondo y \`Sonido [etiqueta]:\` cuando deba reproducirse un sonido disponible. Las etiquetas combinadas deben pertenecer a la misma imagen del personaje.${imageGenerationFormat} Usa una línea sin prefijo para narración y${catalogRule}${protagonistFormat} Las etiquetas visuales representan el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje las últimas etiquetas usadas mientras su aspecto no cambie; no vuelvas a \`[neutral]\` por defecto en intervenciones posteriores. Usa otras etiquetas solo cuando la historia cambie realmente su aspecto o ropa.`
 }
 
 function continuationInstruction(generationMode: GenerationMode, userName: string) {
@@ -74,7 +84,8 @@ function pendingImageInstructionMessage(
 function characterSheet(
   character: Character,
   images: CharacterImage[],
-  customization?: StoryCharacterCustomization
+  customization?: StoryCharacterCustomization,
+  autoGenerateImages = false
 ) {
   const own = images.filter((image) => image.characterId === character.id)
   const fallback = own.find((image) => image.isDefault) ?? own[0]
@@ -82,13 +93,23 @@ function characterSheet(
     ? imageTagCatalog(own, '  ')
     : '  - (sin imágenes; usa [neutral])'
 
+  const imageGeneration = autoGenerateImages
+    ? [
+        'Puede pedir una imagen nueva para este personaje con una línea exacta: `Imagen Nombre [etiqueta]: prompt en inglés`.',
+        'El prompt de imagen solo describe postura, ropa, expresión y escena. No repitas el aspecto inmutable del personaje; la aplicación añadirá este prefijo:',
+        character.imageGenerationPromptPrefix?.trim() || '(sin prefijo configurado)',
+        'Usa una etiqueta nueva y descriptiva para cada imagen solicitada. La imagen se guardará con esa etiqueta.'
+      ]
+    : []
+
   return [
     `### ${customization?.name?.trim() || character.name}`,
     (customization?.prompt ?? character.prompt).trim() || '(sin descripción)',
     `Etiquetas descriptivas del personaje (no son etiquetas de imagen): ${(customization?.tags ?? character.tags ?? []).join(', ') || '(ninguna)'}`,
     'Etiquetas de imagen disponibles:',
     tags,
-    fallback ? `Etiqueta por defecto: [${primaryTag(fallback)}]` : 'Etiqueta por defecto: [neutral]'
+    fallback ? `Etiqueta por defecto: [${primaryTag(fallback)}]` : 'Etiqueta por defecto: [neutral]',
+    ...imageGeneration
   ].join('\n')
 }
 
@@ -156,6 +177,17 @@ export function buildSystemPrompt(options: {
   )
   return [
     presetContent.trim(),
+    ...(story.autoGenerateImages
+      ? [
+          '',
+          '## GENERACIÓN DE IMÁGENES DURANTE LA HISTORIA',
+          'Las imágenes existentes siguen siendo la opción preferida. Cuando un personaje necesite un aspecto nuevo, puedes pedir una imagen nueva con una línea independiente exacta: `Imagen Nombre [etiqueta]: prompt en inglés`.',
+          'Pide como máximo una línea independiente de imagen por personaje y respuesta.',
+          'Usa solo el catálogo disponible para las líneas normales; para una imagen nueva utiliza la directiva Imagen indicada.',
+          'El prompt nuevo solo puede describir postura, ropa, expresión y escena. No incluyas rasgos inmutables del personaje: la aplicación añadirá el prefijo de imagen configurado.',
+          'La línea de imagen no es diálogo ni narración y no debes comentarla. No incluyas rasgos inmutables como pelo o complexión, porque ya están en el prefijo del personaje.'
+        ]
+      : []),
     '',
     '## PLANTEAMIENTO DE LA HISTORIA',
     story.premise.trim() || '(sin planteamiento)',
@@ -173,7 +205,12 @@ export function buildSystemPrompt(options: {
     '## PERSONAJES',
     characters
       .map((character) =>
-        characterSheet(character, images, characterCustomizations.get(character.id))
+        characterSheet(
+          character,
+          images,
+          characterCustomizations.get(character.id),
+          story.autoGenerateImages === true
+        )
       )
       .join('\n\n'),
     '',
@@ -317,7 +354,14 @@ export function buildChatMessages(options: {
     ...imageCatalogChange,
     ...continuationMessages,
     ...pendingImageMessages,
-    { role: 'system', content: formatReminder(options.generationMode, options.userName) }
+    {
+      role: 'system',
+      content: formatReminder(
+        options.generationMode,
+        options.userName,
+        options.story.autoGenerateImages === true
+      )
+    }
   ]
   const systemContent = messages
     .filter((message) => message.role === 'system')

@@ -35,6 +35,7 @@ const copiedCustomizations = new Map(
 
 const title = ref('')
 const premise = ref(copiedStory?.premise ?? '')
+const autoGenerateImages = ref(copiedStory?.autoGenerateImages ?? false)
 const protagonistPreferences = ref(copiedStory?.protagonistPreferences ?? '')
 const protagonistPreferencesMode = ref<'append' | 'replace'>(
   copiedStory?.protagonistPreferencesMode ?? 'append'
@@ -97,6 +98,7 @@ async function submit() {
       title: title.value,
       premise: premise.value,
       visualMode: copiedStory?.visualMode ?? false,
+      autoGenerateImages: autoGenerateImages.value,
       protagonistPreferences: protagonistPreferences.value,
       protagonistPreferencesMode: protagonistPreferencesMode.value,
       characterIds: selected.value,
@@ -156,6 +158,18 @@ async function submit() {
             <option value="replace">Reemplazar</option>
           </select>
         </div>
+      </div>
+
+      <div>
+        <label class="flex items-start gap-2 text-sm">
+          <input v-model="autoGenerateImages" type="checkbox" class="mt-0.5 h-4 w-4">
+          <span>
+            <span class="block font-medium">Crear imágenes nuevas durante la historia</span>
+            <span class="block text-xs text-[var(--color-fg-muted)]">
+              El LLM podrá pedir una imagen nueva por personaje y respuesta.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div>
