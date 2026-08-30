@@ -22,7 +22,7 @@ test('construye mensaje multimodal con instrucción de caption LoRA', () => {
 
 test('limpia razonamiento y genera texto final con prefijo', () => {
   assert.equal(cleanLoraCaption('```text\n<think>private</think>caption: a red coat\n```'), 'a red coat')
-  assert.equal(finalLoraText('char_token', 'a red coat'), 'char_token a red coat')
+  assert.equal(finalLoraText('char_token', 'a red coat'), 'char_token, a red coat')
   assert.equal(finalLoraText('', '  a red coat  '), 'a red coat')
 })
 

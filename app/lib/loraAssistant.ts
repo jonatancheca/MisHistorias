@@ -54,7 +54,7 @@ export function cleanLoraCaption(value: string) {
 
 export function finalLoraText(prefix: string, caption: string) {
   const cleanCaption = cleanLoraCaption(caption)
-  return prefix.trim() ? `${prefix.trim()} ${cleanCaption}`.trim() : cleanCaption
+  return prefix.trim() ? `${prefix.trim()}, ${cleanCaption}`.trim() : cleanCaption
 }
 
 export function textFilename(name: string) {

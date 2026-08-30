@@ -29,6 +29,7 @@ test('asistente LoRA carga imagen, genera caption editable y descarga TXT en ZIP
     { type: 'image_url', image_url: { url: expect.stringMatching(/^data:image\/png;base64,/) } }
   ])
   await page.getByLabel('Descripción editable').fill('A person in a blue coat.')
+  await expect(page.getByText('char_token, A person in a blue coat.', { exact: true })).toHaveCount(0)
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Descargar ZIP' }).click()
   const download = await downloadPromise
@@ -38,4 +39,39 @@ test('asistente LoRA carga imagen, genera caption editable y descarga TXT en ZIP
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+})
+
+test('permite reintentar solo una imagen fallida', async ({ page }) => {
+  await page.route('**/api/llm/models**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(['vision-test']) })
+  })
+  let requests = 0
+  await page.route('**/api/llm/chat**', async (route) => {
+    requests += 1
+    if (requests <= 2) {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ statusMessage: 'Fallo temporal' })
+      })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ content: 'A person in a red coat.', finishReason: 'stop' })
+    })
+  })
+
+  await page.goto('/lora-assistant')
+  await page.locator('input[type=file]').setInputFiles([
+    { name: 'portrait.png', mimeType: 'image/png', buffer: PNG_BYTES },
+    { name: 'portrait-2.png', mimeType: 'image/png', buffer: PNG_BYTES }
+  ])
+  await page.getByRole('button', { name: 'Generar descripciones' }).click()
+  await expect(page.getByText('Fallida', { exact: true })).toHaveCount(2)
+  await page.getByRole('button', { name: 'Reintentar portrait.png' }).click()
+  await expect(page.getByText('Completada', { exact: true })).toHaveCount(1)
+  await expect(page.getByText('Fallida', { exact: true })).toHaveCount(1)
+  expect(requests).toBe(3)
 })

@@ -89,8 +89,8 @@ function clearRows() {
   error.value = null
 }
 
-async function generate() {
-  if (running.value || !activeRows.value.length) return
+async function generate(targetRows = activeRows.value) {
+  if (running.value || !targetRows.length) return
   const duplicates = duplicateTextFilenames(rows.value.map((row) => row.file))
   if (duplicates.length) {
     error.value = `Nombres TXT duplicados: ${duplicates.join(', ')}. Elimínalos antes de generar.`
@@ -106,7 +106,7 @@ async function generate() {
   const runController = new AbortController()
   controller = runController
   try {
-    for (const row of activeRows.value) {
+    for (const row of targetRows) {
       if (runController.signal.aborted) break
       row.status = 'generating'
       row.error = null
@@ -138,6 +138,11 @@ async function generate() {
     if (controller === runController) controller = null
     running.value = false
   }
+}
+
+function retryRow(row: LoraRow) {
+  if (running.value || row.status !== 'failed') return
+  void generate([row])
 }
 
 function cancel() {
@@ -240,7 +245,7 @@ await loadModels()
           <p class="text-xs text-[var(--color-fg-muted)]">{{ progressLabel }}</p>
         </div>
         <div class="flex flex-wrap gap-2">
-          <button type="button" class="btn-primary" :disabled="running || !activeRows.length" @click="generate">
+          <button type="button" class="btn-primary" :disabled="running || !activeRows.length" @click="generate()">
             {{ failedRows.length ? 'Reintentar fallidas' : 'Generar descripciones' }}
           </button>
           <button v-if="running" type="button" class="btn-ghost" @click="cancel">Cancelar</button>
@@ -266,11 +271,11 @@ await loadModels()
               <summary class="cursor-pointer text-[var(--color-fg-muted)]">Ver debug de esta imagen</summary>
               <pre class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-black/5 p-2 dark:bg-white/5">{{ debugText(row) }}</pre>
             </details>
-            <p v-if="row.status === 'complete'" class="mt-2 break-words rounded bg-black/5 p-2 text-xs dark:bg-white/5">
-              {{ finalLoraText(prefix, row.caption) }}
-            </p>
           </div>
-          <button type="button" class="btn-ghost self-start" :disabled="running" :aria-label="`Quitar ${row.file.name}`" @click="removeRow(row)">Quitar</button>
+          <div class="flex gap-2 self-start">
+            <button v-if="row.status === 'failed'" type="button" class="btn-ghost" :disabled="running" :aria-label="`Reintentar ${row.file.name}`" @click="retryRow(row)">Reintentar</button>
+            <button type="button" class="btn-ghost" :disabled="running" :aria-label="`Quitar ${row.file.name}`" @click="removeRow(row)">Quitar</button>
+          </div>
         </article>
       </div>
       <p v-if="pendingRows.length" class="mt-3 text-xs text-[var(--color-fg-muted)]">Las pendientes no se incluirán en el ZIP.</p>
