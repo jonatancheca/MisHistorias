@@ -524,6 +524,43 @@ test.describe('personajes', () => {
     expect((await data.list<Character>('characters', 'normal')).filter((item) => item.name === name))
       .toHaveLength(1)
   })
+
+  test('aísla etiquetas de imágenes entre colecciones', async ({ page, data }) => {
+    const publicCharacter = await data.createCharacter({ name: data.unique('Público') })
+    const publicTag = data.unique('etiqueta-publica')
+    await data.createImage(publicCharacter, [publicTag], 'normal')
+
+    const privateCharacter = await data.createCharacter({
+      name: data.unique('Privado'),
+      scope: 'private'
+    })
+    const privateTag = data.unique('etiqueta-privada')
+    await data.createImage(privateCharacter, [privateTag], 'private')
+
+    await page.goto(`/characters/${publicCharacter.id}`)
+    await expect(page.getByRole('button', { name: publicTag, exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: privateTag, exact: true })).toHaveCount(0)
+
+    await page.goto('/settings')
+    const privateTrigger = page.getByRole('button', { name: 'Activar modo privado', exact: true })
+    await privateTrigger.click()
+    await privateTrigger.click()
+    await privateTrigger.click()
+    await expect(page).toHaveURL(/\/$/)
+    await expect(page.getByRole('button', { name: 'Salir del modo privado', exact: true })).toBeVisible()
+    await page.getByRole('link', { name: 'Personajes', exact: true }).click()
+    await page.getByRole('link', { name: privateCharacter.name, exact: true }).click()
+    await expect(page.getByRole('button', { name: privateTag, exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: publicTag, exact: true })).toHaveCount(0)
+
+    await page.getByRole('link', { name: 'Ajustes', exact: true }).click()
+    await page.getByRole('button', { name: 'Salir del modo privado', exact: true }).click()
+    await expect(page).toHaveURL(/\/$/)
+    await page.getByRole('link', { name: 'Personajes', exact: true }).click()
+    await page.getByRole('link', { name: publicCharacter.name, exact: true }).click()
+    await expect(page.getByRole('button', { name: publicTag, exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: privateTag, exact: true })).toHaveCount(0)
+  })
 })
 
 test.describe('fondos', () => {

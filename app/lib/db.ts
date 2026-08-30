@@ -80,8 +80,12 @@ async function deleteJson(resource: string, id: string) {
   await $fetch(dataUrl(`${resource}/${encodeURIComponent(id)}`), { method: 'DELETE' })
 }
 
-async function fetchBlob(resource: 'images' | 'backgrounds' | 'sounds', id: string) {
-  const response = await fetch(dataUrl(`${resource}/${encodeURIComponent(id)}/content`))
+async function fetchBlob(
+  resource: 'images' | 'backgrounds' | 'sounds',
+  id: string,
+  scope: DataScope = activeDataScope.value
+) {
+  const response = await fetch(dataUrl(`${resource}/${encodeURIComponent(id)}/content`, scope))
   if (!response.ok) throw new Error('No se pudo cargar el archivo guardado')
   return response.blob()
 }
@@ -102,8 +106,8 @@ async function putBinary<T extends { id: string; blob: Blob; originalBlob?: Blob
   })
 }
 
-export async function listCharacters() {
-  return $fetch<Character[]>(dataUrl('characters'))
+export async function listCharacters(scope: DataScope = activeDataScope.value) {
+  return $fetch<Character[]>(dataUrl('characters', scope))
 }
 
 export async function getCharacter(id: string) {
@@ -176,16 +180,25 @@ export async function deleteCharacter(id: string) {
   await deleteJson('characters', id)
 }
 
-export async function listImages(characterId: string) {
+export async function listImages(
+  characterId: string,
+  scope: DataScope = activeDataScope.value
+) {
   const metadata = await $fetch<ImageMetadata[]>(
-    dataUrl(`images?characterId=${encodeURIComponent(characterId)}`)
+    dataUrl(`images?characterId=${encodeURIComponent(characterId)}`, scope)
   )
-  return Promise.all(metadata.map(async (image) => ({ ...image, blob: await fetchBlob('images', image.id) })))
+  return Promise.all(metadata.map(async (image) => ({
+    ...image,
+    blob: await fetchBlob('images', image.id, scope)
+  })))
 }
 
-export async function listAllImages() {
-  const metadata = await $fetch<ImageMetadata[]>(dataUrl('images'))
-  return Promise.all(metadata.map(async (image) => ({ ...image, blob: await fetchBlob('images', image.id) })))
+export async function listAllImages(scope: DataScope = activeDataScope.value) {
+  const metadata = await $fetch<ImageMetadata[]>(dataUrl('images', scope))
+  return Promise.all(metadata.map(async (image) => ({
+    ...image,
+    blob: await fetchBlob('images', image.id, scope)
+  })))
 }
 
 export async function putImage(image: StoredImage, scope: DataScope = activeDataScope.value) {

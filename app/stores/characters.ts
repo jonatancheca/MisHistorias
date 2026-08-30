@@ -30,6 +30,7 @@ export const useCharactersStore = defineStore('characters', () => {
   const urls = ref<Record<string, string>>({})
   const urlBlobs = new Map<string, Blob>()
   const loaded = ref(false)
+  let loadRevision = 0
 
   function syncUrls() {
     const next: Record<string, string> = {}
@@ -47,6 +48,7 @@ export const useCharactersStore = defineStore('characters', () => {
   }
 
   function resetForScope() {
+    loadRevision += 1
     characters.value = []
     images.value = []
     loaded.value = false
@@ -55,7 +57,13 @@ export const useCharactersStore = defineStore('characters', () => {
 
   async function load(force = false) {
     if (loaded.value && !force) return
-    const [chars, imgs] = await Promise.all([listCharacters(), listAllImages()])
+    const scope = getActiveDataScope()
+    const revision = ++loadRevision
+    const [chars, imgs] = await Promise.all([
+      listCharacters(scope),
+      listAllImages(scope)
+    ])
+    if (scope !== getActiveDataScope() || revision !== loadRevision) return
     characters.value = chars
     images.value = imgs.sort((a, b) => a.createdAt - b.createdAt)
     syncUrls()
