@@ -644,7 +644,7 @@ async function remove(id: string) {
             :download-name="downloadName(image)"
             :gallery-items="galleryItems"
           >
-          <template #details="{ item }">
+          <template #details="{ item, showGenerationMetadata }">
             <div v-if="item.id" class="grid gap-3">
               <div>
                 <h3 class="font-semibold">Etiquetas de la imagen</h3>
@@ -661,7 +661,7 @@ async function remove(id: string) {
                 @update:model-value="updateImage(item.id, { tags: $event })"
               />
               <p v-if="error" class="text-sm text-red-500" role="alert">{{ error }}</p>
-              <ImageGenerationMetadataPanel v-if="item.generation" :generation="item.generation" />
+              <ImageGenerationMetadataPanel v-if="item.generation && showGenerationMetadata" :generation="item.generation" />
             </div>
           </template>
           </ImageLightbox>

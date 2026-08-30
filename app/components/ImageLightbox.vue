@@ -34,6 +34,7 @@ const emit = defineEmits<{ select: [] }>()
 
 const open = ref(false)
 const activeIndex = ref(0)
+const generationMetadataOpen = ref(false)
 const items = computed<GalleryItem[]>(() =>
   props.galleryItems?.length
     ? props.galleryItems
@@ -45,6 +46,7 @@ const canNavigate = computed(() => items.value.length > 1)
 function show() {
   const index = items.value.findIndex((item) => item.src === props.src)
   activeIndex.value = index >= 0 ? index : 0
+  generationMetadataOpen.value = false
   open.value = true
 }
 
@@ -55,11 +57,18 @@ function activate() {
 
 function close() {
   open.value = false
+  generationMetadataOpen.value = false
 }
 
 function move(offset: number) {
   if (!canNavigate.value) return
   activeIndex.value = (activeIndex.value + offset + items.value.length) % items.value.length
+  generationMetadataOpen.value = false
+}
+
+function toggleGenerationMetadata() {
+  if (!activeItem.value.generation) return
+  generationMetadataOpen.value = !generationMetadataOpen.value
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -139,11 +148,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             :alt="activeItem.alt"
             class="max-h-[calc(100dvh-4rem)] max-w-full rounded-xl object-contain"
           >
-          <span
+          <button
             v-if="activeItem.generation"
+            type="button"
             class="absolute bottom-3 left-3 rounded-full bg-brand-600 px-2.5 py-1 text-xs font-bold text-white shadow"
-            aria-label="Imagen generada con IA"
-          >IA</span>
+            :aria-label="generationMetadataOpen ? 'Ocultar metadatos de IA' : 'Mostrar metadatos de IA'"
+            :aria-expanded="generationMetadataOpen"
+            title="Metadatos de IA"
+            @click.stop="toggleGenerationMetadata"
+          >IA</button>
           <button
             v-if="canNavigate"
             type="button"
@@ -160,7 +173,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           class="max-h-[45dvh] w-full shrink-0 overflow-y-auto bg-[var(--color-surface)] p-4 text-[var(--color-fg)] lg:max-h-none lg:w-80"
           data-testid="image-lightbox-details"
         >
-          <slot name="details" :item="activeItem" :index="activeIndex" />
+          <slot
+            name="details"
+            :item="activeItem"
+            :index="activeIndex"
+            :show-generation-metadata="generationMetadataOpen"
+          />
         </aside>
       </section>
     </div>
