@@ -71,9 +71,11 @@ const galleryItems = computed(() => {
     src: characters.urlFor(image.id)!,
     alt: characterName,
     downloadName: downloadName(image),
-    tags: [...image.tags]
+    tags: [...image.tags],
+    generation: image.generation
   }))
 })
+const metadataOpenId = ref<string | null>(null)
 const imageTagSuggestions = computed(() =>
   characters.images.flatMap((image) => visibleImageTags(image.tags))
 )
@@ -183,7 +185,17 @@ async function generateImage(asSet = false) {
         })
       },
       save: async (blob, job) => {
-        await characters.addImage(characterId, blob, job.tags, undefined, { scope, generation: job.generation, signal: controller.signal })
+        await characters.addImage(characterId, blob, job.tags, undefined, {
+          scope,
+          generation: {
+            ...job.generation,
+            prompt: job.prompt,
+            ...(lora ? { lora } : {}),
+            ...(model ? { model } : {}),
+            ...(preset ? { preset } : {})
+          },
+          signal: controller.signal
+        })
         if (generationLastImageUrl.value) URL.revokeObjectURL(generationLastImageUrl.value)
         generationLastImageUrl.value = URL.createObjectURL(blob)
       },
@@ -619,14 +631,15 @@ async function remove(id: string) {
         }"
         data-testid="character-image-card"
       >
-        <ImageLightbox
-          :src="characters.urlFor(image.id)!"
-          alt=""
-          container-class="w-full shrink-0"
-          image-class="h-56 w-full rounded-lg bg-black/5 object-contain sm:h-72"
-          :download-name="downloadName(image)"
-          :gallery-items="galleryItems"
-        >
+        <div class="relative">
+          <ImageLightbox
+            :src="characters.urlFor(image.id)!"
+            alt=""
+            container-class="w-full shrink-0"
+            image-class="h-56 w-full rounded-lg bg-black/5 object-contain sm:h-72"
+            :download-name="downloadName(image)"
+            :gallery-items="galleryItems"
+          >
           <template #details="{ item }">
             <div v-if="item.id" class="grid gap-3">
               <div>
@@ -644,9 +657,22 @@ async function remove(id: string) {
                 @update:model-value="updateImage(item.id, { tags: $event })"
               />
               <p v-if="error" class="text-sm text-red-500" role="alert">{{ error }}</p>
+              <ImageGenerationMetadataPanel v-if="item.generation" :generation="item.generation" />
             </div>
           </template>
-        </ImageLightbox>
+          </ImageLightbox>
+          <button
+            v-if="image.generation"
+            type="button"
+            class="absolute bottom-2 left-2 rounded-full bg-brand-600 px-2.5 py-1 text-xs font-bold text-white shadow"
+            aria-label="Mostrar metadatos de IA"
+            @click.stop="metadataOpenId = metadataOpenId === image.id ? null : image.id"
+          >IA</button>
+        </div>
+        <ImageGenerationMetadataPanel
+          v-if="image.generation && metadataOpenId === image.id"
+          :generation="image.generation"
+        />
         <div class="min-w-0 flex-1 space-y-2">
           <div
             v-if="visibleImageTags(image.tags).length"

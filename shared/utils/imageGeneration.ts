@@ -9,7 +9,10 @@ export function readImageGeneration(value: unknown): ImageGenerationMetadata | u
       (!Number.isInteger(metadata.variationSeed) || metadata.variationSeed < 0 || metadata.variationSeed > 0xffffffff)) ||
     (metadata.variationSeed === undefined ? metadata.variationSeedStrength !== undefined :
       typeof metadata.variationSeedStrength !== 'number' || !Number.isFinite(metadata.variationSeedStrength) ||
-      metadata.variationSeedStrength <= 0 || metadata.variationSeedStrength > 1)) {
+      metadata.variationSeedStrength <= 0 || metadata.variationSeedStrength > 1) ||
+    ['prompt', 'lora', 'model', 'preset'].some((key) =>
+      metadata[key as keyof ImageGenerationMetadata] !== undefined &&
+      typeof metadata[key as keyof ImageGenerationMetadata] !== 'string')) {
     throw new Error('Metadatos de generación no válidos')
   }
   return {
@@ -17,6 +20,10 @@ export function readImageGeneration(value: unknown): ImageGenerationMetadata | u
     ...(metadata.variationSeed !== undefined ? {
       variationSeed: metadata.variationSeed,
       variationSeedStrength: metadata.variationSeedStrength
-    } : {})
+    } : {}),
+    ...(typeof metadata.prompt === 'string' ? { prompt: metadata.prompt } : {}),
+    ...(typeof metadata.lora === 'string' ? { lora: metadata.lora } : {}),
+    ...(typeof metadata.model === 'string' ? { model: metadata.model } : {}),
+    ...(typeof metadata.preset === 'string' ? { preset: metadata.preset } : {})
   }
 }

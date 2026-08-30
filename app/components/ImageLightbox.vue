@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import type { ImageGenerationMetadata } from '#shared/types'
 interface GalleryItem {
   id?: string
   src: string
   alt: string
   downloadName?: string
   tags?: string[]
+  generation?: ImageGenerationMetadata
 }
 
 const props = withDefaults(
@@ -137,6 +139,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             :alt="activeItem.alt"
             class="max-h-[calc(100dvh-4rem)] max-w-full rounded-xl object-contain"
           >
+          <span
+            v-if="activeItem.generation"
+            class="absolute bottom-3 left-3 rounded-full bg-brand-600 px-2.5 py-1 text-xs font-bold text-white shadow"
+            aria-label="Imagen generada con IA"
+          >IA</span>
           <button
             v-if="canNavigate"
             type="button"

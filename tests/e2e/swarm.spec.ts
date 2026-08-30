@@ -137,8 +137,11 @@ test('mantiene catálogo y crea conjunto con semillas compartidas, etiquetas y t
   const images = await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
   expect(images).toHaveLength(4)
   expect(images.map((image) => image.tags)).toEqual([['feliz', 'sentada'], ['feliz', 'sentada'], ['feliz', 'de pie'], ['feliz', 'de pie']])
-  expect(images[0]!.generation).toEqual({ seed: 42 })
-  expect(images[1]!.generation).toEqual({ seed: 42, variationSeed: bodies[1]!.variationSeed, variationSeedStrength: 0.5 })
+  expect(images[0]!.generation).toEqual({ seed: 42, model: 'model-a', prompt: 'quality\nportrait, sitting' })
+  expect(images[1]!.generation).toEqual({ seed: 42, model: 'model-a', prompt: 'quality\nportrait, sitting', variationSeed: bodies[1]!.variationSeed, variationSeedStrength: 0.5 })
+  await expect(page.getByRole('button', { name: 'Mostrar metadatos de IA' })).toHaveCount(4)
+  await page.getByRole('button', { name: 'Mostrar metadatos de IA' }).first().click()
+  await expect(page.getByTestId('image-generation-metadata').first()).toContainText('quality')
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 850 })
     await page.getByTestId('character-swarm-toggle').click()
