@@ -2,7 +2,6 @@ import type {
   Character,
   LlmDebugTrace,
   Message,
-  PromptPreset,
   Story
 } from '#shared/types'
 import {
@@ -13,7 +12,6 @@ import {
   listCharacters,
   listLlmDebugTraces,
   listMessages,
-  listPresets,
   listSounds,
   listStories,
   putBackground,
@@ -21,7 +19,6 @@ import {
   putImage,
   putLlmDebugTrace,
   putMessage,
-  putPreset,
   putSound,
   putStory,
   writeSettings,
@@ -54,12 +51,10 @@ export interface TestDataCounts {
   stories: number
   messages: number
   llmDebugTraces: number
-  presets: number
 }
 
 export interface TestDataResetResult {
   counts: TestDataCounts
-  activePresetId: string | null
   seeded: boolean
 }
 
@@ -109,13 +104,12 @@ function silentWavBlob() {
 
 export async function countNormalTestData(): Promise<TestDataCounts> {
   assertDevelopmentNormalScope()
-  const [characters, images, backgrounds, sounds, stories, presets] = await Promise.all([
+  const [characters, images, backgrounds, sounds, stories] = await Promise.all([
     listCharacters(),
     listAllImages(),
     listBackgrounds(),
     listSounds(),
-    listStories(),
-    listPresets()
+    listStories()
   ])
   const [messageGroups, traceGroups] = await Promise.all([
     Promise.all(stories.map((story) => listMessages(story.id))),
@@ -128,29 +122,11 @@ export async function countNormalTestData(): Promise<TestDataCounts> {
     sounds: sounds.length,
     stories: stories.length,
     messages: messageGroups.reduce((total, group) => total + group.length, 0),
-    llmDebugTraces: traceGroups.reduce((total, group) => total + group.length, 0),
-    presets: presets.length
+    llmDebugTraces: traceGroups.reduce((total, group) => total + group.length, 0)
   }
 }
 
 async function seedNormalData() {
-  const presets: PromptPreset[] = [
-    {
-      id: TEST_DATA_IDS.presetNarrative,
-      name: 'TEST — Narrativa equilibrada',
-      content: 'Combina narración breve, fondos y diálogo etiquetado.',
-      createdAt: TEST_TIME,
-      updatedAt: TEST_TIME
-    },
-    {
-      id: TEST_DATA_IDS.presetDialogue,
-      name: 'TEST — Solo diálogo',
-      content: 'Prioriza diálogo directo y respuestas cortas.',
-      createdAt: TEST_TIME + 1,
-      updatedAt: TEST_TIME + 1
-    }
-  ]
-
   const characters: Character[] = [
     {
       id: TEST_DATA_IDS.characterAlicia,
@@ -276,7 +252,6 @@ async function seedNormalData() {
         }
       ],
       initialBackgroundId: TEST_DATA_IDS.backgroundForest,
-      presetId: TEST_DATA_IDS.presetNarrative,
       imageCatalogSnapshot: buildStoryImageCatalog(
         [TEST_DATA_IDS.characterAlicia, TEST_DATA_IDS.characterBruno],
         characters,
@@ -302,7 +277,6 @@ async function seedNormalData() {
         }
       ],
       initialBackgroundId: null,
-      presetId: TEST_DATA_IDS.presetDialogue,
       imageCatalogSnapshot: buildStoryImageCatalog(
         [TEST_DATA_IDS.characterAlicia],
         characters,
@@ -406,8 +380,7 @@ async function seedNormalData() {
 
   await Promise.all([
     ...characters.map(putCharacter),
-    ...backgrounds.map(putBackground),
-    ...presets.map(putPreset)
+    ...backgrounds.map(putBackground)
   ])
   await Promise.all(images.map((image) => putImage(image)))
   await Promise.all(sounds.map(putSound))
@@ -421,11 +394,9 @@ export async function resetNormalTestData(seed: boolean): Promise<TestDataResetR
   await clearAll('normal')
   if (seed) await seedNormalData()
 
-  const activePresetId = seed ? TEST_DATA_IDS.presetNarrative : null
   await writeSettings({
-    activePresetId,
     defaultSoundVersion: seed ? 0 : DEFAULT_SOUND_VERSION
   })
 
-  return { counts: await countNormalTestData(), activePresetId, seeded: seed }
+  return { counts: await countNormalTestData(), seeded: seed }
 }

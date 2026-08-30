@@ -10,7 +10,6 @@ const links = computed(() => [
   { to: '/characters', label: 'Personajes' },
   { to: '/backgrounds', label: 'Fondos' },
   { to: '/sounds', label: 'Sonidos' },
-  { to: '/prompts', label: 'Prompts' },
   ...(settings.settings.swarmBaseUrl.trim() ? [{ to: '/swarm-prompts', label: 'Prompts SwarmUI' }] : []),
   { to: '/settings', label: 'Ajustes' }
 ])
@@ -24,7 +23,7 @@ function iconFor(to: string) {
   if (to === '/characters') return 'users'
   if (to === '/backgrounds') return 'image'
   if (to === '/sounds') return 'sound'
-  if (to === '/prompts' || to === '/swarm-prompts') return 'document'
+  if (to === '/swarm-prompts') return 'document'
   return 'settings'
 }
 

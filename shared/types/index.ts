@@ -2,6 +2,10 @@ export interface ImageGenerationMetadata {
   seed: number
   variationSeed?: number
   variationSeedStrength?: number
+  prompt?: string
+  lora?: string
+  model?: string
+  preset?: string
 }
 
 export interface SwarmPrompt {
@@ -111,7 +115,8 @@ export interface Story {
   characterCustomizations: StoryCharacterCustomization[]
   /** Fondo inicial; null permite que el modelo decida */
   initialBackgroundId: string | null
-  presetId: string | null
+  /** Legacy field ignored after narrative preset retirement. */
+  presetId?: string | null
   /** Catálogo de imágenes comunicado en la última llamada válida al modelo. */
   imageCatalogSnapshot?: StoryImageCatalogEntry[]
   /** Indicaciones visuales pendientes para la próxima respuesta nueva. */
@@ -216,14 +221,6 @@ export interface StorySaveSlot {
   createdAt: number
 }
 
-export interface PromptPreset {
-  id: string
-  name: string
-  content: string
-  createdAt: number
-  updatedAt: number
-}
-
 export interface AppSettings {
   baseUrl: string
   /** Token opcional de LM Studio. Solo se mantiene en memoria mientras se edita. */
@@ -255,12 +252,6 @@ export interface AppSettings {
   maxTokens: number
   /** Presupuesto de caracteres del historial enviado al modelo */
   historyBudget: number
-  activePresetId: string | null
-  /** Prompt activo de la colección privada; el resto de ajustes se comparte. */
-  privateActivePresetId: string | null
-  /** Versión aplicada del prompt por defecto en cada colección. */
-  defaultPresetVersion: number
-  privateDefaultPresetVersion: number
   /** Versión aplicada del pack de sonidos por defecto en cada colección. */
   defaultSoundVersion: number
   privateDefaultSoundVersion: number

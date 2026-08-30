@@ -6,14 +6,12 @@ const route = useRoute()
 const stories = useStoriesStore()
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
-const presets = usePresetsStore()
 const settings = useSettingsStore()
 
 await Promise.all([
   stories.load(),
   characters.load(),
   backgrounds.load(),
-  presets.load(),
   settings.load()
 ])
 
@@ -48,11 +46,6 @@ const initialBackgroundId = ref<string | null>(
   copiedStory && backgrounds.byId(copiedStory.initialBackgroundId)
     ? copiedStory.initialBackgroundId
     : null
-)
-const presetId = ref<string | null>(
-  copiedStory && presets.byId(copiedStory.presetId)
-    ? copiedStory.presetId
-    : settings.activePresetId
 )
 const saving = ref(false)
 const characterCustomizations = ref<Record<string, StoryCharacterCustomization>>(
@@ -112,7 +105,6 @@ async function submit() {
         tags: [...customizationFor(characterId).tags]
       })),
       initialBackgroundId: initialBackgroundId.value,
-      presetId: presetId.value
     })
     await navigateTo(`/stories/${story.id}`)
   } finally {
@@ -298,15 +290,6 @@ async function submit() {
           <NuxtLink to="/backgrounds" class="text-brand-600 underline">Añade fondos</NuxtLink>
           para poder elegir uno.
         </p>
-      </div>
-
-      <div>
-        <label class="label" for="preset">Prompt de preparación</label>
-        <select id="preset" v-model="presetId" class="field">
-          <option v-for="preset in presets.presets" :key="preset.id" :value="preset.id">
-            {{ preset.name }}
-          </option>
-        </select>
       </div>
 
       <div class="flex gap-2">

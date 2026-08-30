@@ -18,12 +18,12 @@ import {
   fetchSwarmImage,
   type SwarmCatalog
 } from '~/lib/swarm'
+import { DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
 
 const settings = useSettingsStore()
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
 const stories = useStoriesStore()
-const presets = usePresetsStore()
 const privacy = usePrivacyStore()
 const confirmDialog = useConfirmStore()
 const appUpdate = useAppUpdate()
@@ -594,7 +594,6 @@ async function onImportFile(event: Event) {
       characters.load(true),
       backgrounds.load(true),
       stories.load(true),
-      presets.load(true),
       useSwarmPromptsStore().load(true)
     ])
     importMessage.value = 'Importación completada'
@@ -949,6 +948,19 @@ onBeforeRouteLeave(async () => {
       </div>
 
       </div>
+    </section>
+
+    <section class="mt-10" data-testid="narrative-prompt-settings">
+      <h2 class="mb-2 text-lg font-semibold">Prompt narrativo</h2>
+      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+        Prompt integrado usado para preparar cada historia.
+      </p>
+      <textarea
+        :value="DEFAULT_PRESET_CONTENT"
+        class="field min-h-64 w-full font-mono text-sm"
+        aria-label="Prompt narrativo integrado"
+        readonly
+      />
     </section>
 
     <section class="mt-10" data-testid="swarm-settings">

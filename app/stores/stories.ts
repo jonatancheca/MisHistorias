@@ -38,6 +38,7 @@ import {
   resolveProtagonistPreferences
 } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
+import { DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
 import { fetchLlmChat, type LlmCallError } from '~/lib/llm'
 import { fetchChromeLlmChat } from '~/lib/chromeLlm'
 import { hideIncompleteVisualDirectivePrefix, parseSegments } from '~/lib/streamParser'
@@ -199,7 +200,6 @@ export const useStoriesStore = defineStore('stories', () => {
     characterIds: string[]
     characterCustomizations: StoryCharacterCustomization[]
     initialBackgroundId: string | null
-    presetId: string | null
   }) {
     const charactersStore = useCharactersStore()
     await charactersStore.load()
@@ -218,7 +218,6 @@ export const useStoriesStore = defineStore('stories', () => {
         input.characterCustomizations
       ),
       initialBackgroundId: input.initialBackgroundId,
-      presetId: input.presetId,
       imageCatalogSnapshot: buildStoryImageCatalog(
         input.characterIds,
         charactersStore.characters,
@@ -912,14 +911,12 @@ export const useStoriesStore = defineStore('stories', () => {
     if (!activeStory.value || generating.value) return
     const story = activeStory.value
     const settingsStore = useSettingsStore()
-    const presetsStore = usePresetsStore()
     const charactersStore = useCharactersStore()
     const backgroundsStore = useBackgroundsStore()
     const soundsStore = useSoundsStore()
 
     await Promise.all([
       settingsStore.load(),
-      presetsStore.load(),
       charactersStore.load(),
       backgroundsStore.load(),
       soundsStore.load()
@@ -975,11 +972,6 @@ export const useStoriesStore = defineStore('stories', () => {
     if (!story.imageCatalogSnapshot) {
       await persistImageCatalogSnapshot(story, currentImageCatalog)
     }
-    const preset = presetsStore.byId(story.presetId ?? settingsStore.activePresetId)
-    if (!mock && !preset) {
-      error.value = 'No hay ningún prompt de preparación disponible.'
-      return
-    }
 
     error.value = null
     generating.value = true
@@ -1017,7 +1009,7 @@ export const useStoriesStore = defineStore('stories', () => {
         )
       } else {
         const payload = buildChatMessages({
-          presetContent: preset!.content,
+          presetContent: DEFAULT_PRESET_CONTENT,
           story,
           characters: storyCharacters,
           images: charactersStore.images,
@@ -1134,7 +1126,7 @@ export const useStoriesStore = defineStore('stories', () => {
         if (!mock) {
           await compactHistoryIfNeeded({
             story: activeStory.value ?? story,
-            presetContent: preset!.content,
+            presetContent: DEFAULT_PRESET_CONTENT,
             storyCharacters,
             images: charactersStore.images,
             backgrounds: backgroundsStore.backgrounds,

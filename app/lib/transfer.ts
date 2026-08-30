@@ -4,7 +4,6 @@ import type {
   ImageGenerationMetadata,
   SwarmPrompt,
   Message,
-  PromptPreset,
   Story,
   StoryCharacterCustomization,
   StorySaveSlot
@@ -15,7 +14,6 @@ import {
   listAllImages,
   listCharacters,
   listMessages,
-  listPresets,
   listSwarmPrompts,
   putSwarmPrompt,
   listStories,
@@ -25,7 +23,6 @@ import {
   putCharacter,
   putImage,
   putMessage,
-  putPreset,
   putStory,
   putStorySave,
   type StoredBackground,
@@ -91,7 +88,6 @@ interface ExportedStory {
   contextSummary?: string
   contextSummaryThroughMessageId?: string
   initialBackgroundId?: string | null
-  presetId: string | null
   messages: Array<Pick<Message, 'id' | 'role' | 'raw' | 'segments' | 'generationMode' | 'createdAt'>>
   saves?: StorySaveSlot[]
 }
@@ -102,17 +98,15 @@ interface ExportBundle {
   characters: ExportedCharacter[]
   backgrounds?: ExportedBackground[]
   stories: ExportedStory[]
-  presets: Array<Pick<PromptPreset, 'id' | 'name' | 'content'>>
   swarmPrompts?: SwarmPrompt[]
 }
 
 export async function exportBundle(): Promise<ExportBundle> {
-  const [characters, images, backgrounds, stories, presets, swarmPrompts] = await Promise.all([
+  const [characters, images, backgrounds, stories, swarmPrompts] = await Promise.all([
     listCharacters(),
     listAllImages(),
     listBackgrounds(),
     listStories(),
-    listPresets(),
     listSwarmPrompts()
   ])
 
@@ -149,7 +143,6 @@ export async function exportBundle(): Promise<ExportBundle> {
       contextSummary: story.contextSummary ?? '',
       contextSummaryThroughMessageId: story.contextSummaryThroughMessageId,
       initialBackgroundId: story.initialBackgroundId ?? null,
-      presetId: story.presetId,
       messages: (await listMessages(story.id)).map((message) => ({
         id: message.id,
         role: message.role,
@@ -175,8 +168,7 @@ export async function exportBundle(): Promise<ExportBundle> {
       }))
     ),
     stories: exportedStories,
-    swarmPrompts,
-    presets: presets.map((preset) => ({ id: preset.id, name: preset.name, content: preset.content }))
+    swarmPrompts
   }
 }
 
@@ -213,19 +205,6 @@ export async function importBundle(raw: string) {
     await putSwarmPrompt({ id: newId(), name: item.name.trim(), prompt: item.prompt.trim(),
       tags: sanitizeTags(item.tags), createdAt: now + index, updatedAt: now + index })
   }
-  const presetIdMap = new Map<string, string>()
-  for (const preset of parsed.presets ?? []) {
-    const created: PromptPreset = {
-      id: newId(),
-      name: String(preset.name ?? 'Importado'),
-      content: String(preset.content ?? ''),
-      createdAt: now,
-      updatedAt: now
-    }
-    presetIdMap.set(String(preset.id), created.id)
-    await putPreset(created)
-  }
-
   const characterIdMap = new Map<string, string>()
   const imageIdMap = new Map<string, string>()
   const importedCharacters: Character[] = []
@@ -356,7 +335,6 @@ export async function importBundle(raw: string) {
       initialBackgroundId: item.initialBackgroundId
         ? (backgroundIdMap.get(String(item.initialBackgroundId)) ?? null)
         : null,
-      presetId: item.presetId ? (presetIdMap.get(String(item.presetId)) ?? null) : null,
       imageCatalogSnapshot: buildStoryImageCatalog(
         storyCharacterIds,
         importedCharacters,
@@ -463,9 +441,6 @@ export async function importBundle(raw: string) {
         ),
         initialBackgroundId: save.story.initialBackgroundId
           ? (backgroundIdMap.get(String(save.story.initialBackgroundId)) ?? null)
-          : null,
-        presetId: save.story.presetId
-          ? (presetIdMap.get(String(save.story.presetId)) ?? null)
           : null,
         imageCatalogSnapshot: buildStoryImageCatalog(
           savedCharacterIds,

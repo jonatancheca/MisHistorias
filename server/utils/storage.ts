@@ -84,7 +84,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 28
+const SCHEMA_VERSION = 29
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -1078,6 +1078,24 @@ export class MisHistoriasStorage {
         const columns = this.database.prepare('PRAGMA table_info(images)').all() as Array<{ name: string }>
         if (!columns.some((column) => column.name === 'generation_json')) {
           this.database.exec('ALTER TABLE images ADD COLUMN generation_json TEXT')
+        }
+      }
+
+      if (version.user_version < 29) {
+        // Narrative presets are retired. Keep SwarmUI prompts in their own table.
+        this.database.exec(`
+          DELETE FROM presets;
+          UPDATE stories SET preset_id = NULL;
+        `)
+        const settings = this.database.prepare("SELECT value_json FROM settings WHERE key = 'app'").get() as
+          { value_json: string } | undefined
+        if (settings) {
+          const value = parseJson<Record<string, unknown>>(settings.value_json, {})
+          delete value.activePresetId
+          delete value.privateActivePresetId
+          delete value.defaultPresetVersion
+          delete value.privateDefaultPresetVersion
+          this.database.prepare("UPDATE settings SET value_json = ? WHERE key = 'app'").run(json(value))
         }
       }
 

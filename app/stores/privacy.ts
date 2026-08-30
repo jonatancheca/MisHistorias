@@ -24,7 +24,6 @@ export const usePrivacyStore = defineStore('privacy', () => {
     const characters = useCharactersStore()
     const backgrounds = useBackgroundsStore()
     const sounds = useSoundsStore()
-    const presets = usePresetsStore()
 
     try {
       await stories.stop()
@@ -35,7 +34,6 @@ export const usePrivacyStore = defineStore('privacy', () => {
       characters.resetForScope()
       backgrounds.resetForScope()
       sounds.resetForScope()
-      presets.resetForScope()
       useSwarmPromptsStore().resetForScope()
 
       await Promise.all([
@@ -43,7 +41,6 @@ export const usePrivacyStore = defineStore('privacy', () => {
         characters.load(),
         backgrounds.load(),
         sounds.load(),
-        presets.load()
       ])
       await navigateTo('/')
     } finally {

@@ -7,7 +7,6 @@ import type {
   DatabaseBackup,
   LlmDebugTrace,
   Message,
-  PromptPreset,
   Sound,
   Story,
   StorySaveSlot,
@@ -326,18 +325,6 @@ export async function loadStorySave(id: string) {
 
 export async function deleteStorySave(id: string) {
   await deleteJson('storySaves', id)
-}
-
-export async function listPresets() {
-  return $fetch<PromptPreset[]>(dataUrl('presets'))
-}
-
-export async function putPreset(preset: PromptPreset) {
-  return putJson('presets', preset)
-}
-
-export async function deletePreset(id: string) {
-  await deleteJson('presets', id)
 }
 
 export async function readSettings() {

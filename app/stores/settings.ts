@@ -24,10 +24,6 @@ const DEFAULTS: AppSettings = {
   temperature: 0.8,
   maxTokens: 10000,
   historyBudget: 12000,
-  activePresetId: null,
-  privateActivePresetId: null,
-  defaultPresetVersion: 0,
-  privateDefaultPresetVersion: 0,
   defaultSoundVersion: 0,
   privateDefaultSoundVersion: 0,
   theme: 'system',
@@ -43,11 +39,6 @@ const DEFAULTS: AppSettings = {
 
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>({ ...DEFAULTS })
-  const activePresetId = computed(() =>
-    activeDataScope.value === 'private'
-      ? settings.value.privateActivePresetId
-      : settings.value.activePresetId
-  )
   const activeUseChromeLlm = computed(() =>
     activeDataScope.value === 'private'
       ? (settings.value.privateUseChromeLlm ?? settings.value.useChromeLlm)
@@ -154,19 +145,12 @@ export const useSettingsStore = defineStore('settings', () => {
     document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
   }
 
-  async function setActivePresetId(id: string | null) {
-    return activeDataScope.value === 'private'
-      ? save({ privateActivePresetId: id })
-      : save({ activePresetId: id })
-  }
-
   async function toggleTheme() {
     await save({ theme: settings.value.theme === 'dark' ? 'light' : 'dark' })
   }
 
   return {
     settings,
-    activePresetId,
     activeUseChromeLlm,
     activeBaseUrl,
     activeModel,
@@ -178,7 +162,6 @@ export const useSettingsStore = defineStore('settings', () => {
     loaded,
     load,
     save,
-    setActivePresetId,
     toggleTheme,
     applyTheme
   }

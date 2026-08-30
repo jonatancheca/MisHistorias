@@ -18,10 +18,6 @@ const ALLOWED_SETTINGS = new Set([
   'temperature',
   'maxTokens',
   'historyBudget',
-  'activePresetId',
-  'privateActivePresetId',
-  'defaultPresetVersion',
-  'privateDefaultPresetVersion',
   'defaultSoundVersion',
   'privateDefaultSoundVersion',
   'theme',
@@ -67,11 +63,6 @@ function validSetting(key: string, value: unknown) {
       return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1000000
     case 'privateHistoryBudget':
       return value === null || (Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1000000)
-    case 'activePresetId':
-    case 'privateActivePresetId':
-      return value === null || typeof value === 'string'
-    case 'defaultPresetVersion':
-    case 'privateDefaultPresetVersion':
     case 'defaultSoundVersion':
     case 'privateDefaultSoundVersion':
       return Number.isInteger(value) && Number(value) >= 0
