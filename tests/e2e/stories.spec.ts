@@ -783,6 +783,19 @@ test.describe('chat', () => {
       await page.setViewportSize({ width, height: 760 })
       await page.goto(`/stories/${story.id}`)
 
+      await expect(page.getByTestId('pending-image-button')).toHaveCount(0)
+      const composerButtonHeights = await page.evaluate(() =>
+        ['Enviar', 'Sigue', 'Auto'].map((name) =>
+          document.querySelector<HTMLButtonElement>(
+            name === 'Enviar'
+              ? 'button[type="submit"]'
+              : `[data-testid="${name === 'Sigue' ? 'continue-button' : 'auto-button'}"]`
+          )?.getBoundingClientRect().height
+        )
+      )
+      expect(composerButtonHeights[1]).toBe(composerButtonHeights[0])
+      expect(composerButtonHeights[2]).toBe(composerButtonHeights[0])
+
       await expect(page.getByRole('button', { name: 'Ver datos de debug de la llamada LLM' })).toBeVisible()
       await expect(page.getByRole('button', { name: 'Editar mensaje' }).first()).toBeVisible()
       await expect(page.getByRole('button', { name: 'Borrar mensaje' }).first()).toBeVisible()
@@ -2077,11 +2090,24 @@ test.describe('selección de imágenes durante la historia', () => {
   test('persiste indicación, la conserva tras fallo y la consume tras respuesta válida', async ({ page, data }) => {
     const firstCharacter = await data.createCharacter({ name: data.unique('Alicia') })
     const secondCharacter = await data.createCharacter({ name: data.unique('Bruno') })
-    await data.createImage(firstCharacter, ['neutral'])
+    const neutral = await data.createImage(firstCharacter, ['neutral'])
     const requested = await data.createImage(firstCharacter, ['seria', 'capa'])
     await data.createImage(secondCharacter, ['alerta'])
     const preset = await data.createPreset()
     const story = await data.createStory({ characters: [firstCharacter, secondCharacter], preset })
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Imagen inicial.',
+      segments: [{
+        type: 'dialogue',
+        characterId: firstCharacter.id,
+        tag: 'neutral',
+        tags: ['neutral'],
+        imageId: neutral.id,
+        text: 'Imagen inicial.'
+      }]
+    })
     const secondStoryName = data.unique('Alias-Bruno')
     story.characterCustomizations[1]!.name = secondStoryName
     const storyResponse = await page.request.put(`/api/data/stories/${story.id}?scope=normal`, {
@@ -2119,16 +2145,14 @@ test.describe('selección de imágenes durante la historia', () => {
     }, `${firstCharacter.name} [seria][capa]: Estoy lista.`)
 
     await page.goto(`/stories/${story.id}`)
-    await page.getByTestId('pending-image-button').click()
-    const dialog = page.getByRole('dialog', { name: 'Imagen para la próxima respuesta' })
-    const characterSelect = dialog.getByLabel('Personaje para la imagen')
-    await expect(characterSelect.getByRole('option', { name: secondStoryName })).toBeAttached()
-    await expect(characterSelect.getByRole('option', { name: secondCharacter.name })).toHaveCount(0)
-    await characterSelect.selectOption(firstCharacter.id)
+    await page.getByRole('button', { name: new RegExp(`Cambiar ${firstCharacter.name}`) }).click()
+    const dialog = page.getByRole('dialog', { name: 'Cambiar imagen' })
+    await expect(dialog.getByText(`Personaje: ${firstCharacter.name}`, { exact: true })).toBeVisible()
+    await expect(dialog.getByRole('checkbox', { name: /Indicar a la IA/ })).toBeChecked()
     await dialog.getByRole('button', {
       name: `Seleccionar imagen de ${firstCharacter.name} [seria][capa]`
     }).click()
-    await dialog.getByRole('button', { name: 'Preparar' }).click()
+    await dialog.getByRole('button', { name: 'Cambiar' }).click()
     await expect(page.getByTestId('pending-image-instructions')).toContainText('[seria][capa]')
     expect((await data.get<Story>('stories', story.id)).pendingImageInstructions).toEqual([
       { characterId: firstCharacter.id, imageId: requested.id, tags: ['seria', 'capa'] }

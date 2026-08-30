@@ -347,18 +347,6 @@ function openImageReplacement(target: {
   }
 }
 
-function openPendingImagePicker() {
-  imagePickerTarget.value = {
-    mode: 'queue',
-    characterId: stories.activeStory?.characterIds.length === 1
-      ? stories.activeStory.characterIds[0]!
-      : null,
-    messageId: null,
-    segmentIndex: null,
-    imageId: null
-  }
-}
-
 async function applyImageSelection(selection: { imageId: string; queueForNextResponse: boolean }) {
   const target = imagePickerTarget.value
   if (!target) return
@@ -1413,22 +1401,12 @@ onBeforeRouteLeave(() => {
             placeholder="Escribe lo que haces o dices…"
             @keydown.enter.exact.prevent="submit"
           />
-          <div class="grid shrink-0 grid-cols-4 gap-2 sm:w-72">
+          <div class="grid shrink-0 grid-cols-3 gap-2 sm:w-72">
             <button type="submit" class="btn-primary" :disabled="stories.generating">Enviar</button>
-            <button
-              type="button"
-              class="btn-ghost"
-              data-testid="pending-image-button"
-              aria-label="Preparar imagen para la próxima respuesta"
-              :disabled="stories.generating || !stories.activeStory.characterIds.length"
-              @click="openPendingImagePicker"
-            >
-              Imagen
-            </button>
             <span class="group relative min-w-0">
               <button
                 type="button"
-                class="btn-ghost w-full"
+                class="btn-ghost h-full w-full"
                 data-testid="continue-button"
                 aria-describedby="continue-tooltip"
                 aria-label="Continuar sin decidir por el protagonista"
@@ -1448,7 +1426,7 @@ onBeforeRouteLeave(() => {
             <span class="group relative min-w-0">
               <button
                 type="button"
-                class="btn-ghost w-full"
+                class="btn-ghost h-full w-full"
                 data-testid="auto-button"
                 aria-describedby="auto-tooltip"
                 aria-label="Continuar permitiendo que la IA decida por el protagonista"
