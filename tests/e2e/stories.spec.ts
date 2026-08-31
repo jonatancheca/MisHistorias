@@ -2196,11 +2196,87 @@ test.describe('selección de imágenes durante la historia', () => {
     await expect(page.getByText('Estoy lista.', { exact: true })).toBeVisible()
     expect((await data.get<Story>('stories', story.id)).pendingImageInstructions).toEqual([])
     const prompts = await page.evaluate(() =>
-      (window as Window & { __chromePrompts?: Array<Array<{ content: string }>> }).__chromePrompts
+      (window as Window & { __chromePrompts?: Array<Array<{ role: string; content: string }>> }).__chromePrompts
     )
-    expect(prompts?.at(-1)?.some((message) =>
-      message.content.includes('INDICACIÓN VISUAL PARA ESTA RESPUESTA') &&
-      message.content.includes(`${firstCharacter.name}: [seria][capa]`)
-    )).toBe(true)
+    expect(prompts).toHaveLength(2)
+    for (const prompt of prompts ?? []) {
+      expect(prompt.at(-1)?.role).toBe('user')
+      expect(prompt.at(-1)?.content).toContain('INDICACIÓN VISUAL PARA ESTA RESPUESTA')
+      expect(prompt.at(-1)?.content).toContain(`${firstCharacter.name}: [seria][capa]`)
+      expect(prompt.at(-1)?.content).toContain('salvo que la historia requiera cambiar su aspecto o ropa')
+      expect(prompt[0]?.content).not.toContain('INDICACIÓN VISUAL PARA ESTA RESPUESTA')
+    }
+
+    await page.getByTestId('continue-button').click()
+    await expect(page.getByText('Estoy lista.', { exact: true })).toHaveCount(2)
+    const nextPrompt = await page.evaluate(() =>
+      (window as Window & { __chromePrompts?: Array<Array<{ content: string }>> }).__chromePrompts?.at(-1)
+    )
+    expect(JSON.stringify(nextPrompt)).not.toContain('INDICACIÓN VISUAL PARA ESTA RESPUESTA')
   })
+
+  for (const mode of ['normal', 'continue', 'auto'] as const) {
+    test(`envía preferencia de imagen a LM Studio una sola vez con ${mode}`, async ({ page, data }) => {
+      const character = await data.createCharacter({ name: data.unique('Alicia') })
+      const neutral = await data.createImage(character, ['neutral'])
+      await data.createImage(character, ['seria', 'capa'])
+      const story = await data.createStory({ characters: [character] })
+      const alias = data.unique('Lia')
+      story.characterCustomizations[0]!.name = alias
+      const updated = await page.request.put(`/api/data/stories/${story.id}?scope=normal`, { data: story })
+      expect(updated.ok()).toBe(true)
+      await data.createMessage({
+        story,
+        role: 'assistant',
+        raw: `${alias} [neutral]: Imagen inicial.`,
+        segments: [{ type: 'dialogue', characterId: character.id, tag: 'neutral', tags: ['neutral'], imageId: neutral.id, text: 'Imagen inicial.' }]
+      })
+      await data.patchSettings({
+        mockMode: false,
+        model: 'test-model',
+        useChromeLlm: false,
+        privateUseChromeLlm: null,
+        responseSpeed: 'instant',
+        historyBudget: 100_000,
+        userName: 'Vera'
+      })
+      const requests: Array<{ messages: Array<{ role: string; content: string }> }> = []
+      await page.route('**/api/llm/chat', async (route) => {
+        requests.push(route.request().postDataJSON())
+        await route.fulfill({ json: { content: `${alias} [seria][capa]: Respuesta ${requests.length}.`, finishReason: 'stop' } })
+      })
+
+      await page.goto(`/stories/${story.id}`)
+      await page.getByRole('button', { name: new RegExp(`Cambiar ${alias}`) }).click()
+      const dialog = page.getByRole('dialog', { name: 'Cambiar imagen' })
+      await dialog.getByRole('button', { name: `Seleccionar imagen de ${alias} [seria][capa]` }).dblclick()
+      await expect(page.getByTestId('pending-image-instructions')).toContainText('[seria][capa]')
+
+      if (mode === 'normal') {
+        await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Sigo adelante.')
+        await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+      } else {
+        await page.getByTestId(mode === 'continue' ? 'continue-button' : 'auto-button').click()
+      }
+      await expect(page.getByText('Respuesta 1.', { exact: true })).toBeVisible()
+      await expect(page.getByTestId('pending-image-instructions')).toHaveCount(0)
+      expect(requests).toHaveLength(1)
+      const payload = requests[0]!.messages
+      expect(payload.at(-1)?.role).toBe('user')
+      expect(payload.at(-1)?.content).toContain(`${alias}: [seria][capa]`)
+      expect(payload.at(-1)?.content).toContain('prefiero estas etiquetas visuales')
+      expect(payload.at(-1)?.content).toContain('salvo que la historia requiera cambiar su aspecto o ropa')
+      expect(payload.at(-1)?.content).toContain('no es una instrucción permanente')
+      expect(payload[0]?.content).not.toContain('INDICACIÓN VISUAL PARA ESTA RESPUESTA')
+      if (mode === 'normal') expect(payload.at(-2)?.content).toBe('Vera: Sigo adelante.')
+      expect((await data.get<Story>('stories', story.id)).pendingImageInstructions).toEqual([])
+      const stored = await data.list<Message>('messages', 'normal', { storyId: story.id })
+      expect(stored.some((message) => message.raw.includes('INDICACIÓN VISUAL'))).toBe(false)
+
+      await page.getByTestId('continue-button').click()
+      await expect(page.getByText('Respuesta 2.', { exact: true })).toBeVisible()
+      expect(requests).toHaveLength(2)
+      expect(JSON.stringify(requests[1]!.messages)).not.toContain('INDICACIÓN VISUAL PARA ESTA RESPUESTA')
+    })
+  }
 })

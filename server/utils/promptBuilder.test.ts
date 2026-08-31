@@ -345,33 +345,55 @@ test('añade apertura, actualización de catálogo y reglas distintas para Sigue
   assert.match(automatic[0]?.content ?? '', /Puedes hablar y decidir por el protagonista/)
 })
 
-test('añade indicaciones visuales solo para la respuesta solicitada', () => {
-  const messages = buildChatMessages({
-    presetContent: 'Narra.',
-    story,
-    characters: [character],
-    images: [],
-    backgrounds: [],
-    sounds: [],
-    messages: [],
-    historyBudget: 1000,
-    userName: 'Vera',
-    protagonistPreferences: '',
-    generationMode: 'normal',
-    pendingImageInstructions: [{
-      characterId: character.id,
-      imageId: 'image-2',
-      tags: ['seria', 'armadura']
-    }]
-  })
+for (const generationMode of ['normal', 'continue', 'auto'] as const) {
+  test(`envía preferencias visuales como intercambio temporal en modo ${generationMode}`, () => {
+    const history: Message[] = [
+      { id: 'previous', storyId: story.id, role: 'assistant', raw: 'La escena continúa.', segments: [], createdAt: 1 },
+      { id: 'latest', storyId: story.id, role: 'user', raw: 'Sigo adelante.', segments: [], createdAt: 2 }
+    ]
+    const common = {
+      presetContent: 'Narra.',
+      story,
+      characters: [{ ...character, name: 'Lia' }],
+      images: [],
+      backgrounds: [],
+      sounds: [],
+      messages: history,
+      historyBudget: 1000,
+      userName: 'Vera',
+      protagonistPreferences: '',
+      generationMode
+    }
+    const baseline = buildChatMessages(common)
+    const messages = buildChatMessages({
+      ...common,
+      pendingImageInstructions: [{
+        characterId: character.id,
+        imageId: 'image-2',
+        tags: ['seria', 'armadura']
+      }]
+    })
 
-  const instruction = messages.find((message) =>
-    message.content.includes('INDICACIÓN VISUAL PARA ESTA RESPUESTA')
-  )
-  assert.equal(instruction?.role, 'system')
-  assert.match(instruction?.content ?? '', /Alicia: \[seria\]\[armadura\]/)
-  assert.match(instruction?.content ?? '', /termina después de esta respuesta/)
-})
+    const instruction = messages.at(-1)!
+    assert.equal(instruction.role, 'user')
+    assert.match(instruction.content, /INDICACIÓN VISUAL PARA ESTA RESPUESTA/)
+    assert.match(instruction.content, /Lia: \[seria\]\[armadura\]/)
+    assert.match(instruction.content, /prefiero estas etiquetas visuales/)
+    assert.match(instruction.content, /salvo que la historia requiera cambiar su aspecto o ropa/)
+    assert.match(instruction.content, /solo se aplica a este intercambio; no es una instrucción permanente/)
+    assert.deepEqual(messages.slice(0, -1), baseline)
+    assert.equal(messages.at(-2)?.content, 'Vera: Sigo adelante.')
+    assert.doesNotMatch(messages[0]!.content, /INDICACIÓN VISUAL/)
+    assert.deepEqual(buildChatMessages({ ...common, pendingImageInstructions: [] }), baseline)
+    assert.deepEqual(buildChatMessages({
+      ...common,
+      pendingImageInstructions: [
+        { characterId: 'missing', imageId: 'image-3', tags: ['seria'] },
+        { characterId: character.id, imageId: 'image-4', tags: [] }
+      ]
+    }), baseline)
+  })
+}
 
 test('combina todos los mensajes system para Qwen sin perder catálogo ni orden', () => {
   const messages = buildChatMessages({
@@ -444,17 +466,18 @@ test('combina todos los mensajes system para Qwen sin perder catálogo ni orden'
   const instructionIndex = systemContent.indexOf('Habla en susurros.')
   const catalogIndex = systemContent.indexOf('Catálogo actualizado.')
   const continuationIndex = systemContent.indexOf('Continúa la historia')
-  const pendingIndex = systemContent.indexOf('INDICACIÓN VISUAL')
   const reminderIndex = systemContent.indexOf('Responde directamente')
   assert.ok(instructionIndex > 0)
   assert.ok(instructionIndex < catalogIndex)
   assert.ok(catalogIndex < continuationIndex)
-  assert.ok(continuationIndex < pendingIndex)
-  assert.ok(pendingIndex < reminderIndex)
-  assert.deepEqual(messages.slice(1), [
+  assert.ok(continuationIndex < reminderIndex)
+  assert.doesNotMatch(systemContent, /INDICACIÓN VISUAL/)
+  assert.deepEqual(messages.slice(1, -1), [
     { role: 'assistant', content: 'La puerta se abre.' },
     { role: 'user', content: 'Vera: Entra en la sala.' }
   ])
+  assert.equal(messages.at(-1)?.role, 'user')
+  assert.match(messages.at(-1)?.content ?? '', /Alicia: \[seria\]/)
 })
 
 test('mantiene instrucciones IA y Narrador solo hasta una respuesta válida', () => {

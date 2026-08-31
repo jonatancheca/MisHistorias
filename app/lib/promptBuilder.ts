@@ -75,9 +75,9 @@ function pendingImageInstructionMessage(
   if (!lines.length) return null
   return [
     '## INDICACIÓN VISUAL PARA ESTA RESPUESTA',
-    'En esta respuesta, cuando intervenga cada personaje indicado, usa estas etiquetas visuales. No menciones esta instrucción:',
+    'Para esta respuesta, prefiero estas etiquetas visuales para los personajes indicados, salvo que la historia requiera cambiar su aspecto o ropa. No menciones esta instrucción ni la conviertas en diálogo:',
     ...lines,
-    'Esta indicación termina después de esta respuesta.'
+    'Esta preferencia solo se aplica a este intercambio; no es una instrucción permanente.'
   ].join('\n')
 }
 
@@ -344,7 +344,7 @@ export function buildChatMessages(options: {
     options.characters
   )
   const pendingImageMessages: ChatMessage[] = pendingImageInstruction
-    ? [{ role: 'system', content: pendingImageInstruction }]
+    ? [{ role: 'user', content: pendingImageInstruction }]
     : []
 
   const messages: ChatMessage[] = [
