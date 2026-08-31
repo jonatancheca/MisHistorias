@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import type {
   CharacterImage,
   LlmDebugTrace,
@@ -1112,6 +1112,55 @@ test.describe('chat', () => {
 })
 
 test.describe('novela visual y responsive', () => {
+  test('permite ampliar y hacer zoom en personajes desde Chat, Novela y editor', async ({ page, data }) => {
+    const { story, character, image } = await createStoryFixture(data, true)
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: `${character.name} [feliz]: Hola.`,
+      segments: [{
+        type: 'dialogue',
+        characterId: character.id,
+        tag: 'feliz',
+        tags: ['feliz'],
+        imageId: image.id,
+        text: 'Hola.'
+      }]
+    })
+
+    const assertZoom = async (dialog: Locator) => {
+      const fullscreenImage = dialog.locator('img').last()
+      await expect(dialog.getByTestId('image-lightbox-zoom')).toContainText('100%')
+      await expect(dialog.getByRole('button', { name: 'Alejar imagen' })).toBeDisabled()
+      await dialog.getByRole('button', { name: 'Acercar imagen' }).click()
+      await expect.poll(() => fullscreenImage.evaluate((element) => element.style.transform))
+        .toBe('scale(1.5)')
+      await dialog.getByRole('button', { name: 'Restablecer zoom' }).click()
+      await expect.poll(() => fullscreenImage.evaluate((element) => element.style.transform))
+        .toBe('scale(1)')
+    }
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('visual-mode-toggle').click()
+    await page.getByRole('button', { name: `Ampliar ${character.name} feliz`, exact: true }).click()
+    let dialog = page.getByRole('dialog')
+    await assertZoom(dialog)
+    await dialog.getByRole('button', { name: 'Cerrar imagen' }).click()
+
+    await page.getByTestId('visual-mode-toggle').click()
+    const stage = page.getByTestId('visual-novel-stage')
+    await expect(stage.getByRole('button', { name: `Cambiar imagen de ${character.name}` })).toBeVisible()
+    await stage.getByRole('button', { name: `Ampliar ${character.name}`, exact: true }).click()
+    dialog = page.getByRole('dialog')
+    await assertZoom(dialog)
+    await dialog.getByRole('button', { name: 'Cerrar imagen' }).click()
+
+    await page.goto(`/characters/${character.id}`)
+    await page.getByTestId('character-image-card').getByRole('button', { name: 'Ampliar imagen', exact: true }).click()
+    dialog = page.getByRole('dialog')
+    await assertZoom(dialog)
+  })
+
   test('muestra etiquetas de imagen y etiquetas pedidas por el LLM al pasar por encima', async ({ page, data }) => {
     const { story, character, image } = await createStoryFixture(data, true)
     await data.createMessage({

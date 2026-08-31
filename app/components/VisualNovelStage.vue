@@ -67,6 +67,15 @@ const cast = computed(() =>
   resolvedCast.value.slice(-visualNovelCharacterCapacity(stageWidth.value))
 )
 
+function galleryItems(characterId: string) {
+  const character = characters.byId(characterId)
+  const name = character?.name ?? 'Personaje'
+  return characters.imagesFor(characterId).map((image) => ({
+    src: characters.urlFor(image.id)!,
+    alt: `${name} ${primaryTag(image) ?? ''}`.trim()
+  }))
+}
+
 onMounted(() => {
   if (!stage.value) return
   stageWidth.value = stage.value.getBoundingClientRect().width
@@ -113,19 +122,31 @@ onBeforeUnmount(() => stageResizeObserver?.disconnect())
         class="group/character relative flex h-full min-w-0 flex-1 items-end justify-center"
         :aria-label="`${item.character.name}${item.tag ? `, ${item.tag}` : ''}`"
       >
-        <button
+        <div
           v-if="item.imageUrl"
-          type="button"
-          class="flex h-full min-h-0 w-full items-end justify-center focus:outline-none focus:ring-2 focus:ring-brand-400"
-          :aria-label="`Cambiar imagen de ${item.character.name}`"
-          @click="item.state && emit('selectImage', item.state)"
+          class="relative h-full min-h-0 w-full"
         >
-          <img
+          <ImageLightbox
             :src="item.imageUrl"
             :alt="item.character.name"
-            class="max-h-full min-h-0 w-full object-contain object-bottom drop-shadow-[0_10px_14px_rgba(0,0,0,0.65)]"
+            container-class="h-full w-full"
+            button-class="flex h-full min-h-0 w-full items-end justify-center focus:ring-brand-400"
+            image-class="max-h-full min-h-0 w-full object-contain object-bottom drop-shadow-[0_10px_14px_rgba(0,0,0,0.65)]"
+            :gallery-items="galleryItems(item.character.id)"
+          />
+          <button
+            v-if="item.state"
+            type="button"
+            class="absolute top-2 right-2 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-slate-950/75 text-white shadow-lg hover:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-brand-400"
+            :aria-label="`Cambiar imagen de ${item.character.name}`"
+            title="Cambiar imagen"
+            @click.stop="emit('selectImage', item.state)"
           >
-        </button>
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 7h11M4 7l3-3M4 7l3 3M20 17H9m11 0-3-3m3 3-3 3" />
+            </svg>
+          </button>
+        </div>
         <div
           v-if="item.imageUrl"
           data-testid="visual-novel-image-details"
