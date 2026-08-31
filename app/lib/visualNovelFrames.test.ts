@@ -35,6 +35,16 @@ const messages: Message[] = [
 ]
 
 describe('pasos de novela visual', () => {
+  it('omite diagnósticos incluso si contienen segmentos importados', () => {
+    const failure: Message = { ...messages[1]!, id: 'failure', swarmError: {
+      characterId: 'alicia', characterName: 'Alicia', tags: [], call: {
+        target: 'swarm', operation: '/API/GenerateText2Image', request: {}, requestSent: true,
+        response: { status: 502, body: 'Fallo' }, message: 'Fallo'
+      }
+    } }
+    const options = { initialBackgroundId: null, initialBackgroundTag: null }
+    assert.deepEqual(buildVisualNovelFrames([...messages, failure], options), buildVisualNovelFrames(messages, options))
+  })
   it('crea un paso por segmento visible y uno por mensaje del usuario', () => {
     const frames = buildVisualNovelFrames(messages, {
       initialBackgroundId: 'room',

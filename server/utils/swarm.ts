@@ -1,3 +1,6 @@
+import type { SwarmCallDiagnostic } from '../../shared/types/index.ts'
+import { sanitizeSwarmDiagnostic } from '../../shared/utils/swarmError.ts'
+
 export interface SwarmProxySettings {
   baseUrl: string
   authToken: string
@@ -24,6 +27,7 @@ export interface SwarmGenerationRequest {
 export interface SwarmProxyError extends Error {
   status?: number
   detail?: string
+  diagnostic?: SwarmCallDiagnostic
 }
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024
@@ -31,7 +35,7 @@ const MAX_IMAGE_BYTES = 20 * 1024 * 1024
 function swarmError(message: string, status?: number, detail?: string): SwarmProxyError {
   return Object.assign(new Error(message), {
     status,
-    detail: detail?.slice(0, 500) || undefined
+    detail: detail || undefined
   })
 }
 
@@ -80,7 +84,8 @@ async function postJson(
   body: Record<string, unknown>,
   signal?: AbortSignal
 ) {
-  let response: Response
+  let response: Response | undefined
+  let responseBody: unknown = null
   try {
     response = await fetch(`${baseUrl}/API/${route}`, {
       method: 'POST',
@@ -92,28 +97,38 @@ async function postJson(
       body: JSON.stringify(body),
       signal
     })
+    const raw = await response.text()
+    try { responseBody = JSON.parse(raw) } catch { responseBody = raw }
+    const payload = responseBody && typeof responseBody === 'object' && !Array.isArray(responseBody)
+      ? responseBody as Record<string, unknown>
+      : null
+    if (payload?.error_id === 'invalid_session_id') {
+      throw Object.assign(swarmError('La sesión de SwarmUI ha caducado'), {
+        code: 'ERR_SWARM_INVALID_SESSION'
+      })
+    }
+    if (!response.ok) {
+      const message = typeof payload?.error === 'string' ? payload.error
+        : typeof payload?.message === 'string' ? payload.message : `SwarmUI respondió ${response.status}`
+      throw swarmError(message, response.status, raw)
+    }
+    if (!payload) throw swarmError('SwarmUI devolvió una respuesta no válida')
+    if (typeof payload.error === 'string' && payload.error.trim()) throw swarmError(payload.error.trim())
+    return payload
   } catch (caught) {
-    throw connectionError(caught)
+    if ((caught as Error).name === 'AbortError') throw caught
+    const error = response ? caught as SwarmProxyError : connectionError(caught)
+    const secrets = [authToken, String(body.session_id ?? '')]
+    error.message = String(sanitizeSwarmDiagnostic(error.message, secrets))
+    error.detail = error.detail ? String(sanitizeSwarmDiagnostic(error.detail, secrets)) : undefined
+    error.diagnostic = sanitizeSwarmDiagnostic({
+      target: 'swarm', operation: `/API/${route}`, request: body,
+      requestSent: response ? true : null,
+      response: response ? { status: response.status, body: responseBody } : null,
+      message: error.message
+    }, secrets) as SwarmCallDiagnostic
+    throw error
   }
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw swarmError(`SwarmUI respondió ${response.status}`, response.status, detail)
-  }
-  let payload: Record<string, unknown>
-  try {
-    payload = await response.json() as Record<string, unknown>
-  } catch {
-    throw swarmError('SwarmUI devolvió una respuesta no válida')
-  }
-  if (payload.error_id === 'invalid_session_id') {
-    throw Object.assign(swarmError('La sesión de SwarmUI ha caducado'), {
-      code: 'ERR_SWARM_INVALID_SESSION'
-    })
-  }
-  if (typeof payload.error === 'string' && payload.error.trim()) {
-    throw swarmError(payload.error.trim())
-  }
-  return payload
 }
 
 function createSessionClient(settings: SwarmProxySettings, signal?: AbortSignal) {
@@ -124,7 +139,12 @@ function createSessionClient(settings: SwarmProxySettings, signal?: AbortSignal)
   const getSession = async () => {
     const payload = await postJson(baseUrl, settings.authToken, 'GetNewSession', {}, signal)
     if (typeof payload.session_id !== 'string' || !payload.session_id) {
-      throw swarmError('SwarmUI no devolvió una sesión válida')
+      const error = swarmError('SwarmUI no devolvió una sesión válida')
+      error.diagnostic = sanitizeSwarmDiagnostic({
+        target: 'swarm', operation: '/API/GetNewSession', request: {}, requestSent: true,
+        response: { status: 200, body: payload }, message: error.message
+      }, [settings.authToken]) as SwarmCallDiagnostic
+      throw error
     }
     sessionId = payload.session_id
     version = typeof payload.version === 'string' ? payload.version : ''
@@ -252,8 +272,7 @@ export async function generateSwarmImage(
       (request.variationSeedStrength > 0 && request.variationSeed === undefined))) {
     throw swarmError('Fuerza de variación no válida', 400)
   }
-  const client = createSessionClient(settings, request.signal)
-  const generated = await client.call('GenerateText2Image', {
+  const generationBody = {
     images: 1,
     donotsave: true,
     prompt: [
@@ -265,25 +284,57 @@ export async function generateSwarmImage(
     ...(seed !== undefined ? { seed } : {}),
     ...(request.variationSeed !== undefined ? { variationseed: request.variationSeed } : {}),
     ...(request.variationSeedStrength !== undefined ? { variationseedstrength: request.variationSeedStrength } : {})
-  })
-  const reference = Array.isArray(generated.images) ? generated.images[0] : null
-  if (typeof reference !== 'string' || !reference) {
-    throw swarmError('SwarmUI no devolvió ninguna imagen')
   }
-  if (reference.startsWith('data:')) return decodeDataImage(reference)
-
-  const imageUrl = new URL(reference, `${client.baseUrl}/`)
-  if (imageUrl.origin !== new URL(client.baseUrl).origin) {
-    throw swarmError('SwarmUI devolvió una URL de imagen externa')
-  }
-  let response: Response
+  let generated: Record<string, unknown> | undefined
   try {
-    response = await fetch(imageUrl, {
-      headers: { accept: 'image/*', ...cookieHeader(settings.authToken) },
-      signal: request.signal
-    })
+    const client = createSessionClient(settings, request.signal)
+    generated = await client.call('GenerateText2Image', generationBody)
+    const reference = Array.isArray(generated.images) ? generated.images[0] : null
+    if (typeof reference !== 'string' || !reference) {
+      throw swarmError('SwarmUI no devolvió ninguna imagen')
+    }
+    if (reference.startsWith('data:')) return decodeDataImage(reference)
+
+    const imageUrl = new URL(reference, `${client.baseUrl}/`)
+    if (imageUrl.origin !== new URL(client.baseUrl).origin) {
+      throw swarmError('SwarmUI devolvió una URL de imagen externa')
+    }
+    let response: Response | undefined
+    let responseBody: unknown = null
+    try {
+      response = await fetch(imageUrl, {
+        headers: { accept: 'image/*', ...cookieHeader(settings.authToken) },
+        signal: request.signal
+      })
+      if (!response.ok || !(response.headers.get('content-type') ?? '').startsWith('image/')) {
+        const raw = await response.text()
+        try { responseBody = JSON.parse(raw) } catch { responseBody = raw }
+        throw swarmError('No se pudo descargar la imagen de SwarmUI', response.status)
+      }
+      return await readLimitedImage(response)
+    } catch (caught) {
+      if ((caught as Error).name === 'AbortError') throw caught
+      const error = response ? caught as SwarmProxyError : connectionError(caught)
+      error.diagnostic = sanitizeSwarmDiagnostic({
+        target: 'swarm', operation: imageUrl.pathname, request: null,
+        requestSent: response ? true : null,
+        response: response ? { status: response.status, body: responseBody } : null,
+        message: error.message
+      }, [settings.authToken]) as SwarmCallDiagnostic
+      throw error
+    }
   } catch (caught) {
-    throw connectionError(caught)
+    if ((caught as Error).name === 'AbortError') throw caught
+    const error = caught as SwarmProxyError
+    error.diagnostic ??= sanitizeSwarmDiagnostic({
+      target: generated ? 'swarm' : 'proxy', operation: '/API/GenerateText2Image', request: generationBody,
+      requestSent: Boolean(generated), response: generated ? { status: 200, body: generated } : null, message: error.message
+    }, [settings.authToken]) as SwarmCallDiagnostic
+    if (error.diagnostic.operation !== '/API/GenerateText2Image') {
+      error.diagnostic.generation = sanitizeSwarmDiagnostic({
+        request: generationBody, requestSent: Boolean(generated)
+      }, [settings.authToken]) as NonNullable<SwarmCallDiagnostic['generation']>
+    }
+    throw error
   }
-  return readLimitedImage(response)
 }

@@ -175,7 +175,27 @@ export interface Message {
   segments: MessageSegment[]
   /** Modo que originó una respuesta del asistente; permite regenerarla con las mismas reglas. */
   generationMode?: GenerationMode
+  /** Diagnóstico técnico visible en el chat, excluido de la narración y del LLM. */
+  swarmError?: StorySwarmError
   createdAt: number
+}
+
+export interface SwarmCallDiagnostic {
+  target: 'swarm' | 'proxy'
+  operation: string
+  request: Record<string, unknown> | null
+  /** null: fallo de transporte; no se puede confirmar si el servidor recibió la petición. */
+  requestSent: boolean | null
+  generation?: { request: Record<string, unknown>; requestSent: boolean | null }
+  response: { status: number; body: unknown } | null
+  message: string
+}
+
+export interface StorySwarmError {
+  characterId: string
+  characterName: string
+  tags: string[]
+  call: SwarmCallDiagnostic
 }
 
 export interface LlmDebugRequest {

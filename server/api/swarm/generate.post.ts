@@ -1,10 +1,19 @@
 import { generateSwarmImage, type SwarmProxyError } from '../../utils/swarm'
 import { getStorage } from '../../utils/storage'
+import { sanitizeSwarmDiagnostic } from '../../../shared/utils/swarmError'
 
 export default defineEventHandler(async (event) => {
   const rawBody = await readBody(event)
+  const invalidRequest = (message: string) => createError({
+    statusCode: 400, message,
+    data: { message, diagnostic: sanitizeSwarmDiagnostic({
+      target: 'proxy', operation: '/api/swarm/generate (validación)',
+      request: rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody) ? rawBody : null,
+      requestSent: false, response: null, message
+    }) }
+  })
   if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
-    throw createError({ statusCode: 400, message: 'Petición no válida' })
+    throw invalidRequest('Petición no válida')
   }
   const body = rawBody as Record<string, unknown>
   const prompt = typeof body.prompt === 'string' ? body.prompt : ''
@@ -17,13 +26,10 @@ export default defineEventHandler(async (event) => {
       ? Number(body.seed.trim())
       : undefined
   if (!prompt.trim() || prompt.length > 100_000 || (!preset.trim() && !model.trim())) {
-    throw createError({
-      statusCode: 400,
-      message: 'Indica un prompt y un preset o modelo'
-    })
+    throw invalidRequest('Indica un prompt y un preset o modelo')
   }
   if (seedValue !== undefined && (!Number.isSafeInteger(seedValue) || seedValue < 0)) {
-    throw createError({ statusCode: 400, message: 'La semilla debe ser un entero no negativo' })
+    throw invalidRequest('La semilla debe ser un entero no negativo')
   }
 
   const variationSeed = body.variationSeed
@@ -31,7 +37,7 @@ export default defineEventHandler(async (event) => {
   if ((variationSeed !== undefined && (typeof variationSeed !== 'number' || !Number.isInteger(variationSeed) || variationSeed < 0 || variationSeed > 0xffffffff)) ||
     (variationSeedStrength !== undefined && (typeof variationSeedStrength !== 'number' || !Number.isFinite(variationSeedStrength) || variationSeedStrength < 0 || variationSeedStrength > 1 ||
       (variationSeedStrength > 0 && variationSeed === undefined)))) {
-    throw createError({ statusCode: 400, message: 'Variación de semilla no válida' })
+    throw invalidRequest('Variación de semilla no válida')
   }
   const settings = getStorage().readSettings()
   const abortController = new AbortController()
@@ -68,7 +74,10 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: error.status && error.status >= 400 ? error.status : 502,
       message: error.message,
-      data: { detail: error.detail }
+      data: { message: error.message, detail: error.detail, diagnostic: error.diagnostic ?? sanitizeSwarmDiagnostic({
+        target: 'proxy', operation: '/api/swarm/generate (preparación)', request: body,
+        requestSent: false, response: null, message: error.message
+      }) }
     })
   } finally {
     event.node.req.off('aborted', abort)

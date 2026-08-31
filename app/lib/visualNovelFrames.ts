@@ -82,6 +82,7 @@ export function buildVisualNovelFrames(
   let characterStates: VisualNovelCharacterState[] = []
 
   for (const message of messages) {
+    if (message.swarmError) continue
     if (message.role === 'user') {
       if (isAiInstruction(message.raw)) continue
       if (message.raw.trim()) {

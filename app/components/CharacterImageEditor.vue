@@ -57,7 +57,7 @@ onBeforeRouteLeave(() => { cancelGeneration() })
 watch(activeDataScope, cancelGeneration, { flush: 'sync' })
 watch(swarmConfigured, (configured) => { if (!configured) { cancelGeneration(); generationOpen.value = false } })
 const generationModel = computed({
-  get: () => imageGenerationModel.value || swarmCatalog.value?.models[0] || '',
+  get: () => imageGenerationModel.value,
   set: (value: string) => { imageGenerationModel.value = value }
 })
 const promptBusy = ref(false)

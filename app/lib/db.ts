@@ -110,9 +110,9 @@ export async function listCharacters(scope: DataScope = activeDataScope.value) {
   return $fetch<Character[]>(dataUrl('characters', scope))
 }
 
-export async function getCharacter(id: string) {
+export async function getCharacter(id: string, scope: DataScope = activeDataScope.value, signal?: AbortSignal) {
   try {
-    return await $fetch<Character>(dataUrl(`characters/${encodeURIComponent(id)}`))
+    return await $fetch<Character>(dataUrl(`characters/${encodeURIComponent(id)}`, scope), { signal })
   } catch (caught) {
     if ((caught as { statusCode?: number }).statusCode === 404) return undefined
     throw caught
@@ -294,12 +294,12 @@ export async function listMessages(storyId: string) {
   return $fetch<Message[]>(dataUrl(`messages?storyId=${encodeURIComponent(storyId)}`))
 }
 
-export async function putMessage(message: Message) {
-  return putJson('messages', message)
+export async function putMessage(message: Message, scope: DataScope = activeDataScope.value) {
+  return putJson('messages', message, scope)
 }
 
-export async function deleteMessage(id: string) {
-  await deleteJson('messages', id)
+export async function deleteMessage(id: string, scope: DataScope = activeDataScope.value) {
+  await $fetch(dataUrl(`messages/${encodeURIComponent(id)}`, scope), { method: 'DELETE' })
 }
 
 export async function deleteMessages(ids: string[]) {

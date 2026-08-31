@@ -1,4 +1,5 @@
 import { readImageGeneration } from '../../../shared/utils/imageGeneration.ts'
+import { readStorySwarmError } from '../../../shared/utils/swarmError.ts'
 import type { H3Event } from 'h3'
 import type {
   BinaryPayload,
@@ -129,6 +130,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         (value.role === 'user' || value.role === 'assistant') &&
         hasString(value, 'raw') &&
         Array.isArray(value.segments) &&
+        (value.swarmError === undefined || Boolean(readStorySwarmError(value.swarmError))) &&
         hasNumber(value, 'createdAt')
       break
     case 'llmDebugTraces':

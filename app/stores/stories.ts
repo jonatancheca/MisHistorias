@@ -33,6 +33,7 @@ import {
   putStory,
   putStoryInScope,
   getActiveDataScope,
+  getCharacter,
   type DataScope,
   type StoredImage
 } from '~/lib/db'
@@ -42,6 +43,7 @@ import {
   resolveProtagonistPreferences
 } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
+import { readSwarmDiagnostic } from '../../shared/utils/swarmError.ts'
 import { DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
 import { fetchLlmChat, type LlmCallError } from '~/lib/llm'
 import { fetchChromeLlmChat } from '~/lib/chromeLlm'
@@ -176,6 +178,7 @@ interface ImageGenerationBatchResult {
 }
 
 interface QueuedImageGenerationTask {
+  lifecycle: number
   batch: ImageGenerationBatch
   priority: number
   storyId: string
@@ -230,7 +233,37 @@ export const useStoriesStore = defineStore('stories', () => {
   }
 
   function isImageTaskActive(task: QueuedImageGenerationTask) {
-    return task.scope === getActiveDataScope() && activeStory.value?.id === task.storyId
+    return task.lifecycle === imageGenerationLifecycle &&
+      task.scope === getActiveDataScope() && activeStory.value?.id === task.storyId
+  }
+
+  async function persistSwarmFailure(task: QueuedImageGenerationTask, caught: unknown, signal: AbortSignal) {
+    const call = readSwarmDiagnostic((caught as { diagnostic?: unknown })?.diagnostic)
+    if (!call || signal.aborted || !isImageTaskActive(task)) return
+    const message: Message = {
+      id: newId(), storyId: task.storyId, role: 'assistant',
+      raw: `Error de SwarmUI para ${task.job.characterName}: ${call.message}`,
+      segments: [], createdAt: Date.now(),
+      swarmError: { characterId: task.job.characterId, characterName: task.job.characterName, tags: [...task.job.tags], call }
+    }
+    try {
+      // Esperar la escritura permite borrarla después de navegar, sin competir con un PUT abortado.
+      await putMessage(message, task.scope)
+      if (signal.aborted || !isImageTaskActive(task)) {
+        await dbDeleteMessage(message.id, task.scope)
+        return
+      }
+      messages.value.push(message)
+      messages.value.sort((left, right) => left.createdAt - right.createdAt)
+    } catch (failure) {
+      if (signal.aborted || !isImageTaskActive(task)) {
+        await dbDeleteMessage(message.id, task.scope).catch(() => undefined)
+        return
+      }
+      if ((failure as Error).name !== 'AbortError' && isImageTaskActive(task)) {
+        error.value = 'No se pudo guardar el diagnóstico de SwarmUI.'
+      }
+    }
   }
 
   function updateImageQueueState() {
@@ -323,6 +356,7 @@ export const useStoriesStore = defineStore('stories', () => {
           await task.onSaved?.(stored, task.job, taskController.signal)
         } catch (caught) {
           const cancellation = (caught as Error).name === 'AbortError' || taskController.signal.aborted
+          if (!cancellation) await persistSwarmFailure(task, caught, taskController.signal)
           task.batch.stopped = true
           stopQueuedImageBatch(task.batch, caught, cancellation)
         } finally {
@@ -371,6 +405,7 @@ export const useStoriesStore = defineStore('stories', () => {
         return
       }
       imageQueue.push({
+        lifecycle: imageGenerationLifecycle,
         batch,
         priority: input.priority,
         storyId: input.storyId,
@@ -507,7 +542,7 @@ export const useStoriesStore = defineStore('stories', () => {
     await charactersStore.load()
     const changed: Message[] = []
     const normalizedMessages = storedMessages.map((message) => {
-      if (message.role !== 'assistant') return message
+      if (message.role !== 'assistant' || message.swarmError) return message
       let didChange = false
       const segments = message.segments.map((segment, index) => {
         if (segment.type !== 'dialogue' || !segment.characterId || segment.imageId !== undefined) {
@@ -572,6 +607,7 @@ export const useStoriesStore = defineStore('stories', () => {
     const index = messages.value.findIndex((item) => item.id === message.id)
     if (index >= 0) messages.value[index] = message
     else messages.value.push(message)
+    messages.value.sort((left, right) => left.createdAt - right.createdAt)
   }
 
   async function persistStoryState(updated: Story) {
@@ -610,7 +646,7 @@ export const useStoriesStore = defineStore('stories', () => {
 
   async function updateMessage(id: string, raw: string) {
     const current = messages.value.find((message) => message.id === id)
-    if (!current) return
+    if (!current || current.swarmError) return
     await invalidateContextSummaryFromIndex(messages.value.findIndex((message) => message.id === id))
     const characters = useCharactersStore()
     const backgrounds = useBackgroundsStore()
@@ -641,7 +677,7 @@ export const useStoriesStore = defineStore('stories', () => {
   async function replaceMessageSegmentImage(messageId: string, segmentIndex: number, imageId: string) {
     const current = messages.value.find((message) => message.id === messageId)
     const segment = current?.segments[segmentIndex]
-    if (!current || current.role !== 'assistant' || segment?.type !== 'dialogue' || !segment.characterId) {
+    if (!current || current.swarmError || current.role !== 'assistant' || segment?.type !== 'dialogue' || !segment.characterId) {
       return false
     }
     const charactersStore = useCharactersStore()
@@ -1262,6 +1298,7 @@ export const useStoriesStore = defineStore('stories', () => {
     let debugRequest: LlmDebugRequest | null = null
     let visibleRaw: string
     let pendingVariantJobs: CharacterImageJob[] = []
+    let imageCharacters = storyCharacters
     let imageProgress: ImageGenerationProgress | null = null
     let imageBatchWarnings: string[] = []
 
@@ -1382,8 +1419,22 @@ export const useStoriesStore = defineStore('stories', () => {
         if (!settings.swarmBaseUrl.trim()) {
           imageBatchWarnings.push('No se pueden crear imágenes: configura SwarmUI en Ajustes.')
         } else {
+          const configuredCharacters = await Promise.all(parsedImageResponse.requests.map(async (request) => {
+            try {
+              const stored = await getCharacter(request.characterId, scope, requestController.signal)
+              const character = storyCharacters.find((candidate) => candidate.id === request.characterId)
+              if (stored && character) return { ...stored, name: character.name, color: character.color }
+              imageBatchWarnings.push(`Personaje no disponible: ${request.characterName}.`)
+            } catch (caught) {
+              if ((caught as Error).name === 'AbortError') throw caught
+              imageBatchWarnings.push(`No se pudo cargar la configuración de imágenes de ${request.characterName}.`)
+            }
+            return undefined
+          }))
+          if (!generationStillActive()) return
+          imageCharacters = configuredCharacters.filter((character): character is Character => Boolean(character))
           const eligibleRequests = parsedImageResponse.requests.flatMap((request) => {
-            const character = storyCharacters.find((candidate) => candidate.id === request.characterId)
+            const character = imageCharacters.find((candidate) => candidate.id === request.characterId)
             if (!character) return []
             if (!character.imageGenerationPreset?.trim() && !character.imageGenerationModel?.trim()) {
               imageBatchWarnings.push(`No se creó la imagen de ${character.name}: configura un preset o modelo de SwarmUI.`)
@@ -1392,7 +1443,7 @@ export const useStoriesStore = defineStore('stories', () => {
             return [request]
           })
           if (eligibleRequests.length) {
-            const created = createStoryImageJobs(eligibleRequests, storyCharacters)
+            const created = createStoryImageJobs(eligibleRequests, imageCharacters)
             const firstJobs = created.jobs.filter((job) => job.generation.variationSeed === undefined)
             pendingVariantJobs = created.jobs.filter((job) => job.generation.variationSeed !== undefined)
             imageProgress = { completed: 0, total: created.total }
@@ -1402,7 +1453,7 @@ export const useStoriesStore = defineStore('stories', () => {
               jobs: firstJobs,
               priority: 0,
               charactersStore,
-              characters: storyCharacters,
+              characters: imageCharacters,
               progress: imageProgress,
               onSaved: persistGeneratedImageCatalog
             })
@@ -1504,11 +1555,11 @@ export const useStoriesStore = defineStore('stories', () => {
           jobs: variantJobs,
           priority: 1,
           charactersStore,
-          characters: storyCharacters,
+          characters: imageCharacters,
           progress: imageProgress,
           onSaved: persistGeneratedImageCatalog
         }).then((result) => {
-          if (scope !== getActiveDataScope() || activeStory.value?.id !== story.id) return
+          if (!generationStillActive()) return
           const warnings = [
             ...(imageBatchWarnings.length ? imageBatchWarnings : []),
             ...(result.error ? [result.error.message] : []),
@@ -1567,7 +1618,7 @@ export const useStoriesStore = defineStore('stories', () => {
   async function regenerateFrom(id: string) {
     if (generating.value) return
     const index = messages.value.findIndex((message) => message.id === id)
-    if (index < 0 || messages.value[index]?.role !== 'assistant') return
+    if (index < 0 || messages.value[index]?.role !== 'assistant' || messages.value[index]?.swarmError) return
     const generationMode = messages.value[index]?.generationMode ?? 'normal'
     const ids = messages.value.slice(index).map((message) => message.id)
     await invalidateContextSummaryFromIndex(index)

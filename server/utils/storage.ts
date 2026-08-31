@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
+import { readStorySwarmError } from '../../shared/utils/swarmError.ts'
 import type {
   DatabaseBackup,
   DatabaseBackupKind,
@@ -85,7 +86,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 30
+const SCHEMA_VERSION = 31
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -299,12 +300,14 @@ function rowToStory(row: SqliteRow) {
 }
 
 function rowToMessage(row: SqliteRow) {
+  const swarmError = readStorySwarmError(parseJson(row.swarm_error_json, null))
   return {
     id: row.id,
     storyId: text(row.story_id),
     role: row.role === 'assistant' ? 'assistant' : 'user',
     raw: text(row.raw),
     segments: parseJson<unknown[]>(row.segments_json, []),
+    ...(swarmError ? { swarmError } : {}),
     createdAt: integer(row.created_at)
   }
 }
@@ -332,11 +335,20 @@ function rowToStorySave(row: SqliteRow) {
     storyId: text(row.story_id),
     name: text(row.name),
     story: storyWithoutImageDescriptions(parseJson(row.story_json, {})),
-    messages: parseJson(row.messages_json, []),
+    messages: sanitizeSavedMessages(parseJson(row.messages_json, [])),
     debugTraces: parseJson(row.debug_traces_json, []),
     thumbnailDataUrl: text(row.thumbnail_data_url),
     createdAt: integer(row.created_at)
   }
+}
+
+function sanitizeSavedMessages(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.map((message) => {
+    const item = record(message)
+    if (item.swarmError === undefined) return item
+    return { ...item, swarmError: readStorySwarmError(item.swarmError) }
+  })
 }
 
 function rowToPreset(row: SqliteRow) {
@@ -698,6 +710,7 @@ export class MisHistoriasStorage {
           role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
           raw TEXT NOT NULL,
           segments_json TEXT NOT NULL,
+          swarm_error_json TEXT,
           created_at INTEGER NOT NULL,
           PRIMARY KEY (scope, id),
           FOREIGN KEY (scope, story_id) REFERENCES stories(scope, id) ON DELETE CASCADE
@@ -1120,6 +1133,13 @@ export class MisHistoriasStorage {
           this.database.exec(
             'ALTER TABLE stories ADD COLUMN auto_generate_images INTEGER NOT NULL DEFAULT 0 CHECK (auto_generate_images IN (0, 1))'
           )
+        }
+      }
+
+      if (version.user_version < 31) {
+        const columns = this.database.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
+        if (!columns.some((column) => column.name === 'swarm_error_json')) {
+          this.database.exec('ALTER TABLE messages ADD COLUMN swarm_error_json TEXT')
         }
       }
 
@@ -1612,13 +1632,14 @@ export class MisHistoriasStorage {
       case 'messages':
         this.database
           .prepare(`
-            INSERT INTO messages(scope, id, story_id, role, raw, segments_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO messages(scope, id, story_id, role, raw, segments_json, swarm_error_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               story_id = excluded.story_id,
               role = excluded.role,
               raw = excluded.raw,
               segments_json = excluded.segments_json,
+              swarm_error_json = excluded.swarm_error_json,
               created_at = excluded.created_at
           `)
           .run(
@@ -1628,6 +1649,7 @@ export class MisHistoriasStorage {
             value.role === 'assistant' ? 'assistant' : 'user',
             text(value.raw),
             json(Array.isArray(value.segments) ? value.segments : []),
+            readStorySwarmError(value.swarmError) ? json(readStorySwarmError(value.swarmError)) : null,
             integer(value.createdAt)
           )
         break
@@ -1681,7 +1703,7 @@ export class MisHistoriasStorage {
             text(value.storyId),
             text(value.name),
             json(record(value.story)),
-            json(Array.isArray(value.messages) ? value.messages : []),
+            json(sanitizeSavedMessages(value.messages)),
             json(Array.isArray(value.debugTraces) ? value.debugTraces : []),
             text(value.thumbnailDataUrl),
             integer(value.createdAt)

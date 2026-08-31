@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createServer, type IncomingMessage } from 'node:http'
 import test from 'node:test'
-import { fetchSwarmCatalog, generateSwarmImage, normalizeSwarmBaseUrl } from './swarm.ts'
+import { fetchSwarmCatalog, generateSwarmImage, normalizeSwarmBaseUrl, type SwarmProxyError } from './swarm.ts'
 
 async function readJson(request: IncomingMessage) {
   const chunks: Uint8Array[] = []
@@ -156,6 +156,62 @@ test('cliente Swarm rechaza semillas no válidas', async () => {
     ),
     /Semilla no válida/
   )
+})
+
+for (const [status, responseBody] of [
+  [200, JSON.stringify({ error: 'No model input given. Did your UI load properly?' })],
+  [502, JSON.stringify({ error: 'Backend sin modelo', detail: 'detalle '.repeat(100) })],
+  [502, '<html>Bad gateway: backend unavailable</html>']
+] as const) {
+  test(`conserva petición real y respuesta SwarmUI ${status}: ${responseBody.slice(0, 25)}`, async (t) => {
+    let sent: Record<string, unknown> = {}
+    t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+      if (url.endsWith('/GetNewSession')) return Response.json({ session_id: 'session-secret' })
+      sent = JSON.parse(String(init.body))
+      return new Response(responseBody, { status })
+    })
+    await assert.rejects(generateSwarmImage({ baseUrl: 'http://swarm.test', authToken: 'secret-token' }, {
+      prompt: 'standing in mansion interior', preset: 'real',
+      model: 'cyberrealisticPony_v180Coreshift.safetensors', seed: 42
+    }), (error: SwarmProxyError) => {
+      assert.equal(sent.model, 'cyberrealisticPony_v180Coreshift.safetensors')
+      assert.equal(sent.prompt, '<preset:real>\nstanding in mansion interior')
+      assert.equal(error.diagnostic?.request?.model, sent.model)
+      assert.equal(error.diagnostic?.request?.session_id, undefined)
+      assert.equal(error.diagnostic?.response?.status, status)
+      assert.equal(error.diagnostic?.operation, '/API/GenerateText2Image')
+      const received = error.diagnostic?.response?.body
+      assert.equal(typeof received === 'string' ? received : JSON.stringify(received), responseBody)
+      assert.equal(JSON.stringify(error.diagnostic).includes('secret'), false)
+      return true
+    })
+  })
+}
+
+test('distingue conexión sin respuesta y elimina credenciales reflejadas', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => { throw new TypeError('fetch failed') })
+  await assert.rejects(generateSwarmImage({ baseUrl: 'http://swarm.test', authToken: '' }, {
+    prompt: 'portrait', model: 'model'
+  }), (error: SwarmProxyError) => {
+    assert.equal(error.diagnostic?.operation, '/API/GetNewSession')
+    assert.equal(error.diagnostic?.requestSent, null)
+    assert.equal(error.diagnostic?.response, null)
+    assert.deepEqual(error.diagnostic?.generation, {
+      request: { images: 1, donotsave: true, prompt: 'portrait', model: 'model' }, requestSent: false
+    })
+    return true
+  })
+  t.mock.restoreAll()
+  t.mock.method(globalThis, 'fetch', async (url: string) => url.endsWith('/GetNewSession')
+    ? Response.json({ session_id: 'session-secret' })
+    : Response.json({ error: 'Rejected session-secret and token-secret', session_id: 'session-secret', cookie: 'token-secret' }))
+  await assert.rejects(generateSwarmImage({ baseUrl: 'http://swarm.test', authToken: 'token-secret' }, {
+    prompt: 'portrait', model: 'model'
+  }), (error: SwarmProxyError) => {
+    assert.equal(JSON.stringify(error).includes('secret'), false)
+    assert.equal(error.message.includes('secret'), false)
+    return true
+  })
 })
 
 test('cliente Swarm propaga cancelación', async () => {

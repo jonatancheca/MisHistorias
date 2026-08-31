@@ -1,4 +1,5 @@
 import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
+import { readStorySwarmError } from '../../shared/utils/swarmError.ts'
 import type {
   Character,
   ImageGenerationMetadata,
@@ -42,7 +43,7 @@ import {
   importImageGenerationSeed
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 20
+const EXPORT_VERSION = 21
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -91,7 +92,7 @@ interface ExportedStory {
   contextSummary?: string
   contextSummaryThroughMessageId?: string
   initialBackgroundId?: string | null
-  messages: Array<Pick<Message, 'id' | 'role' | 'raw' | 'segments' | 'generationMode' | 'createdAt'>>
+  messages: Array<Pick<Message, 'id' | 'role' | 'raw' | 'segments' | 'generationMode' | 'swarmError' | 'createdAt'>>
   saves?: StorySaveSlot[]
 }
 
@@ -153,6 +154,7 @@ export async function exportBundle(): Promise<ExportBundle> {
         raw: stripSoundDirectives(message.raw),
         segments: stripSoundSegments(message.segments),
         generationMode: message.generationMode,
+        swarmError: readStorySwarmError(message.swarmError),
         createdAt: message.createdAt
       })),
       saves: await listStorySaves(story.id)
@@ -189,7 +191,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (bundle.swarmPrompts !== undefined && (!Array.isArray(bundle.swarmPrompts) || bundle.swarmPrompts.some((item) =>
@@ -210,6 +212,10 @@ export async function importBundle(raw: string) {
       tags: sanitizeTags(item.tags), createdAt: now + index, updatedAt: now + index })
   }
   const characterIdMap = new Map<string, string>()
+  function importSwarmError(value: unknown) {
+    const error = readStorySwarmError(value)
+    return error ? { ...error, characterId: characterIdMap.get(error.characterId) ?? error.characterId } : undefined
+  }
   const imageIdMap = new Map<string, string>()
   const importedCharacters: Character[] = []
   const importedImages: StoredImage[] = []
@@ -359,6 +365,7 @@ export async function importBundle(raw: string) {
         storyId: story.id,
         role: message.role === 'assistant' ? 'assistant' : 'user',
         raw: stripSoundDirectives(String(message.raw ?? '')),
+        swarmError: importSwarmError(message.swarmError),
         generationMode:
           message.generationMode === 'continue' || message.generationMode === 'auto'
             ? message.generationMode
@@ -468,6 +475,7 @@ export async function importBundle(raw: string) {
           storyId: story.id,
           role: message.role === 'assistant' ? 'assistant' : 'user',
           raw: stripSoundDirectives(String(message.raw ?? '')),
+          swarmError: importSwarmError(message.swarmError),
           generationMode:
             message.generationMode === 'continue' || message.generationMode === 'auto'
               ? message.generationMode

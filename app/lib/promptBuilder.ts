@@ -230,6 +230,7 @@ export function buildHistory(
   userName: string,
   afterMessageId?: string
 ): ChatMessage[] {
+  messages = messages.filter((message) => !message.swarmError)
   const history: ChatMessage[] = []
   const lastAssistantIndex = messages.findLastIndex((message) => message.role === 'assistant')
   let used = 0

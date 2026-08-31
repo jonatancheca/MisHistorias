@@ -59,6 +59,21 @@ const story: Story = {
   updatedAt: 1
 }
 
+test('excluye diagnósticos de historial y compactación sin consumir instrucciones pendientes', () => {
+  const instruction: Message = { id: 'instruction', storyId: story.id, role: 'user',
+    raw: 'IA: Cambia el tono.', segments: [], createdAt: 1 }
+  const failure: Message = { id: 'failure', storyId: story.id, role: 'assistant',
+    raw: 'DIAGNOSTICO_SECRETO_PARA_EL_LLM', segments: [], createdAt: 2,
+    swarmError: { characterId: character.id, characterName: 'Lia', tags: [], call: {
+      target: 'swarm', operation: '/API/GenerateText2Image', request: { model: 'model-a' },
+      requestSent: true, response: { status: 502, body: 'Backend failed' }, message: 'Backend failed'
+    } } }
+  const messages = [instruction, failure]
+  assert.deepEqual(buildHistory(messages, [character], 0, 'Protagonista'), buildHistory([instruction], [character], 0, 'Protagonista'))
+  assert.deepEqual(buildCompactionMessages({ messages, characters: [character], userName: 'Protagonista' }),
+    buildCompactionMessages({ messages: [instruction], characters: [character], userName: 'Protagonista' }))
+})
+
 test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas visuales', () => {
   const legacyImage = {
     id: 'image-1',

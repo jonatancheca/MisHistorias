@@ -191,6 +191,7 @@ test('muestra progreso, prompt actual y última imagen al generar un lote', asyn
 
   await page.goto(`/characters/${character.id}`)
   await page.getByRole('button', { name: 'Crear imagen con SwarmUI' }).click()
+  await page.getByLabel('Modelo SwarmUI').selectOption('model-a')
   await page.getByLabel('Prompt de imagen (inglés y editable)').fill('portrait')
   await page.getByLabel('Número de imágenes').fill('2')
   await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
@@ -253,6 +254,7 @@ test('detiene lotes al fallar, cancelar o salir sin borrar éxitos', async ({ pa
   await page.getByRole('link', { name: character.name, exact: true }).click()
   await expect(page).toHaveURL(`/characters/${character.id}`)
   await page.getByTestId('character-swarm-toggle').click()
+  await page.getByLabel('Modelo SwarmUI').selectOption('model-a')
   await page.getByLabel('Prompt de imagen (inglés y editable)').fill('portrait')
   await page.getByLabel('Número de imágenes').fill('3')
   await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()

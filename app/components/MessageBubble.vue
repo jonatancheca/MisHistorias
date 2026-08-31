@@ -204,7 +204,7 @@ function confirmEdit() {
     :data-story-message-id="message.id"
   >
     <MessageActions
-      v-if="!editing && (editable || debugTrace || compactionTrace)"
+      v-if="!message.swarmError && !editing && (editable || debugTrace || compactionTrace)"
       :message="message"
       :editable="editable"
       :debug-trace="debugTrace"
@@ -218,7 +218,8 @@ function confirmEdit() {
     />
 
     <div class="min-w-0 flex-1">
-      <template v-if="editing">
+      <SwarmErrorMessage v-if="message.swarmError" :error="message.swarmError" />
+      <template v-else-if="editing">
         <form @submit.prevent="confirmEdit">
           <textarea v-model="buffer" autocomplete="off" class="field min-h-28" />
           <div class="mt-2 flex gap-2">
