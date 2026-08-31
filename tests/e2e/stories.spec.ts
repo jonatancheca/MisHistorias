@@ -392,7 +392,7 @@ test.describe('chat', () => {
         for (const width of [1280, 320, 390]) {
           await page.setViewportSize({ width, height: 900 })
           await expect(indicator).toBeVisible()
-          await expect(indicator).toHaveText('El Narrador está pensando…')
+          await expect(indicator).toHaveText('Creando historia…')
           await expect(page.locator('footer').getByTestId('thinking-indicator')).toHaveCount(1)
           const statusBounds = await indicator.boundingBox()
           const inputBounds = await page.getByPlaceholder('Escribe lo que haces o dices…').boundingBox()
@@ -528,7 +528,7 @@ test.describe('chat', () => {
 
     await expect(page.getByText('Narración: La historia avanza.', { exact: true })).toBeVisible()
     await expect(page.getByTestId('compacting-indicator')).toContainText(
-      'El Narrador está compactando el historial'
+      'Compactando la historia'
     )
     await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toBeDisabled()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))

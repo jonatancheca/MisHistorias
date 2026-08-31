@@ -1127,7 +1127,7 @@ onBeforeRouteLeave(() => {
             >
               <span>La historia aún no ha empezado. </span>
               <button type="button" class="text-brand-300 underline" @click="generateOpening">
-                Deja que el narrador abra la escena
+                Deja que la história empiece sola
               </button>
               <span> o escribe tú el primer movimiento.</span>
             </div>
@@ -1243,7 +1243,7 @@ onBeforeRouteLeave(() => {
           <div v-if="isEmpty" class="card text-sm text-[var(--color-fg-muted)]">
             La historia aún no ha empezado.
             <button type="button" class="text-brand-600 underline" @click="generateOpening">
-              Deja que el narrador abra la escena
+              Deja que la história empiece sola
             </button>
             o escribe tú el primer movimiento.
           </div>
@@ -1335,7 +1335,7 @@ onBeforeRouteLeave(() => {
           role="status"
           aria-live="polite"
         >
-          <span>El Narrador está pensando…</span>
+          <span>Creando historia…</span>
           <span class="flex shrink-0 items-center gap-1" aria-hidden="true">
             <span class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none" />
             <span
