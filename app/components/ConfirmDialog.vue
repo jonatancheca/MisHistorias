@@ -33,7 +33,7 @@ function trapFocus(event: KeyboardEvent) {
   <Teleport to="body">
     <div
       v-if="confirm.dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
       @click.self="confirm.respond(false)"
       @keydown.esc.stop.prevent="confirm.respond(false)"
       @keydown.tab.prevent="trapFocus"

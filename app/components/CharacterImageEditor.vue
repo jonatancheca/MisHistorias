@@ -662,6 +662,9 @@ async function remove(id: string) {
               />
               <p v-if="error" class="text-sm text-red-500" role="alert">{{ error }}</p>
               <ImageGenerationMetadataPanel v-if="item.generation && showGenerationMetadata" :generation="item.generation" />
+              <button type="button" class="btn-danger justify-self-start" @click="remove(item.id)">
+                Borrar
+              </button>
             </div>
           </template>
           </ImageLightbox>
