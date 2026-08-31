@@ -80,6 +80,63 @@ test('oculta funciones sin URL y permite configurar sin valor por defecto', asyn
   expect(await response.text()).toContain('Falta la URL de SwarmUI')
 })
 
+test('recarga personajes y prompts editados en otra pestaña', async ({ page, data }) => {
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  const character = await data.createCharacter({ name: data.unique('Personaje-original') })
+  const updatedCharacter = {
+    ...character,
+    name: data.unique('Personaje-recargado'),
+    prompt: data.unique('Prompt-recargado'),
+    updatedAt: Date.now()
+  }
+
+  await page.goto('/characters')
+  await expect(page.getByRole('link', { name: character.name, exact: true })).toBeVisible()
+  await expect(await page.request.put(`/api/data/characters/${character.id}?scope=normal`, {
+    data: updatedCharacter
+  })).toBeOK()
+  await page.getByRole('button', { name: 'Recargar', exact: true }).click()
+  await expect(page.getByRole('link', { name: updatedCharacter.name, exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: character.name, exact: true })).toHaveCount(0)
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 800 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
+
+  const prompt = {
+    id: data.unique('prompt'),
+    name: data.unique('Prompt-original'),
+    prompt: 'portrait',
+    tags: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  }
+  const updatedPrompt = {
+    ...prompt,
+    name: data.unique('Prompt-recargado'),
+    prompt: 'standing portrait',
+    updatedAt: Date.now()
+  }
+  await page.goto('/swarm-prompts')
+  await expect(await page.request.put(`/api/data/swarmPrompts/${prompt.id}?scope=normal`, {
+    data: prompt
+  })).toBeOK()
+  await page.getByRole('button', { name: 'Recargar', exact: true }).click()
+  await expect(page.getByRole('button', { name: prompt.name, exact: true })).toBeVisible()
+  await page.getByRole('button', { name: prompt.name, exact: true }).click()
+  await expect(await page.request.put(`/api/data/swarmPrompts/${prompt.id}?scope=normal`, {
+    data: updatedPrompt
+  })).toBeOK()
+  await page.getByRole('button', { name: 'Recargar', exact: true }).click()
+  await expect(page.getByLabel('Nombre', { exact: true })).toHaveValue(updatedPrompt.name)
+  await expect(page.getByLabel('Prompt', { exact: true })).toHaveValue(updatedPrompt.prompt)
+
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 800 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
+})
+
 test('mantiene catálogo y crea conjunto con semillas compartidas, etiquetas y transferencia JSON', async ({ page, data }) => {
   await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
   const character = await data.createCharacter({ imageGenerationSeed: '42', imageGenerationPromptPrefix: 'quality' })
@@ -90,15 +147,14 @@ test('mantiene catálogo y crea conjunto con semillas compartidas, etiquetas y t
     await route.fulfill({ contentType: 'image/png', body: PNG_BYTES })
   })
   await page.goto('/swarm-prompts')
-  await expect(page.getByRole('button', { name: 'Guardar', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Guardar', exact: true })).toHaveCount(0)
   for (const [name, prompt, tag] of [['Sentada', ', sitting', 'sentada'], ['De pie', 'standing', 'de pie']]) {
     await page.getByRole('button', { name: 'Nuevo prompt', exact: true }).click()
     await page.getByLabel('Nombre', { exact: true }).fill(name!)
     await page.getByLabel('Prompt', { exact: true }).fill(prompt!)
     await page.getByLabel('Etiquetas de imagen', { exact: true }).fill(tag!)
     await page.getByLabel('Etiquetas de imagen', { exact: true }).press('Enter')
-    await page.getByRole('button', { name: 'Guardar', exact: true }).click()
-    await expect(page.getByText('Prompt guardado.', { exact: true })).toBeVisible()
+    await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
   }
   const prompts = await data.list<SwarmPrompt>('swarmPrompts')
   expect(prompts.map((item) => item.name)).toEqual(['Sentada', 'De pie'])
@@ -230,8 +286,7 @@ test('edita y borra prompts sin mezclar catálogo normal y privado', async ({ pa
   await page.goto('/swarm-prompts')
   await page.getByRole('button', { name: 'Prompt normal', exact: true }).click()
   await page.getByLabel('Nombre', { exact: true }).fill('Normal editado')
-  await page.getByRole('button', { name: 'Guardar', exact: true }).click()
-  await expect(page.getByText('Prompt guardado.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
   await page.goto('/settings')
   const trigger = page.getByRole('button', { name: 'Activar modo privado' })
   await trigger.click(); await trigger.click(); await trigger.click()

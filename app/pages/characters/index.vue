@@ -22,9 +22,24 @@ const exportingId = ref<string | null>(null)
 const transferError = ref<string | null>(null)
 const transferSuccess = ref<string | null>(null)
 const showArchived = ref(false)
+const refreshing = ref(false)
 const visibleCharacters = computed(() =>
   characters.characters.filter((character) => character.archived === showArchived.value)
 )
+
+async function reload() {
+  if (refreshing.value) return
+  refreshing.value = true
+  transferError.value = null
+  transferSuccess.value = null
+  try {
+    await characters.load(true)
+  } catch (caught) {
+    transferError.value = (caught as Error).message || 'No se pudieron recargar los personajes.'
+  } finally {
+    refreshing.value = false
+  }
+}
 
 function usageMessage(name: string, stories: Array<{ title: string }>) {
   const titles = stories.map((story) => `«${story.title}»`).join(', ')
@@ -158,6 +173,12 @@ function cancelImport() {
     <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-2xl font-bold">Personajes</h1>
       <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn-ghost" :disabled="importing || refreshing" @click="reload">
+          <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 11a8 8 0 0 0-14.7-4L3 9m0 0V4m0 5h5M4 13a8 8 0 0 0 14.7 4L21 15m0 0v5m0-5h-5" />
+          </svg>
+          {{ refreshing ? 'Recargando…' : 'Recargar' }}
+        </button>
         <button
           type="button"
           class="btn-ghost"

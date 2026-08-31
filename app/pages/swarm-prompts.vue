@@ -12,32 +12,136 @@ const prompt = ref('')
 const tags = ref<string[]>([])
 const busy = ref(false)
 const error = ref('')
-const notice = ref('')
+const refreshing = ref(false)
+const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+const saveError = ref<string | null>(null)
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+let savedTimer: ReturnType<typeof setTimeout> | null = null
+let savePending = false
+let saveRevision = 0
+let saveQueue: Promise<void> = Promise.resolve()
+let lastSavedSnapshot = ''
 const suggestions = computed(() => [...characters.images.flatMap((image) => image.tags),
   ...catalog.prompts.flatMap((item) => item.tags)].filter((tag) => tagKey(tag) !== 'neutral'))
 
-function select(id: string | null) {
-  selectedId.value = id
+function snapshot(input: { id?: string | null; name: string; prompt: string; tags: string[] }) {
+  return JSON.stringify({
+    id: input.id ?? null,
+    name: input.name.trim(),
+    prompt: input.prompt.trim(),
+    tags: input.tags
+  })
+}
+
+function currentSnapshot() {
+  return snapshot({ id: selectedId.value, name: name.value, prompt: prompt.value, tags: tags.value })
+}
+
+function applySelection(id: string | null) {
   const item = catalog.prompts.find((item) => item.id === id)
+  selectedId.value = item?.id ?? null
   name.value = item?.name ?? ''
   prompt.value = item?.prompt ?? ''
   tags.value = [...(item?.tags ?? [])]
-  notice.value = ''
   error.value = ''
+  saveError.value = null
+  saveStatus.value = 'idle'
+  lastSavedSnapshot = item
+    ? snapshot(item)
+    : snapshot({ id: null, name: '', prompt: '', tags: [] })
 }
 
-async function save() {
-  busy.value = true
+async function select(id: string | null) {
+  if (!savePending && !saveTimer && saveStatus.value !== 'saving') {
+    applySelection(id)
+    return
+  }
+  await flushSave()
+  applySelection(id)
+}
+
+function enqueueSave(revision: number) {
+  const input = {
+    id: selectedId.value ?? undefined,
+    name: name.value,
+    prompt: prompt.value,
+    tags: [...tags.value]
+  }
+  const run = async () => {
+    if (!input.name.trim() || !input.prompt.trim()) return
+    if (savedTimer) {
+      clearTimeout(savedTimer)
+      savedTimer = null
+    }
+    saveStatus.value = 'saving'
+    saveError.value = null
+    try {
+      const item = await catalog.save(input)
+      if (revision === saveRevision) {
+        selectedId.value = item.id
+        lastSavedSnapshot = snapshot(item)
+        saveStatus.value = 'saved'
+        savedTimer = setTimeout(() => {
+          savedTimer = null
+          if (saveStatus.value === 'saved') saveStatus.value = 'idle'
+        }, 2000)
+      }
+    } catch (caught) {
+      if (revision === saveRevision) {
+        saveStatus.value = 'error'
+        saveError.value = (caught as Error).message || 'No se pudo guardar el prompt.'
+      }
+    }
+  }
+  saveQueue = saveQueue.then(run, run)
+  return saveQueue
+}
+
+function scheduleSave() {
+  if (currentSnapshot() === lastSavedSnapshot || !name.value.trim() || !prompt.value.trim()) {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    savePending = false
+    return
+  }
+  saveRevision += 1
+  savePending = true
+  if (saveTimer) clearTimeout(saveTimer)
+  const revision = saveRevision
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    savePending = false
+    void enqueueSave(revision)
+  }, 500)
+}
+
+async function flushSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  if (savePending) {
+    savePending = false
+    await enqueueSave(saveRevision)
+  } else {
+    await saveQueue
+  }
+}
+
+async function reload() {
+  if (refreshing.value) return
+  refreshing.value = true
   error.value = ''
-  notice.value = ''
   try {
-    const item = await catalog.save({ id: selectedId.value ?? undefined, name: name.value, prompt: prompt.value, tags: tags.value })
-    select(item.id)
-    notice.value = 'Prompt guardado.'
+    await flushSave()
+    await Promise.all([catalog.load(true), characters.load(true)])
+    applySelection(selectedId.value)
   } catch (caught) {
-    error.value = (caught as Error).message
+    error.value = (caught as Error).message || 'No se pudieron recargar los prompts.'
   } finally {
-    busy.value = false
+    refreshing.value = false
   }
 }
 
@@ -47,14 +151,27 @@ async function remove() {
   busy.value = true
   error.value = ''
   try {
+    await flushSave()
     await catalog.remove(id)
-    select(null)
+    applySelection(null)
   } catch (caught) {
     error.value = (caught as Error).message
   } finally {
     busy.value = false
   }
 }
+
+watch(
+  () => [selectedId.value, name.value, prompt.value, JSON.stringify(tags.value)],
+  scheduleSave
+)
+
+onBeforeUnmount(() => {
+  if (saveTimer) clearTimeout(saveTimer)
+  if (savedTimer) clearTimeout(savedTimer)
+  void flushSave()
+})
+onBeforeRouteLeave(flushSave)
 </script>
 
 <template>
@@ -62,7 +179,15 @@ async function remove() {
     <template v-if="settings.settings.swarmBaseUrl.trim()">
       <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 class="text-2xl font-bold">Prompts SwarmUI</h1>
-        <button type="button" class="btn-primary" :disabled="busy" @click="select(null)">Nuevo prompt</button>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="btn-ghost" :disabled="busy || refreshing" @click="reload">
+            <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 11a8 8 0 0 0-14.7-4L3 9m0 0V4m0 5h5M4 13a8 8 0 0 0 14.7 4L21 15m0 0v5m0-5h-5" />
+            </svg>
+            {{ refreshing ? 'Recargando…' : 'Recargar' }}
+          </button>
+          <button type="button" class="btn-primary" :disabled="busy || refreshing" @click="select(null)">Nuevo prompt</button>
+        </div>
       </header>
       <div class="grid min-w-0 gap-6 md:grid-cols-[240px_minmax(0,1fr)]">
         <ul class="grid h-fit min-w-0 gap-1">
@@ -74,7 +199,7 @@ async function remove() {
           </li>
           <li v-if="!catalog.prompts.length" class="text-sm text-[var(--color-fg-muted)]">Sin prompts todavía.</li>
         </ul>
-        <form class="grid min-w-0 gap-4" @submit.prevent="save">
+        <form class="grid min-w-0 gap-4" @submit.prevent="flushSave">
           <div>
             <label class="label" for="swarm-prompt-name">Nombre</label>
             <input id="swarm-prompt-name" v-model="name" required autocomplete="off" class="field">
@@ -87,12 +212,15 @@ async function remove() {
             <label class="label" for="swarm-prompt-content">Prompt</label>
             <textarea id="swarm-prompt-content" v-model="prompt" required maxlength="100000" class="field min-h-48" />
           </div>
-          <div class="flex flex-wrap gap-2">
-            <button type="submit" class="btn-primary" :disabled="busy || !name.trim() || !prompt.trim()">Guardar</button>
+          <div class="flex min-h-10 flex-wrap items-center gap-3">
             <button type="button" class="btn-danger" :disabled="busy || !selectedId" @click="remove">Borrar</button>
+            <span v-if="saveStatus === 'saving'" class="text-xs text-[var(--color-fg-muted)]">Guardando…</span>
+            <span v-else-if="saveStatus === 'saved'" class="text-xs text-[var(--color-fg-muted)]">Guardado</span>
+            <span v-else-if="saveStatus === 'error'" class="text-xs text-red-500" role="alert">
+              {{ saveError || 'Error al guardar' }}
+            </span>
           </div>
           <p v-if="error" role="alert" class="text-sm text-red-500">{{ error }}</p>
-          <p v-if="notice" role="status" class="text-sm text-green-600">{{ notice }}</p>
         </form>
       </div>
     </template>
