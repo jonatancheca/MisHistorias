@@ -1112,6 +1112,31 @@ test.describe('chat', () => {
 })
 
 test.describe('novela visual y responsive', () => {
+  test('muestra etiquetas de imagen y etiquetas pedidas por el LLM al pasar por encima', async ({ page, data }) => {
+    const { story, character, image } = await createStoryFixture(data, true)
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Alicia aparece.',
+      segments: [{
+        type: 'dialogue',
+        characterId: character.id,
+        tag: 'seria',
+        tags: ['seria'],
+        imageId: image.id,
+        text: 'Alicia aparece.'
+      }]
+    })
+
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto(`/stories/${story.id}`)
+    const figure = page.getByTestId('visual-novel-stage').locator('figure').first()
+    const details = figure.getByTestId('visual-novel-image-details')
+    await expect(details).toHaveCSS('opacity', '0')
+    await figure.hover()
+    await expect(details).toContainText(`${character.name} · feliz · armadura · LLM: seria`)
+  })
+
   test('acciones avanzadas operan sobre el mensaje visible completo', async ({ page, data }) => {
     const { story } = await createStoryFixture(data, true)
     await data.patchSettings({ mockMode: true, responseSpeed: 'instant', visualNovelManualAdvance: false })

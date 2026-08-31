@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { primaryTag } from '~/lib/tags'
+import { primaryTag, tagKey } from '~/lib/tags'
 import { visualNovelCharacterCapacity } from '~/lib/visualNovelFrames'
 
 interface CharacterVisualState {
@@ -31,6 +31,13 @@ const currentBackground = computed(() => backgrounds.byId(props.backgroundId))
 const stateByCharacter = computed(
   () => new Map(props.characterStates.map((state) => [state.characterId, state]))
 )
+
+function sameTags(left: string[], right: string[]) {
+  const leftKeys = new Set(left.map(tagKey).filter(Boolean))
+  const rightKeys = new Set(right.map(tagKey).filter(Boolean))
+  return leftKeys.size === rightKeys.size && [...leftKeys].every((key) => rightKeys.has(key))
+}
+
 const resolvedCast = computed(() =>
   props.characterIds.flatMap((characterId) => {
     const character = characters.byId(characterId)
@@ -43,10 +50,13 @@ const resolvedCast = computed(() =>
       '',
       state?.imageIdOverride === true
     )
+    const requestedTags = state?.tags?.length ? [...state.tags] : state?.tag ? [state.tag] : []
     return [
       {
         character,
         state,
+        imageTags: image?.tags ? [...image.tags] : [],
+        requestedTags,
         imageUrl: characters.urlFor(image?.id),
         tag: primaryTag(image) ?? state?.tag ?? null
       }
@@ -100,7 +110,7 @@ onBeforeUnmount(() => stageResizeObserver?.disconnect())
         v-for="item in cast"
         :key="item.character.id"
         :data-character-id="item.character.id"
-        class="flex h-full min-w-0 flex-1 items-end justify-center"
+        class="group/character relative flex h-full min-w-0 flex-1 items-end justify-center"
         :aria-label="`${item.character.name}${item.tag ? `, ${item.tag}` : ''}`"
       >
         <button
@@ -116,6 +126,16 @@ onBeforeUnmount(() => stageResizeObserver?.disconnect())
             class="max-h-full min-h-0 w-full object-contain object-bottom drop-shadow-[0_10px_14px_rgba(0,0,0,0.65)]"
           >
         </button>
+        <div
+          v-if="item.imageUrl"
+          data-testid="visual-novel-image-details"
+          class="pointer-events-none absolute inset-x-1 bottom-2 z-10 mx-auto max-w-[calc(100%-0.5rem)] rounded-lg bg-slate-950/80 px-2 py-1 text-left text-xs text-white opacity-0 shadow-lg backdrop-blur-sm transition group-hover/character:opacity-100 group-focus-within/character:opacity-100"
+        >
+          {{ item.character.name }}<span v-if="item.imageTags.length"> · {{ item.imageTags.join(' · ') }}</span>
+          <span v-if="item.requestedTags.length && !sameTags(item.imageTags, item.requestedTags)">
+            · LLM: {{ item.requestedTags.join(' · ') }}
+          </span>
+        </div>
         <div
           v-else
           class="mb-4 flex aspect-[3/4] max-h-[80%] w-full max-w-48 flex-col items-center justify-center rounded-t-full border border-white/30 bg-black/45 p-2 text-center text-white shadow-xl"
