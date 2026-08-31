@@ -23,7 +23,7 @@ export function createSwarmBatch(input: {
   if (!Number.isSafeInteger(input.count) || input.count < 1) {
     throw new Error('El número de imágenes debe ser un entero positivo.')
   }
-  if (!input.prompt.trim()) throw new Error('Indica un prompt de imagen.')
+  if (!input.prompt.trim() && !input.prefix.trim()) throw new Error('Indica un prompt de imagen o un prefijo.')
   const seed = input.seed.trim() ? Number(input.seed.trim()) : randomSeed()
   if (!Number.isSafeInteger(seed) || seed < 0) throw new Error('La semilla debe ser un entero no negativo.')
   const prompts = input.prompts?.map((item) => ({ ...item, tags: [...item.tags] })) ?? [{ prompt: '', tags: [] }]

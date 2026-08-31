@@ -36,6 +36,17 @@ test('resuelve semilla vacía una vez, admite generación normal y valida entrad
   }
 })
 
+test('permite crear conjunto con prefijo aunque falte prompt base', () => {
+  const batch = createSwarmBatch({
+    ...input,
+    count: 1,
+    prefix: 'quality',
+    prompt: ''
+  })
+  assert.equal([...batch.jobs][0]!.prompt, 'quality\nsitting')
+  assert.throws(() => createSwarmBatch({ ...input, prefix: '', prompt: '' }), /prompt de imagen o un prefijo/)
+})
+
 test('ejecuta secuencialmente, conserva éxitos y para ante fallo', async () => {
   const events: string[] = []
   await assert.rejects(runSwarmBatch({

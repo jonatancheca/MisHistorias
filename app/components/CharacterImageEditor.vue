@@ -143,7 +143,9 @@ async function createGenerationPrompt() {
 }
 
 async function generateImage(asSet = false) {
-  if (!generationPrompt.value.trim() || generationBusy.value || !swarmConfigured.value) return
+  const prompt = generationPrompt.value.trim()
+  const prefix = imageGenerationPromptPrefix.value.trim()
+  if ((!prompt && (!asSet || !prefix)) || generationBusy.value || !swarmConfigured.value) return
   generationBusy.value = true
   generationError.value = null
   generationNotice.value = null
@@ -566,7 +568,7 @@ async function remove(id: string) {
           <button
             type="button"
             class="btn-primary"
-            :disabled="generationBusy || !generationPrompt.trim() || !swarmPrompts.prompts.length"
+            :disabled="generationBusy || (!generationPrompt.trim() && !imageGenerationPromptPrefix.trim()) || !swarmPrompts.prompts.length"
             @click="generateImage(true)"
           >
             Crear conjunto de imágenes
@@ -578,7 +580,7 @@ async function remove(id: string) {
         <p v-if="!swarmPrompts.prompts.length" class="text-sm text-[var(--color-fg-muted)]">
           Crea al menos un <NuxtLink to="/swarm-prompts" class="underline">prompt SwarmUI</NuxtLink> para generar un conjunto.
         </p>
-        <p v-else-if="!generationPrompt.trim()" class="text-sm text-[var(--color-fg-muted)]">Indica el prompt base para crear el conjunto.</p>
+        <p v-else-if="!generationPrompt.trim() && !imageGenerationPromptPrefix.trim()" class="text-sm text-[var(--color-fg-muted)]">Indica el prompt base o un prefijo para crear el conjunto.</p>
       </fieldset>
       <ImageGenerationProgressDialog
         v-if="generationProgressOpen"
