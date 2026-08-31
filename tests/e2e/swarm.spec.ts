@@ -36,10 +36,12 @@ test('configura SwarmUI, muestra catálogo y genera una vista temporal', async (
 
   await swarm.getByRole('button', { name: 'Probar conexión', exact: true }).click()
   await expect(swarm.getByText(/SwarmUI test-1\.0: 2 modelos, 1 LoRAs y 2 presets/)).toBeVisible()
-  await expect(swarm.getByText('Modelos (2)')).toBeVisible()
-  await expect(swarm.getByText('LoRAs (1)')).toBeVisible()
-  await expect(swarm.getByText('Presets (2)')).toBeVisible()
+  await expect(swarm.getByText('Modelos (2)')).toHaveCount(0)
+  await expect(swarm.getByText('LoRAs (1)')).toHaveCount(0)
+  await expect(swarm.getByText('Presets (2)')).toHaveCount(0)
+  await expect(swarm.getByLabel('Preset de prueba')).toHaveValue('Retrato')
   await expect(swarm.getByLabel('Modelo de prueba')).toBeVisible()
+  await expect(swarm.getByLabel('Modelo de prueba')).toHaveValue('model-a')
   await swarm.getByLabel('LoRA de prueba').selectOption('detail-lora')
 
   const prompt = 'Edited temporary prompt with standing pose, coat and joyful expression.'

@@ -1062,39 +1062,6 @@ onBeforeRouteLeave(async () => {
             {{ swarmTestError }}
           </p>
 
-          <div v-if="swarmCatalog" class="grid min-w-0 gap-3 sm:grid-cols-3">
-            <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
-              <summary class="cursor-pointer text-sm font-semibold">
-                Modelos ({{ swarmCatalog.models.length }})
-              </summary>
-              <ul class="mt-2 max-h-40 overflow-auto text-xs">
-                <li v-for="model in swarmCatalog.models" :key="model" class="break-all py-1">
-                  {{ model }}
-                </li>
-              </ul>
-            </details>
-            <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
-              <summary class="cursor-pointer text-sm font-semibold">
-                LoRAs ({{ swarmCatalog.loras.length }})
-              </summary>
-              <ul class="mt-2 max-h-40 overflow-auto text-xs">
-                <li v-for="lora in swarmCatalog.loras" :key="lora" class="break-all py-1">
-                  {{ lora }}
-                </li>
-              </ul>
-            </details>
-            <details class="min-w-0 rounded-lg border border-[var(--color-border-soft)] p-3">
-              <summary class="cursor-pointer text-sm font-semibold">
-                Presets ({{ swarmCatalog.presets.length }})
-              </summary>
-              <ul class="mt-2 max-h-40 overflow-auto text-xs">
-                <li v-for="preset in swarmCatalog.presets" :key="preset" class="break-all py-1">
-                  {{ preset }}
-                </li>
-              </ul>
-            </details>
-          </div>
-
           <div v-if="swarmCatalog" class="grid gap-3 md:grid-cols-3">
             <div>
               <label class="label" for="swarmTestPreset">Preset de prueba</label>
