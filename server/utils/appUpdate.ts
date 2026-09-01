@@ -17,11 +17,36 @@ interface LatestRelease {
 interface AppUpdateOptions {
   currentVersion: string
   currentCommit: string
+  platform?: NodeJS.Platform
   fetchImpl?: typeof fetch
+}
+
+interface PlatformAssets {
+  archive: string
+  checksum: string
+  updater: string
 }
 
 function releaseAsset(release: LatestRelease, name: string) {
   return release.assets.find((asset) => asset.name === name)?.browser_download_url ?? null
+}
+
+function platformAssets(platform: NodeJS.Platform): PlatformAssets {
+  if (platform === 'win32') {
+    return {
+      archive: 'app.zip',
+      checksum: 'app.zip.sha256',
+      updater: 'update.ps1'
+    }
+  }
+  if (platform === 'linux') {
+    return {
+      archive: 'app-linux-x64.tar.gz',
+      checksum: 'app-linux-x64.tar.gz.sha256',
+      updater: 'update.sh'
+    }
+  }
+  throw new Error(`Sistema operativo no compatible con actualización automática: ${platform}.`)
 }
 
 function parseRelease(value: unknown): LatestRelease {
@@ -56,12 +81,14 @@ function parseRelease(value: unknown): LatestRelease {
 export function appUpdateFromRelease(
   releaseValue: unknown,
   currentVersion: string,
-  currentCommit: string
+  currentCommit: string,
+  platform: NodeJS.Platform = process.platform
 ): AppUpdateInfo {
   const release = parseRelease(releaseValue)
-  const downloadUrl = releaseAsset(release, 'app.zip')
-  const checksumUrl = releaseAsset(release, 'app.zip.sha256')
-  const updaterUrl = releaseAsset(release, 'update.ps1')
+  const assets = platformAssets(platform)
+  const downloadUrl = releaseAsset(release, assets.archive)
+  const checksumUrl = releaseAsset(release, assets.checksum)
+  const updaterUrl = releaseAsset(release, assets.updater)
 
   if (!downloadUrl || !checksumUrl || !updaterUrl) {
     throw new Error('La última release no contiene todos los archivos de actualización.')
@@ -114,6 +141,7 @@ export async function fetchAppUpdate(options: AppUpdateOptions): Promise<AppUpda
   return appUpdateFromRelease(
     await response.json(),
     options.currentVersion,
-    options.currentCommit
+    options.currentCommit,
+    options.platform
   )
 }

@@ -52,10 +52,34 @@ Descarga `app.zip` desde la última release, extrae todo su contenido y ejecuta 
 La release incluye Node.js 24.15.0 para Windows x64: no necesita instalar Node.js ni pnpm.
 El navegador abre `http://localhost:3010` y los datos quedan en `install1\.data`.
 
+## Release para Ubuntu
+
+Descarga `app-linux-x64.tar.gz` desde la última release y extrae todo su contenido en una
+carpeta permanente. Incluye Node.js 24.15.0 para Ubuntu 26.04 LTS x64. Desde esa carpeta:
+
+```bash
+sudo ./install.sh
+```
+
+El instalador registra y arranca `mishistorias.service` como usuario que invocó `sudo`, nunca
+como root. El servicio arranca con Ubuntu, escucha en el puerto 3010 y guarda los datos en
+`install1/.data`.
+
+Para actualizar:
+
+```bash
+sudo ./update.sh
+```
+
+El actualizador valida `app-linux-x64.tar.gz.sha256`, conserva `install1/.data`, reinicia solo
+`mishistorias.service` y restaura la versión anterior si `/api/health` falla. Un `update.sh`
+descargado en otra carpeta acepta `--install-root /ruta/permanente/MisHistorias`.
+
 ## Actualizar instalación local
 
-Cada push a `main` crea una release portable con `app.zip`, su checksum SHA-256 y `update.ps1`.
-Desde la carpeta extraída ejecuta:
+Cada push a `main` crea portables para Windows x64 y Linux x64, sus checksums SHA-256 y los
+actualizadores `update.ps1` y `update.sh`.
+Para Windows, desde la carpeta extraída ejecuta:
 
 ```powershell
 PowerShell -ExecutionPolicy Bypass -File .\update.ps1
