@@ -75,7 +75,7 @@ El actualizador valida `app-linux-x64.tar.gz.sha256`, conserva `install1/.data`,
 `mishistorias.service` y restaura la versión anterior si `/api/health` falla. Un `update.sh`
 descargado en otra carpeta acepta `--install-root /ruta/permanente/MisHistorias`.
 
-## Actualizar instalación local
+## Actualizar instalación local windows
 
 Cada push a `main` crea portables para Windows x64 y Linux x64, sus checksums SHA-256 y los
 actualizadores `update.ps1` y `update.sh`.
