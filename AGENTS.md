@@ -15,9 +15,8 @@
 
 ## Validación
 
-- No ejecutes `pnpm build` salvo petición explícita del usuario.
+- No ejecutes `pnpm build` salvo petición explícita del usuario, si has de ejecutarlo hazlo en una sesión controlada con timeout amplio (mínimo 15 minutos). Nunca les apliques el límite de 60 segundos del arranque web ni los canceles por falta temporal de salida.
 - Tras cambios de código, ejecuta `pnpm lint`.
-- Ejecuta `pnpm lint` y, cuando se pida explícitamente, `pnpm build` en una sesión controlada con timeout amplio (mínimo 15 minutos). Nunca les apliques el límite de 60 segundos del arranque web ni los canceles por falta temporal de salida.
 - Si `pnpm lint` supera 60 segundos, déjalo continuar y revisa después si existen directorios raíz inesperados o artefactos generados que ESLint esté recorriendo.
 - Para validar la aplicación, usa `pnpm dev` y comprobaciones reales en navegador.
 - Antes de arrancar, comprueba si `http://localhost:3000` ya responde y reutiliza ese servidor.
