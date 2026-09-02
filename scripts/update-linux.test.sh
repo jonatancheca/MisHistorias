@@ -49,6 +49,12 @@ assert_contains() {
   grep -Fq "$2" "$1" || fail_test "$1 no contiene: $2"
 }
 
+assert_not_contains() {
+  if grep -Fq "$2" "$1"; then
+    fail_test "$1 contiene texto inesperado: $2"
+  fi
+}
+
 cat > "$mock_systemctl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -150,8 +156,8 @@ if [[ "$current_user" == 'root' ]]; then
 fi
 id "$current_user" >/dev/null 2>&1 || fail_test "No existe usuario de prueba: $current_user"
 
-create_install_fixture 'installer'
-systemd_directory="$test_root/installer/systemd"
+create_install_fixture 'installer spaces'
+systemd_directory="$test_root/installer spaces/systemd"
 mkdir -p -- "$systemd_directory"
 : > "$systemctl_log"
 MISHISTORIAS_SYSTEMD_DIRECTORY="$systemd_directory" \
@@ -159,10 +165,14 @@ MISHISTORIAS_SYSTEMCTL="$mock_systemctl" \
 MISHISTORIAS_SYSTEMCTL_LOG="$systemctl_log" \
   bash "$fixture_root/install.sh" --user "$current_user"
 service_file="$systemd_directory/mishistorias.service"
+escaped_fixture_root="${fixture_root// /\\x20}"
 assert_file "$service_file"
 assert_contains "$service_file" "User=$current_user"
 assert_contains "$service_file" 'Environment=PORT=3010'
-assert_contains "$service_file" "$fixture_root/node"
+assert_contains "$service_file" "WorkingDirectory=$escaped_fixture_root/install1"
+assert_contains "$service_file" "ExecStart=$escaped_fixture_root/node $escaped_fixture_root/install1/start-server.mjs"
+assert_not_contains "$service_file" 'WorkingDirectory="'
+assert_not_contains "$service_file" 'ExecStart="'
 assert_contains "$systemctl_log" 'enable --now mishistorias.service'
 
 create_install_fixture 'success'

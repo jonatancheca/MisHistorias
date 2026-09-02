@@ -20,12 +20,17 @@ fail() {
   return 1
 }
 
-systemd_quote() {
+systemd_escape_path() {
   local value="$1"
   value="${value//\\/\\\\}"
-  value="${value//\"/\\\"}"
   value="${value//%/%%}"
-  printf '"%s"' "$value"
+  value="${value//\"/\\\"}"
+  value="${value//\'/\\\'}"
+  value="${value//$' '/\\x20}"
+  value="${value//$'\t'/\\t}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
+  printf '%s' "$value"
 }
 
 service_user=''
@@ -89,9 +94,9 @@ service_path="$SYSTEMD_DIRECTORY/$SERVICE_NAME"
 temporary_service="$service_path.tmp.$$"
 trap 'rm -f -- "$temporary_service"' EXIT
 
-quoted_working_directory="$(systemd_quote "$install_directory")"
-quoted_node="$(systemd_quote "$script_directory/node")"
-quoted_start="$(systemd_quote "$install_directory/start-server.mjs")"
+escaped_working_directory="$(systemd_escape_path "$install_directory")"
+escaped_node="$(systemd_escape_path "$script_directory/node")"
+escaped_start="$(systemd_escape_path "$install_directory/start-server.mjs")"
 
 cat > "$temporary_service" <<EOF
 [Unit]
@@ -102,11 +107,11 @@ After=network-online.target
 [Service]
 Type=simple
 User=$service_user
-WorkingDirectory=$quoted_working_directory
+WorkingDirectory=$escaped_working_directory
 Environment=NODE_ENV=production
 Environment=HOST=0.0.0.0
 Environment=PORT=$PORT
-ExecStart=$quoted_node $quoted_start
+ExecStart=$escaped_node $escaped_start
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
