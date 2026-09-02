@@ -7,7 +7,7 @@ import type {
   Story,
   StorySaveSlot
 } from '../../shared/types'
-import { expect, PNG_BYTES, test, type TestDataFactory } from './fixtures'
+import { createPng, expect, PNG_BYTES, test, type TestDataFactory } from './fixtures'
 
 async function createStoryFixture(data: TestDataFactory, visualMode = false) {
   const character = await data.createCharacter()
@@ -1114,6 +1114,17 @@ test.describe('chat', () => {
 test.describe('novela visual y responsive', () => {
   test('permite ampliar y hacer zoom en personajes desde Chat, Novela y editor', async ({ page, data }) => {
     const { story, character, image } = await createStoryFixture(data, true)
+    const imageResponse = await page.request.put(`/api/data/images/${image.id}?scope=normal`, {
+      multipart: {
+        metadata: JSON.stringify(image),
+        file: {
+          name: `${image.id}.png`,
+          mimeType: image.mimeType,
+          buffer: createPng(1200, 900)
+        }
+      }
+    })
+    await expect(imageResponse).toBeOK()
     await data.createMessage({
       story,
       role: 'assistant',
@@ -1130,14 +1141,37 @@ test.describe('novela visual y responsive', () => {
 
     const assertZoom = async (dialog: Locator) => {
       const fullscreenImage = dialog.locator('img').last()
+      const viewport = dialog.getByTestId('image-lightbox-viewport')
       await expect(dialog.getByTestId('image-lightbox-zoom')).toContainText('100%')
       await expect(dialog.getByRole('button', { name: 'Alejar imagen' })).toBeDisabled()
       await dialog.getByRole('button', { name: 'Acercar imagen' }).click()
       await expect.poll(() => fullscreenImage.evaluate((element) => element.style.transform))
         .toBe('scale(1.5)')
+      await expect.poll(async () => viewport.evaluate((element) => ({
+        horizontal: element.scrollWidth > element.clientWidth,
+        vertical: element.scrollHeight > element.clientHeight
+      }))).toEqual({ horizontal: true, vertical: true })
+      const viewportBox = await viewport.boundingBox()
+      expect(viewportBox).not.toBeNull()
+      await page.mouse.move(viewportBox!.x + viewportBox!.width / 2, viewportBox!.y + viewportBox!.height / 2)
+      await page.mouse.wheel(0, 300)
+      await expect.poll(async () => viewport.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(0)
+      await viewport.evaluate((element) => {
+        element.scrollLeft = element.scrollWidth
+        element.scrollTop = element.scrollHeight
+      })
+      await expect.poll(async () => viewport.evaluate((element) => element.scrollLeft))
+        .toBeGreaterThan(0)
+      await expect.poll(async () => viewport.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(0)
       await dialog.getByRole('button', { name: 'Restablecer zoom' }).click()
       await expect.poll(() => fullscreenImage.evaluate((element) => element.style.transform))
         .toBe('scale(1)')
+      await expect.poll(async () => viewport.evaluate((element) => ({
+        left: element.scrollLeft,
+        top: element.scrollTop
+      }))).toEqual({ left: 0, top: 0 })
     }
 
     await page.goto(`/stories/${story.id}`)

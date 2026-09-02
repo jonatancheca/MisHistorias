@@ -41,6 +41,7 @@ const MIN_ZOOM = 1
 const MAX_ZOOM = 4
 const ZOOM_STEP = 0.5
 const zoom = ref(MIN_ZOOM)
+const viewport = ref<HTMLElement | null>(null)
 const zoomPercent = computed(() => `${Math.round(zoom.value * 100)}%`)
 const items = computed<GalleryItem[]>(() =>
   props.galleryItems?.length
@@ -56,6 +57,7 @@ function show() {
   generationMetadataOpen.value = false
   zoom.value = MIN_ZOOM
   open.value = true
+  nextTick(resetViewport)
 }
 
 function activate() {
@@ -67,6 +69,7 @@ function close() {
   open.value = false
   generationMetadataOpen.value = false
   zoom.value = MIN_ZOOM
+  resetViewport()
 }
 
 function move(offset: number) {
@@ -74,18 +77,30 @@ function move(offset: number) {
   activeIndex.value = (activeIndex.value + offset + items.value.length) % items.value.length
   generationMetadataOpen.value = false
   zoom.value = MIN_ZOOM
+  nextTick(resetViewport)
 }
 
 function changeZoom(offset: number) {
   zoom.value = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom.value + offset))
+  if (zoom.value === MIN_ZOOM) nextTick(resetViewport)
 }
 
 function resetZoom() {
   zoom.value = MIN_ZOOM
+  nextTick(resetViewport)
+}
+
+function resetViewport() {
+  if (!viewport.value) return
+  viewport.value.scrollLeft = 0
+  viewport.value.scrollTop = 0
 }
 
 function onWheel(event: WheelEvent) {
-  changeZoom(event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)
+  if (event.ctrlKey || event.metaKey || zoom.value === MIN_ZOOM) {
+    event.preventDefault()
+    changeZoom(event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)
+  }
 }
 
 function toggleGenerationMetadata() {
@@ -153,19 +168,33 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-2"
       role="dialog"
       aria-modal="true"
       :aria-label="alt || 'Imagen ampliada'"
       @click.self="close"
     >
       <section
-        class="flex max-h-[calc(100dvh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-xl lg:flex-row"
+        class="flex max-h-[calc(100dvh-1rem)] w-full max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl lg:flex-row"
       >
         <div
-          class="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden bg-black/40 p-3 sm:p-6"
-          @wheel.prevent="onWheel"
+          class="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-black/40"
         >
+          <div
+            ref="viewport"
+            class="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-6"
+            data-testid="image-lightbox-viewport"
+            role="region"
+            aria-label="Desplazar imagen ampliada"
+            @wheel="onWheel"
+          >
+            <img
+              :src="activeItem.src"
+              :alt="activeItem.alt"
+              class="max-h-[calc(100dvh-2rem)] max-w-full shrink-0 rounded-xl object-contain transition-transform duration-200"
+              :style="{ transform: `scale(${zoom})` }"
+            >
+          </div>
           <div
             class="absolute top-3 left-3 z-10 flex items-center gap-1 rounded-full bg-black/60 p-1 text-white"
             data-testid="image-lightbox-zoom"
@@ -231,12 +260,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           >
             <span aria-hidden="true">‹</span>
           </button>
-          <img
-            :src="activeItem.src"
-            :alt="activeItem.alt"
-            class="max-h-[calc(100dvh-4rem)] max-w-full rounded-xl object-contain transition-transform duration-200"
-            :style="{ transform: `scale(${zoom})` }"
-          >
           <button
             v-if="activeItem.generation"
             type="button"
