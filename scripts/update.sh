@@ -29,13 +29,14 @@ receive_asset() {
   local source="$1"
   local destination="$2"
   local timeout_seconds="$3"
+  local accept_header="${4:-application/octet-stream}"
   if [[ -f "$source" ]]; then
     cp -- "$source" "$destination"
     return
   fi
   curl --fail --silent --show-error --location --retry 3 \
     --max-time "$timeout_seconds" \
-    --header 'Accept: application/octet-stream' \
+    --header "Accept: $accept_header" \
     --header 'User-Agent: MisHistorias-updater' \
     --output "$destination" \
     "$source"
@@ -249,7 +250,7 @@ mkdir -p -- "$download_directory" "$staging_directory"
 
 printf 'Consultando última release...\n'
 release_file="$download_directory/release.json"
-receive_asset "$release_api" "$release_file" 30
+receive_asset "$release_api" "$release_file" 30 'application/vnd.github+json'
 archive_source="$(asset_url "$release_file" "$ARCHIVE_NAME")" ||
   fail "Release no contiene exactamente un asset $ARCHIVE_NAME."
 checksum_source="$(asset_url "$release_file" "$CHECKSUM_NAME")" ||
