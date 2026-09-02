@@ -57,7 +57,14 @@ El navegador abre `http://localhost:3010` y los datos quedan en `install1\.data`
 Descarga `app-linux-x64.tar.gz` desde la última release y extrae todo su contenido en una
 carpeta permanente. Incluye Node.js 24.15.0 para Ubuntu 26.04 LTS x64. Desde esa carpeta:
 
+Comando completo usando el asset de la última release de GitHub:
+
 ```bash
+mkdir -p "$HOME/MisHistorias" && cd "$HOME/MisHistorias" && \
+curl --fail --location --retry 3 \
+  --output app-linux-x64.tar.gz \
+  https://github.com/jonatancheca/MisHistorias/releases/latest/download/app-linux-x64.tar.gz && \
+tar -xzf app-linux-x64.tar.gz && \
 sudo ./install.sh
 ```
 
