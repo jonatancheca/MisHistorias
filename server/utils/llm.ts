@@ -61,9 +61,6 @@ export function normalizeLocalBaseUrl(rawBaseUrl: unknown): string {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw llmError('La URL debe usar http o https')
   }
-  if (!PRIVATE_HOST_PATTERNS.some((pattern) => pattern.test(url.hostname))) {
-    throw llmError('Solo se permiten servidores locales o de red privada')
-  }
   return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
 }
 
