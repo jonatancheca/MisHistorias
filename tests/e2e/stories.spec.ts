@@ -424,6 +424,7 @@ test.describe('chat', () => {
           const statusBounds = await indicator.boundingBox()
           const inputBounds = await page.getByPlaceholder('Escribe lo que haces o dices…').boundingBox()
           expect(statusBounds!.y + statusBounds!.height).toBeLessThanOrEqual(inputBounds!.y)
+          expect(Math.abs(statusBounds!.x + statusBounds!.width / 2 - width / 2)).toBeLessThanOrEqual(1)
           expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
         }
       } finally {
@@ -1184,19 +1185,15 @@ test.describe('novela visual y responsive', () => {
       }))).toEqual({ horizontal: true, vertical: true })
       const viewportBox = await viewport.boundingBox()
       expect(viewportBox).not.toBeNull()
-      await page.mouse.move(viewportBox!.x + viewportBox!.width / 2, viewportBox!.y + viewportBox!.height / 2)
+      const startX = viewportBox!.x + viewportBox!.width * 0.65
+      const startY = viewportBox!.y + viewportBox!.height * 0.65
+      await page.mouse.move(startX, startY)
+      await page.mouse.down()
+      await page.mouse.move(startX - 80, startY - 80)
+      await page.mouse.up()
+      await expect.poll(async () => viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+      await expect.poll(async () => viewport.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
       await page.mouse.wheel(0, 300)
-      await expect.poll(async () => viewport.evaluate((element) => element.scrollTop))
-        .toBeGreaterThan(0)
-      await viewport.evaluate((element) => {
-        element.scrollLeft = element.scrollWidth
-        element.scrollTop = element.scrollHeight
-      })
-      await expect.poll(async () => viewport.evaluate((element) => element.scrollLeft))
-        .toBeGreaterThan(0)
-      await expect.poll(async () => viewport.evaluate((element) => element.scrollTop))
-        .toBeGreaterThan(0)
-      await dialog.getByRole('button', { name: 'Restablecer zoom' }).click()
       await expect.poll(() => fullscreenImage.evaluate((element) => element.style.transform))
         .toBe('scale(1)')
       await expect.poll(async () => viewport.evaluate((element) => ({
@@ -1409,6 +1406,13 @@ test.describe('novela visual y responsive', () => {
     const soundFrame = page.getByTestId('visual-novel-sound')
     await expect(soundFrame).toContainText('Sonido [campana]')
     await expect(soundFrame.locator('audio')).toBeVisible()
+    expect(await soundFrame.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true)
+    const labelBounds = await soundFrame.getByText('Sonido [campana]').boundingBox()
+    const playerBounds = await soundFrame.locator('audio').boundingBox()
+    expect(playerBounds!.x).toBeGreaterThan(labelBounds!.x)
+    expect(Math.abs(
+      playerBounds!.y + playerBounds!.height / 2 - (labelBounds!.y + labelBounds!.height / 2)
+    )).toBeLessThanOrEqual(1)
     await expect.poll(() => page.evaluate(() => (
       window as typeof window & { __visualSoundPlays: number }
     ).__visualSoundPlays)).toBeGreaterThanOrEqual(1)

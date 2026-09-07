@@ -1162,11 +1162,11 @@ onBeforeRouteLeave(() => {
                 <template v-if="activeVisualFrame">
                   <div
                     v-if="activeVisualFrame.kind === 'sound'"
-                    class="mx-auto grid max-w-xl gap-2 text-left"
+                    class="mx-auto flex max-w-xl items-center gap-2 text-left"
                     data-testid="visual-novel-sound"
                     @click.stop
                   >
-                    <span class="text-xs font-medium text-slate-300">
+                    <span class="shrink-0 text-xs font-medium text-slate-300">
                       Sonido [{{ activeVisualFrame.soundTag || 'sin etiqueta' }}]
                     </span>
                     <audio
@@ -1177,7 +1177,7 @@ onBeforeRouteLeave(() => {
                       controls
                       autoplay
                       preload="metadata"
-                      class="w-full"
+                      class="min-w-0 flex-1"
                     />
                     <span v-else class="text-sm text-slate-300">Sonido no disponible</span>
                   </div>
@@ -1331,7 +1331,8 @@ onBeforeRouteLeave(() => {
         <div
           v-if="stories.waitingForResponse"
           data-testid="thinking-indicator"
-          class="mb-2 flex min-w-0 items-center gap-3 text-sm text-[var(--color-fg-muted)]"
+          class="mb-2 flex min-w-0 items-center justify-center gap-3 text-sm text-[var(--color-fg-muted)] sm:-translate-x-8"
+          :class="!stories.activeStory.visualMode ? 'lg:!translate-x-24' : ''"
           role="status"
           aria-live="polite"
         >

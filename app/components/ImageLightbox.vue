@@ -47,6 +47,13 @@ const MAX_ZOOM = 4
 const ZOOM_STEP = 0.5
 const zoom = ref(MIN_ZOOM)
 const viewport = ref<HTMLElement | null>(null)
+const drag = ref<{
+  pointerId: number
+  x: number
+  y: number
+  scrollLeft: number
+  scrollTop: number
+} | null>(null)
 const zoomPercent = computed(() => `${Math.round(zoom.value * 100)}%`)
 const items = computed<GalleryItem[]>(() =>
   props.galleryItems?.length
@@ -102,10 +109,32 @@ function resetViewport() {
 }
 
 function onWheel(event: WheelEvent) {
-  if (event.ctrlKey || event.metaKey || zoom.value === MIN_ZOOM) {
-    event.preventDefault()
-    changeZoom(event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)
+  event.preventDefault()
+  changeZoom(event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)
+}
+
+function startDrag(event: PointerEvent) {
+  if (event.button !== 0 || zoom.value === MIN_ZOOM || !viewport.value) return
+  drag.value = {
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    scrollLeft: viewport.value.scrollLeft,
+    scrollTop: viewport.value.scrollTop
   }
+  viewport.value.setPointerCapture(event.pointerId)
+}
+
+function moveDrag(event: PointerEvent) {
+  if (!drag.value || drag.value.pointerId !== event.pointerId || !viewport.value) return
+  viewport.value.scrollLeft = drag.value.scrollLeft - (event.clientX - drag.value.x)
+  viewport.value.scrollTop = drag.value.scrollTop - (event.clientY - drag.value.y)
+}
+
+function endDrag(event: PointerEvent) {
+  if (!drag.value || drag.value.pointerId !== event.pointerId || !viewport.value) return
+  if (viewport.value.hasPointerCapture(event.pointerId)) viewport.value.releasePointerCapture(event.pointerId)
+  drag.value = null
 }
 
 function toggleGenerationMetadata() {
@@ -192,16 +221,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <div
             ref="viewport"
             class="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-6"
+            :class="zoom > MIN_ZOOM ? 'cursor-grab touch-none active:cursor-grabbing' : ''"
             data-testid="image-lightbox-viewport"
             role="region"
             aria-label="Desplazar imagen ampliada"
             @wheel="onWheel"
+            @pointerdown="startDrag"
+            @pointermove="moveDrag"
+            @pointerup="endDrag"
+            @pointercancel="endDrag"
           >
             <img
               :src="activeItem.src"
               :alt="activeItem.alt"
               class="max-h-[calc(100dvh-2rem)] max-w-full shrink-0 rounded-xl object-contain transition-transform duration-200"
               :style="{ transform: `scale(${zoom})` }"
+              :draggable="false"
             >
           </div>
           <div
