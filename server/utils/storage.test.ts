@@ -98,14 +98,14 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
       contextSummary: 'Resumen persistido.',
       contextSummaryThroughMessageId: 'message-1',
       characterCustomizations: [
-        { characterId: 'normal-1', prompt: 'Prompt normal', tags: ['normal'] }
+        { characterId: 'normal-1', name: 'Personaje normal-1', prompt: 'Prompt normal', tags: ['normal'] }
       ]
     })
     storage.put('stories', 'private', 'story-private', {
       ...story('story-private'),
       characterIds: ['private-1'],
       characterCustomizations: [
-        { characterId: 'private-1', prompt: 'Prompt privado', tags: ['privado'] }
+        { characterId: 'private-1', name: 'Personaje private-1', prompt: 'Prompt privado', tags: ['privado'] }
       ]
     })
     storage.writeSettings({
@@ -132,7 +132,7 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
       )
       assert.equal(reopened.get('characters', 'normal', 'normal-1')?.imageGenerationModel, 'model-a')
       assert.deepEqual(reopened.get('stories', 'normal', 'story-normal')?.characterCustomizations, [
-        { characterId: 'normal-1', prompt: 'Prompt normal', tags: ['normal'] }
+        { characterId: 'normal-1', name: 'Personaje normal-1', prompt: 'Prompt normal', tags: ['normal'] }
       ])
       assert.deepEqual(reopened.get('stories', 'normal', 'story-normal')?.pendingImageInstructions, [
         { characterId: 'normal-1', imageId: 'image-1', tags: ['feliz'] }
@@ -144,7 +144,7 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
       )
       assert.deepEqual(
         reopened.get('stories', 'private', 'story-private')?.characterCustomizations,
-        [{ characterId: 'private-1', prompt: 'Prompt privado', tags: ['privado'] }]
+        [{ characterId: 'private-1', name: 'Personaje private-1', prompt: 'Prompt privado', tags: ['privado'] }]
       )
       assert.equal(reopened.readSettings()?.value.model, 'modelo')
       assert.equal(reopened.readSettings()?.value.useChromeLlm, true)
@@ -159,7 +159,7 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
         true
       )
       assert.equal(reopened.get('stories', 'normal', 'story-normal')?.autoGenerateImages, true)
-      assert.equal(reopened.health().schemaVersion, 31)
+      assert.equal(reopened.health().schemaVersion, 32)
       reopened.writeSettings({ narrativePrompt: null })
       assert.equal('narrativePrompt' in (reopened.readSettings()?.value ?? {}), false)
     } finally {
@@ -212,7 +212,7 @@ test('migra v27 y conserva semillas al recortar, copiar, restaurar e importar', 
   })
 })
 
-test('migra v1 a v31 copiando personajes y dejando modo visual desactivado', () => {
+test('migra v1 a v32 copiando personajes y dejando modo visual desactivado', () => {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
   const path = join(directory, 'test.sqlite')
   const legacy = new DatabaseSync(path)
@@ -282,7 +282,7 @@ test('migra v1 a v31 copiando personajes y dejando modo visual desactivado', () 
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 31)
+    assert.equal(storage.health().schemaVersion, 32)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.archived, false)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationModel, '')
     assert.equal(
@@ -294,6 +294,7 @@ test('migra v1 a v31 copiando personajes y dejando modo visual desactivado', () 
     assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.characterCustomizations, [
       {
         characterId: 'character-1',
+        name: 'Alicia',
         color: '#123456',
         prompt: 'Prompt original',
         tags: ['aventurera']
@@ -337,7 +338,7 @@ test('migra v5 añadiendo preset de personaje y secreto Swarm con backup previo'
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 31)
+    assert.equal(storage.health().schemaVersion, 32)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationPreset, '')
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationLora, '')
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationSeed, '')
@@ -389,7 +390,7 @@ test('migra v6 añadiendo indicaciones de imagen pendientes', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 31)
+    assert.equal(storage.health().schemaVersion, 32)
     assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.pendingImageInstructions, [])
     assert.equal(migrationBackups(path).length, 1)
   } finally {
@@ -458,7 +459,7 @@ test('migra v22 eliminando descripciones de imágenes en ambos ámbitos', () => 
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 31)
+    assert.equal(storage.health().schemaVersion, 32)
     const columns = storage.database.prepare('PRAGMA table_info(images)').all() as Array<{
       name: string
     }>
@@ -533,7 +534,7 @@ test('migra v23 copiando colores de personajes en historias y partidas', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 31)
+    assert.equal(storage.health().schemaVersion, 32)
     assert.equal(
       storage.get('stories', 'normal', normalStory.id)?.characterCustomizations[0]?.color,
       '#123456'
@@ -570,7 +571,7 @@ test('migra v24 añadiendo semilla y prefijo de imagen en ambos ámbitos', () =>
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 31)
+    assert.equal(storage.health().schemaVersion, 32)
     for (const scope of ['normal', 'private'] as const) {
       const stored = storage.get('characters', scope, `${scope}-character`)
       assert.equal(stored?.imageGenerationSeed, '')
@@ -600,7 +601,7 @@ test('migra v25 añadiendo resumen de contexto a las historias', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 31)
+    assert.equal(storage.health().schemaVersion, 32)
     const stored = storage.get('stories', 'normal', 'story-normal')
     assert.equal(stored?.contextSummary, '')
     assert.equal(stored?.contextSummaryThroughMessageId, undefined)
@@ -635,7 +636,7 @@ test('migra v19 y separa los ajustes privados de LMStudio', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 31)
+    assert.equal(storage.health().schemaVersion, 32)
     assert.equal(storage.readSettings()?.privateApiKey, '')
 
     storage.writeSettings({
@@ -746,7 +747,7 @@ test('migra imágenes v3 a BLOBs referenciados sin perder contenido', () => {
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 31)
+    assert.equal(storage.health().schemaVersion, 32)
     assert.deepEqual(Array.from(storage.getBinary('images', 'normal', 'image-1')!.data), [7, 8, 9])
     const row = storage.database
       .prepare('SELECT blob_id FROM images WHERE scope = ? AND id = ?')
@@ -777,7 +778,7 @@ test('conserva backup y revierte la base original si falla la migración', () =>
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /Falló la migración SQLite v3 a v31\. Backup:/
+      /Falló la migración SQLite v3 a v32\. Backup:/
     )
 
     const backups = migrationBackups(path)
@@ -818,7 +819,7 @@ test('no inicia la migración si no puede crear el backup', () => {
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /No se pudo crear el backup previo de SQLite\. Migración v3 a v31 no iniciada\./
+      /No se pudo crear el backup previo de SQLite\. Migración v3 a v32 no iniciada\./
     )
     const source = new DatabaseSync(path, { readOnly: true })
     try {
@@ -895,7 +896,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     const backup = storage.createManualBackup()
     assert.equal(backup.kind, 'manual')
     assert.equal(backup.valid, true)
-    assert.equal(backup.schemaVersion, 31)
+    assert.equal(backup.schemaVersion, 32)
     assert.equal(storage.listBackups().some((item) => item.name === backup.name), true)
 
     storage.put('characters', 'normal', 'normal-1', {
@@ -1367,10 +1368,73 @@ test('migra v30, conserva mensajes antiguos y restaura diagnósticos sin mezclar
       assert.deepEqual(reopened.get('messages', 'normal', 'error-146'), saved)
       assert.equal(reopened.get('messages', 'private', 'error-146'), null)
       const schema = new DatabaseSync(path)
-      assert.equal(schema.prepare('PRAGMA user_version').get()?.user_version, 31)
+      assert.equal(schema.prepare('PRAGMA user_version').get()?.user_version, 32)
       schema.close()
     } finally { reopened.close() }
   })
+})
+
+test('migra v31 fijando nombres actuales sin sobrescribir nombres personalizados', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v31-'))
+  const path = join(directory, 'test.sqlite')
+  const initial = new MisHistoriasStorage(path)
+  const normalCharacter = { ...character('shared'), name: 'Nombre normal actual' }
+  const privateCharacter = { ...character('shared'), name: 'Nombre privado actual' }
+  const normalStory = {
+    ...story('normal-story'),
+    characterIds: ['shared'],
+    characterCustomizations: [{ characterId: 'shared', prompt: 'Normal', tags: [] }]
+  }
+  const privateStory = {
+    ...story('private-story'),
+    characterIds: ['shared'],
+    characterCustomizations: [{
+      characterId: 'shared',
+      name: 'Alias privado',
+      prompt: 'Privado',
+      tags: []
+    }]
+  }
+  initial.put('characters', 'normal', 'shared', normalCharacter)
+  initial.put('characters', 'private', 'shared', privateCharacter)
+  initial.put('stories', 'normal', normalStory.id, normalStory)
+  initial.put('stories', 'private', privateStory.id, privateStory)
+  initial.put('storySaves', 'normal', 'legacy-save', {
+    id: 'legacy-save',
+    storyId: normalStory.id,
+    name: 'Partida antigua',
+    story: normalStory,
+    messages: [],
+    debugTraces: [],
+    thumbnailDataUrl: 'data:image/webp;base64,AA==',
+    createdAt: 1
+  })
+  initial.close()
+
+  const legacy = new DatabaseSync(path)
+  legacy.exec('PRAGMA user_version = 31')
+  legacy.close()
+
+  const storage = new MisHistoriasStorage(path)
+  try {
+    assert.equal(storage.health().schemaVersion, 32)
+    assert.equal(
+      storage.get('stories', 'normal', normalStory.id)?.characterCustomizations[0]?.name,
+      'Nombre normal actual'
+    )
+    assert.equal(
+      storage.get('stories', 'private', privateStory.id)?.characterCustomizations[0]?.name,
+      'Alias privado'
+    )
+    assert.equal(
+      storage.get('storySaves', 'normal', 'legacy-save')?.story.characterCustomizations[0]?.name,
+      'Nombre normal actual'
+    )
+    assert.equal(migrationBackups(path).length, 1)
+  } finally {
+    storage.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 test('importa personaje nuevo con medios e IDs nuevos', () => {
@@ -1428,7 +1492,12 @@ test('reemplaza personaje de forma atómica conservando su ID e historias', () =
     storage.put('stories', 'normal', 'story-target', {
       ...story('story-target'),
       characterIds: ['target'],
-      characterCustomizations: [{ characterId: 'target', prompt: 'Anterior', tags: ['antes'] }]
+      characterCustomizations: [{
+        characterId: 'target',
+        name: 'Personaje target',
+        prompt: 'Anterior',
+        tags: ['antes']
+      }]
     })
     storage.putBinary('images', 'normal', 'old-image', {
       metadata: {
@@ -1471,6 +1540,10 @@ test('reemplaza personaje de forma atómica conservando su ID e historias', () =
     assert.equal(storage.get('images', 'normal', 'old-image'), null)
     assert.equal(storage.get('sounds', 'normal', 'old-sound'), null)
     assert.deepEqual(storage.get('stories', 'normal', 'story-target')?.characterIds, ['target'])
+    assert.equal(
+      storage.get('stories', 'normal', 'story-target')?.characterCustomizations[0]?.name,
+      'Personaje target'
+    )
 
     assert.throws(() => storage.importCharacter('normal', 'target', {
       name: 'Fallará',

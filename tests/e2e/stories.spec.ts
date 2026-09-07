@@ -164,6 +164,33 @@ test.describe('historias', () => {
     )
   })
 
+  test('conserva nombre inicial cuando cambia el nombre global del personaje', async ({ page, data }) => {
+    const character = await data.createCharacter({ name: data.unique('Nombre-original') })
+
+    await page.goto('/stories/new')
+    await page.getByLabel('Planteamiento').fill('Historia con nombre fijado al crearla.')
+    await page.getByRole('button', { name: new RegExp(character.name) }).click()
+    await page.getByRole('button', { name: 'Empezar historia' }).click()
+
+    await page.waitForURL((url) => /^\/stories\/(?!new$)[^/]+$/.test(url.pathname))
+    const storyId = new URL(page.url()).pathname.split('/').pop()!
+    expect((await data.get<Story>('stories', storyId)).characterCustomizations[0]?.name)
+      .toBe(character.name)
+
+    const renamed = data.unique('Nombre-global-nuevo')
+    const response = await page.request.put(
+      `/api/data/characters/${character.id}?scope=normal`,
+      { data: { ...character, name: renamed, updatedAt: Date.now() } }
+    )
+    expect(response.ok()).toBe(true)
+
+    await page.reload()
+    await expect(page.getByTestId('chat-scene-stage').getByText(character.name, { exact: true }))
+      .toBeVisible()
+    expect((await data.get<Story>('stories', storyId)).characterCustomizations[0]?.name)
+      .toBe(character.name)
+  })
+
   test('copia planteamiento sin título ni mensajes y mantiene independencia', async ({ page, data }) => {
     const { story } = await createStoryFixture(data, true)
     await data.createMessage({ story, role: 'user', raw: 'Mensaje que no debe copiarse.' })

@@ -72,7 +72,8 @@ function hasCharacterCustomizations(value: Record<string, unknown>) {
       const customization = item as Record<string, unknown>
       return (
         typeof customization.characterId === 'string' &&
-        (customization.name === undefined || typeof customization.name === 'string') &&
+        typeof customization.name === 'string' &&
+        Boolean(customization.name.trim()) &&
         (
           customization.color === undefined ||
           (typeof customization.color === 'string' && /^#[0-9a-f]{6}$/i.test(customization.color))

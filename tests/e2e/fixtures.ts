@@ -247,6 +247,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
           characterIds: input.characters.map((character) => character.id),
           characterCustomizations: input.characters.map((character) => ({
             characterId: character.id,
+            name: character.name,
             color: character.color,
             prompt: character.prompt,
             tags: [...character.tags]

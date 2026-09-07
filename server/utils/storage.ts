@@ -86,7 +86,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 31
+const SCHEMA_VERSION = 32
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -189,6 +189,26 @@ function storyWithCharacterColors(
           ? fallback.toLowerCase()
           : ''
       return color ? { ...customization, color } : customization
+    })
+  }
+}
+
+function storyWithCharacterNames(
+  value: unknown,
+  nameFor: (characterId: string) => string | undefined
+) {
+  const story = record(value)
+  if (!Array.isArray(story.characterCustomizations)) return story
+  return {
+    ...story,
+    characterCustomizations: story.characterCustomizations.map((item) => {
+      const customization = record(item)
+      if (typeof customization.characterId !== 'string') return item
+      const stored = typeof customization.name === 'string' && customization.name.trim()
+        ? customization.name
+        : ''
+      const name = stored || nameFor(customization.characterId)?.trim() || ''
+      return name ? { ...customization, name } : customization
     })
   }
 }
@@ -1140,6 +1160,56 @@ export class MisHistoriasStorage {
         const columns = this.database.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
         if (!columns.some((column) => column.name === 'swarm_error_json')) {
           this.database.exec('ALTER TABLE messages ADD COLUMN swarm_error_json TEXT')
+        }
+      }
+
+      if (version.user_version < 32) {
+        const characterNames = new Map(
+          (this.database.prepare('SELECT scope, id, name FROM characters').all() as Array<{
+            scope: string
+            id: string
+            name: string
+          }>).map((character) => [`${character.scope}\0${character.id}`, character.name])
+        )
+        const nameFor = (scope: string, characterId: string) =>
+          characterNames.get(`${scope}\0${characterId}`)
+
+        const stories = this.database.prepare(`
+          SELECT scope, id, character_customizations_json
+          FROM stories
+        `).all() as Array<{
+          scope: string
+          id: string
+          character_customizations_json: string
+        }>
+        const updateStory = this.database.prepare(`
+          UPDATE stories SET character_customizations_json = ? WHERE scope = ? AND id = ?
+        `)
+        for (const story of stories) {
+          const normalized = storyWithCharacterNames(
+            { characterCustomizations: parseJson(story.character_customizations_json, []) },
+            (characterId) => nameFor(story.scope, characterId)
+          )
+          updateStory.run(json(normalized.characterCustomizations), story.scope, story.id)
+        }
+
+        const saves = this.database.prepare('SELECT scope, id, story_json FROM story_saves').all() as Array<{
+          scope: string
+          id: string
+          story_json: string
+        }>
+        const updateSave = this.database.prepare(
+          'UPDATE story_saves SET story_json = ? WHERE scope = ? AND id = ?'
+        )
+        for (const save of saves) {
+          updateSave.run(
+            json(storyWithCharacterNames(
+              parseJson(save.story_json, {}),
+              (characterId) => nameFor(save.scope, characterId)
+            )),
+            save.scope,
+            save.id
+          )
         }
       }
 
