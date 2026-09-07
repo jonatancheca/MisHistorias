@@ -8,7 +8,7 @@
 
 ## Datos de prueba
 
-- Antes de empezar cada tarea llama a 'http://localhost:3000/api/data/clear?scope=normal' para montar el entorno de datos de pruebas, puedes hacerlo siempre que quieras sin pedir confirmación. Es una base de datos de pruebas, no hay peligro.
+- Antes de empezar cada tarea si necesitas hacer pruebas de crear datos entonces levantar la web y hacer un post a 'http://localhost:3000/api/data/clear?scope=normal' para montar el entorno de datos de pruebas, puedes hacerlo siempre que quieras sin pedir confirmación. Es una base de datos de pruebas, no hay peligro.
 - No hace falta que borres datos de prueba uno a uno ni al terminar la tarea; la siguiente tarea ya hará una limpieza completa al empezar.
 
 ## Validación
