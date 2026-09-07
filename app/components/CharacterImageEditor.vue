@@ -384,13 +384,19 @@ async function updateImage(
   }
 }
 
-async function remove(id: string) {
-  const accepted = await confirmDialog.ask({
-    title: 'Borrar imagen',
-    message: 'Esta imagen se borrará definitivamente.'
-  })
-  if (!accepted) return
+async function remove(id: string, withConfirmation = true) {
+  if (withConfirmation) {
+    const accepted = await confirmDialog.ask({
+      title: 'Borrar imagen',
+      message: 'Esta imagen se borrará definitivamente.'
+    })
+    if (!accepted) return
+  }
   await characters.removeImage(id)
+}
+
+function removeFromLightbox(item: { id?: string }) {
+  if (item.id) void remove(item.id, false)
 }
 </script>
 
@@ -645,6 +651,8 @@ async function remove(id: string) {
             image-class="h-56 w-full rounded-lg bg-black/5 object-contain sm:h-72"
             :download-name="downloadName(image)"
             :gallery-items="galleryItems"
+            deletable
+            @delete="removeFromLightbox"
           >
           <template #details="{ item, showGenerationMetadata }">
             <div v-if="item.id" class="grid gap-3">

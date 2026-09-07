@@ -259,6 +259,23 @@ test.describe('personajes', () => {
     }
   })
 
+  test('borra imagen desde el visor con Supr sin confirmación', async ({ page, data }) => {
+    const character = await data.createCharacter()
+    const image = await data.createImage(character, ['borrar'])
+
+    await page.goto(`/characters/${character.id}`)
+    await page.getByTestId('character-image-card').getByRole('button', { name: 'Ampliar imagen' }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    await page.keyboard.press('Delete')
+
+    await expect(page.getByRole('alertdialog')).toHaveCount(0)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.getByTestId('character-image-card')).toHaveCount(0)
+    expect((await data.list<CharacterImage>('images', 'normal', { characterId: character.id }))
+      .some((item) => item.id === image.id)).toBe(false)
+  })
+
   test('copia personaje e imágenes con IDs independientes', async ({ page, data }) => {
     const source = await data.createCharacter({
       imageGenerationPreset: 'Retrato',

@@ -20,6 +20,7 @@ const props = withDefaults(
     downloadName?: string
     galleryItems?: GalleryItem[]
     selectable?: boolean
+    deletable?: boolean
   }>(),
   {
     imageClass: '',
@@ -28,11 +29,15 @@ const props = withDefaults(
     imageStyle: undefined,
     downloadName: undefined,
     galleryItems: undefined,
-    selectable: false
+    selectable: false,
+    deletable: false
   }
 )
 
-const emit = defineEmits<{ select: [] }>()
+const emit = defineEmits<{
+  select: []
+  delete: [item: GalleryItem]
+}>()
 
 const open = ref(false)
 const activeIndex = ref(0)
@@ -125,6 +130,10 @@ function onKeydown(event: KeyboardEvent) {
   } else if (event.key === '0') {
     event.preventDefault()
     resetZoom()
+  } else if (event.key === 'Delete' && props.deletable && activeItem.value.id) {
+    event.preventDefault()
+    emit('delete', activeItem.value)
+    close()
   }
 }
 
