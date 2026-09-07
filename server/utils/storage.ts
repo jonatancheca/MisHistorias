@@ -2079,7 +2079,10 @@ export class MisHistoriasStorage {
         key !== 'apiKeyConfigured' &&
         key !== 'privateApiKeyConfigured' &&
         key !== 'swarmAuthConfigured'
-      ) nextValue[key] = value
+      ) {
+        if (key === 'narrativePrompt' && value === null) Reflect.deleteProperty(nextValue, key)
+        else nextValue[key] = value
+      }
     }
     this.database
       .prepare(`

@@ -44,7 +44,6 @@ import {
 } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
 import { readSwarmDiagnostic } from '../../shared/utils/swarmError.ts'
-import { DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
 import { fetchLlmChat, type LlmCallError } from '~/lib/llm'
 import { fetchChromeLlmChat } from '~/lib/chromeLlm'
 import { hideIncompleteVisualDirectivePrefix, parseSegments } from '~/lib/streamParser'
@@ -1333,7 +1332,7 @@ export const useStoriesStore = defineStore('stories', () => {
         )
       } else {
         const payload = buildChatMessages({
-          presetContent: DEFAULT_PRESET_CONTENT,
+          presetContent: settingsStore.activeNarrativePrompt,
           story,
           characters: storyCharacters,
           images: charactersStore.images,
@@ -1524,7 +1523,7 @@ export const useStoriesStore = defineStore('stories', () => {
         if (!mock && generationStillActive()) {
           await compactHistoryIfNeeded({
             story: activeStory.value ?? story,
-            presetContent: DEFAULT_PRESET_CONTENT,
+            presetContent: settingsStore.activeNarrativePrompt,
             storyCharacters,
             images: charactersStore.images,
             backgrounds: backgroundsStore.backgrounds,

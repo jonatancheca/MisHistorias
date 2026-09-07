@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import type { AppSettings } from '#shared/types'
 import { activeDataScope, readSettings, writeSettings } from '~/lib/db'
 import { DEFAULT_USER_COLOR } from '~/lib/colors'
+import { DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
 
 const DEFAULTS: AppSettings = {
   baseUrl: 'http://localhost:1234',
@@ -34,7 +35,8 @@ const DEFAULTS: AppSettings = {
   privateUserName: null,
   userColor: DEFAULT_USER_COLOR,
   protagonistPreferences: '',
-  privateProtagonistPreferences: null
+  privateProtagonistPreferences: null,
+  narrativePrompt: null
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -83,6 +85,9 @@ export const useSettingsStore = defineStore('settings', () => {
     activeDataScope.value === 'private'
       ? (settings.value.privateProtagonistPreferences ?? settings.value.protagonistPreferences)
       : settings.value.protagonistPreferences
+  )
+  const activeNarrativePrompt = computed(() =>
+    settings.value.narrativePrompt ?? DEFAULT_PRESET_CONTENT
   )
   const loaded = ref(false)
   let saveQueue: Promise<void> = Promise.resolve()
@@ -159,6 +164,7 @@ export const useSettingsStore = defineStore('settings', () => {
     activeHistoryBudget,
     activeUserName,
     activeProtagonistPreferences,
+    activeNarrativePrompt,
     loaded,
     load,
     save,

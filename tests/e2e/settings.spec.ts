@@ -314,11 +314,33 @@ test('muestra, crea y restaura backups SQLite con confirmación', async ({ page,
   expect((await data.get<Character>('characters', character.id)).name).toBe(character.name)
 })
 
-test('muestra prompt narrativo integrado y elimina mantenimiento de prompts', async ({ page }) => {
+test('personaliza y revierte el prompt narrativo integrado', async ({ page, data }) => {
+  await data.patchSettings({ narrativePrompt: null })
   await page.goto('/settings')
   const prompt = page.getByLabel('Prompt narrativo integrado')
   await expect(prompt).toHaveValue(DEFAULT_PRESET_CONTENT)
-  await expect(prompt).toHaveAttribute('readonly', '')
+  await expect(prompt).toBeEditable()
+  const revert = page.getByRole('button', { name: 'Revertir a prompt por defecto' })
+  await expect(revert).toHaveCount(0)
+
+  await prompt.fill('Prompt narrativo personalizado')
+  await expect(revert).toBeVisible()
+  await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
+  await expect.poll(async () => {
+    const response = await page.request.get('/api/settings')
+    return ((await response.json()) as AppSettings).narrativePrompt
+  }).toBe('Prompt narrativo personalizado')
+
+  await page.reload()
+  await expect(prompt).toHaveValue('Prompt narrativo personalizado')
+  await revert.click()
+  await expect(prompt).toHaveValue(DEFAULT_PRESET_CONTENT)
+  await expect(revert).toHaveCount(0)
+  await expect.poll(async () => {
+    const response = await page.request.get('/api/settings')
+    return ((await response.json()) as AppSettings).narrativePrompt
+  }).toBeNull()
+
   await expect(page.getByRole('link', { name: 'Prompts', exact: true })).toHaveCount(0)
   await page.goto('/prompts')
   await expect(page.getByRole('heading', { name: '404' })).toBeVisible()

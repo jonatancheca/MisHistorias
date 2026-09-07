@@ -30,6 +30,8 @@ const appUpdate = useAppUpdate()
 await settings.load()
 
 const form = reactive({ ...settings.settings })
+const narrativePrompt = ref(settings.settings.narrativePrompt ?? DEFAULT_PRESET_CONTENT)
+const narrativePromptCustomized = ref(settings.settings.narrativePrompt !== null)
 const privateLlmSettingsEnabled = ref(
   privacy.isPrivate && settings.settings.privateLlmSettingsEnabled
 )
@@ -93,6 +95,7 @@ let swarmAuthTokenDirty = false
 let revealingSwarmAuthToken = false
 let privateUserNameDirty: boolean = false
 let privateProtagonistPreferencesDirty: boolean = false
+let narrativePromptDirty = false
 let privateClickCount = 0
 let privateClickTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -146,6 +149,9 @@ function settingsPatch() {
     patch.userName = form.userName.trim() || 'Protagonista'
     patch.protagonistPreferences = form.protagonistPreferences.trim()
   }
+  if (narrativePromptDirty) {
+    patch.narrativePrompt = narrativePromptCustomized.value ? narrativePrompt.value : null
+  }
   if (apiKeyDirty) {
     if (privacy.isPrivate && privateLlmSettingsEnabled.value) {
       patch.privateApiKey = form.apiKey.trim()
@@ -173,6 +179,7 @@ function enqueueSave(revision: number) {
         if ('swarmAuthToken' in patch) swarmAuthTokenDirty = false
         if ('privateUserName' in patch) privateUserNameDirty = false
         if ('privateProtagonistPreferences' in patch) privateProtagonistPreferencesDirty = false
+        if ('narrativePrompt' in patch) narrativePromptDirty = false
         form.apiKeyConfigured =
           privacy.isPrivate && privateLlmSettingsEnabled.value
             ? settings.settings.privateApiKeyConfigured
@@ -211,6 +218,19 @@ function markPrivateUserNameDirty() {
 
 function markPrivateProtagonistPreferencesDirty() {
   privateProtagonistPreferencesDirty = true
+}
+
+function onNarrativePromptInput() {
+  narrativePromptCustomized.value = true
+  narrativePromptDirty = true
+  scheduleSave()
+}
+
+function revertNarrativePrompt() {
+  narrativePrompt.value = DEFAULT_PRESET_CONTENT
+  narrativePromptCustomized.value = false
+  narrativePromptDirty = true
+  scheduleSave()
 }
 
 function clearApiKey() {
@@ -953,14 +973,22 @@ onBeforeRouteLeave(async () => {
     <section class="mt-10" data-testid="narrative-prompt-settings">
       <h2 class="mb-2 text-lg font-semibold">Prompt narrativo</h2>
       <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
-        Prompt integrado usado para preparar cada historia.
+        Prompt usado para preparar cada historia. Si no lo personalizas, se usa el integrado en el código.
       </p>
       <textarea
-        :value="DEFAULT_PRESET_CONTENT"
+        v-model="narrativePrompt"
         class="field min-h-64 w-full font-mono text-sm"
         aria-label="Prompt narrativo integrado"
-        readonly
+        @input="onNarrativePromptInput"
       />
+      <button
+        v-if="narrativePromptCustomized"
+        type="button"
+        class="btn mt-3"
+        @click="revertNarrativePrompt"
+      >
+        Revertir a prompt por defecto
+      </button>
     </section>
 
     <section class="mt-10" data-testid="swarm-settings">

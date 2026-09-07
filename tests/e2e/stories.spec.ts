@@ -447,6 +447,7 @@ test.describe('chat', () => {
 
   test('envía un único system con catálogo completo para Qwen', async ({ page, data }) => {
     const { story, character, background } = await createStoryFixture(data)
+    const narrativePrompt = data.unique('Prompt-narrativo')
     await data.createImage(character, ['feliz', 'armadura'])
     await data.createImage(character, ['feliz'])
     const sound = await data.createSound(character, [data.unique('campana')])
@@ -456,7 +457,8 @@ test.describe('chat', () => {
       model: 'qwen-test',
       responseSpeed: 'instant',
       useChromeLlm: false,
-      privateUseChromeLlm: null
+      privateUseChromeLlm: null,
+      narrativePrompt
     })
     let requestMessages: Array<{ role: string; content: string }> = []
     await page.route('**/api/llm/chat', async (route) => {
@@ -473,6 +475,7 @@ test.describe('chat', () => {
 
     expect(requestMessages.filter((message) => message.role === 'system')).toHaveLength(1)
     const systemContent = requestMessages[0]?.content ?? ''
+    expect(systemContent.startsWith(narrativePrompt)).toBe(true)
     expect(systemContent).toContain(character.name)
     expect(systemContent).toContain(character.prompt)
     expect(systemContent).toContain(character.tags.join(', '))
@@ -483,6 +486,7 @@ test.describe('chat', () => {
     expect(systemContent).toContain(`[${sound.tags[0]}] (personaje ${character.name})`)
     expect(systemContent).toContain('Habla en susurros.')
     expect(requestMessages.slice(1).every((message) => message.role !== 'system')).toBe(true)
+    await data.patchSettings({ narrativePrompt: null })
   })
 
   test('compacta historial, bloquea envíos y permite revisar su debug', async ({ page, data }) => {

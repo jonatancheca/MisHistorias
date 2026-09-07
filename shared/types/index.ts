@@ -296,6 +296,8 @@ export interface AppSettings {
   protagonistPreferences: string
   /** Preferencias exclusivas del ámbito privado; null hereda las globales normales */
   privateProtagonistPreferences: string | null
+  /** Prompt narrativo personalizado; null usa el integrado en el código. */
+  narrativePrompt: string | null
 }
 
 export type DatabaseBackupKind = 'manual' | 'migration' | 'before-restore'
