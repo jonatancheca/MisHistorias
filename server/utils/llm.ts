@@ -1,16 +1,3 @@
-const PRIVATE_HOST_PATTERNS = [
-  /^localhost$/i,
-  /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/,
-  /^0\.0\.0\.0$/,
-  /^\[?::1\]?$/,
-  /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/,
-  /^192\.168\.\d{1,3}\.\d{1,3}$/,
-  /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/,
-  /^169\.254\.\d{1,3}\.\d{1,3}$/,
-  /\.local$/i,
-  /^host\.docker\.internal$/i
-]
-
 export interface LlmProxySettings {
   baseUrl: string
   apiKey: string
