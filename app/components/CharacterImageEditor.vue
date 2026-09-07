@@ -38,6 +38,7 @@ const generationTags = ref<string[]>([])
 const generationNotes = ref('')
 const generationPrompt = ref('')
 const generationCount = ref('1')
+const selectedSwarmPromptIds = ref<string[]>([])
 const generationCompleted = ref(0)
 const generationTotal = ref(0)
 const generationCurrentPrompt = ref('')
@@ -107,13 +108,20 @@ async function toggleGeneration() {
   if (!generationOpen.value) return
   try {
     await Promise.all([
-      swarmPrompts.load(true),
+      swarmPrompts.load(true).then(() => {
+        selectedSwarmPromptIds.value = swarmPrompts.prompts.map((prompt) => prompt.id)
+      }),
       !swarmCatalog.value ? loadSwarmCatalog() : Promise.resolve()
     ])
   } catch (caught) {
     generationError.value = (caught as Error).message || 'No se pudieron cargar los prompts SwarmUI.'
   }
 }
+
+const selectedSwarmPrompts = computed(() => {
+  const selected = new Set(selectedSwarmPromptIds.value)
+  return swarmPrompts.prompts.filter((prompt) => selected.has(prompt.id))
+})
 
 async function createGenerationPrompt() {
   const character = characters.byId(props.characterId)
@@ -158,7 +166,11 @@ async function generateImage(asSet = false) {
   const controller = new AbortController()
   generationController = controller
   try {
-    if (asSet) await swarmPrompts.load(true)
+    if (asSet) {
+      await swarmPrompts.load(true)
+      const available = new Set(swarmPrompts.prompts.map((prompt) => prompt.id))
+      selectedSwarmPromptIds.value = selectedSwarmPromptIds.value.filter((id) => available.has(id))
+    }
     const character = characters.byId(characterId)
     if (!character) throw new Error('Personaje no encontrado.')
     const generationCharacter = {
@@ -175,13 +187,13 @@ async function generateImage(asSet = false) {
       count: Number(generationCount.value),
       prompt: generationPrompt.value,
       tags: generationTags.value,
-      prompts: asSet ? swarmPrompts.prompts : undefined
+      prompts: asSet ? selectedSwarmPrompts.value : undefined
     })
     generationTotal.value = batch.total
     const preset = imageGenerationPreset.value.trim()
     if (asSet && !await confirmDialog.ask({
       title: 'Crear conjunto de imágenes', confirmLabel: 'Crear conjunto',
-      message: `${generationCount.value} imágenes × ${swarmPrompts.prompts.length} prompts = ${batch.total} imágenes. ¿Crear el conjunto?`
+      message: `${generationCount.value} imágenes × ${selectedSwarmPrompts.value.length} prompts = ${batch.total} imágenes. ¿Crear el conjunto?`
     })) return
     controller.signal.throwIfAborted()
     generationProgressOpen.value = true
@@ -562,6 +574,22 @@ function removeFromLightbox(item: { id?: string }) {
           <label class="label" for="generation-count">Número de imágenes</label>
           <input id="generation-count" v-model="generationCount" class="field" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
         </div>
+        <fieldset v-if="swarmPrompts.prompts.length" class="grid min-w-0 gap-2">
+          <legend class="label">Prompts predefinidos para el conjunto</legend>
+          <p class="text-xs text-[var(--color-fg-muted)]">
+            Todos seleccionados por defecto. Desmarca los que no quieras generar.
+          </p>
+          <div class="flex min-w-0 flex-wrap gap-x-4 gap-y-2">
+            <label
+              v-for="prompt in swarmPrompts.prompts"
+              :key="prompt.id"
+              class="flex min-w-0 items-center gap-2 text-sm"
+            >
+              <input v-model="selectedSwarmPromptIds" type="checkbox" :value="prompt.id" class="accent-brand-500">
+              <span class="truncate">{{ prompt.name }}</span>
+            </label>
+          </div>
+        </fieldset>
         <div class="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -574,7 +602,7 @@ function removeFromLightbox(item: { id?: string }) {
           <button
             type="button"
             class="btn-primary"
-            :disabled="generationBusy || (!generationPrompt.trim() && !imageGenerationPromptPrefix.trim()) || !swarmPrompts.prompts.length"
+            :disabled="generationBusy || (!generationPrompt.trim() && !imageGenerationPromptPrefix.trim()) || !selectedSwarmPrompts.length"
             @click="generateImage(true)"
           >
             Crear conjunto de imágenes
@@ -585,6 +613,9 @@ function removeFromLightbox(item: { id?: string }) {
         </div>
         <p v-if="!swarmPrompts.prompts.length" class="text-sm text-[var(--color-fg-muted)]">
           Crea al menos un <NuxtLink to="/swarm-prompts" class="underline">prompt SwarmUI</NuxtLink> para generar un conjunto.
+        </p>
+        <p v-else-if="!selectedSwarmPrompts.length" class="text-sm text-[var(--color-fg-muted)]">
+          Selecciona al menos un prompt SwarmUI para crear el conjunto.
         </p>
         <p v-else-if="!generationPrompt.trim() && !imageGenerationPromptPrefix.trim()" class="text-sm text-[var(--color-fg-muted)]">Indica el prompt base o un prefijo para crear el conjunto.</p>
       </fieldset>

@@ -170,6 +170,8 @@ test('mantiene catálogo y crea conjunto con semillas compartidas, etiquetas y t
   await page.getByTestId('character-swarm-toggle').click()
   const batchButton = page.getByRole('button', { name: 'Crear conjunto de imágenes', exact: true })
   await expect(batchButton).toBeEnabled()
+  await expect(page.getByRole('checkbox', { name: 'Sentada', exact: true })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'De pie', exact: true })).toBeChecked()
   await batchButton.click()
   const prefixOnlyDialog = page.getByRole('alertdialog')
   await expect(prefixOnlyDialog).toContainText('1 imágenes × 2 prompts = 2 imágenes')
@@ -239,6 +241,45 @@ test('mantiene catálogo y crea conjunto con semillas compartidas, etiquetas y t
     tags: image.tags, isDefault: image.isDefault, generation: image.generation
   })).sort()
   expect(imageMetadata(importedImages)).toEqual(imageMetadata(images))
+})
+
+test('permite excluir prompts al crear un conjunto de imágenes', async ({ page, data }) => {
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  const character = await data.createCharacter({ imageGenerationPromptPrefix: 'quality' })
+  const prompts = [
+    { id: data.unique('prompt'), name: 'Sentada', prompt: 'sitting', tags: ['sentada'], createdAt: 1, updatedAt: 1 },
+    { id: data.unique('prompt'), name: 'De pie', prompt: 'standing', tags: ['de pie'], createdAt: 2, updatedAt: 2 }
+  ]
+  for (const prompt of prompts) {
+    await expect(await page.request.put(`/api/data/swarmPrompts/${prompt.id}?scope=normal`, { data: prompt })).toBeOK()
+  }
+  const bodies: Array<Record<string, unknown>> = []
+  await page.route('**/api/swarm/catalog', (route) => route.fulfill({ json: CATALOG }))
+  await page.route('**/api/swarm/generate', async (route) => {
+    bodies.push(route.request().postDataJSON())
+    await route.fulfill({ contentType: 'image/png', body: PNG_BYTES })
+  })
+
+  await page.goto(`/characters/${character.id}`)
+  await page.getByTestId('character-swarm-toggle').click()
+  await expect(page.getByRole('checkbox', { name: 'Sentada', exact: true })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'De pie', exact: true })).toBeChecked()
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 850 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
+  await page.getByRole('checkbox', { name: 'De pie', exact: true }).uncheck()
+  await page.getByLabel('Modelo SwarmUI').selectOption('model-a')
+  await page.getByLabel('Prompt de imagen (inglés y editable)').fill('portrait')
+  await page.getByRole('button', { name: 'Crear conjunto de imágenes', exact: true }).click()
+  const dialog = page.getByRole('alertdialog')
+  await expect(dialog).toContainText('1 imágenes × 1 prompts = 1 imágenes')
+  await dialog.getByRole('button', { name: 'Crear conjunto', exact: true }).click()
+
+  await expect(page.getByText('Imagen generada y guardada en la galería.')).toBeVisible()
+  expect(bodies.map((body) => body.prompt)).toEqual(['quality\nportrait, sitting'])
+  expect((await data.list<CharacterImage>('images', 'normal', { characterId: character.id })).map((image) => image.tags))
+    .toEqual([['sentada']])
 })
 
 test('muestra progreso, prompt actual y última imagen al generar un lote', async ({ page, data }) => {
