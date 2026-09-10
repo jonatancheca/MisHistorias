@@ -112,6 +112,21 @@ test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) =>
   await expect(page.locator('html')).toHaveClass(/dark/)
 })
 
+test('activa modo privado con Ctrl+Alt+P sin cambiar URL ni interrumpir inputs', async ({ page }) => {
+  await page.goto('/settings')
+
+  await page.getByLabel('Nombre', { exact: true }).focus()
+  await page.keyboard.press('Control+Alt+p')
+  await expect(page.locator('html')).not.toHaveClass(/private-scope/)
+
+  await page.locator('main').press('Control+Alt+p')
+  await expect(page).toHaveURL('/settings')
+  const leavePrivateMode = page.getByRole('button', { name: 'Salir del modo privado' })
+  await expect(leavePrivateMode).toBeVisible()
+  await leavePrivateMode.click()
+  await expect(page).toHaveURL('/settings')
+})
+
 test('prepara Chrome AI y guarda override privado', async ({ page, data }) => {
   await data.patchSettings({ useChromeLlm: false, privateUseChromeLlm: null })
   await page.addInitScript(() => {
@@ -157,7 +172,7 @@ test('prepara Chrome AI y guarda override privado', async ({ page, data }) => {
   await privateTrigger.click()
   await privateTrigger.click()
   await privateTrigger.click()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/settings')
   await page.getByRole('link', { name: 'Ajustes' }).click()
 
   const privateCheckbox = page.getByRole('checkbox', { name: /Usar IA local de Chrome/ })
@@ -198,7 +213,7 @@ test('personaliza LMStudio en privado y vuelve a heredar al desactivarlo', async
   await privateTrigger.click()
   await privateTrigger.click()
   await privateTrigger.click()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/settings')
   await page.getByRole('link', { name: 'Ajustes' }).click()
 
   const customize = page.getByRole('checkbox', { name: /Personalizar ajustes de LMStudio/ })
@@ -358,13 +373,13 @@ test('separa datos normales y privados', async ({ page, data }) => {
   await privateTrigger.click()
   await privateTrigger.click()
   await privateTrigger.click()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/settings')
   await page.getByRole('link', { name: 'Personajes' }).click()
   await expect(page.getByText(privateCharacter.name, { exact: true })).toBeVisible()
   await expect(page.getByText(normal.name, { exact: true })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Salir del modo privado' }).click()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/characters')
   await page.getByRole('link', { name: 'Personajes' }).click()
   await expect(page.getByText(normal.name, { exact: true })).toBeVisible()
   await expect(page.getByText(privateCharacter.name, { exact: true })).toHaveCount(0)

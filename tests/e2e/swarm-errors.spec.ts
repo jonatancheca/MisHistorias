@@ -200,7 +200,7 @@ for (const action of ['cancel', 'navigate', 'scope'] as const) {
         if (action === 'scope') {
           const trigger = page.getByRole('button', { name: 'Activar modo privado' })
           await trigger.click(); await trigger.click(); await trigger.click()
-          await expect(page).toHaveURL('/')
+          await expect(page).toHaveURL('/settings')
         }
       }
     } finally { release() }

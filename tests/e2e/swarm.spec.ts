@@ -331,7 +331,7 @@ test('edita y borra prompts sin mezclar catálogo normal y privado', async ({ pa
   await page.goto('/settings')
   const trigger = page.getByRole('button', { name: 'Activar modo privado' })
   await trigger.click(); await trigger.click(); await trigger.click()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/settings')
   await page.getByRole('link', { name: 'Prompts SwarmUI', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Normal editado', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Prompt privado', exact: true }).click()

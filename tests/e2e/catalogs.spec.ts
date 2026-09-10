@@ -568,7 +568,7 @@ test.describe('personajes', () => {
     await privateTrigger.click()
     await privateTrigger.click()
     await privateTrigger.click()
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL('/settings')
     await expect(page.getByRole('button', { name: 'Salir del modo privado', exact: true })).toBeVisible()
     await page.getByRole('link', { name: 'Personajes', exact: true }).click()
     await page.getByRole('link', { name: privateCharacter.name, exact: true }).click()
@@ -577,7 +577,7 @@ test.describe('personajes', () => {
 
     await page.getByRole('link', { name: 'Ajustes', exact: true }).click()
     await page.getByRole('button', { name: 'Salir del modo privado', exact: true }).click()
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL('/settings')
     await page.getByRole('link', { name: 'Personajes', exact: true }).click()
     await page.getByRole('link', { name: publicCharacter.name, exact: true }).click()
     await expect(page.getByRole('button', { name: publicTag, exact: true })).toBeVisible()

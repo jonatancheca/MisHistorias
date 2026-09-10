@@ -1,4 +1,13 @@
 <script setup lang="ts">
+const privacy = usePrivacyStore()
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false
+
+  const editable = target.closest('input, textarea, select, [contenteditable]')
+  return editable instanceof HTMLElement && editable.getAttribute('contenteditable') !== 'false'
+}
+
 function onSaveShortcut(event: KeyboardEvent) {
   if ((!event.ctrlKey && !event.metaKey) || event.key.toLowerCase() !== 's') return
   if (!(event.target instanceof HTMLElement)) return
@@ -13,8 +22,23 @@ function onSaveShortcut(event: KeyboardEvent) {
   form.requestSubmit(saveButton)
 }
 
-onMounted(() => window.addEventListener('keydown', onSaveShortcut))
-onBeforeUnmount(() => window.removeEventListener('keydown', onSaveShortcut))
+async function onPrivateModeShortcut(event: KeyboardEvent) {
+  if (!event.ctrlKey || !event.altKey || event.key.toLowerCase() !== 'p') return
+  if (privacy.isPrivate || privacy.switching || isEditableTarget(event.target)) return
+
+  event.preventDefault()
+  await privacy.activate()
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onSaveShortcut)
+  window.addEventListener('keydown', onPrivateModeShortcut)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onSaveShortcut)
+  window.removeEventListener('keydown', onPrivateModeShortcut)
+})
 </script>
 
 <template>

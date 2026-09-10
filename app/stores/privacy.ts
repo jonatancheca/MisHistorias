@@ -19,6 +19,7 @@ export const usePrivacyStore = defineStore('privacy', () => {
     const nextPrivate = scope === 'private'
     if (isPrivate.value === nextPrivate || switching.value) return
 
+    const currentPath = useRoute().fullPath
     switching.value = true
     const stories = useStoriesStore()
     const characters = useCharactersStore()
@@ -42,7 +43,7 @@ export const usePrivacyStore = defineStore('privacy', () => {
         backgrounds.load(),
         sounds.load(),
       ])
-      await navigateTo('/')
+      await navigateTo(currentPath)
     } finally {
       switching.value = false
     }

@@ -45,7 +45,7 @@ test('siembra el pack en ambas colecciones sin reponer borrados', async ({ page,
   await privateTrigger.click()
   await privateTrigger.click()
   await privateTrigger.click()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/settings')
   await page.getByRole('link', { name: 'Sonidos' }).click()
   await expect.poll(async () => {
     const response = await page.request.get('/api/settings')
@@ -66,7 +66,7 @@ test('siembra el pack en ambas colecciones sin reponer borrados', async ({ page,
   await privateTriggerAgain.click()
   await privateTriggerAgain.click()
   await privateTriggerAgain.click()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/settings')
   await page.getByRole('link', { name: 'Sonidos' }).click()
   await expect.poll(async () =>
     (await data.list<Sound>('sounds', 'private')).some((sound) => sound.id === privateRain.id)

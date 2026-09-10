@@ -1359,7 +1359,7 @@ test.describe('novela visual y responsive', () => {
     })
   })
 
-  test('activa modo privado con tres pulsaciones desde una historia inexistente', async ({ page }) => {
+  test('mantiene URL al activar modo privado desde una historia inexistente', async ({ page }) => {
     await page.goto('/stories/historia-inexistente')
     const trigger = page.getByTestId('missing-story-private-trigger')
     await expect(page.getByText('Historia no encontrada.')).toBeVisible()
@@ -1367,8 +1367,8 @@ test.describe('novela visual y responsive', () => {
     await trigger.click()
     expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('')
     await trigger.click()
-    await expect(page).toHaveURL('/')
-    await expect(page.getByRole('button', { name: 'Salir del modo privado' })).toBeVisible()
+    await expect(page).toHaveURL('/stories/historia-inexistente')
+    await expect(page.locator('html')).toHaveClass(/private-scope/)
   })
 
   test('muestra y vuelve a reproducir sonidos al navegar en Novela Visual', async ({ page, data }) => {
