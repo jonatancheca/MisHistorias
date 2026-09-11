@@ -116,7 +116,8 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
       visualNovelManualAdvance: true,
       swarmBaseUrl: 'http://localhost:7801',
       swarmAuthToken: 'swarm-secreto',
-      narrativePrompt: 'Prompt personalizado'
+      narrativePrompt: 'Prompt personalizado',
+      characterReferencePrompt: 'Prompt visual personalizado'
     })
     storage.close()
 
@@ -151,6 +152,10 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
       assert.equal(reopened.readSettings()?.value.privateUseChromeLlm, false)
       assert.equal(reopened.readSettings()?.value.visualNovelManualAdvance, true)
       assert.equal(reopened.readSettings()?.value.narrativePrompt, 'Prompt personalizado')
+      assert.equal(
+        reopened.readSettings()?.value.characterReferencePrompt,
+        'Prompt visual personalizado'
+      )
       assert.equal(reopened.readSettings()?.apiKey, 'secreto')
       assert.equal(reopened.readSettings()?.swarmAuthToken, 'swarm-secreto')
       assert.equal(
@@ -160,8 +165,9 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
       )
       assert.equal(reopened.get('stories', 'normal', 'story-normal')?.autoGenerateImages, true)
       assert.equal(reopened.health().schemaVersion, 32)
-      reopened.writeSettings({ narrativePrompt: null })
+      reopened.writeSettings({ narrativePrompt: null, characterReferencePrompt: null })
       assert.equal('narrativePrompt' in (reopened.readSettings()?.value ?? {}), false)
+      assert.equal('characterReferencePrompt' in (reopened.readSettings()?.value ?? {}), false)
     } finally {
       reopened.close()
     }

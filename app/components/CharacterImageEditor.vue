@@ -500,7 +500,7 @@ function removeFromLightbox(item: { id?: string }) {
           </div>
         </div>
 
-        <div class="grid min-w-0 gap-3 md:grid-cols-2">
+        <div>
           <div>
             <label class="label" for="character-swarm-seed">Semilla SwarmUI</label>
             <input
@@ -515,19 +515,6 @@ function removeFromLightbox(item: { id?: string }) {
             >
             <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
               Vacía usa una semilla aleatoria. Se recuerda para este personaje.
-            </p>
-          </div>
-          <div>
-            <label class="label" for="character-swarm-prompt-prefix">Prefijo del prompt</label>
-            <textarea
-              id="character-swarm-prompt-prefix"
-              v-model="imageGenerationPromptPrefix"
-              autocomplete="off"
-              class="field min-h-20"
-              placeholder="masterpiece, detailed character portrait"
-            />
-            <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-              Se antepone a prompts creados con IA o escritos manualmente.
             </p>
           </div>
         </div>

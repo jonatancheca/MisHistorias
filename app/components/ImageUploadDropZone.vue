@@ -6,8 +6,9 @@ const props = withDefaults(
     busyLabel: string
     zoneLabel: string
     multiple?: boolean
+    accept?: string
   }>(),
-  { multiple: false }
+  { multiple: false, accept: 'image/*' }
 )
 
 const emit = defineEmits<{
@@ -73,7 +74,7 @@ function onPaste(event: ClipboardEvent) {
     <input
       ref="fileInput"
       type="file"
-      accept="image/*"
+      :accept="accept"
       autocomplete="off"
       class="hidden"
       :multiple="multiple"

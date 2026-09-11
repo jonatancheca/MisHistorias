@@ -29,7 +29,8 @@ const ALLOWED_SETTINGS = new Set([
   'userColor',
   'protagonistPreferences',
   'privateProtagonistPreferences',
-  'narrativePrompt'
+  'narrativePrompt',
+  'characterReferencePrompt'
 ])
 
 function validSetting(key: string, value: unknown) {
@@ -85,6 +86,7 @@ function validSetting(key: string, value: unknown) {
     case 'privateProtagonistPreferences':
       return value === null || (typeof value === 'string' && value.length <= 100000)
     case 'narrativePrompt':
+    case 'characterReferencePrompt':
       return value === null || (typeof value === 'string' && value.length <= 100000)
     default:
       return false
@@ -97,6 +99,7 @@ function publicSettings(row: ReturnType<ReturnType<typeof getStorage>['readSetti
     useChromeLlm: false,
     privateUseChromeLlm: null,
     narrativePrompt: null,
+    characterReferencePrompt: null,
     ...row.value,
     apiKey: '',
     apiKeyConfigured: Boolean(row.apiKey),

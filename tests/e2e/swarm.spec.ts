@@ -410,7 +410,7 @@ test('crea prompt editable y guarda la imagen generada en WebP', async ({ page, 
   await page.getByLabel('Modelo SwarmUI').selectOption('model-b')
   await page.getByLabel('LoRA SwarmUI').selectOption('detail-lora')
   await page.getByLabel('Semilla SwarmUI').fill('9243353')
-  await page.getByLabel('Prefijo del prompt').fill(promptPrefix)
+  await page.getByLabel('Prompt visual base').fill(promptPrefix)
   await page.getByLabel('Etiquetas para el prompt').fill('plano entero')
   await page.getByLabel('Etiquetas para el prompt').press('Enter')
   await page.getByLabel('Notas para el prompt').fill('Capa roja y gesto decidido.')

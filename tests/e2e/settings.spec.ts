@@ -1,4 +1,5 @@
 import type { AppSettings, Character, DatabaseBackup } from '../../shared/types'
+import { DEFAULT_CHARACTER_REFERENCE_PROMPT } from '../../app/lib/characterReferencePrompt'
 import { DEFAULT_PRESET_CONTENT } from '../../app/lib/defaultPreset'
 import { expect, test } from './fixtures'
 
@@ -359,6 +360,33 @@ test('personaliza y revierte el prompt narrativo integrado', async ({ page, data
   await expect(page.getByRole('link', { name: 'Prompts', exact: true })).toHaveCount(0)
   await page.goto('/prompts')
   await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
+})
+
+test('personaliza y revierte el prompt de referencia de personaje', async ({ page, data }) => {
+  await data.patchSettings({ characterReferencePrompt: null })
+  await page.goto('/settings')
+  const prompt = page.getByLabel('Prompt de referencia de personaje integrado')
+  await expect(prompt).toHaveValue(DEFAULT_CHARACTER_REFERENCE_PROMPT)
+  const revert = page.getByRole('button', { name: 'Revertir prompt de referencia por defecto' })
+  await expect(revert).toHaveCount(0)
+
+  await prompt.fill('Describe únicamente la identidad visible.')
+  await expect(revert).toBeVisible()
+  await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
+  await expect.poll(async () => {
+    const response = await page.request.get('/api/settings')
+    return ((await response.json()) as AppSettings).characterReferencePrompt
+  }).toBe('Describe únicamente la identidad visible.')
+
+  await page.reload()
+  await expect(prompt).toHaveValue('Describe únicamente la identidad visible.')
+  await revert.click()
+  await expect(prompt).toHaveValue(DEFAULT_CHARACTER_REFERENCE_PROMPT)
+  await expect(revert).toHaveCount(0)
+  await expect.poll(async () => {
+    const response = await page.request.get('/api/settings')
+    return ((await response.json()) as AppSettings).characterReferencePrompt
+  }).toBeNull()
 })
 
 test('separa datos normales y privados', async ({ page, data }) => {

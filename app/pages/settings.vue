@@ -18,6 +18,7 @@ import {
   fetchSwarmImage,
   type SwarmCatalog
 } from '~/lib/swarm'
+import { DEFAULT_CHARACTER_REFERENCE_PROMPT } from '~/lib/characterReferencePrompt'
 import { DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
 
 const settings = useSettingsStore()
@@ -32,6 +33,12 @@ await settings.load()
 const form = reactive({ ...settings.settings })
 const narrativePrompt = ref(settings.settings.narrativePrompt ?? DEFAULT_PRESET_CONTENT)
 const narrativePromptCustomized = ref(settings.settings.narrativePrompt !== null)
+const characterReferencePrompt = ref(
+  settings.settings.characterReferencePrompt ?? DEFAULT_CHARACTER_REFERENCE_PROMPT
+)
+const characterReferencePromptCustomized = ref(
+  settings.settings.characterReferencePrompt !== null
+)
 const privateLlmSettingsEnabled = ref(
   privacy.isPrivate && settings.settings.privateLlmSettingsEnabled
 )
@@ -96,6 +103,7 @@ let revealingSwarmAuthToken = false
 let privateUserNameDirty: boolean = false
 let privateProtagonistPreferencesDirty: boolean = false
 let narrativePromptDirty = false
+let characterReferencePromptDirty = false
 let privateClickCount = 0
 let privateClickTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -152,6 +160,11 @@ function settingsPatch() {
   if (narrativePromptDirty) {
     patch.narrativePrompt = narrativePromptCustomized.value ? narrativePrompt.value : null
   }
+  if (characterReferencePromptDirty) {
+    patch.characterReferencePrompt = characterReferencePromptCustomized.value
+      ? characterReferencePrompt.value
+      : null
+  }
   if (apiKeyDirty) {
     if (privacy.isPrivate && privateLlmSettingsEnabled.value) {
       patch.privateApiKey = form.apiKey.trim()
@@ -180,6 +193,7 @@ function enqueueSave(revision: number) {
         if ('privateUserName' in patch) privateUserNameDirty = false
         if ('privateProtagonistPreferences' in patch) privateProtagonistPreferencesDirty = false
         if ('narrativePrompt' in patch) narrativePromptDirty = false
+        if ('characterReferencePrompt' in patch) characterReferencePromptDirty = false
         form.apiKeyConfigured =
           privacy.isPrivate && privateLlmSettingsEnabled.value
             ? settings.settings.privateApiKeyConfigured
@@ -230,6 +244,19 @@ function revertNarrativePrompt() {
   narrativePrompt.value = DEFAULT_PRESET_CONTENT
   narrativePromptCustomized.value = false
   narrativePromptDirty = true
+  scheduleSave()
+}
+
+function onCharacterReferencePromptInput() {
+  characterReferencePromptCustomized.value = true
+  characterReferencePromptDirty = true
+  scheduleSave()
+}
+
+function revertCharacterReferencePrompt() {
+  characterReferencePrompt.value = DEFAULT_CHARACTER_REFERENCE_PROMPT
+  characterReferencePromptCustomized.value = false
+  characterReferencePromptDirty = true
   scheduleSave()
 }
 
@@ -988,6 +1015,28 @@ onBeforeRouteLeave(async () => {
         @click="revertNarrativePrompt"
       >
         Revertir a prompt por defecto
+      </button>
+    </section>
+
+    <section class="mt-10" data-testid="character-reference-prompt-settings">
+      <h2 class="mb-2 text-lg font-semibold">Prompt de referencia de personaje</h2>
+      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+        Instrucción enviada al modelo visual para deducir un prompt visual base desde una foto.
+        Si no la personalizas, se usa la integrada en el código.
+      </p>
+      <textarea
+        v-model="characterReferencePrompt"
+        class="field min-h-64 w-full font-mono text-sm"
+        aria-label="Prompt de referencia de personaje integrado"
+        @input="onCharacterReferencePromptInput"
+      />
+      <button
+        v-if="characterReferencePromptCustomized"
+        type="button"
+        class="btn mt-3"
+        @click="revertCharacterReferencePrompt"
+      >
+        Revertir prompt de referencia por defecto
       </button>
     </section>
 

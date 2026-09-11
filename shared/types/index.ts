@@ -298,6 +298,8 @@ export interface AppSettings {
   privateProtagonistPreferences: string | null
   /** Prompt narrativo personalizado; null usa el integrado en el código. */
   narrativePrompt: string | null
+  /** Instrucción personalizada para deducir el prompt visual desde una foto; null usa la integrada. */
+  characterReferencePrompt: string | null
 }
 
 export type DatabaseBackupKind = 'manual' | 'migration' | 'before-restore'

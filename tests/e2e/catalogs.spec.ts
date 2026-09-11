@@ -54,6 +54,95 @@ test.describe('personajes', () => {
     expect(stored).toMatchObject({ name, prompt, tags: [tag] })
   })
 
+  test('genera prompt visual desde foto antes de guardar sin añadirla a la galería', async ({ page, data }) => {
+    const name = data.unique('Referencia')
+    await data.patchSettings({
+      model: 'vision-test',
+      useChromeLlm: true,
+      characterReferencePrompt: 'Instrucción visual personalizada'
+    })
+    let received: Record<string, unknown> | null = null
+    await page.route('**/api/llm/chat', async (route) => {
+      received = route.request().postDataJSON() as Record<string, unknown>
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          content: '<think>omitido</think>Prompt: red-haired woman, green eyes, blue coat',
+          finishReason: 'stop'
+        })
+      })
+    })
+
+    await page.goto('/characters/new')
+    await page.locator('input[type=file][accept*="image/jpeg"]').setInputFiles({
+      name: 'referencia.png', mimeType: 'image/png', buffer: PNG_BYTES
+    })
+    await expect(page.getByRole('img', { name: 'Vista previa de foto de referencia' })).toBeVisible()
+    await page.getByRole('button', { name: 'Generar prompt desde foto' }).click()
+    await expect(page.getByLabel('Prompt visual base')).toHaveValue(
+      'red-haired woman, green eyes, blue coat'
+    )
+    const messages = received?.messages as Array<{ content: unknown }>
+    expect(received?.model).toBe('vision-test')
+    expect(messages[0]?.content).toBe('Instrucción visual personalizada')
+    expect(messages[1]?.content).toEqual([
+      {
+        type: 'text',
+        text: 'Create the reusable character prompt for ComfyUI from this reference photo.'
+      },
+      { type: 'image_url', image_url: { url: expect.stringMatching(/^data:image\/png;base64,/) } }
+    ])
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    }
+
+    await page.getByLabel('Nombre').fill(name)
+    await page.getByRole('button', { name: 'Guardar' }).click()
+    await expect(page).toHaveURL(/\/characters\/[^/]+$/)
+    const stored = (await data.list<Character>('characters')).find((item) => item.name === name)!
+    expect(stored.imageGenerationPromptPrefix).toBe('red-haired woman, green eyes, blue coat')
+    expect(await data.list<CharacterImage>('images', 'normal', { characterId: stored.id })).toHaveLength(0)
+  })
+
+  test('reemplaza prompt visual al editar y conserva anterior si falla', async ({ page, data }) => {
+    await data.patchSettings({ model: 'vision-test' })
+    const character = await data.createCharacter({ imageGenerationPromptPrefix: 'original visual' })
+    let shouldFail = true
+    await page.route('**/api/llm/chat', async (route) => {
+      if (shouldFail) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Fallo visual' })
+        })
+        return
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ content: 'updated visual identity', finishReason: 'stop' })
+      })
+    })
+
+    await page.goto(`/characters/${character.id}`)
+    await page.locator('input[type=file][accept*="image/jpeg"]').setInputFiles({
+      name: 'referencia.webp', mimeType: 'image/webp', buffer: PNG_BYTES
+    })
+    await page.getByRole('button', { name: 'Generar prompt desde foto' }).click()
+    await expect(page.getByRole('alert')).toContainText('Fallo visual')
+    await expect(page.getByLabel('Prompt visual base')).toHaveValue('original visual')
+
+    shouldFail = false
+    await page.getByRole('button', { name: 'Generar prompt desde foto' }).click()
+    await expect(page.getByLabel('Prompt visual base')).toHaveValue('updated visual identity')
+    await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
+    await expect.poll(async () => (
+      await data.get<Character>('characters', character.id)
+    ).imageGenerationPromptPrefix).toBe('updated visual identity')
+  })
+
   test('autoguarda edición de personaje existente', async ({ page, data }) => {
     const character = await data.createCharacter()
     const updatedPrompt = data.unique('Prompt-editado')

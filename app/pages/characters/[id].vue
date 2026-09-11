@@ -215,6 +215,7 @@ onBeforeRouteLeave(flushSave)
             Describen al personaje y no se mezclan con etiquetas de imagen. Pulsa badges o escribe una nueva.
           </p>
         </div>
+        <CharacterAppearanceEditor v-model="imageGenerationPromptPrefix" />
         <div class="flex min-h-10 items-center gap-3">
           <button v-if="isNew" type="submit" class="btn-primary" :disabled="!name.trim() || saving">
             Guardar
