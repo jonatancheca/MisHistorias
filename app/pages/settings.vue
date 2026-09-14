@@ -28,7 +28,29 @@ const stories = useStoriesStore()
 const privacy = usePrivacyStore()
 const confirmDialog = useConfirmStore()
 const appUpdate = useAppUpdate()
+const route = useRoute()
+const router = useRouter()
 await settings.load()
+
+const settingsSections = [
+  { id: 'apariencia', label: 'Apariencia' },
+  { id: 'llm', label: 'LLM' },
+  { id: 'prompt-narrativo', label: 'Prompt narrativo' },
+  { id: 'prompt-referencia-personaje', label: 'Prompt de referencia de personaje' },
+  { id: 'swarmui', label: 'SwarmUI' },
+  { id: 'actualizaciones', label: 'Actualizaciones' },
+  { id: 'protagonista', label: 'Protagonista' },
+  { id: 'datos', label: 'Datos' }
+] as const
+type SettingsSectionId = typeof settingsSections[number]['id']
+
+const settingsPageRef = ref<HTMLElement | null>(null)
+const settingsNavRef = ref<HTMLElement | null>(null)
+const activeSectionId = ref<SettingsSectionId>('apariencia')
+let pageScrollContainer: HTMLElement | null = null
+let sectionUpdateFrame: number | null = null
+let navScrollFrame: number | null = null
+let pendingHashBehavior: ScrollBehavior | null = null
 
 const form = reactive({ ...settings.settings })
 const narrativePrompt = ref(settings.settings.narrativePrompt ?? DEFAULT_PRESET_CONTENT)
@@ -106,6 +128,113 @@ let narrativePromptDirty = false
 let characterReferencePromptDirty = false
 let privateClickCount = 0
 let privateClickTimer: ReturnType<typeof setTimeout> | null = null
+
+function sectionIdFromHash(hash: string): SettingsSectionId | null {
+  const id = hash.startsWith('#') ? hash.slice(1) : hash
+  return settingsSections.some(section => section.id === id)
+    ? id as SettingsSectionId
+    : null
+}
+
+function sectionElement(id: SettingsSectionId) {
+  return settingsPageRef.value?.querySelector<HTMLElement>(`#${id}`) ?? null
+}
+
+function revealActiveNavItem() {
+  navScrollFrame = null
+  const nav = settingsNavRef.value
+  const link = nav?.querySelector<HTMLElement>(`[data-settings-section="${activeSectionId.value}"]`)
+  if (!nav || !link) return
+
+  const navRect = nav.getBoundingClientRect()
+  const linkRect = link.getBoundingClientRect()
+  let nextLeft = nav.scrollLeft
+  if (linkRect.left < navRect.left) {
+    nextLeft += linkRect.left - navRect.left - 8
+  } else if (linkRect.right > navRect.right) {
+    nextLeft += linkRect.right - navRect.right + 8
+  } else {
+    return
+  }
+  nav.scrollTo({ left: nextLeft, behavior: 'smooth' })
+}
+
+function setActiveSection(id: SettingsSectionId) {
+  if (activeSectionId.value === id) return
+  activeSectionId.value = id
+  if (navScrollFrame !== null) cancelAnimationFrame(navScrollFrame)
+  navScrollFrame = requestAnimationFrame(revealActiveNavItem)
+}
+
+function updateActiveSection() {
+  sectionUpdateFrame = null
+  const container = pageScrollContainer
+  if (!container) return
+
+  const lastSection = settingsSections.at(-1)
+  if (lastSection && container.scrollTop + container.clientHeight >= container.scrollHeight - 2) {
+    setActiveSection(lastSection.id)
+    return
+  }
+
+  const activationLine = (settingsNavRef.value?.getBoundingClientRect().bottom
+    ?? container.getBoundingClientRect().top) + 16
+  let current = settingsSections[0].id
+  for (const section of settingsSections) {
+    const element = sectionElement(section.id)
+    if (!element || element.getBoundingClientRect().top > activationLine) break
+    current = section.id
+  }
+  setActiveSection(current)
+}
+
+function queueSectionUpdate() {
+  if (sectionUpdateFrame !== null) return
+  sectionUpdateFrame = requestAnimationFrame(updateActiveSection)
+}
+
+function scrollToSettingsSection(id: SettingsSectionId, behavior: ScrollBehavior) {
+  const container = pageScrollContainer
+  const element = sectionElement(id)
+  if (!container || !element) return
+
+  const navHeight = settingsNavRef.value?.getBoundingClientRect().height ?? 0
+  const top = container.scrollTop
+    + element.getBoundingClientRect().top
+    - container.getBoundingClientRect().top
+    - navHeight
+    - 16
+  container.scrollTo({ top: Math.max(0, top), behavior })
+  setActiveSection(id)
+}
+
+function preferredScrollBehavior(): ScrollBehavior {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+}
+
+function navigateToSettingsSection(id: SettingsSectionId) {
+  const hash = `#${id}`
+  const behavior = preferredScrollBehavior()
+  if (route.hash === hash) {
+    scrollToSettingsSection(id, behavior)
+    return
+  }
+
+  pendingHashBehavior = behavior
+  void router.push({ path: route.path, query: route.query, hash })
+}
+
+watch(
+  () => route.hash,
+  async (hash) => {
+    const id = sectionIdFromHash(hash)
+    const behavior = pendingHashBehavior ?? 'auto'
+    pendingHashBehavior = null
+    if (!id) return
+    await nextTick()
+    requestAnimationFrame(() => scrollToSettingsSection(id, behavior))
+  }
+)
 
 async function testConnection() {
   testing.value = true
@@ -675,10 +804,22 @@ onBeforeUnmount(() => {
   if (privateClickTimer) clearTimeout(privateClickTimer)
   if (savedTimer) clearTimeout(savedTimer)
   if (swarmPreviewUrl.value) URL.revokeObjectURL(swarmPreviewUrl.value)
+  if (sectionUpdateFrame !== null) cancelAnimationFrame(sectionUpdateFrame)
+  if (navScrollFrame !== null) cancelAnimationFrame(navScrollFrame)
+  pageScrollContainer?.removeEventListener('scroll', queueSectionUpdate)
+  window.removeEventListener('resize', queueSectionUpdate)
   void flushSave()
 })
 
 onMounted(() => {
+  pageScrollContainer = settingsPageRef.value?.closest('main') ?? null
+  pageScrollContainer?.addEventListener('scroll', queueSectionUpdate, { passive: true })
+  window.addEventListener('resize', queueSectionUpdate)
+  requestAnimationFrame(() => {
+    const initialSection = sectionIdFromHash(route.hash)
+    if (initialSection) scrollToSettingsSection(initialSection, 'auto')
+    else updateActiveSection()
+  })
   void refreshChromeLlmAvailability()
   if (!appUpdate.checked.value) void appUpdate.check({ silent: true })
   const message = sessionStorage.getItem('mishistorias-backup-message')
@@ -693,7 +834,7 @@ onBeforeRouteLeave(async () => {
 </script>
 
 <template>
-  <div class="page-shell">
+  <div ref="settingsPageRef" class="page-shell">
     <h1 class="mb-6 text-2xl font-bold">Ajustes</h1>
     <p class="-mt-4 mb-6 min-h-5 text-xs text-[var(--color-fg-muted)]" aria-live="polite">
       <span v-if="saveStatus === 'saving'">Guardando…</span>
@@ -703,7 +844,33 @@ onBeforeRouteLeave(async () => {
       </span>
     </p>
 
-    <section class="mb-8">
+    <nav
+      class="sticky top-0 z-20 mb-8 hidden bg-[var(--color-surface)] py-2 sm:block"
+      aria-label="Secciones de ajustes"
+    >
+      <div
+        ref="settingsNavRef"
+        class="settings-section-nav flex gap-2 overflow-x-auto rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-2 shadow-sm"
+        data-testid="settings-section-nav"
+      >
+        <a
+          v-for="section in settingsSections"
+          :key="section.id"
+          :href="`#${section.id}`"
+          class="shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors"
+          :class="activeSectionId === section.id
+            ? 'bg-brand-500 text-white'
+            : 'bg-[var(--color-surface-alt)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'"
+          :aria-current="activeSectionId === section.id ? 'location' : undefined"
+          :data-settings-section="section.id"
+          @click.prevent="navigateToSettingsSection(section.id)"
+        >
+          {{ section.label }}
+        </a>
+      </div>
+    </nav>
+
+    <section id="apariencia" class="mb-8">
       <h2 class="mb-2 text-lg font-semibold">Apariencia</h2>
       <div class="flex flex-wrap gap-2">
         <button
@@ -741,7 +908,7 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section class="mt-10" data-testid="llm-settings">
+    <section id="llm" class="mt-10" data-testid="llm-settings">
       <h2 class="mb-2 text-lg font-semibold">LLM</h2>
       <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
         Generación de texto para historias con Chrome o LMStudio.
@@ -997,7 +1164,7 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section class="mt-10" data-testid="narrative-prompt-settings">
+    <section id="prompt-narrativo" class="mt-10" data-testid="narrative-prompt-settings">
       <h2 class="mb-2 text-lg font-semibold">Prompt narrativo</h2>
       <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
         Prompt usado para preparar cada historia. Si no lo personalizas, se usa el integrado en el código.
@@ -1018,7 +1185,7 @@ onBeforeRouteLeave(async () => {
       </button>
     </section>
 
-    <section class="mt-10" data-testid="character-reference-prompt-settings">
+    <section id="prompt-referencia-personaje" class="mt-10" data-testid="character-reference-prompt-settings">
       <h2 class="mb-2 text-lg font-semibold">Prompt de referencia de personaje</h2>
       <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
         Instrucción enviada al modelo visual para deducir un prompt visual base desde una foto.
@@ -1040,7 +1207,7 @@ onBeforeRouteLeave(async () => {
       </button>
     </section>
 
-    <section class="mt-10" data-testid="swarm-settings">
+    <section id="swarmui" class="mt-10" data-testid="swarm-settings">
       <h2 class="mb-2 text-lg font-semibold">SwarmUI</h2>
       <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
         Generación manual de imágenes. No se usa durante las historias.
@@ -1198,7 +1365,7 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section class="mt-10" data-testid="app-update-settings">
+    <section id="actualizaciones" class="mt-10" data-testid="app-update-settings">
       <h2 class="mb-2 text-lg font-semibold">Actualizaciones</h2>
       <div class="card">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1260,7 +1427,7 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section class="mt-10">
+    <section id="protagonista" class="mt-10">
       <h2 class="mb-2 text-lg font-semibold">Protagonista</h2>
       <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
         <template v-if="privacy.isPrivate">
@@ -1311,7 +1478,7 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section class="mt-10">
+    <section id="datos" class="mt-10">
       <h2 class="mb-2 text-lg font-semibold">Datos</h2>
       <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
         Todo se guarda en SQLite y se comparte con los equipos que usan este servidor.
@@ -1402,3 +1569,13 @@ onBeforeRouteLeave(async () => {
     </section>
   </div>
 </template>
+
+<style scoped>
+.settings-section-nav {
+  scrollbar-width: none;
+}
+
+.settings-section-nav::-webkit-scrollbar {
+  display: none;
+}
+</style>

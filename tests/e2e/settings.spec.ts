@@ -90,6 +90,57 @@ test('agrupa LLM y unifica controles de conexión y tokens', async ({ page, data
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
 })
 
+test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 720 })
+  await page.goto('/settings')
+
+  const nav = page.getByTestId('settings-section-nav')
+  await expect(nav).toBeVisible()
+  await expect(nav.getByRole('link')).toHaveCount(8)
+  await expect(nav.getByRole('link', { name: 'Apariencia' }))
+    .toHaveAttribute('aria-current', 'location')
+
+  await nav.getByRole('link', { name: 'SwarmUI' }).click()
+  await expect(page).toHaveURL(/\/settings#swarmui$/)
+  await expect(nav.getByRole('link', { name: 'SwarmUI' }))
+    .toHaveAttribute('aria-current', 'location')
+
+  await nav.getByRole('link', { name: 'Datos' }).click()
+  await expect(page).toHaveURL(/\/settings#datos$/)
+  await expect(nav.getByRole('link', { name: 'Datos' }))
+    .toHaveAttribute('aria-current', 'location')
+
+  await page.goBack()
+  await expect(page).toHaveURL(/\/settings#swarmui$/)
+  await expect(nav.getByRole('link', { name: 'SwarmUI' }))
+    .toHaveAttribute('aria-current', 'location')
+
+  await page.goForward()
+  await expect(page).toHaveURL(/\/settings#datos$/)
+  await expect(nav.getByRole('link', { name: 'Datos' }))
+    .toHaveAttribute('aria-current', 'location')
+
+  await page.setViewportSize({ width: 640, height: 720 })
+  await page.locator('main').evaluate(element => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect(nav.getByRole('link', { name: 'Datos' }))
+    .toHaveAttribute('aria-current', 'location')
+  await expect.poll(() => nav.evaluate((element) => {
+    const active = element.querySelector<HTMLElement>('[aria-current="location"]')
+    if (!active) return false
+    const navRect = element.getBoundingClientRect()
+    const activeRect = active.getBoundingClientRect()
+    return activeRect.left >= navRect.left && activeRect.right <= navRect.right
+  })).toBe(true)
+
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 800 })
+    await expect(nav).toBeHidden()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  }
+})
+
 test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) => {
   const userName = data.unique('Protagonista')
   await data.patchSettings({ theme: 'system', mockMode: false, responseSpeed: 'high' })
