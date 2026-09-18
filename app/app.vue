@@ -1,5 +1,7 @@
 <script setup lang="ts">
 const privacy = usePrivacyStore()
+const access = useAccessStore()
+await access.load()
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false
@@ -52,7 +54,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div>
+  <div v-if="access.blocked" class="flex min-h-screen items-center justify-center bg-[var(--color-bg)] p-6">
+    <section class="panel max-w-lg p-6 text-center">
+      <h1 class="text-xl font-bold">Acceso protegido requerido</h1>
+      <p class="mt-3 text-sm text-[var(--color-fg-muted)]">
+        Abre Mis Historias mediante la aplicación protegida por Cloudflare Access.
+      </p>
+    </section>
+  </div>
+  <div v-else>
     <NuxtRouteAnnouncer />
     <NuxtLayout>
       <NuxtPage />

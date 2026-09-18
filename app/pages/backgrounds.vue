@@ -16,6 +16,7 @@ const busy = ref(false)
 const error = ref<string | null>(null)
 const refreshing = ref(false)
 const refreshError = ref<string | null>(null)
+const copyingId = ref<string | null>(null)
 const visibleBackgrounds = computed(() =>
   privacy.isDemo
     ? backgrounds.backgrounds.filter((background) => background.visibleInDemo)
@@ -77,6 +78,19 @@ async function remove(id: string) {
     message: 'Se borrará la imagen. Las historias que la usaban mostrarán “fondo no disponible”.'
   })
   if (accepted) await backgrounds.removeBackground(id)
+}
+
+async function copyBackground(id: string) {
+  if (copyingId.value) return
+  copyingId.value = id
+  error.value = null
+  try {
+    await backgrounds.copyBackground(id)
+  } catch (caught) {
+    error.value = (caught as Error).message || 'No se pudo copiar el fondo.'
+  } finally {
+    copyingId.value = null
+  }
 }
 </script>
 
@@ -141,34 +155,57 @@ async function remove(id: string) {
           image-class="max-h-80 w-full rounded-xl bg-black/5 object-contain"
         />
         <div class="grid gap-2">
-          <TagInput
-            :model-value="background.tags"
-            aria-label="Etiquetas del fondo"
-            placeholder="neutral"
-            @update:model-value="update(background.id, { tags: $event })"
-          />
-          <input
-            class="field"
-            :value="background.description"
-            autocomplete="off"
-            aria-label="Descripción del fondo"
-            placeholder="Descripción"
-            @input="background.description = ($event.target as HTMLInputElement).value"
-            @change="update(background.id, { description: ($event.target as HTMLInputElement).value })"
-          >
-          <SoundEditor :background-id="background.id" title="Sonidos del fondo" />
-          <label v-if="privacy.isPrivateMode" class="flex items-center gap-2 text-sm">
+          <template v-if="background.readOnly">
+            <p class="text-xs font-semibold text-brand-600">Fondo demo compartido · solo lectura</p>
+            <div class="flex flex-wrap gap-1">
+              <span
+                v-for="tag in background.tags"
+                :key="tag"
+                class="rounded-full bg-brand-500/15 px-2 py-0.5 text-xs"
+              >{{ tag }}</span>
+            </div>
+            <p class="text-sm text-[var(--color-fg-muted)]">{{ background.description }}</p>
+            <div class="flex justify-end">
+              <button
+                type="button"
+                class="btn-primary"
+                :disabled="copyingId !== null"
+                @click="copyBackground(background.id)"
+              >
+                {{ copyingId === background.id ? 'Copiando…' : 'Copiar a mi colección privada' }}
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <TagInput
+              :model-value="background.tags"
+              aria-label="Etiquetas del fondo"
+              placeholder="neutral"
+              @update:model-value="update(background.id, { tags: $event })"
+            />
             <input
-              type="checkbox"
-              class="h-4 w-4 accent-[var(--color-brand-500)]"
-              :checked="background.visibleInDemo"
-              @change="update(background.id, { visibleInDemo: ($event.target as HTMLInputElement).checked })"
+              class="field"
+              :value="background.description"
+              autocomplete="off"
+              aria-label="Descripción del fondo"
+              placeholder="Descripción"
+              @input="background.description = ($event.target as HTMLInputElement).value"
+              @change="update(background.id, { description: ($event.target as HTMLInputElement).value })"
             >
-            Visible en modo demo
-          </label>
-          <div class="flex justify-end">
-            <button type="button" class="btn-danger" @click="remove(background.id)">Borrar</button>
-          </div>
+            <SoundEditor :background-id="background.id" title="Sonidos del fondo" />
+            <label v-if="privacy.isPrivateMode" class="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                class="h-4 w-4 accent-[var(--color-brand-500)]"
+                :checked="background.visibleInDemo"
+                @change="update(background.id, { visibleInDemo: ($event.target as HTMLInputElement).checked })"
+              >
+              Visible en modo demo
+            </label>
+            <div class="flex justify-end">
+              <button type="button" class="btn-danger" @click="remove(background.id)">Borrar</button>
+            </div>
+          </template>
         </div>
       </li>
     </ul>

@@ -1,5 +1,6 @@
 import { isReactive, isRef, ref, toRaw, unref } from 'vue'
 import type {
+  AccessSession,
   AppSettings,
   Background,
   Character,
@@ -233,6 +234,12 @@ export async function listBackgrounds(scope: DataScope = activeDataScope.value) 
   )
 }
 
+export async function copyBackground(sourceId: string) {
+  return $fetch<Background>(dataUrl(`backgrounds/${encodeURIComponent(sourceId)}/copy`), {
+    method: 'POST'
+  })
+}
+
 export async function putBackground(background: StoredBackground) {
   await putBinary('backgrounds', background)
   return background
@@ -410,6 +417,17 @@ export async function clearAll(scope: DataScope = activeDataScope.value) {
 
 export async function listSwarmPrompts(scope: DataScope = activeDataScope.value) {
   return $fetch<SwarmPrompt[]>(dataUrl('swarmPrompts', scope))
+}
+
+export async function readAccessSession() {
+  return $fetch<AccessSession>('/api/access')
+}
+
+export async function activateMultiUser(email: string) {
+  return $fetch<AccessSession & { claimed: Record<string, number> }>('/api/access/activate', {
+    method: 'POST',
+    body: { email }
+  })
 }
 
 export async function putSwarmPrompt(prompt: SwarmPrompt) {

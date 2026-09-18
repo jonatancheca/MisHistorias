@@ -1,11 +1,13 @@
 import { createReadStream } from 'node:fs'
 import { getStorage } from '../../utils/storage'
+import { requireAccessAdmin } from '../../utils/access'
 
 function asciiFilename(name: string) {
   return name.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_')
 }
 
 export default defineEventHandler((event) => {
+  requireAccessAdmin(event)
   const name = getRouterParam(event, 'name')
   if (!name) {
     throw createError({ statusCode: 400, message: 'Falta el nombre del backup' })

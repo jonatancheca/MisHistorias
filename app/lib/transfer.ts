@@ -126,7 +126,7 @@ interface ExportBundle {
 export async function exportBundle(
   options: { demo?: boolean } = {}
 ): Promise<ExportBundle> {
-  const [allCharacters, images, allBackgrounds, allStories, sounds, swarmPrompts] = await Promise.all([
+  const [listedCharacters, listedImages, listedBackgrounds, listedStories, listedSounds, listedSwarmPrompts] = await Promise.all([
     listCharacters(),
     listAllImages(),
     listBackgrounds(),
@@ -134,6 +134,12 @@ export async function exportBundle(
     listSounds(),
     listSwarmPrompts()
   ])
+  const allCharacters = listedCharacters.filter((item) => !item.readOnly)
+  const images = listedImages.filter((item) => !item.readOnly)
+  const allBackgrounds = listedBackgrounds.filter((item) => !item.readOnly)
+  const allStories = listedStories.filter((item) => !item.readOnly)
+  const sounds = listedSounds.filter((item) => !item.readOnly)
+  const swarmPrompts = listedSwarmPrompts.filter((item) => !item.readOnly)
 
   const storyRecords = await Promise.all(
     allStories

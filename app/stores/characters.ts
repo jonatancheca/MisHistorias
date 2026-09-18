@@ -168,9 +168,10 @@ export const useCharactersStore = defineStore('characters', () => {
     sourceId: string,
     input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel'>
   ) {
+    const source = byId(sourceId)
     const { character } = await copyStoredCharacter(sourceId, {
       ...input,
-      visibleInDemo: usePrivacyStore().isDemo,
+      visibleInDemo: source?.readOnly ? false : usePrivacyStore().isDemo,
       name: input.name.trim(),
       tags: sanitizeTags(input.tags),
       color: normalizeColor(input.color, DEFAULT_CHARACTER_COLOR)

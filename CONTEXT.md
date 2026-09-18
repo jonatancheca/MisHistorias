@@ -35,3 +35,19 @@ _Evitar_: Público, compartido
 **Backup SQLite**:
 Copia completa y restaurable de colección normal, colección privada, ajustes y secretos de una instalación de Mis Historias.
 _Evitar_: Exportación JSON, copia parcial
+
+**Usuario Access**:
+Persona autenticada por Cloudflare Access cuya identidad separa sus colecciones y preferencias de las del resto.
+_Evitar_: Usuario local, cuenta de Mis Historias
+
+**Propietario**:
+Usuario Access al que pertenece un recurso normal o privado y que puede modificarlo.
+_Evitar_: Autor, administrador
+
+**Administrador de la instancia**:
+Primer Usuario Access que activa el modo multiusuario y conserva las operaciones globales de configuración y backup sin obtener acceso ordinario al contenido ajeno.
+_Evitar_: Propietario global, superusuario de contenido
+
+**Recurso demo compartido**:
+Historia, personaje o fondo privado visible para otros Usuarios Access en modo privado o demo, junto con las imágenes y sonidos necesarios para consultarlo, sin conceder propiedad ni permiso de edición.
+_Evitar_: Recurso público, recurso sin propietario

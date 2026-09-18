@@ -15,6 +15,8 @@ export interface SwarmPrompt {
   tags: string[]
   createdAt: number
   updatedAt: number
+  /** Recurso demo ajeno visible sin permiso de escritura. */
+  readOnly?: boolean
 }
 
 export interface CharacterImage {
@@ -28,6 +30,8 @@ export interface CharacterImage {
   /** Existe una copia persistente anterior al primer recorte. */
   hasOriginal?: boolean
   generation?: ImageGenerationMetadata
+  /** Imagen de un personaje demo ajeno visible sin permiso de escritura. */
+  readOnly?: boolean
 }
 
 export interface Character {
@@ -55,6 +59,8 @@ export interface Character {
   visibleInDemo: boolean
   createdAt: number
   updatedAt: number
+  /** Recurso demo ajeno visible sin permiso de escritura. */
+  readOnly?: boolean
 }
 
 export interface StoryImageCatalogEntry {
@@ -74,6 +80,8 @@ export interface Background {
   /** Permite mostrar el fondo en el catálogo del modo demo. */
   visibleInDemo: boolean
   createdAt: number
+  /** Recurso demo ajeno visible sin permiso de escritura. */
+  readOnly?: boolean
 }
 
 export interface Sound {
@@ -85,6 +93,8 @@ export interface Sound {
   backgroundId: string | null
   mimeType: string
   createdAt: number
+  /** Sonido contextual ajeno visible sin permiso de escritura. */
+  readOnly?: boolean
 }
 
 export interface StoryCharacterCustomization {
@@ -139,6 +149,20 @@ export interface Story {
   contextSummaryThroughMessageId?: string
   createdAt: number
   updatedAt: number
+  /** Historia demo ajena visible sin permiso de escritura. */
+  readOnly?: boolean
+}
+
+export interface AccessIdentity {
+  id: string
+  email: string
+}
+
+export interface AccessSession {
+  multiUserEnabled: boolean
+  identity: AccessIdentity | null
+  isAdmin: boolean
+  canActivate: boolean
 }
 
 export type MessageRole = 'user' | 'assistant'

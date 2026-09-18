@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import {
+  copyBackground as copyStoredBackground,
   deleteBackground,
   getActiveDataScope,
   listBackgrounds,
@@ -137,6 +138,12 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     syncUrls()
   }
 
+  async function copyBackground(id: string) {
+    const copied = await copyStoredBackground(id)
+    await load(true)
+    return copied
+  }
+
   return {
     backgrounds,
     loaded,
@@ -147,6 +154,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     addBackground,
     updateBackground,
     removeBackground,
+    copyBackground,
     resetForScope
   }
 })

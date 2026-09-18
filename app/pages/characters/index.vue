@@ -264,6 +264,9 @@ function cancelImport() {
             <p class="mt-2 text-xs text-[var(--color-fg-muted)]">
               {{ characters.imagesFor(character.id).length }} imágenes
             </p>
+            <p v-if="character.readOnly" class="mt-1 text-xs font-semibold text-brand-600">
+              Demo compartido · solo lectura
+            </p>
           </div>
         </div>
         <p
@@ -295,6 +298,7 @@ function cancelImport() {
             <span class="character-action-label">Copiar</span>
           </NuxtLink>
           <button
+            v-if="!character.readOnly"
             type="button"
             class="character-action btn-ghost inline-flex shrink-0 items-center gap-1.5 px-2"
             :aria-label="character.archived ? 'Desarchivar' : 'Archivar'"
@@ -309,6 +313,7 @@ function cancelImport() {
             </svg>
           </button>
           <button
+            v-if="!character.readOnly"
             type="button"
             class="character-action btn-ghost inline-flex items-center gap-1.5"
             aria-label="Exportar"
@@ -325,6 +330,7 @@ function cancelImport() {
             </span>
           </button>
           <button
+            v-if="!character.readOnly"
             type="button"
             class="character-action btn-danger inline-flex shrink-0 items-center gap-1.5 px-2"
             aria-label="Borrar"

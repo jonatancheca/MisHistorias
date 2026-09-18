@@ -24,6 +24,7 @@ import { DEFAULT_CHARACTER_REFERENCE_PROMPT } from '~/lib/characterReferenceProm
 import { DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
 
 const settings = useSettingsStore()
+const access = useAccessStore()
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
 const stories = useStoriesStore()
@@ -32,10 +33,17 @@ const confirmDialog = useConfirmStore()
 const appUpdate = useAppUpdate()
 const route = useRoute()
 const router = useRouter()
-await settings.load()
+await Promise.all([settings.load(), access.load()])
+
+const canManageGlobal = computed(
+  () => !access.session.multiUserEnabled || access.session.isAdmin
+)
+const activatingUsers = ref(false)
+const accessError = ref<string | null>(null)
 
 const settingsSections = [
   { id: 'apariencia', label: 'Apariencia' },
+  { id: 'usuarios', label: 'Usuarios' },
   { id: 'llm', label: 'LLM' },
   { id: 'prompt-narrativo', label: 'Prompt narrativo' },
   { id: 'prompt-referencia-personaje', label: 'Prompt de referencia de personaje' },
@@ -271,12 +279,11 @@ async function testConnection() {
 
 function settingsPatch() {
   const patch: Partial<AppSettings> = {
-    swarmBaseUrl: form.swarmBaseUrl.trim(),
     responseSpeed: form.responseSpeed,
     userColor: form.userColor
   }
   if (privacy.isPrivate) {
-    if (privateLlmSettingsEnabled.value) {
+    if (canManageGlobal.value && privateLlmSettingsEnabled.value) {
       patch.privateBaseUrl = form.baseUrl.trim()
       patch.privateModel = form.model
       patch.privateTemperature = Number(form.temperature)
@@ -288,31 +295,57 @@ function settingsPatch() {
       patch.privateProtagonistPreferences = form.protagonistPreferences.trim()
     }
   } else {
-    patch.baseUrl = form.baseUrl.trim()
-    patch.model = form.model
-    patch.temperature = Number(form.temperature)
-    patch.maxTokens = Number(form.maxTokens)
-    patch.historyBudget = Number(form.historyBudget)
+    if (canManageGlobal.value) {
+      patch.baseUrl = form.baseUrl.trim()
+      patch.model = form.model
+      patch.temperature = Number(form.temperature)
+      patch.maxTokens = Number(form.maxTokens)
+      patch.historyBudget = Number(form.historyBudget)
+    }
     patch.userName = form.userName.trim() || 'Protagonista'
     patch.protagonistPreferences = form.protagonistPreferences.trim()
   }
-  if (narrativePromptDirty) {
+  if (canManageGlobal.value) patch.swarmBaseUrl = form.swarmBaseUrl.trim()
+  if (canManageGlobal.value && narrativePromptDirty) {
     patch.narrativePrompt = narrativePromptCustomized.value ? narrativePrompt.value : null
   }
-  if (characterReferencePromptDirty) {
+  if (canManageGlobal.value && characterReferencePromptDirty) {
     patch.characterReferencePrompt = characterReferencePromptCustomized.value
       ? characterReferencePrompt.value
       : null
   }
-  if (apiKeyDirty) {
+  if (canManageGlobal.value && apiKeyDirty) {
     if (privacy.isPrivate && privateLlmSettingsEnabled.value) {
       patch.privateApiKey = form.apiKey.trim()
     } else if (!privacy.isPrivate) {
       patch.apiKey = form.apiKey.trim()
     }
   }
-  if (swarmAuthTokenDirty) patch.swarmAuthToken = form.swarmAuthToken.trim()
+  if (canManageGlobal.value && swarmAuthTokenDirty) {
+    patch.swarmAuthToken = form.swarmAuthToken.trim()
+  }
   return patch
+}
+
+async function activateUsers() {
+  const email = access.session.identity?.email
+  if (!email || activatingUsers.value || access.session.multiUserEnabled) return
+  const accepted = await confirmDialog.ask({
+    title: 'Activar configuración por usuarios',
+    message: `Se asignarán todos los datos actuales a ${email}, que será el administrador de la instancia. La activación no se puede deshacer desde la interfaz.`,
+    confirmLabel: 'Activar'
+  })
+  if (!accepted) return
+  activatingUsers.value = true
+  accessError.value = null
+  try {
+    await flushSave()
+    await access.activate()
+    window.location.reload()
+  } catch (caught) {
+    accessError.value = (caught as Error).message || 'No se pudo activar la configuración por usuarios.'
+    activatingUsers.value = false
+  }
 }
 
 function enqueueSave(revision: number) {
@@ -786,7 +819,7 @@ function formatBackupSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-await loadBackups()
+if (canManageGlobal.value) await loadBackups()
 
 async function onImportFile(event: Event) {
   const input = event.target as HTMLInputElement
@@ -896,6 +929,12 @@ onBeforeRouteLeave(async () => {
         </span>
         <span v-else>Personaliza la experiencia y las conexiones de la aplicación.</span>
       </p>
+      <p
+        v-if="access.session.multiUserEnabled && !access.session.isAdmin"
+        class="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300"
+      >
+        Los ajustes técnicos y los backups los gestiona el administrador de la instancia.
+      </p>
     </header>
 
     <nav
@@ -973,12 +1012,68 @@ onBeforeRouteLeave(async () => {
           @click="onPrivateTrigger"
         />
       </div>
+      <div class="mt-5 max-w-sm">
+        <label class="label" for="responseSpeed">Velocidad de escritura</label>
+        <select id="responseSpeed" v-model="form.responseSpeed" class="field">
+          <option value="slow">Lenta</option>
+          <option value="medium">Media</option>
+          <option value="high">Alta</option>
+          <option value="instant">Inmediata</option>
+        </select>
+        <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+          Preferencia personal para mostrar las respuestas recibidas.
+        </p>
+      </div>
+    </section>
+
+    <section
+      id="usuarios"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'usuarios' }"
+      data-testid="access-user-settings"
+    >
+      <h2>Usuarios</h2>
+      <p>
+        Aísla historias, personajes y recursos por la identidad entregada por Cloudflare Access.
+      </p>
+      <label class="flex items-start gap-3">
+        <input
+          type="checkbox"
+          class="mt-1 h-4 w-4 accent-[var(--color-brand-500)]"
+          :checked="access.session.multiUserEnabled"
+          :disabled="access.session.multiUserEnabled || !access.session.canActivate || activatingUsers"
+          @change="activateUsers"
+        >
+        <span>
+          <span class="block text-sm font-semibold">Usar configuración por usuarios</span>
+          <span class="block text-xs text-[var(--color-fg-muted)]">
+            <template v-if="access.session.multiUserEnabled">
+              Activa permanentemente. Usuario actual: {{ access.session.identity?.email }}<template v-if="access.session.isAdmin"> · administrador</template>.
+            </template>
+            <template v-else-if="access.session.identity">
+              Al activar, {{ access.session.identity.email }} recibirá todos los datos existentes y será administrador.
+            </template>
+            <template v-else>
+              Entra mediante Cloudflare Access para poder activarla.
+            </template>
+          </span>
+        </span>
+      </label>
+      <p class="mt-3 text-xs text-[var(--color-fg-muted)]">
+        El identificador del usuario se lee del token de Cloudflare Access. El token completo no se guarda ni se muestra.
+      </p>
+      <p v-if="accessError" class="mt-2 text-xs text-red-500" role="alert">{{ accessError }}</p>
     </section>
 
     <section
       id="llm"
       class="settings-panel"
-      :class="{ 'settings-panel-active': activeSectionId === 'llm' }"
+      :class="[
+        { 'settings-panel-active': activeSectionId === 'llm' },
+        { 'opacity-60': !canManageGlobal }
+      ]"
+      :inert="!canManageGlobal"
+      :aria-disabled="!canManageGlobal"
       data-testid="llm-settings"
     >
       <h2>LLM</h2>
@@ -1220,26 +1315,18 @@ onBeforeRouteLeave(async () => {
         </div>
       </div>
 
-      <div>
-        <label class="label" for="responseSpeed">Velocidad de escritura</label>
-        <select id="responseSpeed" v-model="form.responseSpeed" class="field">
-          <option value="slow">Lenta</option>
-          <option value="medium">Media</option>
-          <option value="high">Alta</option>
-          <option value="instant">Inmediata</option>
-        </select>
-        <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-          Controla cómo aparece la respuesta una vez recibida del modelo.
-        </p>
-      </div>
-
       </div>
     </section>
 
     <section
       id="prompt-narrativo"
       class="settings-panel"
-      :class="{ 'settings-panel-active': activeSectionId === 'prompt-narrativo' }"
+      :class="[
+        { 'settings-panel-active': activeSectionId === 'prompt-narrativo' },
+        { 'opacity-60': !canManageGlobal }
+      ]"
+      :inert="!canManageGlobal"
+      :aria-disabled="!canManageGlobal"
       data-testid="narrative-prompt-settings"
     >
       <h2>Prompt narrativo</h2>
@@ -1265,7 +1352,12 @@ onBeforeRouteLeave(async () => {
     <section
       id="prompt-referencia-personaje"
       class="settings-panel"
-      :class="{ 'settings-panel-active': activeSectionId === 'prompt-referencia-personaje' }"
+      :class="[
+        { 'settings-panel-active': activeSectionId === 'prompt-referencia-personaje' },
+        { 'opacity-60': !canManageGlobal }
+      ]"
+      :inert="!canManageGlobal"
+      :aria-disabled="!canManageGlobal"
       data-testid="character-reference-prompt-settings"
     >
       <h2>Prompt de referencia de personaje</h2>
@@ -1292,7 +1384,12 @@ onBeforeRouteLeave(async () => {
     <section
       id="swarmui"
       class="settings-panel"
-      :class="{ 'settings-panel-active': activeSectionId === 'swarmui' }"
+      :class="[
+        { 'settings-panel-active': activeSectionId === 'swarmui' },
+        { 'opacity-60': !canManageGlobal }
+      ]"
+      :inert="!canManageGlobal"
+      :aria-disabled="!canManageGlobal"
       data-testid="swarm-settings"
     >
       <h2>SwarmUI</h2>
@@ -1582,7 +1679,12 @@ onBeforeRouteLeave(async () => {
     >
       <h2>Datos</h2>
       <p>
-        Todo se guarda en SQLite y se comparte con los equipos que usan este servidor.
+        <template v-if="access.session.multiUserEnabled">
+          Tus datos se guardan en SQLite aislados por usuario. Solo los recursos demo compartidos son visibles en modo privado.
+        </template>
+        <template v-else>
+          Todo se guarda en SQLite y se comparte con los equipos que usan este servidor.
+        </template>
       </p>
       <div class="flex flex-wrap gap-2">
         <div class="flex shrink-0 flex-col items-center gap-1">
@@ -1605,7 +1707,10 @@ onBeforeRouteLeave(async () => {
 
       <p v-if="importMessage" class="mt-2 text-xs text-[var(--color-fg-muted)]">{{ importMessage }}</p>
 
-      <div class="settings-subpanel mt-6 rounded-2xl border border-[var(--color-border-soft)] p-4">
+      <div
+        v-if="canManageGlobal"
+        class="settings-subpanel mt-6 rounded-2xl border border-[var(--color-border-soft)] p-4"
+      >
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 class="font-semibold">Backups SQLite</h3>
@@ -1695,6 +1800,12 @@ onBeforeRouteLeave(async () => {
           </li>
         </ul>
       </div>
+      <p
+        v-else
+        class="settings-subpanel mt-6 rounded-2xl border border-[var(--color-border-soft)] p-4 text-sm text-[var(--color-fg-muted)]"
+      >
+        Los backups SQLite contienen toda la instancia y solo están disponibles para el administrador.
+      </p>
     </section>
   </div>
 </template>

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { getStorage } from '../../utils/storage'
+import { requireAccessAdmin } from '../../utils/access'
 
 function uploadedName(event: Parameters<typeof getHeader>[0]) {
   const encodedName = getHeader(event, 'x-backup-name')
@@ -16,6 +17,7 @@ function uploadedName(event: Parameters<typeof getHeader>[0]) {
 }
 
 export default defineEventHandler(async (event) => {
+  requireAccessAdmin(event)
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-backup-upload-'))
   const uploadPath = join(directory, 'upload.sqlite')
 

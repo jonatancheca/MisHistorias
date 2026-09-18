@@ -13,6 +13,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
 import { readStorySwarmError } from '../../shared/utils/swarmError.ts'
 import type {
+  AccessIdentity,
   DatabaseBackup,
   DatabaseBackupKind,
   LlmDebugTrace,
@@ -54,6 +55,17 @@ export interface ResourceQuery {
   characterId?: string
 }
 
+export interface StorageAccess {
+  ownerId: string | null
+  includeSharedDemo?: boolean
+}
+
+export interface StoredAccessState {
+  multiUserEnabled: boolean
+  adminOwnerId: string | null
+  adminEmail: string | null
+}
+
 export interface BinaryPayload {
   metadata: Record<string, unknown>
   data: Uint8Array
@@ -87,9 +99,34 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 34
+const SCHEMA_VERSION = 35
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
+const OWNED_TABLES = [
+  'characters',
+  'image_blobs',
+  'images',
+  'backgrounds',
+  'sounds',
+  'stories',
+  'messages',
+  'llm_debug_traces',
+  'story_saves',
+  'presets',
+  'swarm_prompts'
+] as const
+const PERSONAL_SETTING_KEYS = [
+  'theme',
+  'responseSpeed',
+  'visualNovelManualAdvance',
+  'defaultSoundVersion',
+  'privateDefaultSoundVersion',
+  'userName',
+  'privateUserName',
+  'userColor',
+  'protagonistPreferences',
+  'privateProtagonistPreferences'
+] as const
 
 function parseJson<T>(value: unknown, fallback: T): T {
   if (typeof value !== 'string') return fallback
@@ -717,6 +754,7 @@ export class MisHistoriasStorage {
         this.database.exec(`
         CREATE TABLE IF NOT EXISTS characters (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          owner_id TEXT,
           id TEXT NOT NULL,
           name TEXT NOT NULL,
           prompt TEXT NOT NULL,
@@ -736,6 +774,7 @@ export class MisHistoriasStorage {
 
         CREATE TABLE IF NOT EXISTS image_blobs (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          owner_id TEXT,
           id TEXT NOT NULL,
           data BLOB NOT NULL,
           PRIMARY KEY (scope, id)
@@ -743,6 +782,7 @@ export class MisHistoriasStorage {
 
         CREATE TABLE IF NOT EXISTS images (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          owner_id TEXT,
           id TEXT NOT NULL,
           character_id TEXT NOT NULL,
           tags_json TEXT NOT NULL,
@@ -761,6 +801,7 @@ export class MisHistoriasStorage {
 
         CREATE TABLE IF NOT EXISTS backgrounds (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          owner_id TEXT,
           id TEXT NOT NULL,
           tags_json TEXT NOT NULL,
           description TEXT NOT NULL,
@@ -775,6 +816,7 @@ export class MisHistoriasStorage {
 
         CREATE TABLE IF NOT EXISTS sounds (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          owner_id TEXT,
           id TEXT NOT NULL,
           tags_json TEXT NOT NULL,
           character_id TEXT,
@@ -794,6 +836,7 @@ export class MisHistoriasStorage {
 
         CREATE TABLE IF NOT EXISTS stories (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          owner_id TEXT,
           id TEXT NOT NULL,
           title TEXT NOT NULL,
           premise TEXT NOT NULL,
@@ -820,6 +863,7 @@ export class MisHistoriasStorage {
 
         CREATE TABLE IF NOT EXISTS messages (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          owner_id TEXT,
           id TEXT NOT NULL,
           story_id TEXT NOT NULL,
           role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
@@ -835,6 +879,7 @@ export class MisHistoriasStorage {
 
         CREATE TABLE IF NOT EXISTS llm_debug_traces (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          owner_id TEXT,
           id TEXT NOT NULL,
           story_id TEXT NOT NULL,
           request_message_id TEXT,
@@ -855,6 +900,7 @@ export class MisHistoriasStorage {
 
         CREATE TABLE IF NOT EXISTS story_saves (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          owner_id TEXT,
           id TEXT NOT NULL,
           story_id TEXT NOT NULL,
           name TEXT NOT NULL,
@@ -871,6 +917,7 @@ export class MisHistoriasStorage {
 
         CREATE TABLE IF NOT EXISTS presets (
           scope TEXT NOT NULL CHECK (scope IN ('normal', 'private')),
+          owner_id TEXT,
           id TEXT NOT NULL,
           name TEXT NOT NULL,
           content TEXT NOT NULL,
@@ -886,7 +933,17 @@ export class MisHistoriasStorage {
           value_json TEXT NOT NULL,
           api_key TEXT NOT NULL DEFAULT '',
           private_api_key TEXT NOT NULL DEFAULT '',
-          swarm_auth_token TEXT NOT NULL DEFAULT ''
+          swarm_auth_token TEXT NOT NULL DEFAULT '',
+          multi_user_enabled INTEGER NOT NULL DEFAULT 0 CHECK (multi_user_enabled IN (0, 1)),
+          admin_owner_id TEXT,
+          admin_email TEXT
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS user_settings (
+          owner_id TEXT PRIMARY KEY,
+          email TEXT NOT NULL,
+          value_json TEXT NOT NULL DEFAULT '{}',
+          updated_at INTEGER NOT NULL
         ) STRICT;
       `)
 
@@ -1202,7 +1259,7 @@ export class MisHistoriasStorage {
       if (version.user_version < 28) {
         this.database.exec(`
           CREATE TABLE IF NOT EXISTS swarm_prompts (
-            scope TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, prompt TEXT NOT NULL,
+            scope TEXT NOT NULL, owner_id TEXT, id TEXT NOT NULL, name TEXT NOT NULL, prompt TEXT NOT NULL,
             tags_json TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
             PRIMARY KEY(scope, id)
           );
@@ -1337,6 +1394,43 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 35) {
+        for (const table of OWNED_TABLES) {
+          const columns = this.database
+            .prepare(`PRAGMA table_info(${table})`)
+            .all() as Array<{ name: string }>
+          if (!columns.some((item) => item.name === 'owner_id')) {
+            this.database.exec(`ALTER TABLE ${table} ADD COLUMN owner_id TEXT`)
+          }
+          this.database.exec(
+            `CREATE INDEX IF NOT EXISTS ${table}_by_owner_scope ON ${table}(owner_id, scope)`
+          )
+        }
+
+        const settingsColumns = this.database
+          .prepare('PRAGMA table_info(settings)')
+          .all() as Array<{ name: string }>
+        if (!settingsColumns.some((item) => item.name === 'multi_user_enabled')) {
+          this.database.exec(
+            'ALTER TABLE settings ADD COLUMN multi_user_enabled INTEGER NOT NULL DEFAULT 0 CHECK (multi_user_enabled IN (0, 1))'
+          )
+        }
+        if (!settingsColumns.some((item) => item.name === 'admin_owner_id')) {
+          this.database.exec('ALTER TABLE settings ADD COLUMN admin_owner_id TEXT')
+        }
+        if (!settingsColumns.some((item) => item.name === 'admin_email')) {
+          this.database.exec('ALTER TABLE settings ADD COLUMN admin_email TEXT')
+        }
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS user_settings (
+            owner_id TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            value_json TEXT NOT NULL DEFAULT '{}',
+            updated_at INTEGER NOT NULL
+          ) STRICT;
+        `)
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -1397,93 +1491,331 @@ export class MisHistoriasStorage {
     return { ok: true, schemaVersion: version.user_version }
   }
 
-  list<R extends DataResource>(resource: R, scope: DataScope, query?: ResourceQuery): DataRecordMap[R][]
-  list(resource: DataResource, scope: DataScope, query: ResourceQuery = {}) {
-    switch (resource) {
-      case 'characters':
-        return (this.database
-          .prepare('SELECT * FROM characters WHERE scope = ? ORDER BY name COLLATE NOCASE')
-          .all(scope) as SqliteRow[]).map(rowToCharacter)
-      case 'images': {
-        const rows = query.characterId
-          ? this.database
-              .prepare(
-                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at, generation_json, original_data IS NOT NULL AS has_original FROM images WHERE scope = ? AND character_id = ? ORDER BY created_at'
-              )
-              .all(scope, query.characterId)
-          : this.database
-              .prepare(
-                'SELECT scope, id, character_id, tags_json, is_default, mime_type, created_at, generation_json, original_data IS NOT NULL AS has_original FROM images WHERE scope = ? ORDER BY created_at'
-              )
-              .all(scope)
-        return (rows as SqliteRow[]).map(rowToImage)
-      }
-      case 'backgrounds':
-        return (this.database
-          .prepare(
-            'SELECT scope, id, tags_json, description, mime_type, visible_in_demo, created_at FROM backgrounds WHERE scope = ? ORDER BY created_at'
-          )
-          .all(scope) as SqliteRow[]).map(rowToBackground)
-      case 'sounds':
-        return (this.database
-          .prepare(
-            'SELECT scope, id, tags_json, character_id, background_id, mime_type, created_at FROM sounds WHERE scope = ? ORDER BY created_at'
-          )
-          .all(scope) as SqliteRow[]).map(rowToSound)
-      case 'stories':
-        return (this.database
-          .prepare('SELECT * FROM stories WHERE scope = ? ORDER BY updated_at DESC')
-          .all(scope) as SqliteRow[]).map(rowToStory)
-      case 'messages':
-        return (this.database
-          .prepare('SELECT * FROM messages WHERE scope = ? AND story_id = ? ORDER BY created_at')
-          .all(scope, query.storyId ?? '') as SqliteRow[]).map(rowToMessage)
-      case 'llmDebugTraces':
-        return (this.database
-          .prepare(
-            'SELECT * FROM llm_debug_traces WHERE scope = ? AND story_id = ? ORDER BY created_at'
-          )
-          .all(scope, query.storyId ?? '') as SqliteRow[]).map(rowToTrace)
-      case 'storySaves':
-        return (this.database
-          .prepare(
-            'SELECT * FROM story_saves WHERE scope = ? AND story_id = ? ORDER BY created_at DESC'
-          )
-          .all(scope, query.storyId ?? '') as SqliteRow[]).map(rowToStorySave)
-      case 'swarmPrompts':
-        return (this.database.prepare('SELECT * FROM swarm_prompts WHERE scope = ? ORDER BY created_at, rowid')
-          .all(scope) as SqliteRow[]).map(rowToSwarmPrompt)
-      case 'presets':
-        return (this.database
-          .prepare('SELECT * FROM presets WHERE scope = ? ORDER BY created_at')
-          .all(scope) as SqliteRow[]).map(rowToPreset)
+  readAccessState(): StoredAccessState {
+    const row = this.database.prepare(`
+      SELECT multi_user_enabled, admin_owner_id, admin_email
+      FROM settings WHERE key = 'app'
+    `).get() as {
+      multi_user_enabled: number
+      admin_owner_id: string | null
+      admin_email: string | null
+    } | undefined
+    return {
+      multiUserEnabled: row?.multi_user_enabled === 1,
+      adminOwnerId: row?.admin_owner_id ?? null,
+      adminEmail: row?.admin_email ?? null
     }
   }
 
-  get<R extends DataResource>(resource: R, scope: DataScope, id: string): DataRecordMap[R] | null
-  get(resource: DataResource, scope: DataScope, id: string) {
+  activateMultiUser(identity: AccessIdentity) {
+    return this.transaction(() => {
+      const current = this.readAccessState()
+      if (current.multiUserEnabled) return { state: current, claimed: {} as Record<string, number> }
+
+      this.database.prepare(`
+        INSERT INTO settings(
+          key, value_json, api_key, private_api_key, swarm_auth_token,
+          multi_user_enabled, admin_owner_id, admin_email
+        ) VALUES ('app', '{}', '', '', '', 0, NULL, NULL)
+        ON CONFLICT(key) DO NOTHING
+      `).run()
+
+      const claimed: Record<string, number> = {}
+      for (const table of OWNED_TABLES) {
+        const result = this.database
+          .prepare(`UPDATE ${table} SET owner_id = ? WHERE owner_id IS NULL`)
+          .run(identity.id)
+        claimed[table] = Number(result.changes)
+      }
+
+      const settings = this.readSettings()?.value ?? {}
+      const personal = Object.fromEntries(
+        PERSONAL_SETTING_KEYS.flatMap((key) => Object.hasOwn(settings, key) ? [[key, settings[key]]] : [])
+      )
+      const globalSettings = { ...settings }
+      for (const key of PERSONAL_SETTING_KEYS) Reflect.deleteProperty(globalSettings, key)
+      this.database.prepare(
+        "UPDATE settings SET value_json = ? WHERE key = 'app'"
+      ).run(json(globalSettings))
+      this.database.prepare(`
+        INSERT INTO user_settings(owner_id, email, value_json, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(owner_id) DO UPDATE SET
+          email = excluded.email,
+          value_json = excluded.value_json,
+          updated_at = excluded.updated_at
+      `).run(identity.id, identity.email, json(personal), Date.now())
+      this.database.prepare(`
+        UPDATE settings SET multi_user_enabled = 1, admin_owner_id = ?, admin_email = ?
+        WHERE key = 'app'
+      `).run(identity.id, identity.email)
+      return { state: this.readAccessState(), claimed }
+    })
+  }
+
+  readUserSettings(ownerId: string) {
+    const row = this.database.prepare(
+      'SELECT value_json FROM user_settings WHERE owner_id = ?'
+    ).get(ownerId) as { value_json: string } | undefined
+    return parseJson<Record<string, unknown>>(row?.value_json, {})
+  }
+
+  writeUserSettings(identity: AccessIdentity, patchValue: unknown) {
+    const patch = record(patchValue)
+    const current = this.readUserSettings(identity.id)
+    const next = { ...current }
+    for (const key of PERSONAL_SETTING_KEYS) {
+      if (Object.hasOwn(patch, key)) next[key] = patch[key]
+    }
+    this.database.prepare(`
+      INSERT INTO user_settings(owner_id, email, value_json, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(owner_id) DO UPDATE SET
+        email = excluded.email,
+        value_json = excluded.value_json,
+        updated_at = excluded.updated_at
+    `).run(identity.id, identity.email, json(next), Date.now())
+    return next
+  }
+
+  private withReadOnly<T>(value: T, row: SqliteRow, access?: StorageAccess): T {
+    if (!access?.ownerId || row.owner_id === access.ownerId) return value
+    return { ...value, readOnly: true }
+  }
+
+  private ownsRow(table: string, scope: DataScope, id: string, access?: StorageAccess) {
+    if (!access) return true
+    const row = this.database.prepare(
+      `SELECT owner_id FROM ${table} WHERE scope = ? AND id = ?`
+    ).get(scope, id) as { owner_id: string | null } | undefined
+    if (!row) return true
+    return row.owner_id === access.ownerId
+  }
+
+  private assertWritable(table: string, scope: DataScope, id: string, access?: StorageAccess) {
+    if (!this.ownsRow(table, scope, id, access)) {
+      throw Object.assign(new Error('El recurso pertenece a otro usuario'), {
+        code: 'ERR_READ_ONLY_RESOURCE'
+      })
+    }
+  }
+
+  private accessFilter(resource: DataResource, alias: string, access?: StorageAccess) {
+    if (!access) return { sql: '', args: [] as unknown[] }
+    if (!access.ownerId) return { sql: ` AND ${alias}.owner_id IS NULL`, args: [] as unknown[] }
+    const own = `${alias}.owner_id = ?`
+    if (!access.includeSharedDemo) return { sql: ` AND ${own}`, args: [access.ownerId] }
+    if (resource === 'stories') {
+      return {
+        sql: ` AND (${own} OR ${alias}.visible_in_demo = 1)`,
+        args: [access.ownerId]
+      }
+    }
+    if (resource === 'characters') {
+      return {
+        sql: ` AND (${own} OR ${alias}.visible_in_demo = 1 OR EXISTS (
+          SELECT 1 FROM stories shared_story, json_each(shared_story.character_ids_json) character_id
+          WHERE shared_story.scope = ${alias}.scope
+            AND shared_story.visible_in_demo = 1
+            AND character_id.value = ${alias}.id
+        ))`,
+        args: [access.ownerId]
+      }
+    }
+    if (resource === 'backgrounds') {
+      return {
+        sql: ` AND (${own} OR ${alias}.visible_in_demo = 1 OR EXISTS (
+          SELECT 1 FROM stories shared_story
+          WHERE shared_story.scope = ${alias}.scope
+            AND shared_story.visible_in_demo = 1
+            AND shared_story.initial_background_id = ${alias}.id
+        ) OR EXISTS (
+          SELECT 1 FROM messages shared_message
+          INNER JOIN stories shared_story
+            ON shared_story.scope = shared_message.scope AND shared_story.id = shared_message.story_id,
+            json_each(shared_message.segments_json) segment
+          WHERE shared_message.scope = ${alias}.scope
+            AND shared_story.visible_in_demo = 1
+            AND json_extract(segment.value, '$.backgroundId') = ${alias}.id
+        ))`,
+        args: [access.ownerId]
+      }
+    }
+    if (resource === 'images') {
+      return {
+        sql: ` AND (${own} OR EXISTS (
+          SELECT 1 FROM characters shared_character
+          WHERE shared_character.scope = ${alias}.scope
+            AND shared_character.id = ${alias}.character_id
+            AND (shared_character.visible_in_demo = 1 OR EXISTS (
+              SELECT 1 FROM stories shared_story, json_each(shared_story.character_ids_json) character_id
+              WHERE shared_story.scope = shared_character.scope
+                AND shared_story.visible_in_demo = 1
+                AND character_id.value = shared_character.id
+            ))
+        ))`,
+        args: [access.ownerId]
+      }
+    }
+    if (resource === 'sounds') {
+      return {
+        sql: ` AND (${own} OR EXISTS (
+          SELECT 1 FROM characters shared_character
+          WHERE shared_character.scope = ${alias}.scope
+            AND shared_character.id = ${alias}.character_id
+            AND shared_character.visible_in_demo = 1
+        ) OR EXISTS (
+          SELECT 1 FROM backgrounds shared_background
+          WHERE shared_background.scope = ${alias}.scope
+            AND shared_background.id = ${alias}.background_id
+            AND shared_background.visible_in_demo = 1
+        ) OR EXISTS (
+          SELECT 1 FROM messages shared_message
+          INNER JOIN stories shared_story
+            ON shared_story.scope = shared_message.scope AND shared_story.id = shared_message.story_id,
+            json_each(shared_message.segments_json) segment
+          WHERE shared_message.scope = ${alias}.scope
+            AND shared_story.visible_in_demo = 1
+            AND json_extract(segment.value, '$.soundId') = ${alias}.id
+        ))`,
+        args: [access.ownerId]
+      }
+    }
+    if (resource === 'messages') {
+      return {
+        sql: ` AND (${own} OR EXISTS (
+          SELECT 1 FROM stories shared_story
+          WHERE shared_story.scope = ${alias}.scope
+            AND shared_story.id = ${alias}.story_id
+            AND shared_story.visible_in_demo = 1
+        ))`,
+        args: [access.ownerId]
+      }
+    }
+    return { sql: ` AND ${own}`, args: [access.ownerId] }
+  }
+
+  list<R extends DataResource>(
+    resource: R,
+    scope: DataScope,
+    query?: ResourceQuery,
+    access?: StorageAccess
+  ): DataRecordMap[R][]
+  list(
+    resource: DataResource,
+    scope: DataScope,
+    query: ResourceQuery = {},
+    access?: StorageAccess
+  ) {
+    switch (resource) {
+      case 'characters': {
+        const filter = this.accessFilter(resource, 'characters', access)
+        return (this.database.prepare(
+          `SELECT * FROM characters WHERE scope = ?${filter.sql} ORDER BY name COLLATE NOCASE`
+        ).all(scope, ...filter.args) as SqliteRow[])
+          .map((row) => this.withReadOnly(rowToCharacter(row), row, access))
+      }
+      case 'images': {
+        const filter = this.accessFilter(resource, 'images', access)
+        const rows = query.characterId
+          ? this.database
+              .prepare(
+                `SELECT scope, owner_id, id, character_id, tags_json, is_default, mime_type, created_at, generation_json, original_data IS NOT NULL AS has_original FROM images WHERE scope = ? AND character_id = ?${filter.sql} ORDER BY created_at`
+              )
+              .all(scope, query.characterId, ...filter.args)
+          : this.database
+              .prepare(
+                `SELECT scope, owner_id, id, character_id, tags_json, is_default, mime_type, created_at, generation_json, original_data IS NOT NULL AS has_original FROM images WHERE scope = ?${filter.sql} ORDER BY created_at`
+              )
+              .all(scope, ...filter.args)
+        return (rows as SqliteRow[])
+          .map((row) => this.withReadOnly(rowToImage(row), row, access))
+      }
+      case 'backgrounds': {
+        const filter = this.accessFilter(resource, 'backgrounds', access)
+        return (this.database.prepare(
+          `SELECT scope, owner_id, id, tags_json, description, mime_type, visible_in_demo, created_at FROM backgrounds WHERE scope = ?${filter.sql} ORDER BY created_at`
+        ).all(scope, ...filter.args) as SqliteRow[])
+          .map((row) => this.withReadOnly(rowToBackground(row), row, access))
+      }
+      case 'sounds': {
+        const filter = this.accessFilter(resource, 'sounds', access)
+        return (this.database.prepare(
+          `SELECT scope, owner_id, id, tags_json, character_id, background_id, mime_type, created_at FROM sounds WHERE scope = ?${filter.sql} ORDER BY created_at`
+        ).all(scope, ...filter.args) as SqliteRow[])
+          .map((row) => this.withReadOnly(rowToSound(row), row, access))
+      }
+      case 'stories': {
+        const filter = this.accessFilter(resource, 'stories', access)
+        return (this.database.prepare(
+          `SELECT * FROM stories WHERE scope = ?${filter.sql} ORDER BY updated_at DESC`
+        ).all(scope, ...filter.args) as SqliteRow[])
+          .map((row) => this.withReadOnly(rowToStory(row), row, access))
+      }
+      case 'messages': {
+        const filter = this.accessFilter(resource, 'messages', access)
+        return (this.database.prepare(
+          `SELECT * FROM messages WHERE scope = ? AND story_id = ?${filter.sql} ORDER BY created_at`
+        ).all(scope, query.storyId ?? '', ...filter.args) as SqliteRow[])
+          .map((row) => this.withReadOnly(rowToMessage(row), row, access))
+      }
+      case 'llmDebugTraces': {
+        const filter = this.accessFilter(resource, 'llm_debug_traces', access)
+        return (this.database.prepare(
+          `SELECT * FROM llm_debug_traces WHERE scope = ? AND story_id = ?${filter.sql} ORDER BY created_at`
+        ).all(scope, query.storyId ?? '', ...filter.args) as SqliteRow[]).map(rowToTrace)
+      }
+      case 'storySaves': {
+        const filter = this.accessFilter(resource, 'story_saves', access)
+        return (this.database.prepare(
+          `SELECT * FROM story_saves WHERE scope = ? AND story_id = ?${filter.sql} ORDER BY created_at DESC`
+        ).all(scope, query.storyId ?? '', ...filter.args) as SqliteRow[]).map(rowToStorySave)
+      }
+      case 'swarmPrompts': {
+        const filter = this.accessFilter(resource, 'swarm_prompts', access)
+        return (this.database.prepare(
+          `SELECT * FROM swarm_prompts WHERE scope = ?${filter.sql} ORDER BY created_at, rowid`
+        ).all(scope, ...filter.args) as SqliteRow[]).map(rowToSwarmPrompt)
+      }
+      case 'presets': {
+        const filter = this.accessFilter(resource, 'presets', access)
+        return (this.database.prepare(
+          `SELECT * FROM presets WHERE scope = ?${filter.sql} ORDER BY created_at`
+        ).all(scope, ...filter.args) as SqliteRow[]).map(rowToPreset)
+      }
+    }
+  }
+
+  get<R extends DataResource>(
+    resource: R,
+    scope: DataScope,
+    id: string,
+    access?: StorageAccess
+  ): DataRecordMap[R] | null
+  get(resource: DataResource, scope: DataScope, id: string, access?: StorageAccess) {
     const table = resource === 'llmDebugTraces'
       ? 'llm_debug_traces'
       : resource === 'storySaves'
         ? 'story_saves'
         : resource === 'swarmPrompts' ? 'swarm_prompts' : resource
+    const filter = this.accessFilter(resource, table, access)
     const row = this.database
-      .prepare(`SELECT * FROM ${table} WHERE scope = ? AND id = ?`)
-      .get(scope, id) as SqliteRow | undefined
+      .prepare(`SELECT * FROM ${table} WHERE scope = ? AND id = ?${filter.sql}`)
+      .get(scope, id, ...filter.args) as SqliteRow | undefined
     if (!row) return null
     switch (resource) {
       case 'characters':
-        return rowToCharacter(row)
+        return this.withReadOnly(rowToCharacter(row), row, access)
       case 'images':
-        return rowToImage(row)
+        return this.withReadOnly(rowToImage(row), row, access)
       case 'backgrounds':
-        return rowToBackground(row)
+        return this.withReadOnly(rowToBackground(row), row, access)
       case 'sounds':
-        return rowToSound(row)
+        return this.withReadOnly(rowToSound(row), row, access)
       case 'stories':
-        return rowToStory(row)
+        return this.withReadOnly(rowToStory(row), row, access)
       case 'messages':
-        return rowToMessage(row)
+        return this.withReadOnly(rowToMessage(row), row, access)
       case 'llmDebugTraces':
         return rowToTrace(row)
       case 'storySaves':
@@ -1495,7 +1827,13 @@ export class MisHistoriasStorage {
     }
   }
 
-  getBinary(resource: 'images' | 'backgrounds' | 'sounds', scope: DataScope, id: string) {
+  getBinary(
+    resource: 'images' | 'backgrounds' | 'sounds',
+    scope: DataScope,
+    id: string,
+    access?: StorageAccess
+  ) {
+    const filter = this.accessFilter(resource, resource, access)
     const row = (resource === 'images'
       ? this.database
           .prepare(`
@@ -1503,39 +1841,45 @@ export class MisHistoriasStorage {
             FROM images
             INNER JOIN image_blobs
               ON image_blobs.scope = images.scope AND image_blobs.id = images.blob_id
-            WHERE images.scope = ? AND images.id = ?
+            WHERE images.scope = ? AND images.id = ?${filter.sql}
           `)
-          .get(scope, id)
+          .get(scope, id, ...filter.args)
       : resource === 'backgrounds'
         ? this.database
-            .prepare('SELECT mime_type, data FROM backgrounds WHERE scope = ? AND id = ?')
-            .get(scope, id)
+            .prepare(`SELECT mime_type, data FROM backgrounds WHERE scope = ? AND id = ?${filter.sql}`)
+            .get(scope, id, ...filter.args)
         : this.database
-            .prepare('SELECT mime_type, data FROM sounds WHERE scope = ? AND id = ?')
-            .get(scope, id)) as { mime_type: string; data: Uint8Array } | undefined
+            .prepare(`SELECT mime_type, data FROM sounds WHERE scope = ? AND id = ?${filter.sql}`)
+            .get(scope, id, ...filter.args)) as { mime_type: string; data: Uint8Array } | undefined
     return row ? { mimeType: row.mime_type, data: row.data } : null
   }
 
-  getOriginalImage(scope: DataScope, id: string) {
+  getOriginalImage(scope: DataScope, id: string, access?: StorageAccess) {
+    const filter = this.accessFilter('images', 'images', access)
     const row = this.database.prepare(`
       SELECT original_mime_type, original_data FROM images
-      WHERE scope = ? AND id = ? AND original_data IS NOT NULL
-    `).get(scope, id) as { original_mime_type: string; original_data: Uint8Array } | undefined
+      WHERE scope = ? AND id = ? AND original_data IS NOT NULL${filter.sql}
+    `).get(scope, id, ...filter.args) as { original_mime_type: string; original_data: Uint8Array } | undefined
     return row ? { mimeType: row.original_mime_type, data: row.original_data } : null
   }
 
-  restoreImage(scope: DataScope, id: string) {
-    const original = this.getOriginalImage(scope, id)
-    const metadata = this.get('images', scope, id)
+  restoreImage(scope: DataScope, id: string, access?: StorageAccess) {
+    const original = this.getOriginalImage(scope, id, access)
+    const metadata = this.get('images', scope, id, access)
     if (!original || !metadata) return null
     return this.putBinary('images', scope, id, {
       metadata: { ...metadata, mimeType: original.mimeType },
       data: original.data
-    })
+    }, access)
   }
 
-  copyCharacter(scope: DataScope, sourceId: string, rawValue: unknown) {
-    const source = this.get('characters', scope, sourceId)
+  copyCharacter(
+    scope: DataScope,
+    sourceId: string,
+    rawValue: unknown,
+    access?: StorageAccess
+  ) {
+    const source = this.get('characters', scope, sourceId, access)
     if (!source) return null
     const value = record(rawValue)
     const characterId = randomUUID()
@@ -1572,40 +1916,50 @@ export class MisHistoriasStorage {
         visibleInDemo: Boolean(value.visibleInDemo),
         createdAt: now,
         updatedAt: now
-      })
+      }, access)
       const sourceImages = this.database
         .prepare(`
-          SELECT tags_json, is_default, mime_type, created_at, blob_id, original_data, original_mime_type, generation_json
+          SELECT images.tags_json, images.is_default, images.mime_type, images.created_at,
+            image_blobs.data, images.original_data, images.original_mime_type,
+            images.generation_json
           FROM images
-          WHERE scope = ? AND character_id = ?
-          ORDER BY created_at, id
+          INNER JOIN image_blobs
+            ON image_blobs.scope = images.scope AND image_blobs.id = images.blob_id
+          WHERE images.scope = ? AND images.character_id = ?
+          ORDER BY images.created_at, images.id
         `)
         .all(scope, sourceId) as Array<{
         tags_json: string
         is_default: number
         mime_type: string
         created_at: number
-        blob_id: string
+        data: Uint8Array
         original_data: Uint8Array | null
         original_mime_type: string | null
         generation_json: string | null
       }>
+      const insertBlob = this.database.prepare(`
+        INSERT INTO image_blobs(scope, owner_id, id, data) VALUES (?, ?, ?, ?)
+      `)
       const insertImage = this.database.prepare(`
         INSERT INTO images(
-          scope, id, character_id, tags_json, is_default,
+          scope, owner_id, id, character_id, tags_json, is_default,
           mime_type, created_at, blob_id, original_data, original_mime_type, generation_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const image of sourceImages) {
+        const imageId = randomUUID()
+        insertBlob.run(scope, access?.ownerId ?? null, imageId, image.data)
         insertImage.run(
           scope,
-          randomUUID(),
+          access?.ownerId ?? null,
+          imageId,
           characterId,
           image.tags_json,
           image.is_default,
           image.mime_type,
           image.created_at,
-          image.blob_id,
+          imageId,
           image.original_data,
           image.original_mime_type,
           image.generation_json
@@ -1613,29 +1967,60 @@ export class MisHistoriasStorage {
       }
       return {
         character,
-        images: this.list('images', scope, { characterId })
+        images: this.list('images', scope, { characterId }, access)
       }
     })
+  }
+
+  copyBackground(scope: DataScope, sourceId: string, access: StorageAccess) {
+    const source = this.get('backgrounds', scope, sourceId, access)
+    const binary = this.getBinary('backgrounds', scope, sourceId, access)
+    if (!source || !binary) return null
+    const ownAccess = { ownerId: access.ownerId }
+    const usedTags = new Set(
+      (this.list('backgrounds', scope, {}, ownAccess) as Array<{ tags: string[] }>)
+        .flatMap((background) => background.tags)
+        .map(tagKey)
+    )
+    const copiedTags = source.tags.map((tag) => {
+      const copied = nextAvailableTag(tag, usedTags)
+      usedTags.add(tagKey(copied))
+      return copied
+    })
+    const id = randomUUID()
+    return this.putBinary('backgrounds', scope, id, {
+      metadata: {
+        id,
+        tags: copiedTags,
+        description: source.description,
+        mimeType: source.mimeType,
+        visibleInDemo: false,
+        createdAt: Date.now()
+      },
+      data: binary.data
+    }, ownAccess)
   }
 
   importCharacter(
     scope: DataScope,
     targetId: string | null,
-    payload: CharacterImportPayload
+    payload: CharacterImportPayload,
+    access?: StorageAccess
   ) {
-    const existing = targetId ? this.get('characters', scope, targetId) : null
+    const existing = targetId ? this.get('characters', scope, targetId, access) : null
     if (targetId && !existing) return null
     const characterId = targetId ?? randomUUID()
     const now = Date.now()
 
     return this.transaction(() => {
       if (targetId) {
+        this.assertWritable('characters', scope, characterId, access)
         this.database
-          .prepare('DELETE FROM images WHERE scope = ? AND character_id = ?')
-          .run(scope, characterId)
+          .prepare('DELETE FROM images WHERE scope = ? AND character_id = ? AND owner_id IS ?')
+          .run(scope, characterId, access?.ownerId ?? null)
         this.database
-          .prepare('DELETE FROM sounds WHERE scope = ? AND character_id = ?')
-          .run(scope, characterId)
+          .prepare('DELETE FROM sounds WHERE scope = ? AND character_id = ? AND owner_id IS ?')
+          .run(scope, characterId, access?.ownerId ?? null)
       }
 
       const character = this.put('characters', scope, characterId, {
@@ -1653,24 +2038,25 @@ export class MisHistoriasStorage {
         visibleInDemo: existing?.visibleInDemo ?? payload.visibleInDemo,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now
-      })
+      }, access)
 
       const insertBlob = this.database.prepare(
-        'INSERT INTO image_blobs(scope, id, data) VALUES (?, ?, ?)'
+        'INSERT INTO image_blobs(scope, owner_id, id, data) VALUES (?, ?, ?, ?)'
       )
       const insertImage = this.database.prepare(`
         INSERT INTO images(
-          scope, id, character_id, tags_json, is_default,
+          scope, owner_id, id, character_id, tags_json, is_default,
           mime_type, created_at, blob_id, original_data, original_mime_type, generation_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const [index, image] of payload.images.entries()) {
         const imageId = randomUUID()
         const imageTags = tags(image.metadata.tags)
         if (imageTags.length === 0) imageTags.push('neutral')
-        insertBlob.run(scope, imageId, image.data)
+        insertBlob.run(scope, access?.ownerId ?? null, imageId, image.data)
         insertImage.run(
           scope,
+          access?.ownerId ?? null,
           imageId,
           characterId,
           json(imageTags),
@@ -1685,14 +2071,14 @@ export class MisHistoriasStorage {
       }
 
       const usedSoundTags = new Set(
-        (this.list('sounds', scope) as Array<{ tags: string[] }>)
+        (this.list('sounds', scope, {}, access ? { ownerId: access.ownerId } : undefined) as Array<{ tags: string[] }>)
           .flatMap((sound) => sound.tags)
           .map(tagKey)
       )
       const insertSound = this.database.prepare(`
         INSERT INTO sounds(
-          scope, id, tags_json, character_id, background_id, mime_type, created_at, data
-        ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
+          scope, owner_id, id, tags_json, character_id, background_id, mime_type, created_at, data
+        ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)
       `)
       for (const [index, sound] of payload.sounds.entries()) {
         const soundTags = tags(sound.metadata.tags).map((base) => {
@@ -1702,6 +2088,7 @@ export class MisHistoriasStorage {
         })
         insertSound.run(
           scope,
+          access?.ownerId ?? null,
           randomUUID(),
           json(soundTags),
           characterId,
@@ -1713,8 +2100,8 @@ export class MisHistoriasStorage {
 
       return {
         character,
-        images: this.list('images', scope, { characterId }),
-        sounds: (this.list('sounds', scope) as Array<Record<string, unknown>>)
+        images: this.list('images', scope, { characterId }, access),
+        sounds: (this.list('sounds', scope, {}, access) as Array<Record<string, unknown>>)
           .filter((sound) => sound.characterId === characterId)
       }
     })
@@ -1724,25 +2111,61 @@ export class MisHistoriasStorage {
     resource: R,
     scope: DataScope,
     id: string,
-    rawValue: unknown
+    rawValue: unknown,
+    access?: StorageAccess
   ): DataRecordMap[R]
   put(
     resource: JsonResource,
     scope: DataScope,
     id: string,
-    rawValue: unknown
+    rawValue: unknown,
+    access?: StorageAccess
   ) {
     const value = record(rawValue)
+    const table = resource === 'llmDebugTraces'
+      ? 'llm_debug_traces'
+      : resource === 'storySaves'
+        ? 'story_saves'
+        : resource === 'swarmPrompts' ? 'swarm_prompts' : resource
+    this.assertWritable(table, scope, id, access)
+    const ownerId = access?.ownerId ?? null
+    if (resource === 'messages' || resource === 'llmDebugTraces' || resource === 'storySaves') {
+      const storyId = text(value.storyId)
+      const ownAccess = access ? { ownerId: access.ownerId } : undefined
+      if (!this.get('stories', scope, storyId, ownAccess)) {
+        throw Object.assign(new Error('La historia no pertenece al usuario'), {
+          code: 'ERR_READ_ONLY_RESOURCE'
+        })
+      }
+    }
+    if (resource === 'stories' && access) {
+      const ownAccess = { ownerId: access.ownerId }
+      for (const characterId of stringArray(value.characterIds)) {
+        if (!this.get('characters', scope, characterId, ownAccess)) {
+          throw Object.assign(new Error('El personaje no pertenece al usuario'), {
+            code: 'ERR_READ_ONLY_RESOURCE'
+          })
+        }
+      }
+      const backgroundId = typeof value.initialBackgroundId === 'string'
+        ? value.initialBackgroundId
+        : null
+      if (backgroundId && !this.get('backgrounds', scope, backgroundId, ownAccess)) {
+        throw Object.assign(new Error('El fondo no pertenece al usuario'), {
+          code: 'ERR_READ_ONLY_RESOURCE'
+        })
+      }
+    }
     switch (resource) {
       case 'characters':
         this.database
           .prepare(`
             INSERT INTO characters(
-              scope, id, name, prompt, tags_json, color, image_generation_preset,
+              scope, owner_id, id, name, prompt, tags_json, color, image_generation_preset,
               image_generation_lora, image_generation_seed, image_generation_prompt_prefix,
               image_generation_model, archived, visible_in_demo,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               name = excluded.name,
               prompt = excluded.prompt,
@@ -1760,6 +2183,7 @@ export class MisHistoriasStorage {
           `)
           .run(
             scope,
+            ownerId,
             id,
             text(value.name),
             text(value.prompt),
@@ -1780,12 +2204,12 @@ export class MisHistoriasStorage {
         this.database
           .prepare(`
             INSERT INTO stories(
-              scope, id, title, premise, visual_mode, auto_generate_images, archived, visible_in_demo, protagonist_preferences,
+              scope, owner_id, id, title, premise, visual_mode, auto_generate_images, archived, visible_in_demo, protagonist_preferences,
               protagonist_preferences_mode, character_ids_json, character_customizations_json,
               initial_background_id, preset_id, image_catalog_snapshot_json,
               pending_image_instructions_json, context_summary,
               context_summary_through_message_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
@@ -1808,6 +2232,7 @@ export class MisHistoriasStorage {
           `)
           .run(
             scope,
+            ownerId,
             id,
             text(value.title),
             text(value.premise),
@@ -1834,8 +2259,8 @@ export class MisHistoriasStorage {
       case 'messages':
         this.database
           .prepare(`
-            INSERT INTO messages(scope, id, story_id, role, raw, segments_json, swarm_error_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO messages(scope, owner_id, id, story_id, role, raw, segments_json, swarm_error_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               story_id = excluded.story_id,
               role = excluded.role,
@@ -1846,6 +2271,7 @@ export class MisHistoriasStorage {
           `)
           .run(
             scope,
+            ownerId,
             id,
             text(value.storyId),
             value.role === 'assistant' ? 'assistant' : 'user',
@@ -1859,9 +2285,9 @@ export class MisHistoriasStorage {
         this.database
           .prepare(`
             INSERT INTO llm_debug_traces(
-              scope, id, story_id, request_message_id, response_message_id,
+              scope, owner_id, id, story_id, request_message_id, response_message_id,
               status, request_json, response_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               story_id = excluded.story_id,
               request_message_id = excluded.request_message_id,
@@ -1873,6 +2299,7 @@ export class MisHistoriasStorage {
           `)
           .run(
             scope,
+            ownerId,
             id,
             text(value.storyId),
             typeof value.requestMessageId === 'string' ? value.requestMessageId : null,
@@ -1887,9 +2314,9 @@ export class MisHistoriasStorage {
         this.database
           .prepare(`
             INSERT INTO story_saves(
-              scope, id, story_id, name, story_json, messages_json,
+              scope, owner_id, id, story_id, name, story_json, messages_json,
               debug_traces_json, thumbnail_data_url, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               story_id = excluded.story_id,
               name = excluded.name,
@@ -1901,6 +2328,7 @@ export class MisHistoriasStorage {
           `)
           .run(
             scope,
+            ownerId,
             id,
             text(value.storyId),
             text(value.name),
@@ -1914,18 +2342,18 @@ export class MisHistoriasStorage {
       case 'swarmPrompts':
         if (!text(value.name).trim() || !text(value.prompt).trim()) throw new Error('Nombre y prompt obligatorios')
         this.database.prepare(`
-          INSERT INTO swarm_prompts(scope, id, name, prompt, tags_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO swarm_prompts(scope, owner_id, id, name, prompt, tags_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(scope, id) DO UPDATE SET name = excluded.name, prompt = excluded.prompt,
             tags_json = excluded.tags_json, updated_at = excluded.updated_at
-        `).run(scope, id, text(value.name).trim(), text(value.prompt).trim(), json(tags(value.tags)),
+        `).run(scope, ownerId, id, text(value.name).trim(), text(value.prompt).trim(), json(tags(value.tags)),
           integer(value.createdAt), integer(value.updatedAt))
         break
       case 'presets':
         this.database
           .prepare(`
-            INSERT INTO presets(scope, id, name, content, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO presets(scope, owner_id, id, name, content, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               name = excluded.name,
               content = excluded.content,
@@ -1934,6 +2362,7 @@ export class MisHistoriasStorage {
           `)
           .run(
             scope,
+            ownerId,
             id,
             text(value.name),
             text(value.content),
@@ -1942,7 +2371,7 @@ export class MisHistoriasStorage {
           )
         break
     }
-    const saved = this.get(resource, scope, id)
+    const saved = this.get(resource, scope, id, access)
     if (!saved) throw new Error(`No se pudo recuperar ${resource}/${id} tras guardarlo`)
     return saved
   }
@@ -1951,12 +2380,21 @@ export class MisHistoriasStorage {
     resource: 'images' | 'backgrounds' | 'sounds',
     scope: DataScope,
     id: string,
-    payload: BinaryPayload
+    payload: BinaryPayload,
+    access?: StorageAccess
   ) {
     const value = payload.metadata
+    this.assertWritable(resource, scope, id, access)
+    const ownerId = access?.ownerId ?? null
     if (resource === 'images') {
       return this.transaction(() => {
         const characterId = text(value.characterId)
+        const ownAccess = access ? { ownerId: access.ownerId } : undefined
+        if (!this.get('characters', scope, characterId, ownAccess)) {
+          throw Object.assign(new Error('El personaje no pertenece al usuario'), {
+            code: 'ERR_READ_ONLY_RESOURCE'
+          })
+        }
         const isDefault = Boolean(value.isDefault)
         const current = this.database
           .prepare(`
@@ -1983,20 +2421,20 @@ export class MisHistoriasStorage {
             : payload.original
         if (!current || blobId !== current.blob_id) {
           this.database
-            .prepare('INSERT INTO image_blobs(scope, id, data) VALUES (?, ?, ?)')
-            .run(scope, blobId, payload.data)
+            .prepare('INSERT INTO image_blobs(scope, owner_id, id, data) VALUES (?, ?, ?, ?)')
+            .run(scope, ownerId, blobId, payload.data)
         }
         if (isDefault) {
           this.database
-            .prepare('UPDATE images SET is_default = 0 WHERE scope = ? AND character_id = ? AND id <> ?')
-            .run(scope, characterId, id)
+            .prepare('UPDATE images SET is_default = 0 WHERE scope = ? AND owner_id IS ? AND character_id = ? AND id <> ?')
+            .run(scope, ownerId, characterId, id)
         }
         this.database
           .prepare(`
             INSERT INTO images(
-              scope, id, character_id, tags_json, is_default,
+              scope, owner_id, id, character_id, tags_json, is_default,
               mime_type, created_at, blob_id, original_data, original_mime_type, generation_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               character_id = excluded.character_id,
               tags_json = excluded.tags_json,
@@ -2010,6 +2448,7 @@ export class MisHistoriasStorage {
           `)
           .run(
             scope,
+            ownerId,
             id,
             characterId,
             json(tags(value.tags)),
@@ -2021,14 +2460,15 @@ export class MisHistoriasStorage {
             original?.mimeType ?? null,
             json(readImageGeneration(value.generation))
           )
-        return this.get('images', scope, id)
+        return this.get('images', scope, id, access)
       })
     }
 
     if (resource === 'backgrounds') return this.transaction(() => {
       const preparedTags = tags(value.tags)
+      const ownAccess = access ? { ownerId: access.ownerId } : undefined
       const usedTags = new Set(
-        (this.list('backgrounds', scope) as Array<{ id: string; tags: string[] }>)
+        (this.list('backgrounds', scope, {}, ownAccess) as Array<{ id: string; tags: string[] }>)
           .filter((background) => background.id !== id)
           .flatMap((background) => background.tags)
           .map((tag) => tag.trim().toLocaleLowerCase())
@@ -2040,8 +2480,8 @@ export class MisHistoriasStorage {
       }
       this.database
         .prepare(`
-          INSERT INTO backgrounds(scope, id, tags_json, description, mime_type, visible_in_demo, created_at, data)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO backgrounds(scope, owner_id, id, tags_json, description, mime_type, visible_in_demo, created_at, data)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(scope, id) DO UPDATE SET
             tags_json = excluded.tags_json,
             description = excluded.description,
@@ -2052,6 +2492,7 @@ export class MisHistoriasStorage {
         `)
         .run(
           scope,
+          ownerId,
           id,
           json(preparedTags),
           text(value.description),
@@ -2060,13 +2501,14 @@ export class MisHistoriasStorage {
           integer(value.createdAt),
           payload.data
         )
-      return this.get('backgrounds', scope, id)
+      return this.get('backgrounds', scope, id, access)
     })
 
     return this.transaction(() => {
       const preparedTags = tags(value.tags)
+      const ownAccess = access ? { ownerId: access.ownerId } : undefined
       const usedTags = new Set(
-        (this.list('sounds', scope) as Array<{ id: string; tags: string[] }>)
+        (this.list('sounds', scope, {}, ownAccess) as Array<{ id: string; tags: string[] }>)
           .filter((sound) => sound.id !== id)
           .flatMap((sound) => sound.tags)
           .map((tag) => tag.trim().toLocaleLowerCase())
@@ -2078,11 +2520,21 @@ export class MisHistoriasStorage {
       }
       const characterId = typeof value.characterId === 'string' ? value.characterId : null
       const backgroundId = typeof value.backgroundId === 'string' ? value.backgroundId : null
+      if (characterId && !this.get('characters', scope, characterId, ownAccess)) {
+        throw Object.assign(new Error('El personaje no pertenece al usuario'), {
+          code: 'ERR_READ_ONLY_RESOURCE'
+        })
+      }
+      if (backgroundId && !this.get('backgrounds', scope, backgroundId, ownAccess)) {
+        throw Object.assign(new Error('El fondo no pertenece al usuario'), {
+          code: 'ERR_READ_ONLY_RESOURCE'
+        })
+      }
       this.database
         .prepare(`
           INSERT INTO sounds(
-            scope, id, tags_json, character_id, background_id, mime_type, created_at, data
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            scope, owner_id, id, tags_json, character_id, background_id, mime_type, created_at, data
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(scope, id) DO UPDATE SET
             tags_json = excluded.tags_json,
             character_id = excluded.character_id,
@@ -2093,6 +2545,7 @@ export class MisHistoriasStorage {
         `)
         .run(
           scope,
+          ownerId,
           id,
           json(preparedTags),
           characterId,
@@ -2101,19 +2554,29 @@ export class MisHistoriasStorage {
           integer(value.createdAt),
           payload.data
         )
-      return this.get('sounds', scope, id)
+      return this.get('sounds', scope, id, access)
     })
   }
 
-  delete(resource: DataResource, scope: DataScope, id: string) {
+  delete(resource: DataResource, scope: DataScope, id: string, access?: StorageAccess) {
     if (resource === 'messages') {
-      this.deleteMessages(scope, [id])
+      this.deleteMessages(scope, [id], access)
       return
     }
+    const table = resource === 'llmDebugTraces'
+      ? 'llm_debug_traces'
+      : resource === 'storySaves'
+        ? 'story_saves'
+        : resource === 'swarmPrompts' ? 'swarm_prompts' : resource
+    this.assertWritable(table, scope, id, access)
     if (resource === 'characters') {
-      const stories = (this.database
-        .prepare('SELECT id, title, character_ids_json FROM stories WHERE scope = ?')
-        .all(scope) as Array<{ id: string; title: string; character_ids_json: string }>)
+      const stories = (this.database.prepare(
+        access
+          ? 'SELECT id, title, character_ids_json FROM stories WHERE scope = ? AND owner_id IS ?'
+          : 'SELECT id, title, character_ids_json FROM stories WHERE scope = ?'
+      ).all(...(access ? [scope, access.ownerId] : [scope])) as Array<{
+        id: string; title: string; character_ids_json: string
+      }>)
         .filter((story) => parseJson<string[]>(story.character_ids_json, []).includes(id))
         .map((story) => ({ id: story.id, title: story.title }))
       if (stories.length) {
@@ -2126,37 +2589,46 @@ export class MisHistoriasStorage {
         throw error
       }
     }
-    const table = resource === 'llmDebugTraces'
-      ? 'llm_debug_traces'
-      : resource === 'storySaves'
-        ? 'story_saves'
-        : resource === 'swarmPrompts' ? 'swarm_prompts' : resource
-    this.database.prepare(`DELETE FROM ${table} WHERE scope = ? AND id = ?`).run(scope, id)
+    if (access) {
+      this.database.prepare(
+        `DELETE FROM ${table} WHERE scope = ? AND id = ? AND owner_id IS ?`
+      ).run(scope, id, access.ownerId)
+    } else {
+      this.database.prepare(`DELETE FROM ${table} WHERE scope = ? AND id = ?`).run(scope, id)
+    }
   }
 
-  createStorySave(scope: DataScope, storyId: string, name: string, thumbnailDataUrl: string) {
+  createStorySave(
+    scope: DataScope,
+    storyId: string,
+    name: string,
+    thumbnailDataUrl: string,
+    access?: StorageAccess
+  ) {
     return this.transaction(() => {
-      const story = this.get('stories', scope, storyId) as Story | null
+      const ownAccess = access ? { ownerId: access.ownerId } : undefined
+      const story = this.get('stories', scope, storyId, ownAccess) as Story | null
       if (!story) return null
       const save: StorySaveSlot = {
         id: randomUUID(),
         storyId,
         name,
         story,
-        messages: this.list('messages', scope, { storyId }) as Message[],
-        debugTraces: this.list('llmDebugTraces', scope, { storyId }) as LlmDebugTrace[],
+        messages: this.list('messages', scope, { storyId }, ownAccess) as Message[],
+        debugTraces: this.list('llmDebugTraces', scope, { storyId }, ownAccess) as LlmDebugTrace[],
         thumbnailDataUrl,
         createdAt: Date.now()
       }
-      return this.put('storySaves', scope, save.id, save)
+      return this.put('storySaves', scope, save.id, save, ownAccess)
     })
   }
 
-  loadStorySave(scope: DataScope, id: string) {
+  loadStorySave(scope: DataScope, id: string, access?: StorageAccess) {
     return this.transaction(() => {
-      const save = this.get('storySaves', scope, id) as StorySaveSlot | null
+      const ownAccess = access ? { ownerId: access.ownerId } : undefined
+      const save = this.get('storySaves', scope, id, ownAccess) as StorySaveSlot | null
       if (!save) return null
-      const current = this.get('stories', scope, save.storyId) as Story | null
+      const current = this.get('stories', scope, save.storyId, ownAccess) as Story | null
       if (!current) return null
       const story = {
         ...save.story,
@@ -2164,33 +2636,41 @@ export class MisHistoriasStorage {
         createdAt: current.createdAt,
         updatedAt: Date.now()
       }
-      this.put('stories', scope, save.storyId, story)
-      this.database.prepare('DELETE FROM llm_debug_traces WHERE scope = ? AND story_id = ?')
-        .run(scope, save.storyId)
-      this.database.prepare('DELETE FROM messages WHERE scope = ? AND story_id = ?')
-        .run(scope, save.storyId)
+      this.put('stories', scope, save.storyId, story, ownAccess)
+      this.database.prepare(
+        'DELETE FROM llm_debug_traces WHERE scope = ? AND story_id = ? AND owner_id IS ?'
+      ).run(scope, save.storyId, access?.ownerId ?? null)
+      this.database.prepare(
+        'DELETE FROM messages WHERE scope = ? AND story_id = ? AND owner_id IS ?'
+      ).run(scope, save.storyId, access?.ownerId ?? null)
       for (const message of save.messages) {
-        this.put('messages', scope, text(message.id), { ...message, storyId: save.storyId })
+        this.put('messages', scope, text(message.id), { ...message, storyId: save.storyId }, ownAccess)
       }
       for (const trace of save.debugTraces) {
-        this.put('llmDebugTraces', scope, text(trace.id), { ...trace, storyId: save.storyId })
+        this.put('llmDebugTraces', scope, text(trace.id), { ...trace, storyId: save.storyId }, ownAccess)
       }
       return { save, story }
     })
   }
 
-  deleteMessages(scope: DataScope, ids: string[]) {
+  deleteMessages(scope: DataScope, ids: string[], access?: StorageAccess) {
     if (ids.length === 0) return
     this.transaction(() => {
-      const deleteMessage = this.database.prepare('DELETE FROM messages WHERE scope = ? AND id = ?')
-      for (const id of ids) deleteMessage.run(scope, id)
+      const deleteMessage = this.database.prepare(
+        access
+          ? 'DELETE FROM messages WHERE scope = ? AND id = ? AND owner_id IS ?'
+          : 'DELETE FROM messages WHERE scope = ? AND id = ?'
+      )
+      for (const id of ids) {
+        deleteMessage.run(...(access ? [scope, id, access.ownerId] : [scope, id]))
+      }
 
       const traces = this.database
         .prepare(`
           SELECT id, status, request_message_id, response_message_id, request_json
-          FROM llm_debug_traces WHERE scope = ?
+          FROM llm_debug_traces WHERE scope = ?${access ? ' AND owner_id IS ?' : ''}
         `)
-        .all(scope) as Array<{
+        .all(...(access ? [scope, access.ownerId] : [scope])) as Array<{
         id: string
         status: 'success' | 'error'
         request_message_id: string | null
@@ -2199,7 +2679,7 @@ export class MisHistoriasStorage {
       }>
       const idSet = new Set(ids)
       const deleteTrace = this.database.prepare(
-        'DELETE FROM llm_debug_traces WHERE scope = ? AND id = ?'
+        `DELETE FROM llm_debug_traces WHERE scope = ? AND id = ?${access ? ' AND owner_id IS ?' : ''}`
       )
       for (const trace of traces) {
         if (
@@ -2209,13 +2689,13 @@ export class MisHistoriasStorage {
             trace.request_message_id &&
             idSet.has(trace.request_message_id))
         ) {
-          deleteTrace.run(scope, trace.id)
+          deleteTrace.run(...(access ? [scope, trace.id, access.ownerId] : [scope, trace.id]))
         }
       }
     })
   }
 
-  clear(scope: DataScope) {
+  clear(scope: DataScope, access?: StorageAccess) {
     this.transaction(() => {
       for (const table of [
         'story_saves',
@@ -2230,12 +2710,17 @@ export class MisHistoriasStorage {
         'presets',
         'swarm_prompts'
       ]) {
-        this.database.prepare(`DELETE FROM ${table} WHERE scope = ?`).run(scope)
+        if (access) {
+          this.database.prepare(`DELETE FROM ${table} WHERE scope = ? AND owner_id IS ?`)
+            .run(scope, access.ownerId)
+        } else {
+          this.database.prepare(`DELETE FROM ${table} WHERE scope = ?`).run(scope)
+        }
       }
     })
   }
 
-  readSettings(): SettingsRow | null {
+  readSettings(ownerId?: string): SettingsRow | null {
     const row = this.database
       .prepare(
         "SELECT value_json, api_key, private_api_key, swarm_auth_token FROM settings WHERE key = 'app'"
@@ -2247,8 +2732,9 @@ export class MisHistoriasStorage {
         swarm_auth_token: string
       } | undefined
     if (!row) return null
+    const value = parseJson<Record<string, unknown>>(row.value_json, {})
     return {
-      value: parseJson(row.value_json, {}),
+      value: ownerId ? { ...value, ...this.readUserSettings(ownerId) } : value,
       apiKey: row.api_key,
       privateApiKey: row.private_api_key,
       swarmAuthToken: row.swarm_auth_token

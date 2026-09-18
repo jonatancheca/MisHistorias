@@ -192,7 +192,20 @@ onBeforeRouteLeave(flushSave)
     <p v-if="!isNew && !existing" class="card text-sm">Personaje no encontrado.</p>
 
     <template v-else>
+      <div
+        v-if="existing?.readOnly"
+        class="card mb-5 flex flex-wrap items-center justify-between gap-3 text-sm"
+      >
+        <p>Personaje demo compartido. Puedes consultarlo, pero no modificarlo.</p>
+        <NuxtLink
+          :to="{ path: '/characters/new', query: { copyFrom: existing.id } }"
+          class="btn-primary"
+        >
+          Copiar a mi colección privada
+        </NuxtLink>
+      </div>
       <form class="mb-8 grid max-w-3xl gap-4" @submit.prevent="save">
+        <fieldset :disabled="existing?.readOnly" class="contents">
         <div>
           <label class="label" for="name">Nombre</label>
           <input id="name" v-model="name" autocomplete="off" class="field" placeholder="Ana" >
@@ -254,10 +267,11 @@ onBeforeRouteLeave(flushSave)
             {{ saveError || 'Error al guardar' }}
           </span>
         </div>
+        </fieldset>
       </form>
 
       <CharacterImageEditor
-        v-if="!isNew && existing"
+        v-if="!isNew && existing && !existing.readOnly"
         v-model:image-generation-preset="imageGenerationPreset"
         v-model:image-generation-lora="imageGenerationLora"
         v-model:image-generation-seed="imageGenerationSeed"
@@ -265,10 +279,10 @@ onBeforeRouteLeave(flushSave)
         v-model:image-generation-model="imageGenerationModel"
         :character-id="characterId"
       />
-      <section v-if="!isNew && existing" class="card mt-8 max-w-3xl">
+      <section v-if="!isNew && existing && !existing.readOnly" class="card mt-8 max-w-3xl">
         <SoundEditor :character-id="characterId" title="Sonidos del personaje" />
       </section>
-      <p v-else class="text-sm text-[var(--color-fg-muted)]">
+      <p v-else-if="isNew" class="text-sm text-[var(--color-fg-muted)]">
         {{
           copiedCharacter
             ? 'Las imágenes se copiarán al guardar el personaje.'

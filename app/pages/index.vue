@@ -127,7 +127,7 @@ async function reload() {
           <span class="story-index">{{ String(index + 1).padStart(2, '0') }}</span>
           <div class="min-w-0 flex-1 pt-0.5">
             <p class="text-[0.65rem] font-bold tracking-[0.12em] text-brand-600 uppercase">
-              {{ story.archived ? 'Historia archivada' : 'Historia en curso' }}
+              {{ story.readOnly ? 'Demo compartida · solo lectura' : story.archived ? 'Historia archivada' : 'Historia en curso' }}
             </p>
             <NuxtLink
               :to="`/stories/${story.id}`"
@@ -146,12 +146,14 @@ async function reload() {
             Editada {{ dateFormatter.format(story.updatedAt) }}
           </span>
           <NuxtLink
+            v-if="!story.readOnly"
             :to="{ path: '/stories/new', query: { copyFrom: story.id } }"
             class="btn-ghost min-h-9 px-2.5 py-1.5"
           >
             Copiar
           </NuxtLink>
           <button
+            v-if="!story.readOnly"
             type="button"
             class="btn-ghost inline-flex min-h-9 shrink-0 items-center px-2.5 py-1.5"
             :aria-label="story.archived ? 'Desarchivar' : 'Archivar'"
@@ -165,7 +167,12 @@ async function reload() {
               <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
             </svg>
           </button>
-          <button type="button" class="btn-danger min-h-9 px-2.5 py-1.5" @click="remove(story.id)">Borrar</button>
+          <button
+            v-if="!story.readOnly"
+            type="button"
+            class="btn-danger min-h-9 px-2.5 py-1.5"
+            @click="remove(story.id)"
+          >Borrar</button>
         </div>
       </li>
     </ul>

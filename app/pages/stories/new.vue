@@ -27,13 +27,13 @@ const copiedStory =
     : null
 const selectableCharacters = computed(() =>
   characters.characters.filter((character) =>
-    !character.archived && (!privacy.isDemo || character.visibleInDemo)
+    !character.archived && !character.readOnly && (!privacy.isDemo || character.visibleInDemo)
   )
 )
 const selectableBackgrounds = computed(() =>
-  privacy.isDemo
-    ? backgrounds.backgrounds.filter((background) => background.visibleInDemo)
-    : backgrounds.backgrounds
+  backgrounds.backgrounds.filter((background) =>
+    !background.readOnly && (!privacy.isDemo || background.visibleInDemo)
+  )
 )
 const availableCharacterIds = computed(
   () => new Set(selectableCharacters.value.map((character) => character.id))
