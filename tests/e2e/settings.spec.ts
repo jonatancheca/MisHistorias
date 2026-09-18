@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import type { AppSettings, Character, DatabaseBackup } from '../../shared/types'
 import { DEFAULT_CHARACTER_REFERENCE_PROMPT } from '../../app/lib/characterReferencePrompt'
 import { DEFAULT_PRESET_CONTENT } from '../../app/lib/defaultPreset'
@@ -360,13 +361,49 @@ test('muestra, crea y restaura backups SQLite con confirmación', async ({ page,
   await expect(changedResponse).toBeOK()
 
   await page.goto('/settings')
-  const existingRow = page.getByRole('listitem').filter({ hasText: existing.name })
+  const existingRow = page.getByRole('listitem').filter({
+    has: page.getByText(existing.name, { exact: true })
+  })
   await expect(existingRow).toBeVisible()
   await expect(existingRow.getByText('Manual', { exact: true })).toBeVisible()
 
+  const downloadPromise = page.waitForEvent('download')
+  await existingRow.getByRole('link', { name: 'Descargar' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe(existing.name)
+  const downloadPath = await download.path()
+  expect(downloadPath).not.toBeNull()
+  const downloadedBackup = await readFile(downloadPath!)
+
+  const uploadInput = page.getByTestId('backup-upload-input')
+  await uploadInput.setInputFiles({
+    name: 'incompatible.sqlite',
+    mimeType: 'application/vnd.sqlite3',
+    buffer: Buffer.from('no es SQLite')
+  })
+  await expect(page.getByRole('alert')).toContainText(
+    'no es un backup SQLite válido de Mis Historias'
+  )
+  await expect(page.getByRole('listitem')).toHaveCount(1)
+
+  await uploadInput.setInputFiles({
+    name: existing.name,
+    mimeType: 'application/vnd.sqlite3',
+    buffer: downloadedBackup
+  })
+  await expect(page.getByText(/^Backup subido:/)).toBeVisible()
+  const uploadedRow = page.getByRole('listitem').filter({ hasText: 'Subido' })
+  await expect(uploadedRow).toBeVisible()
+  await expect(uploadedRow.getByText('Subido', { exact: true })).toBeVisible()
+
+  await page.setViewportSize({ width: 320, height: 800 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
   await page.getByRole('button', { name: 'Crear backup' }).click()
   await expect(page.getByText(/^Backup creado:/)).toBeVisible()
-  await expect(page.getByRole('listitem')).toHaveCount(2)
+  await expect(page.getByRole('listitem')).toHaveCount(3)
 
   await existingRow.getByRole('button', { name: 'Restaurar' }).click()
   const dialog = page.getByRole('alertdialog', { name: 'Restaurar backup' })

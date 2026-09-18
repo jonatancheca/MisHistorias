@@ -442,6 +442,27 @@ export class MisHistoriasStorage {
     return { backupDirectory, backupPath, databaseName }
   }
 
+  private nextUploadedBackupPath(name: string) {
+    const backupDirectory = this.backupDirectory()
+    const databaseName = this.databaseName()
+    const originalStem = Array.from(parse(basename(name)).name)
+      .map(character => character.charCodeAt(0) < 32 ? '-' : character)
+      .join('')
+      .normalize('NFKC')
+      .replace(/[<>:"/\\|?*]/g, '-')
+      .replace(/\s+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 100) || 'backup'
+    const stem = `${databaseName}.uploaded-${originalStem}`
+    let backupPath = join(backupDirectory, `${stem}.sqlite`)
+    let collision = 1
+    while (existsSync(backupPath)) {
+      backupPath = join(backupDirectory, `${stem}-${collision}.sqlite`)
+      collision += 1
+    }
+    return { backupDirectory, backupPath }
+  }
+
   private readBackupVersion(path: string) {
     let backupDatabase: DatabaseSync | undefined
     try {
@@ -455,6 +476,16 @@ export class MisHistoriasStorage {
       const schema = backupDatabase
         .prepare("SELECT COUNT(*) AS total FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'")
         .get() as { total: number }
+      const applicationTables = backupDatabase
+        .prepare(`
+          SELECT COUNT(*) AS total
+          FROM sqlite_schema
+          WHERE type = 'table' AND name IN (
+            'characters', 'image_blobs', 'images', 'backgrounds', 'sounds', 'stories',
+            'messages', 'llm_debug_traces', 'story_saves', 'presets', 'settings', 'swarm_prompts'
+          )
+        `)
+        .get() as { total: number }
       const schemaVersion = version.user_version
       return {
         valid:
@@ -464,10 +495,11 @@ export class MisHistoriasStorage {
           Number.isInteger(schemaVersion) &&
           schemaVersion >= 0 &&
           schemaVersion <= SCHEMA_VERSION,
-        schemaVersion
+        schemaVersion,
+        applicationDatabase: applicationTables.total > 0
       }
     } catch {
-      return { valid: false, schemaVersion: null }
+      return { valid: false, schemaVersion: null, applicationDatabase: false }
     } finally {
       if (backupDatabase?.isOpen) backupDatabase.close()
     }
@@ -475,6 +507,7 @@ export class MisHistoriasStorage {
 
   private backupKind(name: string): DatabaseBackupKind {
     if (name.startsWith(`${this.databaseName()}.manual-`)) return 'manual'
+    if (name.startsWith(`${this.databaseName()}.uploaded-`)) return 'uploaded'
     if (name.startsWith(`${this.databaseName()}.before-restore-`)) return 'before-restore'
     return 'migration'
   }
@@ -487,7 +520,8 @@ export class MisHistoriasStorage {
       kind: this.backupKind(name),
       createdAt: stats.mtime.toISOString(),
       size: stats.size,
-      ...validation
+      schemaVersion: validation.schemaVersion,
+      valid: validation.valid && validation.applicationDatabase
     }
   }
 
@@ -567,14 +601,57 @@ export class MisHistoriasStorage {
     return this.createBackup('manual', version.user_version).backup
   }
 
-  restoreBackup(name: string) {
+  importBackup(sourcePath: string, originalName: string) {
+    if (!originalName.toLowerCase().endsWith('.sqlite')) {
+      throw new Error('Selecciona un archivo .sqlite')
+    }
+
+    const validation = this.readBackupVersion(sourcePath)
+    if (!validation.valid || !validation.applicationDatabase) {
+      if (validation.schemaVersion !== null && validation.schemaVersion > SCHEMA_VERSION) {
+        throw new Error(
+          `El backup usa el esquema v${validation.schemaVersion}; esta versión admite hasta v${SCHEMA_VERSION}`
+        )
+      }
+      throw new Error('El archivo no es un backup SQLite válido de Mis Historias')
+    }
+
+    const { backupDirectory, backupPath } = this.nextUploadedBackupPath(originalName)
+    const temporaryPath = `${backupPath}.tmp-${randomUUID()}`
+    mkdirSync(backupDirectory, { recursive: true })
+
+    try {
+      copyFileSync(sourcePath, temporaryPath)
+      const copiedValidation = this.readBackupVersion(temporaryPath)
+      if (
+        !copiedValidation.valid ||
+        copiedValidation.schemaVersion !== validation.schemaVersion
+      ) {
+        throw new Error('El backup subido no superó la validación final')
+      }
+      renameSync(temporaryPath, backupPath)
+      return this.inspectBackup(basename(backupPath), backupPath)
+    } catch (caught) {
+      rmSync(temporaryPath, { force: true })
+      throw caught
+    }
+  }
+
+  getBackupFile(name: string) {
     const backup = this.listBackups().find((item) => item.name === name)
     if (!backup) throw new Error('Backup no encontrado')
+    return {
+      backup,
+      path: join(this.backupDirectory(), backup.name)
+    }
+  }
+
+  restoreBackup(name: string) {
+    const { backup, path: sourcePath } = this.getBackupFile(name)
     if (!backup.valid || backup.schemaVersion === null) {
       throw new Error('El backup no es válido y no puede restaurarse')
     }
 
-    const sourcePath = join(this.backupDirectory(), backup.name)
     const currentVersion = this.database.prepare('PRAGMA user_version').get() as {
       user_version: number
     }

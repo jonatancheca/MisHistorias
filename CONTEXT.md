@@ -23,3 +23,7 @@ _Evitar_: Imagen del personaje, imagen predeterminada
 **Historia archivada**:
 Historia conservada fuera del catálogo activo sin quedar finalizada ni bloqueada. Mantiene todo su contenido, puede abrirse, editarse y continuarse, y su condición archivada forma parte de ella.
 _Evitar_: Historia eliminada, historia finalizada, historia de solo lectura
+
+**Backup SQLite**:
+Copia completa y restaurable de colección normal, colección privada, ajustes y secretos de una instalación de Mis Historias.
+_Evitar_: Exportación JSON, copia parcial

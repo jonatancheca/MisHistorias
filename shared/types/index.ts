@@ -304,7 +304,7 @@ export interface AppSettings {
   characterReferencePrompt: string | null
 }
 
-export type DatabaseBackupKind = 'manual' | 'migration' | 'before-restore'
+export type DatabaseBackupKind = 'manual' | 'uploaded' | 'migration' | 'before-restore'
 
 export interface DatabaseBackup {
   name: string

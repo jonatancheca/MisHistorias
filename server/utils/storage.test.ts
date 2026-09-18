@@ -944,6 +944,64 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
   }
 })
 
+test('importa backups válidos sin sobrescribir y rechaza archivos incompatibles', () => {
+  withStorage((storage, path) => {
+    storage.put('characters', 'normal', 'normal-1', character('normal-1'))
+    const manual = storage.createManualBackup()
+    const sourcePath = join(dirname(path), 'backups', manual.name)
+
+    const imported = storage.importBackup(sourcePath, 'mi copia.sqlite')
+    assert.equal(imported.kind, 'uploaded')
+    assert.equal(imported.name, 'test.uploaded-mi-copia.sqlite')
+    assert.equal(imported.valid, true)
+    assert.equal(imported.schemaVersion, 33)
+
+    const duplicate = storage.importBackup(sourcePath, 'mi copia.sqlite')
+    assert.equal(duplicate.kind, 'uploaded')
+    assert.equal(duplicate.name, 'test.uploaded-mi-copia-1.sqlite')
+    assert.equal(storage.getBackupFile(imported.name).path.endsWith(imported.name), true)
+
+    assert.throws(
+      () => storage.importBackup(sourcePath, 'mi copia.db'),
+      /Selecciona un archivo \.sqlite/
+    )
+
+    const foreignPath = join(dirname(path), 'foreign.sqlite')
+    const foreign = new DatabaseSync(foreignPath)
+    foreign.exec('CREATE TABLE unrelated (id TEXT); PRAGMA user_version = 1')
+    foreign.close()
+    assert.throws(
+      () => storage.importBackup(foreignPath, 'foreign.sqlite'),
+      /no es un backup SQLite válido de Mis Historias/
+    )
+
+    const future = new DatabaseSync(sourcePath)
+    future.exec('PRAGMA user_version = 34')
+    future.close()
+    assert.throws(
+      () => storage.importBackup(sourcePath, 'future.sqlite'),
+      /usa el esquema v34; esta versión admite hasta v33/
+    )
+
+    storage.put('characters', 'normal', 'normal-1', {
+      ...character('normal-1'),
+      name: 'Cambiado después de subir'
+    })
+    const restoredUpload = storage.restoreBackup(imported.name)
+    assert.equal(restoredUpload.restored.kind, 'uploaded')
+
+    const restored = new MisHistoriasStorage(path)
+    try {
+      assert.equal(
+        restored.get('characters', 'normal', 'normal-1')?.name,
+        'Personaje normal-1'
+      )
+    } finally {
+      restored.close()
+    }
+  })
+})
+
 test('rechaza restaurar un backup desconocido sin crear copia de seguridad', () => {
   withStorage((storage) => {
     assert.throws(() => storage.restoreBackup('../otro.sqlite'), /Backup no encontrado/)

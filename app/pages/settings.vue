@@ -8,10 +8,12 @@ import {
 } from '~/lib/chromeLlm'
 import {
   createDatabaseBackup,
+  databaseBackupDownloadUrl,
   listDatabaseBackups,
   readApiKey,
   readSwarmAuthToken,
-  restoreDatabaseBackup
+  restoreDatabaseBackup,
+  uploadDatabaseBackup
 } from '~/lib/db'
 import {
   fetchSwarmCatalog,
@@ -84,6 +86,7 @@ const testError = ref<string | null>(null)
 const importing = ref(false)
 const importMessage = ref<string | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
+const backupImportInput = ref<HTMLInputElement | null>(null)
 const backups = ref<DatabaseBackup[]>([])
 const backupsLoading = ref(false)
 const backupAction = ref<string | null>(null)
@@ -702,6 +705,26 @@ async function createBackup() {
   }
 }
 
+async function uploadBackup(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  backupAction.value = 'upload'
+  backupMessage.value = null
+  backupError.value = null
+  try {
+    const uploaded = await uploadDatabaseBackup(file)
+    await loadBackups()
+    backupMessage.value = `Backup subido: ${uploaded.name}`
+  } catch (caught) {
+    backupError.value = backupErrorMessage(caught, 'No se pudo subir el backup.')
+  } finally {
+    backupAction.value = null
+    input.value = ''
+  }
+}
+
 async function restoreBackup(backup: DatabaseBackup) {
   const accepted = await confirmDialog.ask({
     title: 'Restaurar backup',
@@ -726,6 +749,7 @@ async function restoreBackup(backup: DatabaseBackup) {
 
 function backupKindLabel(kind: DatabaseBackup['kind']) {
   if (kind === 'manual') return 'Manual'
+  if (kind === 'uploaded') return 'Subido'
   if (kind === 'before-restore') return 'Antes de restaurar'
   return 'Antes de migrar'
 }
@@ -1509,17 +1533,36 @@ onBeforeRouteLeave(async () => {
           <div>
             <h3 class="font-semibold">Backups SQLite</h3>
             <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-              Incluyen colección normal, colección privada y ajustes.
+              Incluyen colección normal, colección privada, ajustes y secretos. Trátalos como archivos sensibles.
             </p>
           </div>
-          <button
-            type="button"
-            class="btn-primary"
-            :disabled="backupAction !== null"
-            @click="createBackup"
-          >
-            {{ backupAction === 'create' ? 'Creando…' : 'Crear backup' }}
-          </button>
+          <div class="flex flex-wrap gap-2">
+            <input
+              ref="backupImportInput"
+              data-testid="backup-upload-input"
+              type="file"
+              accept=".sqlite,application/vnd.sqlite3,application/x-sqlite3"
+              autocomplete="off"
+              class="hidden"
+              @change="uploadBackup"
+            >
+            <button
+              type="button"
+              class="btn-ghost"
+              :disabled="backupAction !== null"
+              @click="backupImportInput?.click()"
+            >
+              {{ backupAction === 'upload' ? 'Subiendo…' : 'Subir backup' }}
+            </button>
+            <button
+              type="button"
+              class="btn-primary"
+              :disabled="backupAction !== null"
+              @click="createBackup"
+            >
+              {{ backupAction === 'create' ? 'Creando…' : 'Crear backup' }}
+            </button>
+          </div>
         </div>
 
         <p v-if="backupMessage" class="mt-3 break-words text-xs text-brand-600" role="status">
@@ -1555,14 +1598,23 @@ onBeforeRouteLeave(async () => {
                 <template v-if="backup.schemaVersion !== null"> · Esquema v{{ backup.schemaVersion }}</template>
               </p>
             </div>
-            <button
-              type="button"
-              class="btn-danger shrink-0 self-start sm:self-auto"
-              :disabled="!backup.valid || backupAction !== null"
-              @click="restoreBackup(backup)"
-            >
-              {{ backupAction === `restore:${backup.name}` ? 'Restaurando…' : 'Restaurar' }}
-            </button>
+            <div class="flex shrink-0 flex-wrap gap-2 self-start sm:self-auto">
+              <a
+                class="btn-ghost"
+                :href="databaseBackupDownloadUrl(backup.name)"
+                :download="backup.name"
+              >
+                Descargar
+              </a>
+              <button
+                type="button"
+                class="btn-danger"
+                :disabled="!backup.valid || backupAction !== null"
+                @click="restoreBackup(backup)"
+              >
+                {{ backupAction === `restore:${backup.name}` ? 'Restaurando…' : 'Restaurar' }}
+              </button>
+            </div>
           </li>
         </ul>
       </div>

@@ -380,6 +380,21 @@ export async function createDatabaseBackup() {
   return $fetch<DatabaseBackup>('/api/backups', { method: 'POST' })
 }
 
+export function databaseBackupDownloadUrl(name: string) {
+  return `/api/backups/${encodeURIComponent(name)}`
+}
+
+export async function uploadDatabaseBackup(file: File) {
+  return $fetch<DatabaseBackup>('/api/backups/upload', {
+    method: 'POST',
+    body: file,
+    headers: {
+      'content-type': file.type || 'application/vnd.sqlite3',
+      'x-backup-name': encodeURIComponent(file.name)
+    }
+  })
+}
+
 export async function restoreDatabaseBackup(name: string) {
   return $fetch<{
     restored: DatabaseBackup
