@@ -137,7 +137,7 @@ onBeforeUnmount(() => stageResizeObserver?.disconnect())
           <button
             v-if="item.state"
             type="button"
-            class="absolute top-2 right-2 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-slate-950/75 text-white shadow-lg hover:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-brand-400"
+            class="absolute top-[calc(2.5rem+env(safe-area-inset-top))] right-2 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-slate-950/75 text-white shadow-lg hover:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-brand-400 sm:top-2"
             :aria-label="`Cambiar imagen de ${item.character.name}`"
             title="Cambiar imagen"
             @click.stop="emit('selectImage', item.state)"

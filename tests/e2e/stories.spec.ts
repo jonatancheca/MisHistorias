@@ -1218,6 +1218,45 @@ test.describe('chat', () => {
 })
 
 test.describe('novela visual y responsive', () => {
+  for (const width of [320, 390]) {
+    test(`separa cambiar imagen del menú móvil a ${width}px`, async ({ page, data }) => {
+      const { story, character, image } = await createStoryFixture(data, true)
+      await data.createMessage({
+        story,
+        role: 'assistant',
+        raw: `${character.name} [feliz]: Hola.`,
+        segments: [{
+          type: 'dialogue',
+          characterId: character.id,
+          tag: 'feliz',
+          tags: ['feliz'],
+          imageId: image.id,
+          text: 'Hola.'
+        }]
+      })
+      await page.setViewportSize({ width, height: 760 })
+      await page.goto(`/stories/${story.id}`)
+
+      const menu = page.getByTestId('mobile-story-menu-toggle')
+      const changeImage = page.getByRole('button', { name: `Cambiar imagen de ${character.name}` })
+      const assertSeparated = async () => {
+        const menuBox = await menu.boundingBox()
+        const changeBox = await changeImage.boundingBox()
+        expect(menuBox).not.toBeNull()
+        expect(changeBox).not.toBeNull()
+        expect(changeBox!.y).toBeGreaterThanOrEqual(menuBox!.y + menuBox!.height + 8)
+      }
+
+      await expect(changeImage).toBeVisible()
+      await assertSeparated()
+      await menu.click()
+      await expect(menu).toHaveAttribute('aria-expanded', 'true')
+      await assertSeparated()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        .toBe(true)
+    })
+  }
+
   test('permite ampliar y hacer zoom en personajes desde Chat, Novela y editor', async ({ page, data }) => {
     const { story, character, image } = await createStoryFixture(data, true)
     const imageResponse = await page.request.put(`/api/data/images/${image.id}?scope=normal`, {
