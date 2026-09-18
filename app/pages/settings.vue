@@ -143,6 +143,11 @@ function sectionElement(id: SettingsSectionId) {
   return settingsPageRef.value?.querySelector<HTMLElement>(`#${id}`) ?? null
 }
 
+function settingsNavShell() {
+  const shell = settingsNavRef.value?.closest<HTMLElement>('nav') ?? null
+  return shell && shell.getBoundingClientRect().height > 0 ? shell : null
+}
+
 function revealActiveNavItem() {
   navScrollFrame = null
   const nav = settingsNavRef.value
@@ -180,8 +185,8 @@ function updateActiveSection() {
     return
   }
 
-  const activationLine = (settingsNavRef.value?.getBoundingClientRect().bottom
-    ?? container.getBoundingClientRect().top) + 16
+  const activationLine = (settingsNavShell()?.getBoundingClientRect().bottom
+    ?? container.getBoundingClientRect().top) + 24
   let current = settingsSections[0].id
   for (const section of settingsSections) {
     const element = sectionElement(section.id)
@@ -201,7 +206,7 @@ function scrollToSettingsSection(id: SettingsSectionId, behavior: ScrollBehavior
   const element = sectionElement(id)
   if (!container || !element) return
 
-  const navHeight = settingsNavRef.value?.getBoundingClientRect().height ?? 0
+  const navHeight = settingsNavShell()?.getBoundingClientRect().height ?? 0
   const top = container.scrollTop
     + element.getBoundingClientRect().top
     - container.getBoundingClientRect().top
@@ -858,44 +863,54 @@ onBeforeRouteLeave(async () => {
 </script>
 
 <template>
-  <div ref="settingsPageRef" class="page-shell">
-    <h1 class="mb-6 text-2xl font-bold">Ajustes</h1>
-    <p class="-mt-4 mb-6 min-h-5 text-xs text-[var(--color-fg-muted)]" aria-live="polite">
-      <span v-if="saveStatus === 'saving'">Guardando…</span>
-      <span v-else-if="saveStatus === 'saved'">Guardado</span>
-      <span v-else-if="saveStatus === 'error'" class="text-red-500">
-        {{ saveError || 'Error al guardar' }}
-      </span>
-    </p>
+  <div ref="settingsPageRef" class="settings-page page-shell">
+    <header class="mb-7">
+      <p class="page-kicker">Tu espacio</p>
+      <h1 class="page-title">Ajustes</h1>
+      <p class="mt-2 min-h-5 text-xs text-[var(--color-fg-muted)]" aria-live="polite">
+        <span v-if="saveStatus === 'saving'">Guardando…</span>
+        <span v-else-if="saveStatus === 'saved'">Guardado</span>
+        <span v-else-if="saveStatus === 'error'" class="text-red-500">
+          {{ saveError || 'Error al guardar' }}
+        </span>
+        <span v-else>Personaliza la experiencia y las conexiones de la aplicación.</span>
+      </p>
+    </header>
 
     <nav
-      class="sticky top-0 z-20 mb-8 hidden bg-[var(--color-surface)] py-2 sm:block"
+      class="settings-nav-shell sticky top-0 z-20 mb-5 hidden py-3 sm:block"
       aria-label="Secciones de ajustes"
     >
       <div
         ref="settingsNavRef"
-        class="settings-section-nav flex gap-2 overflow-x-auto rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-2 shadow-sm"
+        class="settings-section-nav flex gap-1.5 overflow-x-auto rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface-elevated)] p-2"
         data-testid="settings-section-nav"
       >
         <a
-          v-for="section in settingsSections"
+          v-for="(section, index) in settingsSections"
           :key="section.id"
           :href="`#${section.id}`"
-          class="shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors"
+          class="settings-nav-link shrink-0 rounded-xl px-3 py-2 text-sm font-semibold"
           :class="activeSectionId === section.id
-            ? 'bg-brand-500 text-white'
-            : 'bg-[var(--color-surface-alt)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'"
+            ? 'settings-nav-link-active'
+            : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'"
           :aria-current="activeSectionId === section.id ? 'location' : undefined"
           :data-settings-section="section.id"
           @click.prevent="navigateToSettingsSection(section.id)"
         >
+          <span class="settings-nav-index">{{ String(index + 1).padStart(2, '0') }}</span>
           {{ section.label }}
         </a>
       </div>
     </nav>
 
-    <section id="apariencia" class="mb-8">
-      <h2 class="mb-2 text-lg font-semibold">Apariencia</h2>
+    <section
+      id="apariencia"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'apariencia' }"
+    >
+      <h2>Apariencia</h2>
+      <p>Elige cómo se adapta la interfaz a tu entorno.</p>
       <div class="flex flex-wrap gap-2">
         <button
           type="button"
@@ -932,12 +947,17 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section id="llm" class="mt-10" data-testid="llm-settings">
-      <h2 class="mb-2 text-lg font-semibold">LLM</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+    <section
+      id="llm"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'llm' }"
+      data-testid="llm-settings"
+    >
+      <h2>LLM</h2>
+      <p>
         Generación de texto para historias con Chrome o LMStudio.
       </p>
-      <div class="card grid min-w-0 gap-5">
+      <div class="settings-panel-content grid min-w-0 gap-5">
       <label v-if="privacy.isPrivate" class="flex cursor-pointer items-start gap-3">
         <input
           type="checkbox"
@@ -1188,9 +1208,14 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section id="prompt-narrativo" class="mt-10" data-testid="narrative-prompt-settings">
-      <h2 class="mb-2 text-lg font-semibold">Prompt narrativo</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+    <section
+      id="prompt-narrativo"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'prompt-narrativo' }"
+      data-testid="narrative-prompt-settings"
+    >
+      <h2>Prompt narrativo</h2>
+      <p>
         Prompt usado para preparar cada historia. Si no lo personalizas, se usa el integrado en el código.
       </p>
       <textarea
@@ -1209,9 +1234,14 @@ onBeforeRouteLeave(async () => {
       </button>
     </section>
 
-    <section id="prompt-referencia-personaje" class="mt-10" data-testid="character-reference-prompt-settings">
-      <h2 class="mb-2 text-lg font-semibold">Prompt de referencia de personaje</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+    <section
+      id="prompt-referencia-personaje"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'prompt-referencia-personaje' }"
+      data-testid="character-reference-prompt-settings"
+    >
+      <h2>Prompt de referencia de personaje</h2>
+      <p>
         Instrucción enviada al modelo visual para deducir un prompt visual base desde una foto.
         Si no la personalizas, se usa la integrada en el código.
       </p>
@@ -1231,12 +1261,17 @@ onBeforeRouteLeave(async () => {
       </button>
     </section>
 
-    <section id="swarmui" class="mt-10" data-testid="swarm-settings">
-      <h2 class="mb-2 text-lg font-semibold">SwarmUI</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+    <section
+      id="swarmui"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'swarmui' }"
+      data-testid="swarm-settings"
+    >
+      <h2>SwarmUI</h2>
+      <p>
         Generación manual de imágenes. No se usa durante las historias.
       </p>
-      <div class="card grid min-w-0 gap-4">
+      <div class="settings-panel-content grid min-w-0 gap-4">
         <div>
           <label class="label" for="swarmBaseUrl">URL de SwarmUI</label>
           <div class="flex min-w-0 gap-2">
@@ -1389,9 +1424,15 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section id="actualizaciones" class="mt-10" data-testid="app-update-settings">
-      <h2 class="mb-2 text-lg font-semibold">Actualizaciones</h2>
-      <div class="card">
+    <section
+      id="actualizaciones"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'actualizaciones' }"
+      data-testid="app-update-settings"
+    >
+      <h2>Actualizaciones</h2>
+      <p>Comprueba la versión instalada y accede al actualizador cuando esté disponible.</p>
+      <div class="settings-panel-content">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div class="min-w-0 text-sm">
             <p>
@@ -1451,9 +1492,13 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section id="protagonista" class="mt-10">
-      <h2 class="mb-2 text-lg font-semibold">Protagonista</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+    <section
+      id="protagonista"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'protagonista' }"
+    >
+      <h2>Protagonista</h2>
+      <p>
         <template v-if="privacy.isPrivate">
           Nombre y preferencias exclusivos del modo privado. El color sigue compartido.
         </template>
@@ -1502,9 +1547,13 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section id="datos" class="mt-10">
-      <h2 class="mb-2 text-lg font-semibold">Datos</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+    <section
+      id="datos"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'datos' }"
+    >
+      <h2>Datos</h2>
+      <p>
         Todo se guarda en SQLite y se comparte con los equipos que usan este servidor.
       </p>
       <div class="flex flex-wrap gap-2">
@@ -1528,7 +1577,7 @@ onBeforeRouteLeave(async () => {
 
       <p v-if="importMessage" class="mt-2 text-xs text-[var(--color-fg-muted)]">{{ importMessage }}</p>
 
-      <div class="mt-6 rounded-xl border border-[var(--color-border-soft)] p-4">
+      <div class="settings-subpanel mt-6 rounded-2xl border border-[var(--color-border-soft)] p-4">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 class="font-semibold">Backups SQLite</h3>
@@ -1623,11 +1672,185 @@ onBeforeRouteLeave(async () => {
 </template>
 
 <style scoped>
+.settings-page {
+  counter-reset: settings-section;
+}
+
+.settings-nav-shell,
+.settings-panel {
+  width: min(100%, 76rem);
+}
+
+.settings-nav-shell {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-canvas) 96%, transparent) 72%,
+    transparent
+  );
+  backdrop-filter: blur(14px);
+}
+
 .settings-section-nav {
   scrollbar-width: none;
+  box-shadow: 0 12px 36px color-mix(in srgb, var(--color-fg) 7%, transparent);
+  backdrop-filter: blur(18px) saturate(130%);
 }
 
 .settings-section-nav::-webkit-scrollbar {
   display: none;
+}
+
+.settings-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--color-surface-alt) 62%, transparent);
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease,
+    box-shadow 180ms ease, transform 180ms ease;
+}
+
+.settings-nav-link:hover {
+  border-color: color-mix(in srgb, var(--color-brand-400) 28%, transparent);
+  background: color-mix(in srgb, var(--color-brand-500) 9%, var(--color-surface-elevated));
+}
+
+.settings-nav-link-active {
+  border-color: color-mix(in srgb, var(--color-brand-300) 55%, transparent);
+  background: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-500));
+  color: white;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-brand-600) 25%, transparent);
+  transform: translateY(-1px);
+}
+
+.settings-nav-index {
+  display: inline-flex;
+  min-width: 1.5rem;
+  height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  opacity: 0.82;
+}
+
+.settings-nav-link-active .settings-nav-index {
+  background: rgb(255 255 255 / 16%);
+  opacity: 1;
+}
+
+.settings-panel {
+  position: relative;
+  counter-increment: settings-section;
+  scroll-margin-top: 6.75rem;
+  overflow: hidden;
+  margin-top: 1.25rem;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 1.5rem;
+  background: var(--color-surface-elevated);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-card);
+  transition: border-color 220ms ease, box-shadow 220ms ease, background-color 220ms ease;
+}
+
+.settings-panel:first-of-type {
+  margin-top: 0;
+}
+
+.settings-panel::after {
+  position: absolute;
+  top: 1.25rem;
+  bottom: 1.25rem;
+  left: 0;
+  width: 0.22rem;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(180deg, var(--color-brand-400), var(--color-brand-700));
+  content: '';
+  opacity: 0;
+  transform: scaleY(0.35);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.settings-panel-active {
+  border-color: color-mix(in srgb, var(--color-brand-400) 60%, var(--color-border-soft));
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-brand-500) 5%, transparent),
+      transparent 34%
+    ),
+    var(--color-surface-elevated);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-brand-400) 12%, transparent),
+    var(--shadow-card-hover);
+}
+
+.settings-panel-active::after {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.settings-panel > h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0;
+  color: var(--color-fg);
+  font-size: 1.2rem;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+
+.settings-panel > h2::before {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-brand-400) 24%, var(--color-border-soft));
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--color-brand-500) 9%, transparent);
+  color: var(--color-brand-600);
+  content: counter(settings-section, decimal-leading-zero);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  transition: color 220ms ease, background-color 220ms ease, border-color 220ms ease;
+}
+
+.settings-panel-active > h2::before {
+  border-color: var(--color-brand-500);
+  background: var(--color-brand-600);
+  color: white;
+}
+
+.settings-panel > p {
+  margin: 0.55rem 0 1.25rem 2.7rem;
+  color: var(--color-fg-muted);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.settings-panel-content {
+  min-width: 0;
+}
+
+.settings-subpanel {
+  background: color-mix(in srgb, var(--color-surface-alt) 56%, transparent);
+}
+
+@media (max-width: 639px) {
+  .settings-panel {
+    scroll-margin-top: 8.5rem;
+    border-radius: 1.25rem;
+    padding: 1.1rem;
+  }
+
+  .settings-panel > p {
+    margin-left: 0;
+  }
 }
 </style>

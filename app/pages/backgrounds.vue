@@ -76,10 +76,11 @@ async function remove(id: string) {
 
 <template>
   <div class="page-shell">
-    <header class="mb-6 flex flex-wrap items-start justify-between gap-3">
+    <header class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold">Fondos</h1>
-        <p class="text-sm text-[var(--color-fg-muted)]">
+        <p class="page-kicker">Escenografía</p>
+        <h1 class="page-title">Fondos</h1>
+        <p class="mt-2 max-w-2xl text-sm text-[var(--color-fg-muted)]">
           Modelo puede elegir fondo usando cualquiera de sus etiquetas. Cada etiqueta debe ser única.
         </p>
       </div>
@@ -121,7 +122,7 @@ async function remove(id: string) {
       <p v-if="error" class="text-sm text-red-500 sm:col-span-3" role="alert">{{ error }}</p>
     </section>
 
-    <p v-if="backgrounds.backgrounds.length === 0" class="card text-sm text-[var(--color-fg-muted)]">
+    <p v-if="backgrounds.backgrounds.length === 0" class="empty-state card py-10 text-sm text-[var(--color-fg-muted)]">
       Sin fondos todavía.
     </p>
 

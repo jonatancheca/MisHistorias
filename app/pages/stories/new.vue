@@ -117,7 +117,13 @@ async function submit() {
 
 <template>
   <div class="page-shell">
-    <h1 class="mb-6 text-2xl font-bold">Nueva historia</h1>
+    <header class="mb-8">
+      <p class="page-kicker">Nuevo relato</p>
+      <h1 class="page-title">Crea una historia</h1>
+      <p class="mt-2 max-w-2xl text-sm text-[var(--color-fg-muted)]">
+        Define el punto de partida, reúne el elenco y deja que la aventura cobre vida.
+      </p>
+    </header>
 
     <form class="grid max-w-5xl gap-5" @submit.prevent="submit">
       <div>

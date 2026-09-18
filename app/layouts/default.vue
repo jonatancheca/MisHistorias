@@ -6,7 +6,7 @@ const isStoryView = computed(() => route.path.startsWith('/stories/') && route.p
 
 const settings = useSettingsStore()
 const links = computed(() => [
-  { to: '/', label: 'Histórias' },
+  { to: '/', label: 'Historias' },
   { to: '/characters', label: 'Personajes' },
   { to: '/backgrounds', label: 'Fondos' },
   { to: '/sounds', label: 'Sonidos' },
@@ -33,29 +33,37 @@ async function leavePrivateMode() {
 </script>
 
 <template>
-  <div class="flex h-dvh min-h-0 flex-col bg-[var(--color-surface)] text-[var(--color-fg)] sm:flex-row">
+  <div class="app-frame flex h-dvh min-h-0 flex-col text-[var(--color-fg)] sm:flex-row">
     <aside
       id="app-navigation"
-      class="flex w-full shrink-0 flex-col border-b border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] px-3 transition-[max-height,opacity,padding,transform,width] duration-200 sm:max-h-none sm:translate-y-0 sm:overflow-visible sm:border-r sm:border-b-0 sm:opacity-100"
+      class="app-sidebar z-30 flex w-full shrink-0 flex-col border-b px-3 transition-[max-height,opacity,padding,transform,width] duration-200 sm:max-h-none sm:translate-y-0 sm:overflow-visible sm:border-r sm:border-b-0 sm:opacity-100"
       :class="[
         mobileChromeHidden
           ? 'max-h-0 -translate-y-2 overflow-hidden border-b-0 py-0 opacity-0'
           : 'max-h-32 translate-y-0 py-3 opacity-100',
-        isStoryView ? 'sm:w-16 sm:px-2 sm:py-4' : 'sm:w-56 sm:p-4'
+        isStoryView ? 'sm:w-[4.5rem] sm:px-2.5 sm:py-5' : 'sm:w-64 sm:p-5'
       ]"
     >
       <div
-        class="mb-3 flex items-center gap-2 sm:mb-6"
+        class="mb-3 flex items-center gap-2.5 sm:mb-8"
         :class="isStoryView ? 'pr-12 sm:hidden' : ''"
       >
-        <NuxtLink to="/" class="flex items-center gap-2 text-lg font-bold">
-          <span class="inline-block h-3 w-3 rounded-full bg-brand-500" />
-          Mis historias
+        <NuxtLink to="/" class="group flex min-w-0 items-center gap-3">
+          <span class="brand-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 via-brand-600 to-brand-800 text-white transition group-hover:-rotate-3 group-hover:scale-105">
+            <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H20v17H7.5A3.5 3.5 0 0 0 4 22.5v-17Z" />
+              <path d="M8 7h8M8 11h6" />
+            </svg>
+          </span>
+          <span class="min-w-0">
+            <span class="block truncate text-[0.68rem] font-bold tracking-[0.16em] text-brand-600 uppercase">Tu universo</span>
+            <span class="block truncate text-lg font-bold tracking-[-0.03em]">Mis historias</span>
+          </span>
         </NuxtLink>
         <button
           v-if="privacy.isPrivate"
           type="button"
-          class="rounded p-1 text-[var(--color-fg-muted)] transition hover:text-brand-600"
+          class="ml-auto rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-elevated)] p-2 text-[var(--color-fg-muted)] transition hover:border-brand-300 hover:text-brand-600"
           aria-label="Salir del modo privado"
           title="Salir del modo privado"
           :disabled="privacy.switching"
@@ -75,19 +83,19 @@ async function leavePrivateMode() {
         </button>
       </div>
 
-      <nav class="grid min-w-0 grid-cols-6 gap-1 sm:flex sm:flex-1 sm:flex-col">
+      <nav class="grid min-w-0 grid-cols-6 gap-1 sm:flex sm:flex-1 sm:flex-col sm:gap-1.5">
         <NuxtLink
           v-for="link in links"
           :key="link.to"
           :to="link.to"
-          class="flex min-w-0 items-center justify-center gap-2 rounded-lg px-1 py-2 text-xs font-medium transition sm:text-sm"
+          class="nav-link flex min-w-0 items-center justify-center gap-2.5 rounded-xl px-1 py-2.5 text-xs font-semibold transition-[background-color,color,transform,box-shadow] duration-200 sm:text-sm"
           :aria-label="link.label"
           :title="link.label"
           :class="[
-            isStoryView ? 'sm:px-2' : 'sm:justify-start sm:px-3',
+            isStoryView ? 'sm:px-2' : 'sm:justify-start sm:px-3.5',
             isActive(link.to)
-              ? 'bg-brand-500 text-white'
-              : 'text-[var(--color-fg-muted)] hover:bg-brand-500/10 hover:text-brand-600'
+              ? 'nav-link-active bg-gradient-to-r from-brand-600 to-brand-500 text-white shadow-[0_8px_20px_color-mix(in_srgb,var(--color-brand-600)_22%,transparent)]'
+              : 'text-[var(--color-fg-muted)] hover:translate-x-0.5 hover:bg-brand-500/10 hover:text-brand-600'
           ]"
         >
           <svg
@@ -171,9 +179,19 @@ async function leavePrivateMode() {
           >{{ link.label }}</span>
         </NuxtLink>
       </nav>
+
+      <div
+        v-if="!isStoryView"
+        class="mt-5 hidden rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface-elevated)] p-3.5 sm:block"
+      >
+        <p class="text-[0.65rem] font-bold tracking-[0.13em] text-brand-600 uppercase">Espacio creativo</p>
+        <p class="mt-1 text-xs leading-relaxed text-[var(--color-fg-muted)]">
+          Personajes, escenas y relatos en un solo lugar.
+        </p>
+      </div>
     </aside>
 
-    <main class="min-h-0 min-w-0 flex-1 overflow-y-auto">
+    <main class="app-main min-h-0 min-w-0 flex-1 overflow-y-auto">
       <slot />
     </main>
   </div>

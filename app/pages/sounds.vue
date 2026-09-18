@@ -21,10 +21,11 @@ async function reload() {
 
 <template>
   <div class="page-shell">
-    <header class="mb-6 flex flex-wrap items-start justify-between gap-3">
+    <header class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold">Sonidos</h1>
-        <p class="text-sm text-[var(--color-fg-muted)]">
+        <p class="page-kicker">Paisaje sonoro</p>
+        <h1 class="page-title">Sonidos</h1>
+        <p class="mt-2 max-w-2xl text-sm text-[var(--color-fg-muted)]">
           Sonidos sueltos disponibles para cualquier historia. Los asociados se añaden desde personajes o fondos.
         </p>
       </div>

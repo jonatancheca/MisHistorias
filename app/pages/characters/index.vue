@@ -170,8 +170,12 @@ function cancelImport() {
 
 <template>
   <div class="page-shell">
-    <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-2xl font-bold">Personajes</h1>
+    <header class="mb-7 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="page-kicker">Elenco</p>
+        <h1 class="page-title">Personajes</h1>
+        <p class="mt-2 text-sm text-[var(--color-fg-muted)]">Da forma a quienes protagonizan tus historias.</p>
+      </div>
       <div class="flex flex-wrap gap-2">
         <button type="button" class="btn-ghost" :disabled="importing || refreshing" @click="reload">
           <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -222,7 +226,7 @@ function cancelImport() {
       {{ transferSuccess }}
     </p>
 
-    <p v-if="visibleCharacters.length === 0" class="card text-sm text-[var(--color-fg-muted)]">
+    <p v-if="visibleCharacters.length === 0" class="empty-state card py-10 text-sm text-[var(--color-fg-muted)]">
       {{ showArchived ? 'No hay personajes archivados.' : 'Aún no hay personajes.' }}
     </p>
 

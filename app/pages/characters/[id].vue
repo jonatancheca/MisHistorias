@@ -167,10 +167,13 @@ onBeforeRouteLeave(flushSave)
 
 <template>
   <div class="page-shell">
-    <header class="mb-6 flex items-center justify-between">
-      <h1 class="text-2xl font-bold">
-        {{ copiedCharacter ? 'Copiar personaje' : isNew ? 'Nuevo personaje' : name || 'Personaje' }}
-      </h1>
+    <header class="mb-7 flex items-end justify-between gap-4">
+      <div>
+        <p class="page-kicker">Ficha de personaje</p>
+        <h1 class="page-title">
+          {{ copiedCharacter ? 'Copiar personaje' : isNew ? 'Nuevo personaje' : name || 'Personaje' }}
+        </h1>
+      </div>
       <NuxtLink to="/characters" class="btn-ghost">Volver</NuxtLink>
     </header>
 
