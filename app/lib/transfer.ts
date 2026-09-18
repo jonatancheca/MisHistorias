@@ -15,6 +15,7 @@ import {
   listAllImages,
   listCharacters,
   listMessages,
+  listSounds,
   listSwarmPrompts,
   putSwarmPrompt,
   listStories,
@@ -24,16 +25,18 @@ import {
   putCharacter,
   putImage,
   putMessage,
+  putSound,
   putStory,
   putStorySave,
   type StoredBackground,
-  type StoredImage
+  type StoredImage,
+  type StoredSound
 } from '~/lib/db'
 import { blobToDataUrl, dataUrlToBlob } from '~/lib/images'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
-import { stripSoundDirectives, stripSoundSegments } from '~/lib/soundTransfer'
+import { filterSoundDirectives, stripSoundDirectives, stripSoundSegments } from '~/lib/soundTransfer'
 import {
   exportCharacterTransferFields,
   importImageGenerationLora,
@@ -43,8 +46,9 @@ import {
   importImageGenerationSeed
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 22
+const EXPORT_VERSION = 23
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const MAX_SOUND_BYTES = 10 * 1024 * 1024
 
 interface ExportedImage {
   id?: string
@@ -68,6 +72,7 @@ interface ExportedCharacter {
   imageGenerationPromptPrefix?: string
   imageGenerationModel?: string
   archived?: boolean
+  visibleInDemo?: boolean
   images: ExportedImage[]
 }
 
@@ -76,6 +81,16 @@ interface ExportedBackground {
   tags?: string[]
   tag?: string
   description: string
+  visibleInDemo?: boolean
+  dataUrl: string
+}
+
+interface ExportedSound {
+  id: string
+  tags: string[]
+  characterId: string | null
+  backgroundId: string | null
+  mimeType: string
   dataUrl: string
 }
 
@@ -84,6 +99,7 @@ interface ExportedStory {
   premise: string
   visualMode?: boolean
   archived?: boolean
+  visibleInDemo?: boolean
   autoGenerateImages?: boolean
   protagonistPreferences?: string
   protagonistPreferencesMode?: 'append' | 'replace'
@@ -102,18 +118,85 @@ interface ExportBundle {
   exportedAt: number
   characters: ExportedCharacter[]
   backgrounds?: ExportedBackground[]
+  sounds?: ExportedSound[]
   stories: ExportedStory[]
   swarmPrompts?: SwarmPrompt[]
 }
 
-export async function exportBundle(): Promise<ExportBundle> {
-  const [characters, images, backgrounds, stories, swarmPrompts] = await Promise.all([
+export async function exportBundle(
+  options: { demo?: boolean } = {}
+): Promise<ExportBundle> {
+  const [allCharacters, images, allBackgrounds, allStories, sounds, swarmPrompts] = await Promise.all([
     listCharacters(),
     listAllImages(),
     listBackgrounds(),
     listStories(),
+    listSounds(),
     listSwarmPrompts()
   ])
+
+  const storyRecords = await Promise.all(
+    allStories
+      .filter((story) => !options.demo || story.visibleInDemo)
+      .map(async (story) => ({
+        story,
+        messages: await listMessages(story.id),
+        saves: await listStorySaves(story.id)
+      }))
+  )
+  const includedCharacterIds = new Set(
+    options.demo
+      ? allCharacters.filter((character) => character.visibleInDemo).map((character) => character.id)
+      : allCharacters.map((character) => character.id)
+  )
+  const includedBackgroundIds = new Set(
+    options.demo
+      ? allBackgrounds.filter((background) => background.visibleInDemo).map((background) => background.id)
+      : allBackgrounds.map((background) => background.id)
+  )
+  for (const { story, messages, saves } of storyRecords) {
+    story.characterIds.forEach((id) => includedCharacterIds.add(id))
+    if (story.initialBackgroundId) includedBackgroundIds.add(story.initialBackgroundId)
+    messages.forEach((message) => message.segments.forEach((segment) => {
+      if (segment.characterId) includedCharacterIds.add(segment.characterId)
+      if (segment.backgroundId) includedBackgroundIds.add(segment.backgroundId)
+    }))
+    saves.forEach((save) => {
+      save.story.characterIds.forEach((id) => includedCharacterIds.add(id))
+      if (save.story.initialBackgroundId) includedBackgroundIds.add(save.story.initialBackgroundId)
+      save.messages.forEach((message) => message.segments.forEach((segment) => {
+        if (segment.characterId) includedCharacterIds.add(segment.characterId)
+        if (segment.backgroundId) includedBackgroundIds.add(segment.backgroundId)
+      }))
+    })
+  }
+
+  const characters = allCharacters.filter((character) => includedCharacterIds.has(character.id))
+  const backgrounds = allBackgrounds.filter((background) => includedBackgroundIds.has(background.id))
+  const includedSounds = sounds.filter((sound) =>
+    !options.demo ||
+    Boolean(sound.characterId && includedCharacterIds.has(sound.characterId)) ||
+    Boolean(sound.backgroundId && includedBackgroundIds.has(sound.backgroundId))
+  )
+  const includedSoundIds = new Set(includedSounds.map((sound) => sound.id))
+  const includedSoundTags = new Set(
+    includedSounds.flatMap((sound) => sound.tags.map((tag) => tag.trim().toLocaleLowerCase()))
+  )
+  const exportMessages = (messages: Message[]) => messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    raw: options.demo
+      ? filterSoundDirectives(message.raw, includedSoundTags)
+      : message.raw,
+    segments: options.demo
+      ? message.segments.filter(
+          (segment) => segment.type !== 'sound' || Boolean(segment.soundId && includedSoundIds.has(segment.soundId))
+        )
+      : message.segments,
+    generationMode: message.generationMode,
+    swarmError: options.demo ? undefined : readStorySwarmError(message.swarmError),
+    createdAt: message.createdAt
+  }))
 
   const exportedCharacters: ExportedCharacter[] = await Promise.all(
     characters.map(async (character) => ({
@@ -136,11 +219,12 @@ export async function exportBundle(): Promise<ExportBundle> {
   )
 
   const exportedStories: ExportedStory[] = await Promise.all(
-    stories.map(async (story) => ({
+    storyRecords.map(async ({ story, messages, saves }) => ({
       title: story.title,
       premise: story.premise,
       visualMode: story.visualMode,
       archived: story.archived,
+      visibleInDemo: story.visibleInDemo,
       autoGenerateImages: story.autoGenerateImages === true,
       protagonistPreferences: story.protagonistPreferences ?? '',
       protagonistPreferencesMode: story.protagonistPreferencesMode ?? 'append',
@@ -150,16 +234,13 @@ export async function exportBundle(): Promise<ExportBundle> {
       contextSummary: story.contextSummary ?? '',
       contextSummaryThroughMessageId: story.contextSummaryThroughMessageId,
       initialBackgroundId: story.initialBackgroundId ?? null,
-      messages: (await listMessages(story.id)).map((message) => ({
-        id: message.id,
-        role: message.role,
-        raw: stripSoundDirectives(message.raw),
-        segments: stripSoundSegments(message.segments),
-        generationMode: message.generationMode,
-        swarmError: readStorySwarmError(message.swarmError),
-        createdAt: message.createdAt
-      })),
-      saves: await listStorySaves(story.id)
+      messages: exportMessages(messages),
+      saves: saves.map((save) => ({
+        ...save,
+        story: options.demo ? { ...save.story, presetId: null } : save.story,
+        messages: exportMessages(save.messages),
+        debugTraces: options.demo ? [] : save.debugTraces
+      }))
     }))
   )
 
@@ -172,11 +253,20 @@ export async function exportBundle(): Promise<ExportBundle> {
         id: background.id,
         tags: background.tags,
         description: background.description,
+        visibleInDemo: background.visibleInDemo,
         dataUrl: await blobToDataUrl(background.blob)
       }))
     ),
+    sounds: await Promise.all(includedSounds.map(async (sound) => ({
+      id: sound.id,
+      tags: sound.tags,
+      characterId: sound.characterId,
+      backgroundId: sound.backgroundId,
+      mimeType: sound.mimeType,
+      dataUrl: await blobToDataUrl(sound.blob)
+    }))),
     stories: exportedStories,
-    swarmPrompts
+    swarmPrompts: options.demo ? [] : swarmPrompts
   }
 }
 
@@ -193,7 +283,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (bundle.swarmPrompts !== undefined && (!Array.isArray(bundle.swarmPrompts) || bundle.swarmPrompts.some((item) =>
@@ -201,6 +291,11 @@ function assertBundle(value: unknown): asserts value is ExportBundle {
     !Array.isArray(item.tags) || item.tags.some((tag) => typeof tag !== 'string')))) throw new Error('Prompts SwarmUI no válidos')
   if (!Array.isArray(bundle.characters) || !Array.isArray(bundle.stories)) {
     throw new Error('Fichero incompleto')
+  }
+  if (bundle.sounds !== undefined && (!Array.isArray(bundle.sounds) || bundle.sounds.some((item) =>
+    !item || typeof item.id !== 'string' || !Array.isArray(item.tags) ||
+    item.tags.some((tag) => typeof tag !== 'string') || typeof item.dataUrl !== 'string'))) {
+    throw new Error('Sonidos no válidos')
   }
 }
 
@@ -236,6 +331,7 @@ export async function importBundle(raw: string) {
       ),
       imageGenerationModel: importImageGenerationModel(item.imageGenerationModel),
       archived: item.archived === true,
+      visibleInDemo: item.visibleInDemo === true,
       createdAt: now,
       updatedAt: now
     }
@@ -295,12 +391,77 @@ export async function importBundle(raw: string) {
       tags: uniqueTags,
       description: String(item.description ?? ''),
       mimeType: blob.type || 'image/webp',
+      visibleInDemo: item.visibleInDemo === true,
       createdAt: now,
       blob
     }
     backgroundIdMap.set(String(item.id), background.id)
     backgroundTagMap.set(String(item.id), background.tags[0]!)
     await putBackground(background)
+  }
+
+  const soundIdMap = new Map<string, string>()
+  const soundTagMap = new Map<string, string>()
+  const usedSoundTags = new Set(
+    (await listSounds()).flatMap((sound) => sound.tags).map(tagKey)
+  )
+  for (const item of parsed.sounds ?? []) {
+    if (typeof item.dataUrl !== 'string' || item.dataUrl.length > MAX_SOUND_BYTES * 1.4) continue
+    const blob = await dataUrlToBlob(item.dataUrl)
+    if (!blob.size || blob.size > MAX_SOUND_BYTES) continue
+    const characterId = item.characterId
+      ? (characterIdMap.get(String(item.characterId)) ?? null)
+      : null
+    const backgroundId = item.backgroundId
+      ? (backgroundIdMap.get(String(item.backgroundId)) ?? null)
+      : null
+    if ((item.characterId && !characterId) || (item.backgroundId && !backgroundId)) continue
+    const sourceTags = sanitizeTags(item.tags)
+    if (!sourceTags.length) continue
+    const importedTags = sourceTags.map((baseTag) => {
+      const uniqueTag = nextAvailableTag(baseTag, usedSoundTags)
+      usedSoundTags.add(tagKey(uniqueTag))
+      soundTagMap.set(tagKey(baseTag), uniqueTag)
+      return uniqueTag
+    })
+    const sound: StoredSound = {
+      id: newId(),
+      tags: importedTags,
+      characterId,
+      backgroundId,
+      mimeType: typeof item.mimeType === 'string' ? item.mimeType : blob.type || 'audio/ogg',
+      createdAt: now,
+      blob
+    }
+    soundIdMap.set(String(item.id), sound.id)
+    await putSound(sound)
+  }
+
+  const importRaw = (raw: unknown) => {
+    const value = String(raw ?? '')
+    if (parsed.version < 23) return stripSoundDirectives(value)
+    return value
+      .split('\n')
+      .flatMap((line) => {
+        const match = line.match(/^(\s*Sonido\s*\[)([^\]\n]{1,80})(\]\s*:.*)$/i)
+        if (!match) return [line]
+        const tag = soundTagMap.get(tagKey(match[2]!))
+        return tag ? [`${match[1]}${tag}${match[3]}`] : []
+      })
+      .join('\n')
+  }
+  const importSegments = (segments: Message['segments']) => {
+    if (parsed.version < 23) return stripSoundSegments(segments)
+    return segments.flatMap((segment) => {
+      if (segment.type !== 'sound') return [segment]
+      const soundId = segment.soundId ? soundIdMap.get(String(segment.soundId)) : undefined
+      if (!soundId) return []
+      return [{
+        ...segment,
+        soundId,
+        tag: segment.tag ? (soundTagMap.get(tagKey(segment.tag)) ?? segment.tag) : segment.tag
+      }]
+    })
   }
 
   for (const item of parsed.stories) {
@@ -335,6 +496,7 @@ export async function importBundle(raw: string) {
       premise: String(item.premise ?? ''),
       visualMode: item.visualMode === true,
       archived: item.archived === true,
+      visibleInDemo: item.visibleInDemo === true,
       autoGenerateImages: item.autoGenerateImages === true,
       protagonistPreferences: String(item.protagonistPreferences ?? ''),
       protagonistPreferencesMode:
@@ -367,13 +529,13 @@ export async function importBundle(raw: string) {
         id: newId(),
         storyId: story.id,
         role: message.role === 'assistant' ? 'assistant' : 'user',
-        raw: stripSoundDirectives(String(message.raw ?? '')),
+        raw: importRaw(message.raw),
         swarmError: importSwarmError(message.swarmError),
         generationMode:
           message.generationMode === 'continue' || message.generationMode === 'auto'
             ? message.generationMode
             : 'normal',
-        segments: stripSoundSegments(message.segments ?? []).map((segment) => ({
+        segments: importSegments(message.segments ?? []).map((segment) => ({
           ...segment,
           tags:
             segment.type === 'dialogue'
@@ -429,6 +591,7 @@ export async function importBundle(raw: string) {
         title: String(save.story.title ?? story.title),
         premise: String(save.story.premise ?? story.premise),
         visualMode: save.story.visualMode === true,
+        visibleInDemo: save.story.visibleInDemo === true,
         autoGenerateImages: save.story.autoGenerateImages === true,
         protagonistPreferences: String(save.story.protagonistPreferences ?? ''),
         protagonistPreferencesMode:
@@ -477,13 +640,13 @@ export async function importBundle(raw: string) {
           id,
           storyId: story.id,
           role: message.role === 'assistant' ? 'assistant' : 'user',
-          raw: stripSoundDirectives(String(message.raw ?? '')),
+          raw: importRaw(message.raw),
           swarmError: importSwarmError(message.swarmError),
           generationMode:
             message.generationMode === 'continue' || message.generationMode === 'auto'
               ? message.generationMode
               : 'normal',
-          segments: stripSoundSegments(message.segments ?? []).map((segment) => ({
+          segments: importSegments(message.segments ?? []).map((segment) => ({
             ...segment,
             characterId: segment.characterId
               ? (characterIdMap.get(String(segment.characterId)) ?? null)

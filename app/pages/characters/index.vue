@@ -10,6 +10,7 @@ import {
 import { getOriginalImageBlob, listSounds, listStories } from '~/lib/db'
 
 const characters = useCharactersStore()
+const privacy = usePrivacyStore()
 const confirmDialog = useConfirmStore()
 await characters.load()
 
@@ -24,7 +25,10 @@ const transferSuccess = ref<string | null>(null)
 const showArchived = ref(false)
 const refreshing = ref(false)
 const visibleCharacters = computed(() =>
-  characters.characters.filter((character) => character.archived === showArchived.value)
+  characters.characters.filter((character) =>
+    character.archived === showArchived.value &&
+    (!privacy.isDemo || character.visibleInDemo)
+  )
 )
 
 async function reload() {

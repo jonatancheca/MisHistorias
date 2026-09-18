@@ -191,6 +191,7 @@ interface QueuedImageGenerationTask {
 export const useStoriesStore = defineStore('stories', () => {
   const stories = ref<Story[]>([])
   const loaded = ref(false)
+  let loadRevision = 0
 
   const activeStory = ref<Story | null>(null)
   const messages = ref<Message[]>([])
@@ -448,6 +449,7 @@ export const useStoriesStore = defineStore('stories', () => {
   watch(getActiveDataScope, () => cancelImageGeneration(), { flush: 'sync' })
 
   async function resetForScope() {
+    loadRevision += 1
     cancelImageGeneration({ abandonResponse: true })
     await stop()
     stories.value = []
@@ -471,7 +473,11 @@ export const useStoriesStore = defineStore('stories', () => {
 
   async function load(force = false) {
     if (loaded.value && !force) return
-    stories.value = await listStories()
+    const scope = getActiveDataScope()
+    const revision = ++loadRevision
+    const result = await listStories(scope)
+    if (scope !== getActiveDataScope() || revision !== loadRevision) return
+    stories.value = result
     loaded.value = true
   }
 
@@ -495,6 +501,7 @@ export const useStoriesStore = defineStore('stories', () => {
       premise: input.premise.trim(),
       visualMode: input.visualMode === true,
       archived: false,
+      visibleInDemo: usePrivacyStore().isDemo,
       autoGenerateImages: input.autoGenerateImages === true,
       protagonistPreferences: input.protagonistPreferences.trim(),
       protagonistPreferencesMode: input.protagonistPreferencesMode,
@@ -545,16 +552,34 @@ export const useStoriesStore = defineStore('stories', () => {
       .sort((left, right) => right.updatedAt - left.updatedAt)
   }
 
+  async function setDemoVisibility(id: string, visibleInDemo: boolean) {
+    const story = stories.value.find((item) => item.id === id)
+    if (!story || story.visibleInDemo === visibleInDemo) return story ?? null
+    const updated: Story = { ...story, visibleInDemo, updatedAt: Date.now() }
+    await putStory(updated)
+    if (activeStory.value?.id === id) activeStory.value = updated
+    stories.value = stories.value.map((item) => (item.id === id ? updated : item))
+    return updated
+  }
+
   async function openStory(id: string) {
+    const scope = getActiveDataScope()
     await load()
+    if (scope !== getActiveDataScope()) return
+    const revision = loadRevision
     visualRevealNavigationPaused.value = false
     visualRevealWaitingForAdvance.value = false
     activeStory.value = stories.value.find((story) => story.id === id) ?? null
     const [storedMessages, storedTraces, storedSaves] = activeStory.value
-      ? await Promise.all([listMessages(id), listLlmDebugTraces(id), listStorySaves(id)])
+      ? await Promise.all([
+          listMessages(id, scope),
+          listLlmDebugTraces(id, scope),
+          listStorySaves(id, scope)
+        ])
       : [[], [], []]
     const charactersStore = useCharactersStore()
     await charactersStore.load()
+    if (scope !== getActiveDataScope() || revision !== loadRevision) return
     const changed: Message[] = []
     const normalizedMessages = storedMessages.map((message) => {
       if (message.role !== 'assistant' || message.swarmError) return message
@@ -579,7 +604,7 @@ export const useStoriesStore = defineStore('stories', () => {
       changed.push(normalized)
       return normalized
     })
-    if (changed.length) await Promise.all(changed.map((message) => putMessage(message)))
+    if (changed.length) await Promise.all(changed.map((message) => putMessage(message, scope)))
     messages.value = normalizedMessages
     debugTraces.value = storedTraces
     saveSlots.value = storedSaves
@@ -924,7 +949,8 @@ export const useStoriesStore = defineStore('stories', () => {
     protagonistPreferences: string,
     protagonistPreferencesMode: ProtagonistPreferencesMode,
     characterIds: string[],
-    characterCustomizations: StoryCharacterCustomization[]
+    characterCustomizations: StoryCharacterCustomization[],
+    visibleInDemo?: boolean
   ) {
     if (!activeStory.value || !title.trim() || !premise.trim()) return
     const charactersStore = useCharactersStore()
@@ -934,6 +960,7 @@ export const useStoriesStore = defineStore('stories', () => {
       title: title.trim(),
       premise: premise.trim(),
       autoGenerateImages,
+      visibleInDemo: visibleInDemo ?? activeStory.value.visibleInDemo,
       protagonistPreferences: protagonistPreferences.trim(),
       protagonistPreferencesMode,
       characterIds: [...characterIds],
@@ -1249,6 +1276,19 @@ export const useStoriesStore = defineStore('stories', () => {
     }
 
     const storyCharacters = storyCharactersWithCustomNames(story, charactersStore.characters)
+    const privacy = usePrivacyStore()
+    const referencedBackgroundIds = new Set<string>(
+      messages.value.flatMap((message) =>
+        message.segments.flatMap((segment) => segment.backgroundId ? [segment.backgroundId] : [])
+      )
+    )
+    if (story.initialBackgroundId) referencedBackgroundIds.add(story.initialBackgroundId)
+    const storyBackgrounds = privacy.isDemo
+      ? backgroundsStore.backgrounds.filter(
+          (background) =>
+            background.visibleInDemo || referencedBackgroundIds.has(background.id)
+        )
+      : backgroundsStore.backgrounds
     const pendingForRequest = options.consumePendingImageInstructions
       ? validPendingImageInstructions(story, charactersStore.images)
       : []
@@ -1264,7 +1304,7 @@ export const useStoriesStore = defineStore('stories', () => {
     }
     const storySounds = soundsStore.sounds.filter(
       (sound) =>
-        (!sound.characterId && !sound.backgroundId) ||
+        (!privacy.isDemo && !sound.characterId && !sound.backgroundId) ||
         Boolean(
           sound.characterId &&
           story.characterIds.includes(sound.characterId) &&
@@ -1272,7 +1312,7 @@ export const useStoriesStore = defineStore('stories', () => {
         ) ||
         Boolean(
           sound.backgroundId &&
-          backgroundsStore.backgrounds.some((background) => background.id === sound.backgroundId)
+          storyBackgrounds.some((background) => background.id === sound.backgroundId)
         )
     )
     const currentImageCatalog = buildStoryImageCatalog(
@@ -1339,7 +1379,7 @@ export const useStoriesStore = defineStore('stories', () => {
         raw = buildMockResponse(
           storyCharacters,
           charactersStore.images,
-          backgroundsStore.backgrounds,
+          storyBackgrounds,
           storySounds,
           story.initialBackgroundId ?? null,
           generationMode,
@@ -1352,7 +1392,7 @@ export const useStoriesStore = defineStore('stories', () => {
           story,
           characters: storyCharacters,
           images: charactersStore.images,
-          backgrounds: backgroundsStore.backgrounds,
+          backgrounds: storyBackgrounds,
           sounds: storySounds,
           messages: messages.value,
           historyBudget,
@@ -1493,7 +1533,7 @@ export const useStoriesStore = defineStore('stories', () => {
         const segments = parseSegments(
           visibleRaw,
           storyCharacters,
-          backgroundsStore.backgrounds,
+          storyBackgrounds,
           settingsStore.activeUserName,
           charactersStore.images,
           assistantMessage.id,
@@ -1510,7 +1550,7 @@ export const useStoriesStore = defineStore('stories', () => {
             visibleRaw,
             assistantMessage,
             storyCharacters,
-            backgroundsStore.backgrounds,
+            storyBackgrounds,
             charactersStore.images,
             storySounds,
             settingsStore.activeUserName,
@@ -1542,7 +1582,7 @@ export const useStoriesStore = defineStore('stories', () => {
             presetContent: settingsStore.activeNarrativePrompt,
             storyCharacters,
             images: charactersStore.images,
-            backgrounds: backgroundsStore.backgrounds,
+            backgrounds: storyBackgrounds,
             sounds: storySounds,
             historyBudget,
             userName: settingsStore.activeUserName,
@@ -1687,6 +1727,7 @@ export const useStoriesStore = defineStore('stories', () => {
     updateStorySettings,
     setVisualMode,
     setArchived,
+    setDemoVisibility,
     removeStory,
     openStory,
     createSaveSlot,

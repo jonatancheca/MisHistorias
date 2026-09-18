@@ -7,6 +7,7 @@ const stories = useStoriesStore()
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
 const settings = useSettingsStore()
+const privacy = usePrivacyStore()
 
 await Promise.all([
   stories.load(),
@@ -20,12 +21,23 @@ const copyFromId = Array.isArray(route.query.copyFrom)
   : route.query.copyFrom
 const copiedStory =
   typeof copyFromId === 'string'
-    ? (stories.stories.find((story) => story.id === copyFromId) ?? null)
+    ? (stories.stories.find((story) =>
+        story.id === copyFromId && (!privacy.isDemo || story.visibleInDemo)
+      ) ?? null)
     : null
 const selectableCharacters = computed(() =>
-  characters.characters.filter((character) => !character.archived)
+  characters.characters.filter((character) =>
+    !character.archived && (!privacy.isDemo || character.visibleInDemo)
+  )
 )
-const availableCharacterIds = new Set(selectableCharacters.value.map((character) => character.id))
+const selectableBackgrounds = computed(() =>
+  privacy.isDemo
+    ? backgrounds.backgrounds.filter((background) => background.visibleInDemo)
+    : backgrounds.backgrounds
+)
+const availableCharacterIds = computed(
+  () => new Set(selectableCharacters.value.map((character) => character.id))
+)
 const copiedCustomizations = new Map(
   (copiedStory?.characterCustomizations ?? []).map((customization) => [
     customization.characterId,
@@ -41,7 +53,7 @@ const protagonistPreferencesMode = ref<'append' | 'replace'>(
   copiedStory?.protagonistPreferencesMode ?? 'append'
 )
 const selected = ref<string[]>(
-  copiedStory?.characterIds.filter((characterId) => availableCharacterIds.has(characterId)) ?? []
+  copiedStory?.characterIds.filter((characterId) => availableCharacterIds.value.has(characterId)) ?? []
 )
 const initialBackgroundId = ref<string | null>(
   copiedStory && backgrounds.byId(copiedStory.initialBackgroundId)
@@ -75,6 +87,16 @@ const selectedCharacters = computed(() =>
 const characterTagSuggestions = computed(() =>
   selectableCharacters.value.flatMap((character) => character.tags ?? [])
 )
+
+watch([selectableCharacters, selectableBackgrounds], () => {
+  selected.value = selected.value.filter((id) => availableCharacterIds.value.has(id))
+  if (
+    initialBackgroundId.value &&
+    !selectableBackgrounds.value.some((background) => background.id === initialBackgroundId.value)
+  ) {
+    initialBackgroundId.value = null
+  }
+})
 
 function customizationFor(characterId: string) {
   return characterCustomizations.value[characterId]!
@@ -282,7 +304,7 @@ async function submit() {
             <span class="block text-xs text-[var(--color-fg-muted)]">Elegirá al abrir la escena</span>
           </button>
           <button
-            v-for="background in backgrounds.backgrounds"
+            v-for="background in selectableBackgrounds"
             :key="background.id"
             type="button"
             class="flex items-center gap-3 rounded-xl border p-3 text-left transition"
@@ -306,7 +328,7 @@ async function submit() {
             </span>
           </button>
         </div>
-        <p v-if="backgrounds.backgrounds.length === 0" class="mt-2 text-sm text-[var(--color-fg-muted)]">
+        <p v-if="selectableBackgrounds.length === 0" class="mt-2 text-sm text-[var(--color-fg-muted)]">
           <NuxtLink to="/backgrounds" class="text-brand-600 underline">Añade fondos</NuxtLink>
           para poder elegir uno.
         </p>

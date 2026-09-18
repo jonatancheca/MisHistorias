@@ -5,6 +5,7 @@ import { primaryTag } from '~/lib/tags'
 const backgrounds = useBackgroundsStore()
 const sounds = useSoundsStore()
 const confirmDialog = useConfirmStore()
+const privacy = usePrivacyStore()
 
 await Promise.all([backgrounds.load(), sounds.load()])
 
@@ -15,6 +16,11 @@ const busy = ref(false)
 const error = ref<string | null>(null)
 const refreshing = ref(false)
 const refreshError = ref<string | null>(null)
+const visibleBackgrounds = computed(() =>
+  privacy.isDemo
+    ? backgrounds.backgrounds.filter((background) => background.visibleInDemo)
+    : backgrounds.backgrounds
+)
 
 async function reload() {
   if (refreshing.value) return
@@ -122,12 +128,12 @@ async function remove(id: string) {
       <p v-if="error" class="text-sm text-red-500 sm:col-span-3" role="alert">{{ error }}</p>
     </section>
 
-    <p v-if="backgrounds.backgrounds.length === 0" class="empty-state card py-10 text-sm text-[var(--color-fg-muted)]">
+    <p v-if="visibleBackgrounds.length === 0" class="empty-state card py-10 text-sm text-[var(--color-fg-muted)]">
       Sin fondos todavía.
     </p>
 
     <ul class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <li v-for="background in backgrounds.backgrounds" :key="background.id" class="card min-w-0">
+      <li v-for="background in visibleBackgrounds" :key="background.id" class="card min-w-0">
         <ImageLightbox
           :src="backgrounds.urlFor(background.id)!"
           :alt="`Fondo ${primaryTag(background) ?? ''}`"
@@ -151,6 +157,15 @@ async function remove(id: string) {
             @change="update(background.id, { description: ($event.target as HTMLInputElement).value })"
           >
           <SoundEditor :background-id="background.id" title="Sonidos del fondo" />
+          <label v-if="privacy.isPrivateMode" class="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              class="h-4 w-4 accent-[var(--color-brand-500)]"
+              :checked="background.visibleInDemo"
+              @change="update(background.id, { visibleInDemo: ($event.target as HTMLInputElement).checked })"
+            >
+            Visible en modo demo
+          </label>
           <div class="flex justify-end">
             <button type="button" class="btn-danger" @click="remove(background.id)">Borrar</button>
           </div>

@@ -3,6 +3,7 @@ import { normalizeColor, pickColor } from '~/lib/colors'
 
 const route = useRoute()
 const characters = useCharactersStore()
+const privacy = usePrivacyStore()
 await characters.load()
 
 const isNew = computed(() => route.params.id === 'new')
@@ -11,8 +12,16 @@ const existing = computed(() => (isNew.value ? null : characters.byId(characterI
 const copyFromId = Array.isArray(route.query.copyFrom)
   ? route.query.copyFrom[0]
   : route.query.copyFrom
-const copiedCharacter =
-  isNew.value && typeof copyFromId === 'string' ? characters.byId(copyFromId) : null
+const copySource = isNew.value && typeof copyFromId === 'string'
+  ? characters.byId(copyFromId)
+  : null
+const copiedCharacter = copySource && (!privacy.isDemo || copySource.visibleInDemo)
+  ? copySource
+  : null
+
+if (!isNew.value && privacy.isDemo && !existing.value?.visibleInDemo) {
+  await navigateTo('/characters')
+}
 
 const name = ref(existing.value?.name ?? copiedCharacter?.name ?? '')
 const prompt = ref(existing.value?.prompt ?? copiedCharacter?.prompt ?? '')
@@ -38,6 +47,7 @@ const color = ref(
     pickColor(characters.characters.length)
   )
 )
+const visibleInDemo = ref(existing.value?.visibleInDemo ?? false)
 const characterTagSuggestions = computed(() =>
   characters.characters.flatMap((character) => character.tags ?? [])
 )
@@ -61,7 +71,8 @@ function enqueueSave(revision: number, navigateAfterCreate = false) {
     imageGenerationLora: imageGenerationLora.value,
     imageGenerationSeed: imageGenerationSeed.value,
     imageGenerationPromptPrefix: imageGenerationPromptPrefix.value,
-    imageGenerationModel: imageGenerationModel.value
+    imageGenerationModel: imageGenerationModel.value,
+    visibleInDemo: visibleInDemo.value
   }
   const run = async () => {
     if (!input.name.trim()) return
@@ -150,7 +161,8 @@ watch(
     imageGenerationLora.value,
     imageGenerationSeed.value,
     imageGenerationPromptPrefix.value,
-    imageGenerationModel.value
+    imageGenerationModel.value,
+    visibleInDemo.value
   ],
   scheduleSave
 )
@@ -219,6 +231,19 @@ onBeforeRouteLeave(flushSave)
           </p>
         </div>
         <CharacterAppearanceEditor v-model="imageGenerationPromptPrefix" />
+        <label v-if="privacy.isPrivateMode" class="flex items-start gap-2 text-sm">
+          <input
+            v-model="visibleInDemo"
+            type="checkbox"
+            class="mt-0.5 h-4 w-4 accent-[var(--color-brand-500)]"
+          >
+          <span>
+            <span class="block font-medium">Visible en modo demo</span>
+            <span class="block text-xs text-[var(--color-fg-muted)]">
+              Permite mostrar este personaje en el catálogo demo.
+            </span>
+          </span>
+        </label>
         <div class="flex min-h-10 items-center gap-3">
           <button v-if="isNew" type="submit" class="btn-primary" :disabled="!name.trim() || saving">
             Guardar

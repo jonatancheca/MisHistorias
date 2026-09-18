@@ -61,7 +61,7 @@ async function leavePrivateMode() {
           </span>
         </NuxtLink>
         <button
-          v-if="privacy.isPrivate"
+          v-if="privacy.isPrivateMode"
           type="button"
           class="ml-auto rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-elevated)] p-2 text-[var(--color-fg-muted)] transition hover:border-brand-300 hover:text-brand-600"
           aria-label="Salir del modo privado"

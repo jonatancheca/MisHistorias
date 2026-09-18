@@ -70,6 +70,7 @@ export interface CharacterImportPayload {
   imageGenerationSeed: string
   imageGenerationPromptPrefix: string
   imageGenerationModel?: string
+  visibleInDemo?: boolean
   images: BinaryPayload[]
   sounds: BinaryPayload[]
 }
@@ -86,7 +87,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 33
+const SCHEMA_VERSION = 34
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -172,7 +173,11 @@ function storyWithoutImageDescriptions(value: unknown) {
 
 function storyWithArchived(value: unknown) {
   const story = storyWithoutImageDescriptions(value)
-  return { ...story, archived: story.archived === true }
+  return {
+    ...story,
+    archived: story.archived === true,
+    visibleInDemo: story.visibleInDemo === true
+  }
 }
 
 function storyWithCharacterColors(
@@ -231,6 +236,7 @@ function rowToCharacter(row: SqliteRow) {
     imageGenerationPromptPrefix: text(row.image_generation_prompt_prefix),
     imageGenerationModel: text(row.image_generation_model),
     archived: integer(row.archived) === 1,
+    visibleInDemo: integer(row.visible_in_demo) === 1,
     createdAt: integer(row.created_at),
     updatedAt: integer(row.updated_at)
   }
@@ -266,6 +272,7 @@ function rowToBackground(row: SqliteRow) {
     tags: parseJson<string[]>(row.tags_json, []),
     description: text(row.description),
     mimeType: text(row.mime_type, 'application/octet-stream'),
+    visibleInDemo: integer(row.visible_in_demo) === 1,
     createdAt: integer(row.created_at)
   }
 }
@@ -302,6 +309,7 @@ function rowToStory(row: SqliteRow) {
     premise: text(row.premise),
     visualMode: row.visual_mode === 1,
     archived: row.archived === 1,
+    visibleInDemo: row.visible_in_demo === 1,
     autoGenerateImages: row.auto_generate_images === 1,
     protagonistPreferences: text(row.protagonist_preferences),
     protagonistPreferencesMode:
@@ -720,6 +728,7 @@ export class MisHistoriasStorage {
           image_generation_prompt_prefix TEXT NOT NULL DEFAULT '',
           image_generation_model TEXT NOT NULL DEFAULT '',
           archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+          visible_in_demo INTEGER NOT NULL DEFAULT 0 CHECK (visible_in_demo IN (0, 1)),
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
           PRIMARY KEY (scope, id)
@@ -756,6 +765,7 @@ export class MisHistoriasStorage {
           tags_json TEXT NOT NULL,
           description TEXT NOT NULL,
           mime_type TEXT NOT NULL,
+          visible_in_demo INTEGER NOT NULL DEFAULT 0 CHECK (visible_in_demo IN (0, 1)),
           created_at INTEGER NOT NULL,
           data BLOB NOT NULL,
           PRIMARY KEY (scope, id)
@@ -790,6 +800,7 @@ export class MisHistoriasStorage {
           visual_mode INTEGER NOT NULL DEFAULT 0 CHECK (visual_mode IN (0, 1)),
           auto_generate_images INTEGER NOT NULL DEFAULT 0 CHECK (auto_generate_images IN (0, 1)),
           archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+          visible_in_demo INTEGER NOT NULL DEFAULT 0 CHECK (visible_in_demo IN (0, 1)),
           protagonist_preferences TEXT NOT NULL,
           protagonist_preferences_mode TEXT NOT NULL CHECK (protagonist_preferences_mode IN ('append', 'replace')),
           character_ids_json TEXT NOT NULL,
@@ -1308,6 +1319,24 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 34) {
+        const additions = [
+          ['characters', 'visible_in_demo'],
+          ['backgrounds', 'visible_in_demo'],
+          ['stories', 'visible_in_demo']
+        ] as const
+        for (const [table, column] of additions) {
+          const columns = this.database
+            .prepare(`PRAGMA table_info(${table})`)
+            .all() as Array<{ name: string }>
+          if (!columns.some((item) => item.name === column)) {
+            this.database.exec(
+              `ALTER TABLE ${table} ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0 CHECK (${column} IN (0, 1))`
+            )
+          }
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -1392,7 +1421,7 @@ export class MisHistoriasStorage {
       case 'backgrounds':
         return (this.database
           .prepare(
-            'SELECT scope, id, tags_json, description, mime_type, created_at FROM backgrounds WHERE scope = ? ORDER BY created_at'
+            'SELECT scope, id, tags_json, description, mime_type, visible_in_demo, created_at FROM backgrounds WHERE scope = ? ORDER BY created_at'
           )
           .all(scope) as SqliteRow[]).map(rowToBackground)
       case 'sounds':
@@ -1540,6 +1569,7 @@ export class MisHistoriasStorage {
             ? value.imageGenerationModel
             : source.imageGenerationModel,
         archived: false,
+        visibleInDemo: Boolean(value.visibleInDemo),
         createdAt: now,
         updatedAt: now
       })
@@ -1620,6 +1650,7 @@ export class MisHistoriasStorage {
         imageGenerationPromptPrefix: payload.imageGenerationPromptPrefix,
         imageGenerationModel: payload.imageGenerationModel,
         archived: existing?.archived ?? false,
+        visibleInDemo: existing?.visibleInDemo ?? payload.visibleInDemo,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now
       })
@@ -1709,9 +1740,9 @@ export class MisHistoriasStorage {
             INSERT INTO characters(
               scope, id, name, prompt, tags_json, color, image_generation_preset,
               image_generation_lora, image_generation_seed, image_generation_prompt_prefix,
-              image_generation_model, archived,
+              image_generation_model, archived, visible_in_demo,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               name = excluded.name,
               prompt = excluded.prompt,
@@ -1723,6 +1754,7 @@ export class MisHistoriasStorage {
               image_generation_prompt_prefix = excluded.image_generation_prompt_prefix,
               image_generation_model = excluded.image_generation_model,
               archived = excluded.archived,
+              visible_in_demo = excluded.visible_in_demo,
               created_at = excluded.created_at,
               updated_at = excluded.updated_at
           `)
@@ -1739,6 +1771,7 @@ export class MisHistoriasStorage {
             text(value.imageGenerationPromptPrefix),
             text(value.imageGenerationModel),
             bool(value.archived),
+            bool(value.visibleInDemo),
             integer(value.createdAt),
             integer(value.updatedAt)
           )
@@ -1747,18 +1780,19 @@ export class MisHistoriasStorage {
         this.database
           .prepare(`
             INSERT INTO stories(
-              scope, id, title, premise, visual_mode, auto_generate_images, archived, protagonist_preferences,
+              scope, id, title, premise, visual_mode, auto_generate_images, archived, visible_in_demo, protagonist_preferences,
               protagonist_preferences_mode, character_ids_json, character_customizations_json,
               initial_background_id, preset_id, image_catalog_snapshot_json,
               pending_image_instructions_json, context_summary,
               context_summary_through_message_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
               visual_mode = excluded.visual_mode,
               auto_generate_images = excluded.auto_generate_images,
               archived = excluded.archived,
+              visible_in_demo = excluded.visible_in_demo,
               protagonist_preferences = excluded.protagonist_preferences,
               protagonist_preferences_mode = excluded.protagonist_preferences_mode,
               character_ids_json = excluded.character_ids_json,
@@ -1780,6 +1814,7 @@ export class MisHistoriasStorage {
             value.visualMode === true ? 1 : 0,
             value.autoGenerateImages === true ? 1 : 0,
             bool(value.archived),
+            bool(value.visibleInDemo),
             text(value.protagonistPreferences),
             value.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
             json(stringArray(value.characterIds)),
@@ -2005,12 +2040,13 @@ export class MisHistoriasStorage {
       }
       this.database
         .prepare(`
-          INSERT INTO backgrounds(scope, id, tags_json, description, mime_type, created_at, data)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO backgrounds(scope, id, tags_json, description, mime_type, visible_in_demo, created_at, data)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(scope, id) DO UPDATE SET
             tags_json = excluded.tags_json,
             description = excluded.description,
             mime_type = excluded.mime_type,
+            visible_in_demo = excluded.visible_in_demo,
             created_at = excluded.created_at,
             data = excluded.data
         `)
@@ -2020,6 +2056,7 @@ export class MisHistoriasStorage {
           json(preparedTags),
           text(value.description),
           text(value.mimeType, 'application/octet-stream'),
+          bool(value.visibleInDemo),
           integer(value.createdAt),
           payload.data
         )

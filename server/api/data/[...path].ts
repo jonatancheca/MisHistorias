@@ -102,6 +102,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'imageGenerationPromptPrefix') &&
         (value.imageGenerationModel === undefined || hasString(value, 'imageGenerationModel')) &&
         typeof value.archived === 'boolean' &&
+        typeof value.visibleInDemo === 'boolean' &&
         hasNumber(value, 'createdAt') &&
         hasNumber(value, 'updatedAt')
       break
@@ -111,6 +112,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'premise') &&
         typeof value.visualMode === 'boolean' &&
         typeof value.archived === 'boolean' &&
+        typeof value.visibleInDemo === 'boolean' &&
         (value.autoGenerateImages === undefined || typeof value.autoGenerateImages === 'boolean') &&
         hasString(value, 'protagonistPreferences') &&
         (value.protagonistPreferencesMode === 'append' ||
@@ -192,6 +194,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'description') &&
         hasString(value, 'mimeType') &&
         String(value.mimeType).startsWith('image/') &&
+        typeof value.visibleInDemo === 'boolean' &&
         hasNumber(value, 'createdAt')
       break
     case 'sounds':
@@ -224,7 +227,8 @@ function validateCharacterCopy(rawValue: unknown) {
     !hasString(value, 'imageGenerationLora') ||
     !hasString(value, 'imageGenerationSeed') ||
     !hasString(value, 'imageGenerationPromptPrefix') ||
-    (value.imageGenerationModel !== undefined && !hasString(value, 'imageGenerationModel'))
+    (value.imageGenerationModel !== undefined && !hasString(value, 'imageGenerationModel')) ||
+    typeof value.visibleInDemo !== 'boolean'
   ) {
     throw createError({ statusCode: 400, message: 'Datos no válidos' })
   }
@@ -364,6 +368,7 @@ async function readCharacterImport(event: H3Event) {
     imageGenerationModel: typeof character.imageGenerationModel === 'string'
       ? character.imageGenerationModel
       : '',
+    visibleInDemo: character.visibleInDemo === true,
     images: importAssets(metadata.images, parts, 'images'),
     sounds: importAssets(metadata.sounds, parts, 'sounds')
   }

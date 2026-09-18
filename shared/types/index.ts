@@ -51,6 +51,8 @@ export interface Character {
   imageGenerationModel?: string
   /** Oculta el personaje de catálogos y selectores sin romper historias existentes. */
   archived: boolean
+  /** Permite mostrar el personaje en el catálogo del modo demo. */
+  visibleInDemo: boolean
   createdAt: number
   updatedAt: number
 }
@@ -69,6 +71,8 @@ export interface Background {
   tags: string[]
   description: string
   mimeType: string
+  /** Permite mostrar el fondo en el catálogo del modo demo. */
+  visibleInDemo: boolean
   createdAt: number
 }
 
@@ -110,6 +114,8 @@ export interface Story {
   visualMode: boolean
   /** Oculta la historia del catálogo activo sin bloquear su contenido. */
   archived: boolean
+  /** Permite mostrar la historia en el modo demo. */
+  visibleInDemo: boolean
   /** Preferencias del protagonista especificas de esta historia */
   protagonistPreferences: string
   /** Anade las preferencias globales o las reemplaza para esta historia */

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const sounds = useSoundsStore()
+const privacy = usePrivacyStore()
 await sounds.load()
 
 const refreshing = ref(false)
@@ -40,8 +41,11 @@ async function reload() {
     <p v-if="refreshError" class="card mb-4 text-sm text-red-500" role="alert">
       {{ refreshError }}
     </p>
-    <section class="card max-w-3xl">
+    <section v-if="!privacy.isDemo" class="card max-w-3xl">
       <SoundEditor title="Sonidos sueltos" />
     </section>
+    <p v-else class="empty-state card max-w-3xl py-10 text-sm text-[var(--color-fg-muted)]">
+      Los sonidos sueltos no se muestran en modo demo.
+    </p>
   </div>
 </template>

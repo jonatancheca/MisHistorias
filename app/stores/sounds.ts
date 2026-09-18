@@ -29,6 +29,7 @@ export const useSoundsStore = defineStore('sounds', () => {
   const sounds = ref<StoredSound[]>([])
   const urls = ref<Record<string, string>>({})
   const loaded = ref(false)
+  let loadRevision = 0
   let audioContext: AudioContext | null = null
   const decoded = new Map<string, AudioBuffer>()
   const activePlayers = new Set<HTMLAudioElement>()
@@ -45,6 +46,7 @@ export const useSoundsStore = defineStore('sounds', () => {
   }
 
   function resetForScope() {
+    loadRevision += 1
     sounds.value = []
     loaded.value = false
     decoded.clear()
@@ -53,10 +55,14 @@ export const useSoundsStore = defineStore('sounds', () => {
 
   async function load(force = false) {
     if (loaded.value && !force) return
+    const scope = getActiveDataScope()
+    const revision = ++loadRevision
     const settings = useSettingsStore()
     await settings.load()
-    const all = await listSounds()
-    const versionKey = getActiveDataScope() === 'private'
+    if (scope !== getActiveDataScope() || revision !== loadRevision) return
+    const all = await listSounds(scope)
+    if (scope !== getActiveDataScope() || revision !== loadRevision) return
+    const versionKey = scope === 'private'
       ? ('privateDefaultSoundVersion' as const)
       : ('defaultSoundVersion' as const)
     const appliedVersion = settings.settings[versionKey]
@@ -65,6 +71,7 @@ export const useSoundsStore = defineStore('sounds', () => {
       for (const seed of seeds) {
         const response = await fetch(`/sounds/default/${encodeURIComponent(seed.file)}`)
         if (!response.ok) throw new Error(`No se pudo cargar el sonido ${seed.tags[0]}.`)
+        if (scope !== getActiveDataScope() || revision !== loadRevision) return
         const sound: StoredSound = {
           id: seed.id,
           tags: seed.tags,
@@ -76,11 +83,13 @@ export const useSoundsStore = defineStore('sounds', () => {
             DEFAULT_SOUNDS.findIndex((definition) => definition.id === seed.id),
           blob: await response.blob()
         }
-        await putSound(sound)
+        await putSound(sound, scope)
         all.push(sound)
       }
+      if (scope !== getActiveDataScope() || revision !== loadRevision) return
       await settings.save({ [versionKey]: DEFAULT_SOUND_VERSION } as Partial<AppSettings>)
     }
+    if (scope !== getActiveDataScope() || revision !== loadRevision) return
     sounds.value = all
     syncUrls()
     loaded.value = true
@@ -88,29 +97,65 @@ export const useSoundsStore = defineStore('sounds', () => {
 
   function byId(id: string | null | undefined) {
     if (!id) return null
-    return sounds.value.find((sound) => sound.id === id) ?? null
+    const sound = sounds.value.find((item) => item.id === id) ?? null
+    return sound && isVisibleInDemo(sound) ? sound : null
+  }
+
+  function isVisibleInDemo(sound: StoredSound) {
+    const privacy = usePrivacyStore()
+    if (!privacy.isDemo) return true
+    if (!sound.characterId && !sound.backgroundId) return false
+
+    const storyStore = useStoriesStore()
+    const story = storyStore.activeStory?.visibleInDemo ? storyStore.activeStory : null
+    if (sound.characterId) {
+      return Boolean(
+        useCharactersStore().byId(sound.characterId)?.visibleInDemo ||
+        story?.characterIds.includes(sound.characterId)
+      )
+    }
+    if (!sound.backgroundId) return false
+    const usedBackgroundIds = new Set<string>(
+      (storyStore.messages ?? []).flatMap((message) =>
+        message.segments.flatMap((segment) => segment.backgroundId ? [segment.backgroundId] : [])
+      )
+    )
+    if (story?.initialBackgroundId) usedBackgroundIds.add(story.initialBackgroundId)
+    return Boolean(
+      useBackgroundsStore().byId(sound.backgroundId)?.visibleInDemo ||
+      usedBackgroundIds.has(sound.backgroundId)
+    )
   }
 
   function byTag(tag: string | null | undefined) {
     if (!tag) return null
     const key = tagKey(tag)
-    return sounds.value.find((sound) => sound.tags.some((item) => tagKey(item) === key)) ?? null
+    return sounds.value.find(
+      (sound) => isVisibleInDemo(sound) && sound.tags.some((item) => tagKey(item) === key)
+    ) ?? null
   }
 
   function forCharacter(characterId: string) {
-    return sounds.value.filter((sound) => sound.characterId === characterId)
+    return sounds.value.filter(
+      (sound) => sound.characterId === characterId && isVisibleInDemo(sound)
+    )
   }
 
   function forBackground(backgroundId: string) {
-    return sounds.value.filter((sound) => sound.backgroundId === backgroundId)
+    return sounds.value.filter(
+      (sound) => sound.backgroundId === backgroundId && isVisibleInDemo(sound)
+    )
   }
 
   function standalone() {
-    return sounds.value.filter((sound) => !sound.characterId && !sound.backgroundId)
+    return sounds.value.filter(
+      (sound) => !sound.characterId && !sound.backgroundId && isVisibleInDemo(sound)
+    )
   }
 
   function urlFor(id: string | null | undefined) {
     if (!id) return null
+    if (!byId(id)) return null
     return urls.value[id] ?? null
   }
 

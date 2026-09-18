@@ -96,6 +96,48 @@
   --glow-secondary: rgb(244 114 182 / 10%);
 }
 
+.demo-scope {
+  --color-brand-50: oklch(0.969 0.016 293.756);
+  --color-brand-100: oklch(0.943 0.029 294.588);
+  --color-brand-200: oklch(0.894 0.057 293.283);
+  --color-brand-300: oklch(0.811 0.111 293.571);
+  --color-brand-400: oklch(0.702 0.183 293.541);
+  --color-brand-500: oklch(0.606 0.25 292.717);
+  --color-brand-600: oklch(0.541 0.281 293.009);
+  --color-brand-700: oklch(0.491 0.27 292.581);
+  --color-brand-800: oklch(0.432 0.232 292.759);
+  --color-brand-900: oklch(0.38 0.189 293.745);
+
+  --color-surface: #fbf9ff;
+  --color-surface-alt: #f5f0ff;
+  --color-border-soft: #e5dcf8;
+  --color-fg: #241b31;
+  --color-fg-muted: #6d607e;
+  --color-canvas: #f7f3fc;
+  --color-surface-elevated: rgb(254 252 255 / 90%);
+  --color-sidebar: rgb(250 247 255 / 90%);
+  --color-sidebar-border: rgb(222 211 244 / 80%);
+  --color-field: rgb(255 255 255 / 84%);
+  --shadow-button: 0 8px 22px rgb(139 92 246 / 22%);
+  --glow-primary: rgb(139 92 246 / 16%);
+  --glow-secondary: rgb(167 139 250 / 12%);
+}
+
+.dark.demo-scope {
+  --color-surface: #120d1d;
+  --color-surface-alt: #1d142d;
+  --color-border-soft: #3e2e57;
+  --color-fg: #f7f0ff;
+  --color-fg-muted: #b7a5cb;
+  --color-canvas: #0d0915;
+  --color-surface-elevated: rgb(29 20 45 / 90%);
+  --color-sidebar: rgb(17 11 28 / 92%);
+  --color-sidebar-border: rgb(67 48 92 / 78%);
+  --color-field: rgb(18 11 30 / 68%);
+  --glow-primary: rgb(139 92 246 / 20%);
+  --glow-secondary: rgb(167 139 250 / 12%);
+}
+
 html,
 body,
 #__nuxt {

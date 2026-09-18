@@ -24,6 +24,14 @@ _Evitar_: Imagen del personaje, imagen predeterminada
 Historia conservada fuera del catálogo activo sin quedar finalizada ni bloqueada. Mantiene todo su contenido, puede abrirse, editarse y continuarse, y su condición archivada forma parte de ella.
 _Evitar_: Historia eliminada, historia finalizada, historia de solo lectura
 
+**Modo demo**:
+Vista de presentación de una selección de la colección privada. No es una colección independiente ni un acceso público; una historia visible concede dentro de ella acceso contextual a los recursos que utiliza.
+_Evitar_: Colección demo, modo público
+
+**Visible en modo demo**:
+Condición explícita que permite mostrar un personaje, fondo o historia privados en el modo demo. Fuera del contexto de una historia no concede visibilidad a otros recursos relacionados.
+_Evitar_: Público, compartido
+
 **Backup SQLite**:
 Copia completa y restaurable de colección normal, colección privada, ajustes y secretos de una instalación de Mis Historias.
 _Evitar_: Exportación JSON, copia parcial

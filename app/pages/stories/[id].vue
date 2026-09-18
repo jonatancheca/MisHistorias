@@ -40,6 +40,10 @@ await Promise.all([
   stories.openStory(String(route.params.id))
 ])
 
+if (privacy.isDemo && !stories.activeStory?.visibleInDemo) {
+  await navigateTo('/')
+}
+
 const input = ref('')
 const scroller = ref<HTMLElement | null>(null)
 const timelineContent = ref<HTMLElement | null>(null)
@@ -81,6 +85,7 @@ const storyPremise = ref('')
 const autoGenerateImages = ref(false)
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
+const storyVisibleInDemo = ref(false)
 
 useDialogEscape(
   () => storyPreferencesOpen.value,
@@ -96,7 +101,10 @@ const storyCustomizationRows = computed(() =>
 )
 const availableStoryCharacters = computed(() =>
   characters.characters.filter(
-    (character) => !character.archived && !storyCharacterIds.value.includes(character.id)
+    (character) =>
+      !character.archived &&
+      !storyCharacterIds.value.includes(character.id) &&
+      (!privacy.isDemo || character.visibleInDemo)
   )
 )
 
@@ -399,6 +407,7 @@ function openStoryPreferences() {
   autoGenerateImages.value = stories.activeStory.autoGenerateImages === true
   storyPreferences.value = stories.activeStory.protagonistPreferences ?? ''
   storyPreferencesMode.value = stories.activeStory.protagonistPreferencesMode ?? 'append'
+  storyVisibleInDemo.value = stories.activeStory.visibleInDemo
   storyCharacterIds.value = [...stories.activeStory.characterIds]
   const stored = new Map(
     (stories.activeStory.characterCustomizations ?? []).map((item) => [item.characterId, item])
@@ -443,7 +452,8 @@ async function saveStoryPreferences() {
     storyPreferences.value,
     storyPreferencesMode.value,
     storyCharacterIds.value,
-    storyCharacterCustomizations.value.map((item) => ({ ...item, tags: [...item.tags] }))
+    storyCharacterCustomizations.value.map((item) => ({ ...item, tags: [...item.tags] })),
+    storyVisibleInDemo.value
   )
   storyPreferencesOpen.value = false
 }
@@ -1534,6 +1544,19 @@ onBeforeRouteLeave(() => {
                 <span class="block font-medium">Crear imágenes nuevas durante la historia</span>
                 <span class="block text-xs text-[var(--color-fg-muted)]">
                   El LLM podrá pedir una imagen nueva por personaje y respuesta.
+                </span>
+              </span>
+            </label>
+            <label v-if="privacy.isPrivateMode" class="flex items-start gap-2 text-sm">
+              <input
+                v-model="storyVisibleInDemo"
+                type="checkbox"
+                class="mt-0.5 h-4 w-4 accent-[var(--color-brand-500)]"
+              >
+              <span>
+                <span class="block font-medium">Visible en modo demo</span>
+                <span class="block text-xs text-[var(--color-fg-muted)]">
+                  Permite mostrar esta historia y sus recursos contextuales en demo.
                 </span>
               </span>
             </label>

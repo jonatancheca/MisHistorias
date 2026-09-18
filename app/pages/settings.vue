@@ -131,6 +131,8 @@ let narrativePromptDirty = false
 let characterReferencePromptDirty = false
 let privateClickCount = 0
 let privateClickTimer: ReturnType<typeof setTimeout> | null = null
+let demoClickCount = 0
+let demoClickTimer: ReturnType<typeof setTimeout> | null = null
 
 function sectionIdFromHash(hash: string): SettingsSectionId | null {
   const id = hash.startsWith('#') ? hash.slice(1) : hash
@@ -613,7 +615,7 @@ async function setMockMode(mockMode: boolean) {
 
 async function doExport() {
   const { exportBundle, downloadBundle } = await import('~/lib/transfer')
-  downloadBundle(await exportBundle())
+  downloadBundle(await exportBundle({ demo: privacy.isDemo }))
 }
 
 async function refreshChromeLlmAvailability() {
@@ -799,6 +801,7 @@ async function onImportFile(event: Event) {
       characters.load(true),
       backgrounds.load(true),
       stories.load(true),
+      useSoundsStore().load(true),
       useSwarmPromptsStore().load(true)
     ])
     importMessage.value = 'Importación completada'
@@ -811,7 +814,7 @@ async function onImportFile(event: Event) {
 }
 
 async function onPrivateTrigger() {
-  if (privacy.isPrivate) return
+  if (privacy.isPrivateMode) return
 
   privateClickCount += 1
   if (privateClickTimer) clearTimeout(privateClickTimer)
@@ -829,8 +832,26 @@ async function onPrivateTrigger() {
   }, 1000)
 }
 
+async function onDemoTrigger() {
+  demoClickCount += 1
+  if (demoClickTimer) clearTimeout(demoClickTimer)
+
+  if (demoClickCount === 3) {
+    demoClickCount = 0
+    demoClickTimer = null
+    await privacy.toggleDemo()
+    return
+  }
+
+  demoClickTimer = setTimeout(() => {
+    demoClickCount = 0
+    demoClickTimer = null
+  }, 1000)
+}
+
 onBeforeUnmount(() => {
   if (privateClickTimer) clearTimeout(privateClickTimer)
+  if (demoClickTimer) clearTimeout(demoClickTimer)
   if (savedTimer) clearTimeout(savedTimer)
   if (swarmPreviewUrl.value) URL.revokeObjectURL(swarmPreviewUrl.value)
   if (sectionUpdateFrame !== null) cancelAnimationFrame(sectionUpdateFrame)
@@ -944,6 +965,13 @@ onBeforeRouteLeave(async () => {
           </svg>
           Modo oscuro
         </button>
+        <button
+          type="button"
+          class="h-10 w-12 opacity-0"
+          aria-label="Activar modo privado"
+          :disabled="privacy.switching || privacy.isPrivateMode"
+          @click="onPrivateTrigger"
+        />
       </div>
     </section>
 
@@ -1562,9 +1590,9 @@ onBeforeRouteLeave(async () => {
           <button
             type="button"
             class="h-10 w-12 opacity-0"
-            aria-label="Activar modo privado"
+            aria-label="Alternar modo demo"
             :disabled="privacy.switching"
-            @click="onPrivateTrigger"
+            @click="onDemoTrigger"
           />
         </div>
         <input ref="importInput" type="file" accept="application/json" autocomplete="off" class="hidden" @change="onImportFile" >

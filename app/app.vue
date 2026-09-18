@@ -24,20 +24,30 @@ function onSaveShortcut(event: KeyboardEvent) {
 
 async function onPrivateModeShortcut(event: KeyboardEvent) {
   if (!event.ctrlKey || !event.altKey || event.key.toLowerCase() !== 'p') return
-  if (privacy.isPrivate || privacy.switching || isEditableTarget(event.target)) return
+  if (privacy.isPrivateMode || privacy.switching || isEditableTarget(event.target)) return
 
   event.preventDefault()
   await privacy.activate()
 }
 
+async function onDemoModeShortcut(event: KeyboardEvent) {
+  if (!event.ctrlKey || !event.altKey || event.key.toLowerCase() !== 'd') return
+  if (privacy.switching || isEditableTarget(event.target)) return
+
+  event.preventDefault()
+  await privacy.toggleDemo()
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onSaveShortcut)
   window.addEventListener('keydown', onPrivateModeShortcut)
+  window.addEventListener('keydown', onDemoModeShortcut)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onSaveShortcut)
   window.removeEventListener('keydown', onPrivateModeShortcut)
+  window.removeEventListener('keydown', onDemoModeShortcut)
 })
 </script>
 

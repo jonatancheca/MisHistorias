@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const stories = useStoriesStore()
+const privacy = usePrivacyStore()
 const confirmDialog = useConfirmStore()
 
 await stories.load()
@@ -7,11 +8,16 @@ await stories.load()
 const showArchived = ref(false)
 const refreshing = ref(false)
 const refreshError = ref<string | null>(null)
-const visibleStories = computed(() =>
-  stories.stories.filter((story) => story.archived === showArchived.value)
+const catalogStories = computed(() =>
+  privacy.isDemo
+    ? stories.stories.filter((story) => story.visibleInDemo)
+    : stories.stories
 )
-const activeCount = computed(() => stories.stories.filter((story) => !story.archived).length)
-const archivedCount = computed(() => stories.stories.filter((story) => story.archived).length)
+const visibleStories = computed(() =>
+  catalogStories.value.filter((story) => story.archived === showArchived.value)
+)
+const activeCount = computed(() => catalogStories.value.filter((story) => !story.archived).length)
+const archivedCount = computed(() => catalogStories.value.filter((story) => story.archived).length)
 const dateFormatter = new Intl.DateTimeFormat('es', {
   day: 'numeric',
   month: 'short',
@@ -19,7 +25,7 @@ const dateFormatter = new Intl.DateTimeFormat('es', {
 })
 const emptyMessage = computed(() => {
   if (showArchived.value) return 'No hay historias archivadas.'
-  return stories.stories.length
+  return catalogStories.value.length
     ? 'No hay historias activas.'
     : 'Todavía no hay historias. Crea personajes y empieza una.'
 })

@@ -125,7 +125,7 @@ export async function putCharacter(character: Character) {
 
 export async function copyCharacter(
   sourceId: string,
-  input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel'>
+  input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel' | 'visibleInDemo'>
 ) {
   return $fetch<{ character: Character; images: CharacterImage[] }>(
     dataUrl(`characters/${encodeURIComponent(sourceId)}/copy`),
@@ -140,7 +140,7 @@ export async function importCharacterArchive(input: {
   mode: 'new' | 'replace'
   targetId?: string
   name: string
-  character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel'>
+  character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel' | 'visibleInDemo'>
   images: Array<Pick<StoredImage, 'tags' | 'isDefault' | 'mimeType' | 'blob' | 'originalBlob' | 'generation'>>
   sounds: Array<Pick<StoredSound, 'tags' | 'mimeType' | 'blob'>>
 }) {
@@ -223,12 +223,12 @@ export async function deleteImage(id: string) {
   await deleteJson('images', id)
 }
 
-export async function listBackgrounds() {
-  const metadata = await $fetch<BackgroundMetadata[]>(dataUrl('backgrounds'))
+export async function listBackgrounds(scope: DataScope = activeDataScope.value) {
+  const metadata = await $fetch<BackgroundMetadata[]>(dataUrl('backgrounds', scope))
   return Promise.all(
     metadata.map(async (background) => ({
       ...background,
-      blob: await fetchBlob('backgrounds', background.id)
+      blob: await fetchBlob('backgrounds', background.id, scope)
     }))
   )
 }
@@ -242,18 +242,18 @@ export async function deleteBackground(id: string) {
   await deleteJson('backgrounds', id)
 }
 
-export async function listSounds() {
-  const metadata = await $fetch<SoundMetadata[]>(dataUrl('sounds'))
+export async function listSounds(scope: DataScope = activeDataScope.value) {
+  const metadata = await $fetch<SoundMetadata[]>(dataUrl('sounds', scope))
   return Promise.all(
     metadata.map(async (sound) => ({
       ...sound,
-      blob: await fetchBlob('sounds', sound.id)
+      blob: await fetchBlob('sounds', sound.id, scope)
     }))
   )
 }
 
-export async function putSound(sound: StoredSound) {
-  await putBinary('sounds', sound)
+export async function putSound(sound: StoredSound, scope: DataScope = activeDataScope.value) {
+  await putBinary('sounds', sound, scope)
   return sound
 }
 
@@ -261,8 +261,8 @@ export async function deleteSound(id: string) {
   await deleteJson('sounds', id)
 }
 
-export async function listStories() {
-  return $fetch<Story[]>(dataUrl('stories'))
+export async function listStories(scope: DataScope = activeDataScope.value) {
+  return $fetch<Story[]>(dataUrl('stories', scope))
 }
 
 export async function getStory(id: string) {
@@ -290,8 +290,8 @@ export async function deleteStory(id: string) {
   await deleteJson('stories', id)
 }
 
-export async function listMessages(storyId: string) {
-  return $fetch<Message[]>(dataUrl(`messages?storyId=${encodeURIComponent(storyId)}`))
+export async function listMessages(storyId: string, scope: DataScope = activeDataScope.value) {
+  return $fetch<Message[]>(dataUrl(`messages?storyId=${encodeURIComponent(storyId)}`, scope))
 }
 
 export async function putMessage(message: Message, scope: DataScope = activeDataScope.value) {
@@ -307,9 +307,9 @@ export async function deleteMessages(ids: string[]) {
   await $fetch(dataUrl('messages/delete-many'), { method: 'POST', body: { ids } })
 }
 
-export async function listLlmDebugTraces(storyId: string) {
+export async function listLlmDebugTraces(storyId: string, scope: DataScope = activeDataScope.value) {
   return $fetch<LlmDebugTrace[]>(
-    dataUrl(`llmDebugTraces?storyId=${encodeURIComponent(storyId)}`)
+    dataUrl(`llmDebugTraces?storyId=${encodeURIComponent(storyId)}`, scope)
   )
 }
 
@@ -321,9 +321,9 @@ export async function deleteLlmDebugTrace(id: string) {
   await deleteJson('llmDebugTraces', id)
 }
 
-export async function listStorySaves(storyId: string) {
+export async function listStorySaves(storyId: string, scope: DataScope = activeDataScope.value) {
   return $fetch<StorySaveSlot[]>(
-    dataUrl(`storySaves?storyId=${encodeURIComponent(storyId)}`)
+    dataUrl(`storySaves?storyId=${encodeURIComponent(storyId)}`, scope)
   )
 }
 
@@ -408,8 +408,8 @@ export async function clearAll(scope: DataScope = activeDataScope.value) {
   await $fetch(dataUrl('clear', scope), { method: 'POST' })
 }
 
-export async function listSwarmPrompts() {
-  return $fetch<SwarmPrompt[]>(dataUrl('swarmPrompts'))
+export async function listSwarmPrompts(scope: DataScope = activeDataScope.value) {
+  return $fetch<SwarmPrompt[]>(dataUrl('swarmPrompts', scope))
 }
 
 export async function putSwarmPrompt(prompt: SwarmPrompt) {

@@ -3,7 +3,7 @@ import JSZip from 'jszip'
 import type { Character, ImageGenerationMetadata } from '../../shared/types/index.ts'
 import type { StoredImage, StoredSound } from './db.ts'
 
-export const CHARACTER_ARCHIVE_VERSION = 7
+export const CHARACTER_ARCHIVE_VERSION = 8
 export const MAX_CHARACTER_IMAGE_BYTES = 5 * 1024 * 1024
 export const MAX_CHARACTER_SOUND_BYTES = 10 * 1024 * 1024
 
@@ -29,13 +29,14 @@ interface CharacterArchiveManifest {
     imageGenerationSeed?: string
     imageGenerationPromptPrefix?: string
     imageGenerationModel?: string
+    visibleInDemo?: boolean
   }
   images: ArchiveImage[]
   sounds: ArchiveAsset[]
 }
 
 export interface ImportedCharacterArchive {
-  character: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel'>
+  character: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel' | 'visibleInDemo'>
   images: Array<Omit<ArchiveImage, 'path' | 'original'> & { blob: Blob; originalBlob?: Blob }>
   sounds: Array<Omit<ArchiveAsset, 'path'> & { blob: Blob }>
 }
@@ -84,6 +85,7 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
     manifest.version !== 4 &&
     manifest.version !== 5 &&
     manifest.version !== 6 &&
+    manifest.version !== 7 &&
     manifest.version !== CHARACTER_ARCHIVE_VERSION
   ) {
     throw new Error('Versión de personaje no compatible.')
@@ -102,6 +104,7 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
     (character.imageGenerationSeed !== undefined && typeof character.imageGenerationSeed !== 'string') ||
     (character.imageGenerationPromptPrefix !== undefined && typeof character.imageGenerationPromptPrefix !== 'string') ||
     (character.imageGenerationModel !== undefined && typeof character.imageGenerationModel !== 'string') ||
+    (character.visibleInDemo !== undefined && typeof character.visibleInDemo !== 'boolean') ||
     !Array.isArray(manifest.images) ||
     !Array.isArray(manifest.sounds)
   ) {
@@ -181,7 +184,8 @@ export async function createCharacterArchive(
       imageGenerationLora: character.imageGenerationLora,
       imageGenerationSeed: character.imageGenerationSeed,
       imageGenerationPromptPrefix: character.imageGenerationPromptPrefix,
-      imageGenerationModel: character.imageGenerationModel
+      imageGenerationModel: character.imageGenerationModel,
+      visibleInDemo: character.visibleInDemo
     },
     images: images.map((image, index) => ({
       path: `images/${index + 1}.${extensionFor(image.mimeType)}`,
@@ -238,7 +242,8 @@ export async function readCharacterArchive(file: Blob): Promise<ImportedCharacte
       imageGenerationLora: manifest.character.imageGenerationLora ?? '',
       imageGenerationSeed: manifest.character.imageGenerationSeed ?? '',
       imageGenerationPromptPrefix: manifest.character.imageGenerationPromptPrefix ?? '',
-      imageGenerationModel: manifest.character.imageGenerationModel ?? ''
+      imageGenerationModel: manifest.character.imageGenerationModel ?? '',
+      visibleInDemo: manifest.character.visibleInDemo === true
     },
     images: await Promise.all(manifest.images.map(async (image) => ({
       tags: [...image.tags],
