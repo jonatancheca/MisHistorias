@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type {
-  Character,
   GenerationMode,
   LlmDebugTrace,
   Message,
@@ -83,9 +82,11 @@ const imagePickerTarget = ref<ImagePickerTarget | null>(null)
 const storyPreferencesOpen = ref(false)
 const storyTitle = ref('')
 const storyPremise = ref('')
+const storyVisualMode = ref(false)
 const autoGenerateImages = ref(false)
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
+const storyInitialBackgroundId = ref<string | null>(null)
 const storyVisibleInDemo = ref(false)
 
 useDialogEscape(
@@ -94,34 +95,6 @@ useDialogEscape(
 )
 const storyCharacterIds = ref<string[]>([])
 const storyCharacterCustomizations = ref<StoryCharacterCustomization[]>([])
-const storyCustomizationRows = computed(() =>
-  storyCharacterCustomizations.value.map((customization) => ({
-    customization,
-    character: characters.byId(customization.characterId)
-  }))
-)
-const availableStoryCharacters = computed(() =>
-  characters.characters.filter(
-    (character) =>
-      !character.archived &&
-      !character.readOnly &&
-      !storyCharacterIds.value.includes(character.id) &&
-      (!privacy.isDemo || character.visibleInDemo)
-  )
-)
-
-function storyCustomizationLabel(row: {
-  customization: StoryCharacterCustomization
-  character: Character | null
-}) {
-  const original = row.character?.name?.trim() ?? ''
-  const customized = row.customization.name?.trim() ?? ''
-  if (original && customized && original !== customized) return `${original} → ${customized}`
-  return original || customized || 'Personaje no disponible'
-}
-const characterTagSuggestions = computed(() =>
-  characters.characters.flatMap((character) => character.tags ?? [])
-)
 const storyCharacterNames = computed<Record<string, string>>(() =>
   Object.fromEntries(
     (stories.activeStory?.characterCustomizations ?? []).map((customization) => [
@@ -433,55 +406,30 @@ function openStoryPreferences() {
   if (!stories.activeStory || stories.activeStory.readOnly) return
   storyTitle.value = stories.activeStory.title
   storyPremise.value = stories.activeStory.premise
+  storyVisualMode.value = stories.activeStory.visualMode
   autoGenerateImages.value = stories.activeStory.autoGenerateImages === true
   storyPreferences.value = stories.activeStory.protagonistPreferences ?? ''
   storyPreferencesMode.value = stories.activeStory.protagonistPreferencesMode ?? 'append'
+  storyInitialBackgroundId.value = stories.activeStory.initialBackgroundId ?? null
   storyVisibleInDemo.value = stories.activeStory.visibleInDemo
   storyCharacterIds.value = [...stories.activeStory.characterIds]
-  const stored = new Map(
-    (stories.activeStory.characterCustomizations ?? []).map((item) => [item.characterId, item])
-  )
-  storyCharacterCustomizations.value = stories.activeStory.characterIds.flatMap((characterId) => {
-    const source = stored.get(characterId) ?? characters.byId(characterId)
-    return source
-      ? [
-          {
-            characterId,
-            name: source.name?.trim() || characters.byId(characterId)?.name || '',
-            color: normalizeColor(source.color, characters.colorOf(characterId)),
-            prompt: source.prompt,
-            tags: [...source.tags]
-          }
-        ]
-      : []
-  })
+  storyCharacterCustomizations.value = (stories.activeStory.characterCustomizations ?? [])
+    .map((customization) => ({ ...customization, tags: [...customization.tags] }))
   storyPreferencesOpen.value = true
 }
 
-function addStoryCharacter(characterId: string) {
-  if (storyCharacterIds.value.includes(characterId)) return
-  const character = characters.byId(characterId)
-  if (!character) return
-  storyCharacterIds.value.push(characterId)
-  storyCharacterCustomizations.value.push({
-    characterId,
-    name: character.name,
-    color: characters.colorOf(characterId),
-    prompt: character.prompt,
-    tags: [...character.tags]
-  })
-}
-
 async function saveStoryPreferences() {
-  if (!storyTitle.value.trim() || !storyPremise.value.trim()) return
+  if (!storyTitle.value.trim() || !storyPremise.value.trim() || !storyCharacterIds.value.length) return
   await stories.updateStorySettings(
     storyTitle.value,
     storyPremise.value,
+    storyVisualMode.value,
     autoGenerateImages.value,
     storyPreferences.value,
     storyPreferencesMode.value,
     storyCharacterIds.value,
     storyCharacterCustomizations.value.map((item) => ({ ...item, tags: [...item.tags] })),
+    storyInitialBackgroundId.value,
     storyVisibleInDemo.value
   )
   storyPreferencesOpen.value = false
@@ -1567,177 +1515,35 @@ onBeforeRouteLeave(() => {
         @keydown.esc.stop.prevent="storyPreferencesOpen = false"
       >
         <form
-          class="max-h-[calc(100dvh-2rem)] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-5 shadow-2xl"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="story-settings-title"
+          class="max-h-[calc(100dvh-2rem)] w-full max-w-5xl overflow-y-auto rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-5 shadow-2xl"
           @submit.prevent="saveStoryPreferences"
         >
-          <h2 class="text-lg font-bold">Ajustes de la historia</h2>
-          <div class="mt-4 grid gap-4">
-            <div>
-              <label class="label" for="storyTitle">Título</label>
-              <input
-                id="storyTitle"
-                v-model="storyTitle"
-                autocomplete="off"
-                class="field"
-                autofocus
-                required
-              >
-            </div>
-            <div>
-              <label class="label" for="storyPremise">Planteamiento</label>
-              <textarea
-                id="storyPremise"
-                v-model="storyPremise"
-                autocomplete="off"
-                class="field min-h-32"
-                required
-              />
-            </div>
-            <div>
-              <label class="label" for="storyProtagonistPreferences">Preferencias de esta historia</label>
-              <textarea
-                id="storyProtagonistPreferences"
-                v-model="storyPreferences"
-                autocomplete="off"
-                class="field min-h-32"
-              />
-            </div>
-            <label class="flex items-start gap-2 text-sm">
-              <input v-model="autoGenerateImages" type="checkbox" class="mt-0.5 h-4 w-4">
-              <span>
-                <span class="block font-medium">Crear imágenes nuevas durante la historia</span>
-                <span class="block text-xs text-[var(--color-fg-muted)]">
-                  El LLM podrá pedir una imagen nueva por personaje y respuesta.
-                </span>
-              </span>
-            </label>
-            <label v-if="privacy.isPrivateMode" class="flex items-start gap-2 text-sm">
-              <input
-                v-model="storyVisibleInDemo"
-                type="checkbox"
-                class="mt-0.5 h-4 w-4 accent-[var(--color-brand-500)]"
-              >
-              <span>
-                <span class="block font-medium">Visible en modo demo</span>
-                <span class="block text-xs text-[var(--color-fg-muted)]">
-                  Permite mostrar esta historia y sus recursos contextuales en demo.
-                </span>
-              </span>
-            </label>
-            <div>
-              <label class="label" for="storyProtagonistPreferencesMode">Combinar con globales</label>
-              <select
-                id="storyProtagonistPreferencesMode"
-                v-model="storyPreferencesMode"
-                class="field"
-              >
-                <option value="append">Añadir</option>
-                <option value="replace">Reemplazar</option>
-              </select>
-            </div>
-            <div v-if="availableStoryCharacters.length" class="grid gap-2">
-              <span class="label">Añadir personajes</span>
-              <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                <button
-                  v-for="character in availableStoryCharacters"
-                  :key="character.id"
-                  type="button"
-                  class="flex items-center gap-3 rounded-xl border border-[var(--color-border-soft)] p-3 text-left transition hover:border-brand-400"
-                  :aria-label="`Añadir ${character.name}`"
-                  @click="addStoryCharacter(character.id)"
-                >
-                  <img
-                    v-if="characters.urlFor(characters.defaultImage(character.id)?.id)"
-                    :src="characters.urlFor(characters.defaultImage(character.id)?.id)!"
-                    alt=""
-                    class="h-10 w-10 rounded-full object-cover"
-                  >
-                  <span v-else class="h-10 w-10 shrink-0 rounded-full bg-brand-500/20" />
-                  <span class="min-w-0 truncate font-medium">{{ character.name }}</span>
-                </button>
-              </div>
-            </div>
-            <div v-if="storyCustomizationRows.length" class="grid gap-3">
-              <div>
-                <span class="label">Personalización de personajes</span>
-                <p class="text-xs text-[var(--color-fg-muted)]">
-                  Copia independiente. No modifica los personajes globales.
-                </p>
-              </div>
-              <section
-                v-for="row in storyCustomizationRows"
-                :key="row.customization.characterId"
-                class="rounded-xl border border-[var(--color-border-soft)] p-4"
-              >
-                <h3 class="font-semibold">
-                  {{ storyCustomizationLabel(row) }}
-                </h3>
-                <div class="mt-3 grid gap-3">
-                  <div>
-                    <label
-                      class="label"
-                      :for="`story-settings-character-color-${row.customization.characterId}`"
-                    >
-                      Color del texto
-                    </label>
-                    <CharacterColorPicker
-                      :id="`story-settings-character-color-${row.customization.characterId}`"
-                      v-model="row.customization.color!"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      class="label"
-                      :for="`story-settings-character-name-${row.customization.characterId}`"
-                    >
-                      Nombre en esta historia
-                    </label>
-                    <input
-                      :id="`story-settings-character-name-${row.customization.characterId}`"
-                      v-model="row.customization.name"
-                      autocomplete="off"
-                      class="field"
-                    >
-                  </div>
-                  <div>
-                    <label
-                      class="label"
-                      :for="`story-settings-character-prompt-${row.customization.characterId}`"
-                    >
-                      Prompt
-                    </label>
-                    <textarea
-                      :id="`story-settings-character-prompt-${row.customization.characterId}`"
-                      v-model="row.customization.prompt"
-                      autocomplete="off"
-                      class="field min-h-32"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      class="label"
-                      :for="`story-settings-character-tags-${row.customization.characterId}`"
-                    >
-                      Etiquetas descriptivas
-                    </label>
-                    <TagInput
-                      :id="`story-settings-character-tags-${row.customization.characterId}`"
-                      v-model="row.customization.tags"
-                      :suggestions="characterTagSuggestions"
-                      show-all-suggestions
-                      placeholder="aventurera"
-                    />
-                  </div>
-                </div>
-              </section>
-            </div>
-          </div>
+          <h2 id="story-settings-title" class="text-lg font-bold">Ajustes de la historia</h2>
+          <StorySetupForm
+            v-model:title="storyTitle"
+            v-model:premise="storyPremise"
+            v-model:visual-mode="storyVisualMode"
+            v-model:auto-generate-images="autoGenerateImages"
+            v-model:protagonist-preferences="storyPreferences"
+            v-model:protagonist-preferences-mode="storyPreferencesMode"
+            v-model:character-ids="storyCharacterIds"
+            v-model:character-customizations="storyCharacterCustomizations"
+            v-model:initial-background-id="storyInitialBackgroundId"
+            v-model:visible-in-demo="storyVisibleInDemo"
+            id-prefix="story-settings-character"
+            title-required
+            :show-visible-in-demo="privacy.isPrivateMode"
+            class="mt-4"
+          />
           <div class="mt-5 flex justify-end gap-2">
             <button type="button" class="btn-ghost" @click="storyPreferencesOpen = false">Cancelar</button>
             <button
               type="submit"
               class="btn-primary"
-              :disabled="!storyTitle.trim() || !storyPremise.trim()"
+              :disabled="!storyTitle.trim() || !storyPremise.trim() || !storyCharacterIds.length"
             >
               Guardar
             </button>

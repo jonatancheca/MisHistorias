@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { StoryCharacterCustomization } from '#shared/types'
-import { primaryTag } from '~/lib/tags'
 
 const route = useRoute()
 const stories = useStoriesStore()
@@ -25,88 +24,50 @@ const copiedStory =
         story.id === copyFromId && (!privacy.isDemo || story.visibleInDemo)
       ) ?? null)
     : null
-const selectableCharacters = computed(() =>
-  characters.characters.filter((character) =>
-    !character.archived && !character.readOnly && (!privacy.isDemo || character.visibleInDemo)
+
+function canUseCharacter(characterId: string) {
+  const character = characters.byId(characterId)
+  return Boolean(
+    character &&
+    !character.readOnly &&
+    (!privacy.isDemo || character.visibleInDemo)
   )
-)
-const selectableBackgrounds = computed(() =>
-  backgrounds.backgrounds.filter((background) =>
-    !background.readOnly && (!privacy.isDemo || background.visibleInDemo)
-  )
-)
-const availableCharacterIds = computed(
-  () => new Set(selectableCharacters.value.map((character) => character.id))
-)
-const copiedCustomizations = new Map(
-  (copiedStory?.characterCustomizations ?? []).map((customization) => [
-    customization.characterId,
-    customization
-  ])
+}
+
+const copiedCustomizations = (copiedStory?.characterCustomizations ?? [])
+  .filter((customization) => canUseCharacter(customization.characterId))
+  .map((customization): StoryCharacterCustomization => ({
+    ...customization,
+    tags: [...customization.tags]
+  }))
+const copiedCustomizationIds = new Set(
+  copiedCustomizations.map((customization) => customization.characterId)
 )
 
 const title = ref('')
 const premise = ref(copiedStory?.premise ?? '')
+const visualMode = ref(copiedStory?.visualMode ?? true)
 const autoGenerateImages = ref(copiedStory?.autoGenerateImages ?? false)
 const protagonistPreferences = ref(copiedStory?.protagonistPreferences ?? '')
 const protagonistPreferencesMode = ref<'append' | 'replace'>(
   copiedStory?.protagonistPreferencesMode ?? 'append'
 )
 const selected = ref<string[]>(
-  copiedStory?.characterIds.filter((characterId) => availableCharacterIds.value.has(characterId)) ?? []
+  copiedStory?.characterIds.filter((characterId) => {
+    const character = characters.byId(characterId)
+    return Boolean(
+      canUseCharacter(characterId) &&
+      (!character?.archived || copiedCustomizationIds.has(characterId))
+    )
+  }) ?? []
 )
+const characterCustomizations = ref<StoryCharacterCustomization[]>(copiedCustomizations)
 const initialBackgroundId = ref<string | null>(
   copiedStory && backgrounds.byId(copiedStory.initialBackgroundId)
     ? copiedStory.initialBackgroundId
     : null
 )
 const saving = ref(false)
-const characterCustomizations = ref<Record<string, StoryCharacterCustomization>>(
-  Object.fromEntries(
-    selectableCharacters.value.map((character) => {
-      const copied = copiedCustomizations.get(character.id)
-      return [
-        character.id,
-        {
-          characterId: character.id,
-          name: copied?.name ?? character.name,
-          color: copied?.color ?? character.color,
-          prompt: copied?.prompt ?? character.prompt,
-          tags: [...(copied?.tags ?? character.tags)]
-        }
-      ]
-    })
-  )
-)
-const selectedCharacters = computed(() =>
-  selected.value.flatMap((id) => {
-    const character = characters.byId(id)
-    return character ? [character] : []
-  })
-)
-const characterTagSuggestions = computed(() =>
-  selectableCharacters.value.flatMap((character) => character.tags ?? [])
-)
-
-watch([selectableCharacters, selectableBackgrounds], () => {
-  selected.value = selected.value.filter((id) => availableCharacterIds.value.has(id))
-  if (
-    initialBackgroundId.value &&
-    !selectableBackgrounds.value.some((background) => background.id === initialBackgroundId.value)
-  ) {
-    initialBackgroundId.value = null
-  }
-})
-
-function customizationFor(characterId: string) {
-  return characterCustomizations.value[characterId]!
-}
-
-function toggle(id: string) {
-  selected.value = selected.value.includes(id)
-    ? selected.value.filter((item) => item !== id)
-    : [...selected.value, id]
-}
 
 const canSubmit = computed(
   () => premise.value.trim().length > 0 && selected.value.length > 0 && !saving.value
@@ -119,16 +80,16 @@ async function submit() {
     const story = await stories.createStory({
       title: title.value,
       premise: premise.value,
-      visualMode: copiedStory?.visualMode ?? false,
+      visualMode: visualMode.value,
       autoGenerateImages: autoGenerateImages.value,
       protagonistPreferences: protagonistPreferences.value,
       protagonistPreferencesMode: protagonistPreferencesMode.value,
       characterIds: selected.value,
-      characterCustomizations: selected.value.map((characterId) => ({
-        ...customizationFor(characterId),
-        tags: [...customizationFor(characterId).tags]
+      characterCustomizations: characterCustomizations.value.map((customization) => ({
+        ...customization,
+        tags: [...customization.tags]
       })),
-      initialBackgroundId: initialBackgroundId.value,
+      initialBackgroundId: initialBackgroundId.value
     })
     await navigateTo(`/stories/${story.id}`)
   } finally {
@@ -148,193 +109,20 @@ async function submit() {
     </header>
 
     <form class="grid max-w-5xl gap-5" @submit.prevent="submit">
-      <div>
-        <label class="label" for="title">Título</label>
-        <input id="title" v-model="title" autocomplete="off" class="field" placeholder="La taberna del puerto" >
-      </div>
+      <StorySetupForm
+        v-model:title="title"
+        v-model:premise="premise"
+        v-model:visual-mode="visualMode"
+        v-model:auto-generate-images="autoGenerateImages"
+        v-model:protagonist-preferences="protagonistPreferences"
+        v-model:protagonist-preferences-mode="protagonistPreferencesMode"
+        v-model:character-ids="selected"
+        v-model:character-customizations="characterCustomizations"
+        v-model:initial-background-id="initialBackgroundId"
+        id-prefix="story-character"
+      />
 
-      <div>
-        <label class="label" for="premise">Planteamiento</label>
-        <textarea
-          id="premise"
-          v-model="premise"
-          autocomplete="off"
-          class="field min-h-40"
-          placeholder="Dónde ocurre, cuándo, qué está pasando y qué tono tiene la historia."
-        />
-      </div>
-
-      <div class="grid gap-4 sm:grid-cols-[1fr_12rem]">
-        <div>
-          <label class="label" for="protagonistPreferences">Preferencias del protagonista</label>
-          <textarea
-            id="protagonistPreferences"
-            v-model="protagonistPreferences"
-            autocomplete="off"
-            class="field min-h-28"
-            placeholder="Preferencias específicas para esta historia."
-          />
-        </div>
-        <div>
-          <label class="label" for="protagonistPreferencesMode">Combinar con globales</label>
-          <select
-            id="protagonistPreferencesMode"
-            v-model="protagonistPreferencesMode"
-            class="field"
-          >
-            <option value="append">Añadir</option>
-            <option value="replace">Reemplazar</option>
-          </select>
-        </div>
-      </div>
-
-      <div>
-        <label class="flex items-start gap-2 text-sm">
-          <input v-model="autoGenerateImages" type="checkbox" class="mt-0.5 h-4 w-4">
-          <span>
-            <span class="block font-medium">Crear imágenes nuevas durante la historia</span>
-            <span class="block text-xs text-[var(--color-fg-muted)]">
-              El LLM podrá pedir una imagen nueva por personaje y respuesta.
-            </span>
-          </span>
-        </label>
-      </div>
-
-      <div>
-        <span class="label">Personajes</span>
-        <p v-if="selectableCharacters.length === 0" class="text-sm text-[var(--color-fg-muted)]">
-          No hay personajes.
-          <NuxtLink to="/characters" class="text-brand-600 underline">Crea uno primero</NuxtLink>.
-        </p>
-        <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          <button
-            v-for="character in selectableCharacters"
-            :key="character.id"
-            type="button"
-            class="flex items-center gap-3 rounded-xl border p-3 text-left transition"
-            :class="
-              selected.includes(character.id)
-                ? 'border-brand-500 bg-brand-500/10'
-                : 'border-[var(--color-border-soft)] hover:border-brand-400'
-            "
-            @click="toggle(character.id)"
-          >
-            <img
-              v-if="characters.urlFor(characters.defaultImage(character.id)?.id)"
-              :src="characters.urlFor(characters.defaultImage(character.id)?.id)!"
-              alt=""
-              class="h-10 w-10 rounded-full object-cover"
-            >
-            <span v-else class="h-10 w-10 rounded-full bg-brand-500/20" />
-            <span class="min-w-0">
-              <span class="block truncate font-medium">{{ character.name }}</span>
-              <span class="block truncate text-xs text-[var(--color-fg-muted)]">
-                {{ characters.imagesFor(character.id).length }} imágenes
-              </span>
-            </span>
-          </button>
-        </div>
-      </div>
-
-      <div v-if="selectedCharacters.length" class="grid gap-3">
-        <div>
-          <span class="label">Personalización en esta historia</span>
-          <p class="text-xs text-[var(--color-fg-muted)]">
-            Copia independiente. Cambiarla no modifica los personajes globales.
-          </p>
-        </div>
-        <section
-          v-for="character in selectedCharacters"
-          :key="character.id"
-          class="rounded-xl border border-[var(--color-border-soft)] p-4"
-        >
-          <h2 class="font-semibold">{{ character.name }}</h2>
-          <div class="mt-3 grid gap-3">
-            <div>
-              <label class="label" :for="`story-character-name-${character.id}`">Nombre en esta historia</label>
-              <input
-                :id="`story-character-name-${character.id}`"
-                v-model="customizationFor(character.id).name"
-                autocomplete="off"
-                class="field"
-              >
-            </div>
-            <div>
-              <label class="label" :for="`story-character-prompt-${character.id}`">Prompt</label>
-              <textarea
-                :id="`story-character-prompt-${character.id}`"
-                v-model="customizationFor(character.id).prompt"
-                autocomplete="off"
-                class="field min-h-32"
-              />
-            </div>
-            <div>
-              <label class="label" :for="`story-character-tags-${character.id}`">
-                Etiquetas descriptivas
-              </label>
-              <TagInput
-                :id="`story-character-tags-${character.id}`"
-                v-model="customizationFor(character.id).tags"
-                :suggestions="characterTagSuggestions"
-                show-all-suggestions
-                placeholder="aventurera"
-              />
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div>
-        <span class="label">Fondo inicial</span>
-        <p class="mb-2 text-xs text-[var(--color-fg-muted)]">
-          Opcional. El modelo podrá cambiarlo después por cualquier fondo del catálogo.
-        </p>
-        <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          <button
-            type="button"
-            class="rounded-xl border p-3 text-left transition"
-            :class="
-              initialBackgroundId === null
-                ? 'border-brand-500 bg-brand-500/10'
-                : 'border-[var(--color-border-soft)] hover:border-brand-400'
-            "
-            @click="initialBackgroundId = null"
-          >
-            <span class="block font-medium">Que decida el LLM</span>
-            <span class="block text-xs text-[var(--color-fg-muted)]">Elegirá al abrir la escena</span>
-          </button>
-          <button
-            v-for="background in selectableBackgrounds"
-            :key="background.id"
-            type="button"
-            class="flex items-center gap-3 rounded-xl border p-3 text-left transition"
-            :class="
-              initialBackgroundId === background.id
-                ? 'border-brand-500 bg-brand-500/10'
-                : 'border-[var(--color-border-soft)] hover:border-brand-400'
-            "
-            @click="initialBackgroundId = background.id"
-          >
-            <img
-              :src="backgrounds.urlFor(background.id)!"
-              alt=""
-              class="h-12 w-16 shrink-0 rounded-lg object-contain"
-            >
-            <span class="min-w-0">
-              <span class="block truncate font-medium">{{ primaryTag(background) }}</span>
-              <span class="block truncate text-xs text-[var(--color-fg-muted)]">
-                {{ background.description || 'Sin descripción' }}
-              </span>
-            </span>
-          </button>
-        </div>
-        <p v-if="selectableBackgrounds.length === 0" class="mt-2 text-sm text-[var(--color-fg-muted)]">
-          <NuxtLink to="/backgrounds" class="text-brand-600 underline">Añade fondos</NuxtLink>
-          para poder elegir uno.
-        </p>
-      </div>
-
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <button type="submit" class="btn-primary" :disabled="!canSubmit">Empezar historia</button>
         <NuxtLink to="/" class="btn-ghost">Cancelar</NuxtLink>
       </div>

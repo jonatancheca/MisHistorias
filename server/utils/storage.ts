@@ -2572,12 +2572,21 @@ export class MisHistoriasStorage {
     if (resource === 'characters') {
       const stories = (this.database.prepare(
         access
-          ? 'SELECT id, title, character_ids_json FROM stories WHERE scope = ? AND owner_id IS ?'
-          : 'SELECT id, title, character_ids_json FROM stories WHERE scope = ?'
+          ? 'SELECT id, title, character_ids_json, character_customizations_json FROM stories WHERE scope = ? AND owner_id IS ?'
+          : 'SELECT id, title, character_ids_json, character_customizations_json FROM stories WHERE scope = ?'
       ).all(...(access ? [scope, access.ownerId] : [scope])) as Array<{
-        id: string; title: string; character_ids_json: string
+        id: string
+        title: string
+        character_ids_json: string
+        character_customizations_json: string
       }>)
-        .filter((story) => parseJson<string[]>(story.character_ids_json, []).includes(id))
+        .filter((story) =>
+          parseJson<string[]>(story.character_ids_json, []).includes(id) ||
+          parseJson<Story['characterCustomizations']>(
+            story.character_customizations_json,
+            []
+          ).some((customization) => customization.characterId === id)
+        )
         .map((story) => ({ id: story.id, title: story.title }))
       if (stories.length) {
         const error = new Error('El personaje se usa en historias') as Error & {

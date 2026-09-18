@@ -454,7 +454,7 @@ test.describe('personajes', () => {
     await page.goto(`/stories/${first.id}`)
     await expect(page.getByText(character.name, { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
-    await expect(page.getByRole('heading', { name: character.name })).toBeVisible()
+    await expect(page.getByRole('button', { name: `Editar ${character.name}` })).toBeVisible()
 
     const blocked = await page.request.delete(`/api/data/characters/${character.id}?scope=normal`)
     expect(blocked.status()).toBe(409)

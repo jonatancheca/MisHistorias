@@ -47,7 +47,7 @@ async function reload() {
 
 function usageMessage(name: string, stories: Array<{ title: string }>) {
   const titles = stories.map((story) => `«${story.title}»`).join(', ')
-  return `No se puede borrar «${name}». Se usa en ${titles}. Borra antes esas historias.`
+  return `No se puede borrar «${name}». Se usa o tiene una personalización guardada en ${titles}.`
 }
 
 function serverUsageStories(caught: unknown) {
@@ -62,7 +62,10 @@ async function remove(id: string) {
   if (!character) return
   transferError.value = null
   transferSuccess.value = null
-  const usedBy = (await listStories()).filter((story) => story.characterIds.includes(id))
+  const usedBy = (await listStories()).filter((story) =>
+    story.characterIds.includes(id) ||
+    story.characterCustomizations.some((customization) => customization.characterId === id)
+  )
   if (usedBy.length) {
     transferError.value = usageMessage(character.name, usedBy)
     return
