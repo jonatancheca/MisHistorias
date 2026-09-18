@@ -1,5 +1,6 @@
 export function useMobileChrome() {
   const hidden = useState('mobile-chrome-hidden', () => false)
+  const atTop = useState('mobile-chrome-at-top', () => true)
 
   function hide() {
     hidden.value = true
@@ -13,5 +14,9 @@ export function useMobileChrome() {
     hidden.value = !hidden.value
   }
 
-  return { hidden, hide, show, toggle }
+  function setAtTop(value: boolean) {
+    atTop.value = value
+  }
+
+  return { hidden, atTop, hide, show, toggle, setAtTop }
 }

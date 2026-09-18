@@ -90,7 +90,7 @@ test('siembra el pack en ambas colecciones sin reponer borrados', async ({ page,
     (await data.list<Sound>('sounds', 'private')).some((sound) => sound.id === privateRain.id)
   ).toBe(false)
 
-  await page.getByRole('button', { name: 'Salir del modo privado' }).click()
+  await page.locator('main').press('Control+Alt+p')
   await page.getByRole('link', { name: 'Sonidos' }).click()
   expect((await data.list<Sound>('sounds')).some((sound) => sound.id === normalSteps.id))
     .toBe(false)

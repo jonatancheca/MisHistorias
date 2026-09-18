@@ -2093,16 +2093,54 @@ test.describe('novela visual y responsive', () => {
   for (const width of [320, 390]) {
     test(`menú móvil y editor sin overflow a ${width}px`, async ({ page, data }) => {
       const { story } = await createStoryFixture(data)
+      for (let index = 0; index < 12; index += 1) {
+        const text = `Escena ${index + 1}: contenido suficiente para desplazar la historia en móvil.`
+        await data.createMessage({
+          story,
+          role: 'assistant',
+          raw: text,
+          segments: [{ type: 'narration', text }]
+        })
+      }
       await page.setViewportSize({ width, height: 760 })
       await page.goto(`/stories/${story.id}`)
 
       const toggle = page.getByTestId('mobile-story-menu-toggle')
+      const scroller = page.getByTestId('story-scroller')
+      const navigation = page.locator('#app-navigation')
+      const navigationLinks = page.getByTestId('app-navigation-links')
+      const brand = page.getByTestId('app-brand')
+      const storyHeader = page.locator('#story-header')
+      await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(8)
       await expect(toggle).toBeVisible()
       await expect(toggle).toHaveAttribute('aria-expanded', 'false')
       await toggle.click()
       await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-      await expect(page.locator('#app-navigation')).toBeVisible()
-      await expect(page.locator('#story-header')).toBeVisible()
+      await expect(toggle).toHaveAttribute('aria-label', 'Ocultar menú de historia')
+      await expect(navigation).toBeVisible()
+      await expect(storyHeader).toBeVisible()
+      await toggle.click()
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+      await scroller.evaluate((element) => { element.scrollTop = 0 })
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      await expect(brand).toBeVisible()
+      await expect(navigationLinks).toBeVisible()
+      await expect(storyHeader).toBeVisible()
+
+      await scroller.evaluate((element) => { element.scrollTop = 80 })
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      await expect(navigation).toBeHidden()
+      await expect(storyHeader).toBeHidden()
+
+      await scroller.evaluate((element) => { element.scrollTop = 40 })
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      await expect(brand).toBeHidden()
+      await expect(navigationLinks).toBeVisible()
+      await expect(storyHeader).toBeVisible()
+
+      await scroller.evaluate((element) => { element.scrollTop = 0 })
+      await expect(brand).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
         .toBe(true)
 

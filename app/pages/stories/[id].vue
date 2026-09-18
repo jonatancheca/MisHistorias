@@ -27,7 +27,8 @@ const {
   hidden: mobileChromeHidden,
   hide: hideMobileChrome,
   show: showMobileChrome,
-  toggle: toggleMobileChrome
+  toggle: toggleMobileChrome,
+  setAtTop: setMobileChromeAtTop
 } = useMobileChrome()
 
 hideMobileChrome()
@@ -139,6 +140,7 @@ const storyCharacterColors = computed<Record<string, string>>(() =>
 )
 const followingBottom = ref(true)
 let lastScrollTop = 0
+let accumulatedScroll = 0
 let autoScrollTarget: number | null = null
 let timelineResizeObserver: ResizeObserver | null = null
 let followScrollFrame: number | null = null
@@ -387,12 +389,15 @@ function onStoryScroll() {
   const current = scroller.value?.scrollTop ?? 0
   const delta = current - lastScrollTop
   lastScrollTop = current
+  const atTop = current <= 8
+  setMobileChromeAtTop(atTop)
 
   if (autoScrollTarget !== null) {
     const reachedTarget = Math.abs(current - autoScrollTarget) <= 1
     const movingTowardTarget = autoScrollTarget === 0 ? delta <= 0 : delta >= 0
     if (reachedTarget) autoScrollTarget = null
     if (reachedTarget || movingTowardTarget) {
+      if (atTop && window.innerWidth < 640) showMobileChrome()
       updateScrollControls()
       return
     }
@@ -403,6 +408,25 @@ function onStoryScroll() {
     followingBottom.value = false
   }
   updateScrollControls()
+
+  if (window.innerWidth >= 640) {
+    accumulatedScroll = 0
+    return
+  }
+  if (atTop) {
+    accumulatedScroll = 0
+    showMobileChrome()
+    return
+  }
+  if (Math.sign(delta) !== Math.sign(accumulatedScroll)) accumulatedScroll = 0
+  accumulatedScroll += delta
+  if (accumulatedScroll >= 12) {
+    hideMobileChrome()
+    accumulatedScroll = 0
+  } else if (accumulatedScroll <= -4) {
+    showMobileChrome()
+    accumulatedScroll = 0
+  }
 }
 
 function openStoryPreferences() {
@@ -530,13 +554,19 @@ async function resendFrom(id: string) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   timelineResizeObserver = new ResizeObserver(scheduleFollowBottom)
   if (timelineContent.value) timelineResizeObserver.observe(timelineContent.value)
   if (scroller.value) timelineResizeObserver.observe(scroller.value)
   timelineContent.value?.addEventListener('load', onTimelineAssetLoad, true)
   window.addEventListener('keydown', onVisualNovelKeydown)
-  if (!stories.activeStory?.visualMode) void scrollToBottom()
+  if (!stories.activeStory?.visualMode) {
+    await scrollToBottom()
+    const current = scroller.value?.scrollTop ?? 0
+    lastScrollTop = current
+    setMobileChromeAtTop(current <= 8)
+    if (current <= 8) showMobileChrome()
+  }
 })
 
 const initialBackground = computed(() =>
