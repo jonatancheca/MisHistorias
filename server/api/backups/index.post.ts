@@ -1,6 +1,8 @@
 import { getStorage } from '../../utils/storage'
+import { requireAccessAdmin } from '../../utils/access'
 
-export default defineEventHandler(() => {
+export default defineEventHandler((event) => {
+  requireAccessAdmin(event)
   try {
     return getStorage().createManualBackup()
   } catch (caught) {

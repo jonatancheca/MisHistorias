@@ -97,7 +97,7 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
 
   const nav = page.getByTestId('settings-section-nav')
   await expect(nav).toBeVisible()
-  await expect(nav.getByRole('link')).toHaveCount(8)
+  await expect(nav.getByRole('link')).toHaveCount(9)
   await expect(nav.getByRole('link', { name: 'Apariencia' }))
     .toHaveAttribute('aria-current', 'location')
 

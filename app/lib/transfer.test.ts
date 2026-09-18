@@ -22,6 +22,7 @@ test('transferencia conserva preset y LoRA SwarmUI y acepta personajes anteriore
     imageGenerationPromptPrefix: 'masterpiece',
     imageGenerationModel: 'model-a',
     archived: true,
+    visibleInDemo: true,
     createdAt: 1,
     updatedAt: 2
   })
@@ -31,6 +32,7 @@ test('transferencia conserva preset y LoRA SwarmUI y acepta personajes anteriore
   assert.equal(exported.imageGenerationPromptPrefix, 'masterpiece')
   assert.equal(exported.imageGenerationModel, 'model-a')
   assert.equal(exported.archived, true)
+  assert.equal(exported.visibleInDemo, true)
   assert.equal(importImageGenerationPreset(exported.imageGenerationPreset), 'Retrato')
   assert.equal(importImageGenerationPreset(undefined), '')
   assert.equal(importImageGenerationLora(exported.imageGenerationLora), 'Detalle')

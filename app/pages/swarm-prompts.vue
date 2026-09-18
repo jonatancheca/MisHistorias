@@ -177,8 +177,11 @@ onBeforeRouteLeave(flushSave)
 <template>
   <div class="page-shell">
     <template v-if="settings.settings.swarmBaseUrl.trim()">
-      <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 class="text-2xl font-bold">Prompts SwarmUI</h1>
+      <header class="mb-7 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p class="page-kicker">Generación visual</p>
+          <h1 class="page-title">Prompts SwarmUI</h1>
+        </div>
         <div class="flex flex-wrap gap-2">
           <button type="button" class="btn-ghost" :disabled="busy || refreshing" @click="reload">
             <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

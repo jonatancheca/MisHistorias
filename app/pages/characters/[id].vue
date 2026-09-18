@@ -3,6 +3,7 @@ import { normalizeColor, pickColor } from '~/lib/colors'
 
 const route = useRoute()
 const characters = useCharactersStore()
+const privacy = usePrivacyStore()
 await characters.load()
 
 const isNew = computed(() => route.params.id === 'new')
@@ -11,8 +12,16 @@ const existing = computed(() => (isNew.value ? null : characters.byId(characterI
 const copyFromId = Array.isArray(route.query.copyFrom)
   ? route.query.copyFrom[0]
   : route.query.copyFrom
-const copiedCharacter =
-  isNew.value && typeof copyFromId === 'string' ? characters.byId(copyFromId) : null
+const copySource = isNew.value && typeof copyFromId === 'string'
+  ? characters.byId(copyFromId)
+  : null
+const copiedCharacter = copySource && (!privacy.isDemo || copySource.visibleInDemo)
+  ? copySource
+  : null
+
+if (!isNew.value && privacy.isDemo && !existing.value?.visibleInDemo) {
+  await navigateTo('/characters')
+}
 
 const name = ref(existing.value?.name ?? copiedCharacter?.name ?? '')
 const prompt = ref(existing.value?.prompt ?? copiedCharacter?.prompt ?? '')
@@ -38,6 +47,7 @@ const color = ref(
     pickColor(characters.characters.length)
   )
 )
+const visibleInDemo = ref(existing.value?.visibleInDemo ?? false)
 const characterTagSuggestions = computed(() =>
   characters.characters.flatMap((character) => character.tags ?? [])
 )
@@ -61,7 +71,8 @@ function enqueueSave(revision: number, navigateAfterCreate = false) {
     imageGenerationLora: imageGenerationLora.value,
     imageGenerationSeed: imageGenerationSeed.value,
     imageGenerationPromptPrefix: imageGenerationPromptPrefix.value,
-    imageGenerationModel: imageGenerationModel.value
+    imageGenerationModel: imageGenerationModel.value,
+    visibleInDemo: visibleInDemo.value
   }
   const run = async () => {
     if (!input.name.trim()) return
@@ -150,7 +161,8 @@ watch(
     imageGenerationLora.value,
     imageGenerationSeed.value,
     imageGenerationPromptPrefix.value,
-    imageGenerationModel.value
+    imageGenerationModel.value,
+    visibleInDemo.value
   ],
   scheduleSave
 )
@@ -167,17 +179,33 @@ onBeforeRouteLeave(flushSave)
 
 <template>
   <div class="page-shell">
-    <header class="mb-6 flex items-center justify-between">
-      <h1 class="text-2xl font-bold">
-        {{ copiedCharacter ? 'Copiar personaje' : isNew ? 'Nuevo personaje' : name || 'Personaje' }}
-      </h1>
+    <header class="mb-7 flex items-end justify-between gap-4">
+      <div>
+        <p class="page-kicker">Ficha de personaje</p>
+        <h1 class="page-title">
+          {{ copiedCharacter ? 'Copiar personaje' : isNew ? 'Nuevo personaje' : name || 'Personaje' }}
+        </h1>
+      </div>
       <NuxtLink to="/characters" class="btn-ghost">Volver</NuxtLink>
     </header>
 
     <p v-if="!isNew && !existing" class="card text-sm">Personaje no encontrado.</p>
 
     <template v-else>
+      <div
+        v-if="existing?.readOnly"
+        class="card mb-5 flex flex-wrap items-center justify-between gap-3 text-sm"
+      >
+        <p>Personaje demo compartido. Puedes consultarlo, pero no modificarlo.</p>
+        <NuxtLink
+          :to="{ path: '/characters/new', query: { copyFrom: existing.id } }"
+          class="btn-primary"
+        >
+          Copiar a mi colección privada
+        </NuxtLink>
+      </div>
       <form class="mb-8 grid max-w-3xl gap-4" @submit.prevent="save">
+        <fieldset :disabled="existing?.readOnly" class="contents">
         <div>
           <label class="label" for="name">Nombre</label>
           <input id="name" v-model="name" autocomplete="off" class="field" placeholder="Ana" >
@@ -216,6 +244,19 @@ onBeforeRouteLeave(flushSave)
           </p>
         </div>
         <CharacterAppearanceEditor v-model="imageGenerationPromptPrefix" />
+        <label v-if="privacy.isPrivateMode" class="flex items-start gap-2 text-sm">
+          <input
+            v-model="visibleInDemo"
+            type="checkbox"
+            class="mt-0.5 h-4 w-4 accent-[var(--color-brand-500)]"
+          >
+          <span>
+            <span class="block font-medium">Visible en modo demo</span>
+            <span class="block text-xs text-[var(--color-fg-muted)]">
+              Permite mostrar este personaje en el catálogo demo.
+            </span>
+          </span>
+        </label>
         <div class="flex min-h-10 items-center gap-3">
           <button v-if="isNew" type="submit" class="btn-primary" :disabled="!name.trim() || saving">
             Guardar
@@ -226,10 +267,11 @@ onBeforeRouteLeave(flushSave)
             {{ saveError || 'Error al guardar' }}
           </span>
         </div>
+        </fieldset>
       </form>
 
       <CharacterImageEditor
-        v-if="!isNew && existing"
+        v-if="!isNew && existing && !existing.readOnly"
         v-model:image-generation-preset="imageGenerationPreset"
         v-model:image-generation-lora="imageGenerationLora"
         v-model:image-generation-seed="imageGenerationSeed"
@@ -237,10 +279,10 @@ onBeforeRouteLeave(flushSave)
         v-model:image-generation-model="imageGenerationModel"
         :character-id="characterId"
       />
-      <section v-if="!isNew && existing" class="card mt-8 max-w-3xl">
+      <section v-if="!isNew && existing && !existing.readOnly" class="card mt-8 max-w-3xl">
         <SoundEditor :character-id="characterId" title="Sonidos del personaje" />
       </section>
-      <p v-else class="text-sm text-[var(--color-fg-muted)]">
+      <p v-else-if="isNew" class="text-sm text-[var(--color-fg-muted)]">
         {{
           copiedCharacter
             ? 'Las imágenes se copiarán al guardar el personaje.'

@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import {
+  copyBackground as copyStoredBackground,
   deleteBackground,
+  getActiveDataScope,
   listBackgrounds,
   newId,
   putBackground,
@@ -13,6 +15,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
   const backgrounds = ref<StoredBackground[]>([])
   const urls = ref<Record<string, string>>({})
   const loaded = ref(false)
+  let loadRevision = 0
 
   function syncUrls() {
     const next: Record<string, string> = {}
@@ -26,6 +29,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
   }
 
   function resetForScope() {
+    loadRevision += 1
     backgrounds.value = []
     loaded.value = false
     syncUrls()
@@ -33,23 +37,43 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
 
   async function load(force = false) {
     if (loaded.value && !force) return
-    backgrounds.value = await listBackgrounds()
+    const scope = getActiveDataScope()
+    const revision = ++loadRevision
+    const result = await listBackgrounds(scope)
+    if (scope !== getActiveDataScope() || revision !== loadRevision) return
+    backgrounds.value = result
     syncUrls()
     loaded.value = true
   }
 
   function byId(id: string | null | undefined) {
     if (!id) return null
-    return backgrounds.value.find((background) => background.id === id) ?? null
+    const background = backgrounds.value.find((item) => item.id === id) ?? null
+    return background && isVisibleInDemo(background) ? background : null
+  }
+
+  function isVisibleInDemo(background: StoredBackground) {
+    const privacy = usePrivacyStore()
+    if (!privacy.isDemo || background.visibleInDemo) return true
+    const storyStore = useStoriesStore()
+    const story = storyStore.activeStory?.visibleInDemo ? storyStore.activeStory : null
+    if (!story) return false
+    if (story.initialBackgroundId === background.id) return true
+    return storyStore.messages.some((message) =>
+      message.segments.some((segment) => segment.backgroundId === background.id)
+    )
   }
 
   function byTag(tag: string | null | undefined) {
     if (!tag) return null
-    return backgrounds.value.find((background) => hasTag(background, tag)) ?? null
+    return backgrounds.value.find(
+      (background) => isVisibleInDemo(background) && hasTag(background, tag)
+    ) ?? null
   }
 
   function urlFor(id: string | null | undefined) {
     if (!id) return null
+    if (!byId(id)) return null
     return urls.value[id] ?? null
   }
 
@@ -78,6 +102,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
       tags: preparedTags,
       description: description.trim(),
       mimeType,
+      visibleInDemo: usePrivacyStore().isDemo,
       createdAt: Date.now(),
       blob
     }
@@ -89,7 +114,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
 
   async function updateBackground(
     id: string,
-    patch: Partial<Pick<StoredBackground, 'tags' | 'description'>>
+    patch: Partial<Pick<StoredBackground, 'tags' | 'description' | 'visibleInDemo'>>
   ) {
     const current = byId(id)
     if (!current) return null
@@ -113,6 +138,12 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     syncUrls()
   }
 
+  async function copyBackground(id: string) {
+    const copied = await copyStoredBackground(id)
+    await load(true)
+    return copied
+  }
+
   return {
     backgrounds,
     loaded,
@@ -123,6 +154,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     addBackground,
     updateBackground,
     removeBackground,
+    copyBackground,
     resetForScope
   }
 })

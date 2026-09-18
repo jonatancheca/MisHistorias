@@ -65,6 +65,8 @@ interface CharacterInput {
   imageGenerationSeed?: string
   imageGenerationPromptPrefix?: string
   imageGenerationModel?: string
+  visibleInDemo?: boolean
+  archived?: boolean
   scope?: DataScope
 }
 
@@ -77,6 +79,7 @@ interface PresetInput {
 interface BackgroundInput {
   tags?: string[]
   description?: string
+  visibleInDemo?: boolean
   scope?: DataScope
 }
 
@@ -85,6 +88,8 @@ interface StoryInput {
   premise?: string
   visualMode?: boolean
   autoGenerateImages?: boolean
+  visibleInDemo?: boolean
+  archived?: boolean
   protagonistPreferences?: string
   protagonistPreferencesMode?: 'append' | 'replace'
   characters: Character[]
@@ -190,7 +195,8 @@ export const test = base.extend<{ data: TestDataFactory }>({
           imageGenerationSeed: input.imageGenerationSeed ?? '',
           imageGenerationPromptPrefix: input.imageGenerationPromptPrefix ?? '',
           imageGenerationModel: input.imageGenerationModel ?? '',
-          archived: false,
+          archived: input.archived ?? false,
+          visibleInDemo: input.visibleInDemo ?? false,
           createdAt: now,
           updatedAt: now
         }
@@ -213,6 +219,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
           tags: input.tags ?? [unique('fondo')],
           description: input.description ?? 'Fondo creado exclusivamente para esta prueba.',
           mimeType: 'image/png',
+          visibleInDemo: input.visibleInDemo ?? false,
           createdAt: Date.now()
         }
         return putBinary('backgrounds', background, input.scope ?? 'normal')
@@ -251,7 +258,8 @@ export const test = base.extend<{ data: TestDataFactory }>({
           title: input.title ?? unique('Historia'),
           premise: input.premise ?? 'Planteamiento exclusivo para esta prueba.',
           visualMode: input.visualMode ?? false,
-          archived: false,
+          archived: input.archived ?? false,
+          visibleInDemo: input.visibleInDemo ?? false,
           autoGenerateImages: input.autoGenerateImages ?? false,
           protagonistPreferences: input.protagonistPreferences ?? '',
           protagonistPreferencesMode: input.protagonistPreferencesMode ?? 'append',

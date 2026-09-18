@@ -8,6 +8,7 @@ import type {
   DataScope
 } from '../../utils/storage'
 import { getStorage } from '../../utils/storage'
+import { storageAccessFor } from '../../utils/access'
 
 const RESOURCES = new Set<DataResource>([
   'characters',
@@ -102,6 +103,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'imageGenerationPromptPrefix') &&
         (value.imageGenerationModel === undefined || hasString(value, 'imageGenerationModel')) &&
         typeof value.archived === 'boolean' &&
+        typeof value.visibleInDemo === 'boolean' &&
         hasNumber(value, 'createdAt') &&
         hasNumber(value, 'updatedAt')
       break
@@ -111,6 +113,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'premise') &&
         typeof value.visualMode === 'boolean' &&
         typeof value.archived === 'boolean' &&
+        typeof value.visibleInDemo === 'boolean' &&
         (value.autoGenerateImages === undefined || typeof value.autoGenerateImages === 'boolean') &&
         hasString(value, 'protagonistPreferences') &&
         (value.protagonistPreferencesMode === 'append' ||
@@ -192,6 +195,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'description') &&
         hasString(value, 'mimeType') &&
         String(value.mimeType).startsWith('image/') &&
+        typeof value.visibleInDemo === 'boolean' &&
         hasNumber(value, 'createdAt')
       break
     case 'sounds':
@@ -224,7 +228,8 @@ function validateCharacterCopy(rawValue: unknown) {
     !hasString(value, 'imageGenerationLora') ||
     !hasString(value, 'imageGenerationSeed') ||
     !hasString(value, 'imageGenerationPromptPrefix') ||
-    (value.imageGenerationModel !== undefined && !hasString(value, 'imageGenerationModel'))
+    (value.imageGenerationModel !== undefined && !hasString(value, 'imageGenerationModel')) ||
+    typeof value.visibleInDemo !== 'boolean'
   ) {
     throw createError({ statusCode: 400, message: 'Datos no válidos' })
   }
@@ -364,6 +369,7 @@ async function readCharacterImport(event: H3Event) {
     imageGenerationModel: typeof character.imageGenerationModel === 'string'
       ? character.imageGenerationModel
       : '',
+    visibleInDemo: character.visibleInDemo === true,
     images: importAssets(metadata.images, parts, 'images'),
     sounds: importAssets(metadata.sounds, parts, 'sounds')
   }
@@ -373,6 +379,9 @@ async function readCharacterImport(event: H3Event) {
 function mapStorageError(caught: unknown): never {
   if (caught && typeof caught === 'object' && 'statusCode' in caught) throw caught
   const error = caught as { code?: string; errcode?: number; message?: string }
+  if (error.code === 'ERR_READ_ONLY_RESOURCE') {
+    throw createError({ statusCode: 404, statusMessage: 'Registro no encontrado' })
+  }
   if (error.code === 'ERR_CHARACTER_IN_USE') {
     const stories = (caught as { stories?: Array<{ id: string; title: string }> }).stories ?? []
     throw createError({
@@ -404,9 +413,10 @@ export default defineEventHandler(async (event) => {
     const query = getQuery(event)
     const scope = asScope(query.scope)
     const storage = getStorage()
+    const access = storageAccessFor(event, scope)
 
     if (segments[0] === 'clear' && event.method === 'POST') {
-      storage.clear(scope)
+      storage.clear(scope, access)
       return { ok: true }
     }
 
@@ -419,7 +429,7 @@ export default defineEventHandler(async (event) => {
       const ids = Array.isArray(body.ids)
         ? body.ids.filter((id): id is string => typeof id === 'string' && Boolean(id))
         : []
-      storage.deleteMessages(scope, ids)
+      storage.deleteMessages(scope, ids, access)
       return { ok: true }
     }
 
@@ -429,7 +439,7 @@ export default defineEventHandler(async (event) => {
       event.method === 'POST'
     ) {
       const imported = await readCharacterImport(event)
-      const result = storage.importCharacter(scope, imported.targetId, imported.payload)
+      const result = storage.importCharacter(scope, imported.targetId, imported.payload, access)
       if (!result) throw createError({ statusCode: 404, statusMessage: 'Personaje no encontrado' })
       return result
     }
@@ -443,9 +453,21 @@ export default defineEventHandler(async (event) => {
       const copied = storage.copyCharacter(
         scope,
         asId(segments[1]),
-        validateCharacterCopy(await readBody(event))
+        validateCharacterCopy(await readBody(event)),
+        access
       )
       if (!copied) throw createError({ statusCode: 404, statusMessage: 'Personaje no encontrado' })
+      return copied
+    }
+
+    if (
+      segments[0] === 'backgrounds' &&
+      segments[1] &&
+      segments[2] === 'copy' &&
+      event.method === 'POST'
+    ) {
+      const copied = storage.copyBackground(scope, asId(segments[1]), access)
+      if (!copied) throw createError({ statusCode: 404, statusMessage: 'Fondo no encontrado' })
       return copied
     }
 
@@ -472,7 +494,8 @@ export default defineEventHandler(async (event) => {
         scope,
         asId(segments[1]),
         name,
-        thumbnailDataUrl
+        thumbnailDataUrl,
+        access
       )
       if (!save) throw createError({ statusCode: 404, statusMessage: 'Historia no encontrada' })
       return save
@@ -484,7 +507,7 @@ export default defineEventHandler(async (event) => {
       segments[2] === 'load' &&
       event.method === 'POST'
     ) {
-      const loaded = storage.loadStorySave(scope, asId(segments[1]))
+      const loaded = storage.loadStorySave(scope, asId(segments[1]), access)
       if (!loaded) throw createError({ statusCode: 404, statusMessage: 'Partida no encontrada' })
       return loaded
     }
@@ -494,12 +517,12 @@ export default defineEventHandler(async (event) => {
 
     if (resource === 'images' && id && segments[2] === 'original') {
       if (event.method === 'POST') {
-        const restored = storage.restoreImage(scope, asId(id))
+        const restored = storage.restoreImage(scope, asId(id), access)
         if (!restored) throw createError({ statusCode: 404, message: 'Imagen original no encontrada' })
         return restored
       }
       if (event.method === 'GET') {
-        const original = storage.getOriginalImage(scope, asId(id))
+        const original = storage.getOriginalImage(scope, asId(id), access)
         if (!original) throw createError({ statusCode: 404, message: 'Imagen original no encontrada' })
         setResponseHeader(event, 'content-type', original.mimeType)
         setResponseHeader(event, 'cache-control', 'no-store')
@@ -514,7 +537,7 @@ export default defineEventHandler(async (event) => {
       segments[2] === 'content' &&
       event.method === 'GET'
     ) {
-      const binary = storage.getBinary(resource, scope, asId(id))
+      const binary = storage.getBinary(resource, scope, asId(id), access)
       if (!binary) throw createError({ statusCode: 404, statusMessage: 'Archivo no encontrado' })
       setResponseHeader(event, 'content-type', binary.mimeType)
       setResponseHeader(event, 'cache-control', resource === 'images' ? 'no-store' : 'private, max-age=300')
@@ -523,14 +546,14 @@ export default defineEventHandler(async (event) => {
 
     if (event.method === 'GET') {
       if (id) {
-        const value = storage.get(resource, scope, asId(id))
+        const value = storage.get(resource, scope, asId(id), access)
         if (!value) throw createError({ statusCode: 404, statusMessage: 'Registro no encontrado' })
         return value
       }
       return storage.list(resource, scope, {
         storyId: typeof query.storyId === 'string' ? query.storyId : undefined,
         characterId: typeof query.characterId === 'string' ? query.characterId : undefined
-      })
+      }, access)
     }
 
     if (event.method === 'PUT') {
@@ -538,13 +561,19 @@ export default defineEventHandler(async (event) => {
       if (resource === 'images' || resource === 'backgrounds' || resource === 'sounds') {
         const payload = await readBinaryPayload(event, resource)
         payload.metadata = validatePayload(resource, payload.metadata)
-        return storage.putBinary(resource, scope, resourceId, payload)
+        return storage.putBinary(resource, scope, resourceId, payload, access)
       }
-      return storage.put(resource, scope, resourceId, validatePayload(resource, await readBody(event)))
+      return storage.put(
+        resource,
+        scope,
+        resourceId,
+        validatePayload(resource, await readBody(event)),
+        access
+      )
     }
 
     if (event.method === 'DELETE') {
-      storage.delete(resource, scope, asId(id))
+      storage.delete(resource, scope, asId(id), access)
       return { ok: true }
     }
 

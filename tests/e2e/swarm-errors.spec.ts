@@ -127,7 +127,7 @@ test('selecciona y persiste el modelo real; diagnóstico único, copiable y tran
   const downloadEvent = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Exportar JSON', exact: true }).click()
   const bundle = JSON.parse(await readFile((await (await downloadEvent).path())!, 'utf8'))
-  expect(bundle.version).toBe(22)
+  expect(bundle.version).toBe(23)
   const exportedStory = bundle.stories.find((item: Story) => item.title === story.title)
   expect(exportedStory.archived).toBe(true)
   expect(exportedStory.messages.find((message: Message) => message.swarmError).swarmError).toEqual(diagnostic.swarmError)

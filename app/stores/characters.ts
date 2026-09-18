@@ -127,6 +127,7 @@ export const useCharactersStore = defineStore('characters', () => {
     imageGenerationSeed?: string
     imageGenerationPromptPrefix?: string
     imageGenerationModel?: string
+    visibleInDemo?: boolean
   }) {
     const now = Date.now()
     const existing = input.id ? byId(input.id) : null
@@ -150,6 +151,8 @@ export const useCharactersStore = defineStore('characters', () => {
       imageGenerationModel:
         input.imageGenerationModel ?? existing?.imageGenerationModel ?? '',
       archived: existing?.archived ?? false,
+      visibleInDemo:
+        input.visibleInDemo ?? existing?.visibleInDemo ?? usePrivacyStore().isDemo,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now
     }
@@ -165,8 +168,10 @@ export const useCharactersStore = defineStore('characters', () => {
     sourceId: string,
     input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel'>
   ) {
+    const source = byId(sourceId)
     const { character } = await copyStoredCharacter(sourceId, {
       ...input,
+      visibleInDemo: source?.readOnly ? false : usePrivacyStore().isDemo,
       name: input.name.trim(),
       tags: sanitizeTags(input.tags),
       color: normalizeColor(input.color, DEFAULT_CHARACTER_COLOR)
@@ -194,6 +199,12 @@ export const useCharactersStore = defineStore('characters', () => {
     const index = characters.value.findIndex((item) => item.id === id)
     if (index >= 0) characters.value[index] = updated
     return updated
+  }
+
+  async function setDemoVisibility(id: string, visibleInDemo: boolean) {
+    const character = byId(id)
+    if (!character || character.visibleInDemo === visibleInDemo) return character
+    return saveCharacter({ ...character, visibleInDemo })
   }
 
   async function importArchive(
@@ -309,6 +320,7 @@ export const useCharactersStore = defineStore('characters', () => {
     importArchive,
     removeCharacter,
     setArchived,
+    setDemoVisibility,
     addImage,
     updateImage,
     cropImage,

@@ -5,6 +5,7 @@ import { primaryTag } from '~/lib/tags'
 const backgrounds = useBackgroundsStore()
 const sounds = useSoundsStore()
 const confirmDialog = useConfirmStore()
+const privacy = usePrivacyStore()
 
 await Promise.all([backgrounds.load(), sounds.load()])
 
@@ -15,6 +16,12 @@ const busy = ref(false)
 const error = ref<string | null>(null)
 const refreshing = ref(false)
 const refreshError = ref<string | null>(null)
+const copyingId = ref<string | null>(null)
+const visibleBackgrounds = computed(() =>
+  privacy.isDemo
+    ? backgrounds.backgrounds.filter((background) => background.visibleInDemo)
+    : backgrounds.backgrounds
+)
 
 async function reload() {
   if (refreshing.value) return
@@ -72,14 +79,28 @@ async function remove(id: string) {
   })
   if (accepted) await backgrounds.removeBackground(id)
 }
+
+async function copyBackground(id: string) {
+  if (copyingId.value) return
+  copyingId.value = id
+  error.value = null
+  try {
+    await backgrounds.copyBackground(id)
+  } catch (caught) {
+    error.value = (caught as Error).message || 'No se pudo copiar el fondo.'
+  } finally {
+    copyingId.value = null
+  }
+}
 </script>
 
 <template>
   <div class="page-shell">
-    <header class="mb-6 flex flex-wrap items-start justify-between gap-3">
+    <header class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold">Fondos</h1>
-        <p class="text-sm text-[var(--color-fg-muted)]">
+        <p class="page-kicker">Escenografía</p>
+        <h1 class="page-title">Fondos</h1>
+        <p class="mt-2 max-w-2xl text-sm text-[var(--color-fg-muted)]">
           Modelo puede elegir fondo usando cualquiera de sus etiquetas. Cada etiqueta debe ser única.
         </p>
       </div>
@@ -121,12 +142,12 @@ async function remove(id: string) {
       <p v-if="error" class="text-sm text-red-500 sm:col-span-3" role="alert">{{ error }}</p>
     </section>
 
-    <p v-if="backgrounds.backgrounds.length === 0" class="card text-sm text-[var(--color-fg-muted)]">
+    <p v-if="visibleBackgrounds.length === 0" class="empty-state card py-10 text-sm text-[var(--color-fg-muted)]">
       Sin fondos todavía.
     </p>
 
     <ul class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <li v-for="background in backgrounds.backgrounds" :key="background.id" class="card min-w-0">
+      <li v-for="background in visibleBackgrounds" :key="background.id" class="card min-w-0">
         <ImageLightbox
           :src="backgrounds.urlFor(background.id)!"
           :alt="`Fondo ${primaryTag(background) ?? ''}`"
@@ -134,25 +155,57 @@ async function remove(id: string) {
           image-class="max-h-80 w-full rounded-xl bg-black/5 object-contain"
         />
         <div class="grid gap-2">
-          <TagInput
-            :model-value="background.tags"
-            aria-label="Etiquetas del fondo"
-            placeholder="neutral"
-            @update:model-value="update(background.id, { tags: $event })"
-          />
-          <input
-            class="field"
-            :value="background.description"
-            autocomplete="off"
-            aria-label="Descripción del fondo"
-            placeholder="Descripción"
-            @input="background.description = ($event.target as HTMLInputElement).value"
-            @change="update(background.id, { description: ($event.target as HTMLInputElement).value })"
-          >
-          <SoundEditor :background-id="background.id" title="Sonidos del fondo" />
-          <div class="flex justify-end">
-            <button type="button" class="btn-danger" @click="remove(background.id)">Borrar</button>
-          </div>
+          <template v-if="background.readOnly">
+            <p class="text-xs font-semibold text-brand-600">Fondo demo compartido · solo lectura</p>
+            <div class="flex flex-wrap gap-1">
+              <span
+                v-for="tag in background.tags"
+                :key="tag"
+                class="rounded-full bg-brand-500/15 px-2 py-0.5 text-xs"
+              >{{ tag }}</span>
+            </div>
+            <p class="text-sm text-[var(--color-fg-muted)]">{{ background.description }}</p>
+            <div class="flex justify-end">
+              <button
+                type="button"
+                class="btn-primary"
+                :disabled="copyingId !== null"
+                @click="copyBackground(background.id)"
+              >
+                {{ copyingId === background.id ? 'Copiando…' : 'Copiar a mi colección privada' }}
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <TagInput
+              :model-value="background.tags"
+              aria-label="Etiquetas del fondo"
+              placeholder="neutral"
+              @update:model-value="update(background.id, { tags: $event })"
+            />
+            <input
+              class="field"
+              :value="background.description"
+              autocomplete="off"
+              aria-label="Descripción del fondo"
+              placeholder="Descripción"
+              @input="background.description = ($event.target as HTMLInputElement).value"
+              @change="update(background.id, { description: ($event.target as HTMLInputElement).value })"
+            >
+            <SoundEditor :background-id="background.id" title="Sonidos del fondo" />
+            <label v-if="privacy.isPrivateMode" class="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                class="h-4 w-4 accent-[var(--color-brand-500)]"
+                :checked="background.visibleInDemo"
+                @change="update(background.id, { visibleInDemo: ($event.target as HTMLInputElement).checked })"
+              >
+              Visible en modo demo
+            </label>
+            <div class="flex justify-end">
+              <button type="button" class="btn-danger" @click="remove(background.id)">Borrar</button>
+            </div>
+          </template>
         </div>
       </li>
     </ul>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const sounds = useSoundsStore()
+const privacy = usePrivacyStore()
 await sounds.load()
 
 const refreshing = ref(false)
@@ -21,10 +22,11 @@ async function reload() {
 
 <template>
   <div class="page-shell">
-    <header class="mb-6 flex flex-wrap items-start justify-between gap-3">
+    <header class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold">Sonidos</h1>
-        <p class="text-sm text-[var(--color-fg-muted)]">
+        <p class="page-kicker">Paisaje sonoro</p>
+        <h1 class="page-title">Sonidos</h1>
+        <p class="mt-2 max-w-2xl text-sm text-[var(--color-fg-muted)]">
           Sonidos sueltos disponibles para cualquier historia. Los asociados se añaden desde personajes o fondos.
         </p>
       </div>
@@ -39,8 +41,11 @@ async function reload() {
     <p v-if="refreshError" class="card mb-4 text-sm text-red-500" role="alert">
       {{ refreshError }}
     </p>
-    <section class="card max-w-3xl">
+    <section v-if="!privacy.isDemo" class="card max-w-3xl">
       <SoundEditor title="Sonidos sueltos" />
     </section>
+    <p v-else class="empty-state card max-w-3xl py-10 text-sm text-[var(--color-fg-muted)]">
+      Los sonidos sueltos no se muestran en modo demo.
+    </p>
   </div>
 </template>

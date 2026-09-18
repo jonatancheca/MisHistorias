@@ -1,4 +1,5 @@
 import { getStorage } from '../utils/storage'
+import { readAccessSession } from '../utils/access'
 
 const ALLOWED_SETTINGS = new Set([
   'baseUrl',
@@ -31,6 +32,18 @@ const ALLOWED_SETTINGS = new Set([
   'privateProtagonistPreferences',
   'narrativePrompt',
   'characterReferencePrompt'
+])
+const PERSONAL_SETTINGS = new Set([
+  'theme',
+  'responseSpeed',
+  'visualNovelManualAdvance',
+  'defaultSoundVersion',
+  'privateDefaultSoundVersion',
+  'userName',
+  'privateUserName',
+  'userColor',
+  'protagonistPreferences',
+  'privateProtagonistPreferences'
 ])
 
 function validSetting(key: string, value: unknown) {
@@ -112,7 +125,9 @@ function publicSettings(row: ReturnType<ReturnType<typeof getStorage>['readSetti
 
 export default defineEventHandler(async (event) => {
   const storage = getStorage()
-  if (event.method === 'GET') return publicSettings(storage.readSettings())
+  const session = readAccessSession(event)
+  const ownerId = session.multiUserEnabled ? session.identity!.id : undefined
+  if (event.method === 'GET') return publicSettings(storage.readSettings(ownerId))
   if (event.method !== 'PATCH') {
     throw createError({ statusCode: 405, message: 'Método no permitido' })
   }
@@ -128,5 +143,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Ajustes no válidos' })
   }
   const patch = Object.fromEntries(entries)
-  return publicSettings(storage.writeSettings(patch))
+  if (!session.multiUserEnabled) return publicSettings(storage.writeSettings(patch))
+
+  const personalPatch = Object.fromEntries(entries.filter(([key]) => PERSONAL_SETTINGS.has(key)))
+  const globalPatch = Object.fromEntries(entries.filter(([key]) => !PERSONAL_SETTINGS.has(key)))
+  if (Object.keys(globalPatch).length && !session.isAdmin) {
+    throw createError({ statusCode: 403, statusMessage: 'Ajuste reservado al administrador' })
+  }
+  if (Object.keys(globalPatch).length) storage.writeSettings(globalPatch)
+  if (Object.keys(personalPatch).length) {
+    storage.writeUserSettings(session.identity!, personalPatch)
+  }
+  return publicSettings(storage.readSettings(ownerId))
 })

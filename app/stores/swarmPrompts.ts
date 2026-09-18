@@ -6,7 +6,9 @@ import { sanitizeTags } from '~/lib/tags'
 export const useSwarmPromptsStore = defineStore('swarmPrompts', () => {
   const prompts = ref<SwarmPrompt[]>([])
   const loaded = ref(false)
+  let loadRevision = 0
   function resetForScope() {
+    loadRevision += 1
     prompts.value = []
     loaded.value = false
   }
@@ -14,8 +16,9 @@ export const useSwarmPromptsStore = defineStore('swarmPrompts', () => {
   async function load(force = false) {
     if (loaded.value && !force) return
     const scope = getActiveDataScope()
-    const result = await listSwarmPrompts()
-    if (scope !== getActiveDataScope()) return
+    const revision = ++loadRevision
+    const result = await listSwarmPrompts(scope)
+    if (scope !== getActiveDataScope() || revision !== loadRevision) return
     prompts.value = result
     loaded.value = true
   }

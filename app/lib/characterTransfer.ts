@@ -12,7 +12,8 @@ export function exportCharacterTransferFields(character: Character) {
     imageGenerationSeed: character.imageGenerationSeed,
     imageGenerationPromptPrefix: character.imageGenerationPromptPrefix,
     imageGenerationModel: character.imageGenerationModel,
-    archived: character.archived
+    archived: character.archived,
+    visibleInDemo: character.visibleInDemo
   }
 }
 

@@ -40,6 +40,10 @@ await Promise.all([
   stories.openStory(String(route.params.id))
 ])
 
+if (privacy.isDemo && !stories.activeStory?.visibleInDemo) {
+  await navigateTo('/')
+}
+
 const input = ref('')
 const scroller = ref<HTMLElement | null>(null)
 const timelineContent = ref<HTMLElement | null>(null)
@@ -81,6 +85,7 @@ const storyPremise = ref('')
 const autoGenerateImages = ref(false)
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
+const storyVisibleInDemo = ref(false)
 
 useDialogEscape(
   () => storyPreferencesOpen.value,
@@ -96,7 +101,11 @@ const storyCustomizationRows = computed(() =>
 )
 const availableStoryCharacters = computed(() =>
   characters.characters.filter(
-    (character) => !character.archived && !storyCharacterIds.value.includes(character.id)
+    (character) =>
+      !character.archived &&
+      !character.readOnly &&
+      !storyCharacterIds.value.includes(character.id) &&
+      (!privacy.isDemo || character.visibleInDemo)
   )
 )
 
@@ -264,7 +273,7 @@ async function resumeFollowingBottom() {
 }
 
 async function toggleVisualMode() {
-  if (!stories.activeStory || stories.generating) return
+  if (!stories.activeStory || stories.activeStory.readOnly || stories.generating) return
   const visualMode = !stories.activeStory.visualMode
   await stories.setVisualMode(visualMode)
   if (visualMode) {
@@ -285,6 +294,7 @@ async function toggleVisualNovelManualAdvance() {
 }
 
 async function submit() {
+  if (stories.activeStory?.readOnly) return
   void sounds.unlock()
   const text = input.value
   if (!text.trim() || stories.generating) return
@@ -306,6 +316,7 @@ async function submit() {
 }
 
 async function generateOpening() {
+  if (stories.activeStory?.readOnly) return
   void sounds.unlock()
   followingBottom.value = true
   scheduleFollowBottom()
@@ -313,6 +324,7 @@ async function generateOpening() {
 }
 
 async function generateContinuation(mode: Exclude<GenerationMode, 'normal'>) {
+  if (stories.activeStory?.readOnly) return
   void sounds.unlock()
   if (stories.generating) return
   followingBottom.value = true
@@ -338,6 +350,7 @@ function openImageReplacement(target: {
   sourceSegmentIndex?: number
   imageId: string | null
 }) {
+  if (stories.activeStory?.readOnly) return
   imagePickerTarget.value = {
     mode: 'replace',
     characterId: target.characterId,
@@ -393,12 +406,13 @@ function onStoryScroll() {
 }
 
 function openStoryPreferences() {
-  if (!stories.activeStory) return
+  if (!stories.activeStory || stories.activeStory.readOnly) return
   storyTitle.value = stories.activeStory.title
   storyPremise.value = stories.activeStory.premise
   autoGenerateImages.value = stories.activeStory.autoGenerateImages === true
   storyPreferences.value = stories.activeStory.protagonistPreferences ?? ''
   storyPreferencesMode.value = stories.activeStory.protagonistPreferencesMode ?? 'append'
+  storyVisibleInDemo.value = stories.activeStory.visibleInDemo
   storyCharacterIds.value = [...stories.activeStory.characterIds]
   const stored = new Map(
     (stories.activeStory.characterCustomizations ?? []).map((item) => [item.characterId, item])
@@ -443,7 +457,8 @@ async function saveStoryPreferences() {
     storyPreferences.value,
     storyPreferencesMode.value,
     storyCharacterIds.value,
-    storyCharacterCustomizations.value.map((item) => ({ ...item, tags: [...item.tags] }))
+    storyCharacterCustomizations.value.map((item) => ({ ...item, tags: [...item.tags] })),
+    storyVisibleInDemo.value
   )
   storyPreferencesOpen.value = false
 }
@@ -468,6 +483,7 @@ async function onMissingStoryPrivateTrigger() {
 }
 
 async function removeMessage(id: string) {
+  if (stories.activeStory?.readOnly) return
   const accepted = await confirmDialog.ask({
     title: 'Borrar mensaje',
     message: 'Este mensaje se borrará definitivamente.'
@@ -476,6 +492,7 @@ async function removeMessage(id: string) {
 }
 
 async function regenerateFrom(id: string) {
+  if (stories.activeStory?.readOnly) return
   const index = stories.messages.findIndex((message) => message.id === id)
   if (index < 0) return
   const following = stories.messages.length - index - 1
@@ -494,6 +511,7 @@ async function regenerateFrom(id: string) {
 }
 
 async function resendFrom(id: string) {
+  if (stories.activeStory?.readOnly) return
   const index = stories.messages.findIndex((message) => message.id === id)
   if (index < 0) return
   const following = stories.messages.length - index - 1
@@ -666,7 +684,7 @@ const thumbnailCharacterUrls = computed(() => {
 })
 
 async function saveStorySlot(name: string) {
-  if (!stories.activeStory || storySavesBusy.value) return
+  if (!stories.activeStory || stories.activeStory.readOnly || storySavesBusy.value) return
   storySavesBusy.value = true
   storySavesError.value = null
   try {
@@ -993,9 +1011,16 @@ onBeforeRouteLeave(() => {
           <p class="truncate text-xs text-[var(--color-fg-muted)]">
             {{ stories.activeStory.premise }}
           </p>
+          <p
+            v-if="stories.activeStory.readOnly"
+            class="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-300"
+          >
+            Historia demo compartida · solo lectura
+          </p>
         </div>
         <div class="flex shrink-0 gap-1 sm:gap-2">
           <button
+            v-if="!stories.activeStory.readOnly"
             type="button"
             class="btn-ghost h-10 shrink-0 px-2 sm:px-3"
             aria-label="Partidas"
@@ -1043,7 +1068,7 @@ onBeforeRouteLeave(() => {
             {{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrameTotal }}
           </span>
           <button
-            v-if="stories.activeStory.visualMode"
+            v-if="stories.activeStory.visualMode && !stories.activeStory.readOnly"
             type="button"
             class="btn-ghost h-10 w-10 shrink-0 px-0 py-0"
             :class="settings.settings.visualNovelManualAdvance ? 'bg-brand-500/15 text-brand-500' : ''"
@@ -1059,6 +1084,7 @@ onBeforeRouteLeave(() => {
             </svg>
           </button>
           <button
+            v-if="!stories.activeStory.readOnly"
             type="button"
             class="btn-ghost"
             data-testid="visual-mode-toggle"
@@ -1075,6 +1101,7 @@ onBeforeRouteLeave(() => {
             <span class="hidden sm:inline">{{ stories.activeStory.visualMode ? 'Chat' : 'Novela' }}</span>
           </button>
           <button
+            v-if="!stories.activeStory.readOnly"
             type="button"
             class="btn-ghost"
             aria-label="Ajustes de la historia"
@@ -1107,7 +1134,7 @@ onBeforeRouteLeave(() => {
             />
 
             <MessageActions
-              v-if="activeVisualMessage"
+              v-if="activeVisualMessage && !stories.activeStory.readOnly"
               :message="activeVisualMessage"
               :editable="!stories.generating"
               :debug-trace="debugForMessage(activeVisualMessage.id)"
@@ -1126,10 +1153,15 @@ onBeforeRouteLeave(() => {
               class="absolute inset-x-0 top-4 z-10 px-4 text-center text-sm text-slate-200"
             >
               <span>La historia aún no ha empezado. </span>
-              <button type="button" class="text-brand-300 underline" @click="generateOpening">
+              <button
+                v-if="!stories.activeStory.readOnly"
+                type="button"
+                class="text-brand-300 underline"
+                @click="generateOpening"
+              >
                 Deja que la história empiece sola
               </button>
-              <span> o escribe tú el primer movimiento.</span>
+              <span v-if="!stories.activeStory.readOnly"> o escribe tú el primer movimiento.</span>
             </div>
 
           </div>
@@ -1242,10 +1274,15 @@ onBeforeRouteLeave(() => {
 
           <div v-if="isEmpty" class="card text-sm text-[var(--color-fg-muted)]">
             La historia aún no ha empezado.
-            <button type="button" class="text-brand-600 underline" @click="generateOpening">
+            <button
+              v-if="!stories.activeStory.readOnly"
+              type="button"
+              class="text-brand-600 underline"
+              @click="generateOpening"
+            >
               Deja que la história empiece sola
             </button>
-            o escribe tú el primer movimiento.
+            <template v-if="!stories.activeStory.readOnly"> o escribe tú el primer movimiento.</template>
           </div>
 
           <template v-for="item in timeline" :key="`${item.kind}-${item.id}`">
@@ -1256,7 +1293,7 @@ onBeforeRouteLeave(() => {
               :character-colors="storyCharacterColors"
               :debug-trace="debugForMessage(item.message.id)"
               :compaction-trace="compactionDebugForMessage(item.message.id)"
-              :editable="!stories.generating"
+              :editable="!stories.generating && !stories.activeStory.readOnly"
               :visual-mode="stories.activeStory.visualMode"
               @debug="selectedDebugTrace = $event"
               @edit="stories.updateMessage(item.message.id, $event)"
@@ -1326,6 +1363,7 @@ onBeforeRouteLeave(() => {
       </div>
 
       <footer
+        v-if="!stories.activeStory.readOnly"
         class="border-t border-[var(--color-border-soft)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4"
       >
         <div
@@ -1455,6 +1493,12 @@ onBeforeRouteLeave(() => {
           </div>
         </form>
       </footer>
+      <footer
+        v-else
+        class="border-t border-[var(--color-border-soft)] p-3 text-center text-sm font-semibold text-[var(--color-fg-muted)] sm:p-4"
+      >
+        Solo lectura. Copia sus recursos demo para usarlos en tu colección privada.
+      </footer>
     </section>
 
     <div
@@ -1534,6 +1578,19 @@ onBeforeRouteLeave(() => {
                 <span class="block font-medium">Crear imágenes nuevas durante la historia</span>
                 <span class="block text-xs text-[var(--color-fg-muted)]">
                   El LLM podrá pedir una imagen nueva por personaje y respuesta.
+                </span>
+              </span>
+            </label>
+            <label v-if="privacy.isPrivateMode" class="flex items-start gap-2 text-sm">
+              <input
+                v-model="storyVisibleInDemo"
+                type="checkbox"
+                class="mt-0.5 h-4 w-4 accent-[var(--color-brand-500)]"
+              >
+              <span>
+                <span class="block font-medium">Visible en modo demo</span>
+                <span class="block text-xs text-[var(--color-fg-muted)]">
+                  Permite mostrar esta historia y sus recursos contextuales en demo.
                 </span>
               </span>
             </label>

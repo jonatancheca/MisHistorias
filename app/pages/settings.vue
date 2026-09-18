@@ -24,6 +24,7 @@ import { DEFAULT_CHARACTER_REFERENCE_PROMPT } from '~/lib/characterReferenceProm
 import { DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
 
 const settings = useSettingsStore()
+const access = useAccessStore()
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
 const stories = useStoriesStore()
@@ -32,10 +33,17 @@ const confirmDialog = useConfirmStore()
 const appUpdate = useAppUpdate()
 const route = useRoute()
 const router = useRouter()
-await settings.load()
+await Promise.all([settings.load(), access.load()])
+
+const canManageGlobal = computed(
+  () => !access.session.multiUserEnabled || access.session.isAdmin
+)
+const activatingUsers = ref(false)
+const accessError = ref<string | null>(null)
 
 const settingsSections = [
   { id: 'apariencia', label: 'Apariencia' },
+  { id: 'usuarios', label: 'Usuarios' },
   { id: 'llm', label: 'LLM' },
   { id: 'prompt-narrativo', label: 'Prompt narrativo' },
   { id: 'prompt-referencia-personaje', label: 'Prompt de referencia de personaje' },
@@ -131,6 +139,8 @@ let narrativePromptDirty = false
 let characterReferencePromptDirty = false
 let privateClickCount = 0
 let privateClickTimer: ReturnType<typeof setTimeout> | null = null
+let demoClickCount = 0
+let demoClickTimer: ReturnType<typeof setTimeout> | null = null
 
 function sectionIdFromHash(hash: string): SettingsSectionId | null {
   const id = hash.startsWith('#') ? hash.slice(1) : hash
@@ -141,6 +151,11 @@ function sectionIdFromHash(hash: string): SettingsSectionId | null {
 
 function sectionElement(id: SettingsSectionId) {
   return settingsPageRef.value?.querySelector<HTMLElement>(`#${id}`) ?? null
+}
+
+function settingsNavShell() {
+  const shell = settingsNavRef.value?.closest<HTMLElement>('nav') ?? null
+  return shell && shell.getBoundingClientRect().height > 0 ? shell : null
 }
 
 function revealActiveNavItem() {
@@ -180,8 +195,8 @@ function updateActiveSection() {
     return
   }
 
-  const activationLine = (settingsNavRef.value?.getBoundingClientRect().bottom
-    ?? container.getBoundingClientRect().top) + 16
+  const activationLine = (settingsNavShell()?.getBoundingClientRect().bottom
+    ?? container.getBoundingClientRect().top) + 24
   let current = settingsSections[0].id
   for (const section of settingsSections) {
     const element = sectionElement(section.id)
@@ -201,7 +216,7 @@ function scrollToSettingsSection(id: SettingsSectionId, behavior: ScrollBehavior
   const element = sectionElement(id)
   if (!container || !element) return
 
-  const navHeight = settingsNavRef.value?.getBoundingClientRect().height ?? 0
+  const navHeight = settingsNavShell()?.getBoundingClientRect().height ?? 0
   const top = container.scrollTop
     + element.getBoundingClientRect().top
     - container.getBoundingClientRect().top
@@ -264,12 +279,11 @@ async function testConnection() {
 
 function settingsPatch() {
   const patch: Partial<AppSettings> = {
-    swarmBaseUrl: form.swarmBaseUrl.trim(),
     responseSpeed: form.responseSpeed,
     userColor: form.userColor
   }
   if (privacy.isPrivate) {
-    if (privateLlmSettingsEnabled.value) {
+    if (canManageGlobal.value && privateLlmSettingsEnabled.value) {
       patch.privateBaseUrl = form.baseUrl.trim()
       patch.privateModel = form.model
       patch.privateTemperature = Number(form.temperature)
@@ -281,31 +295,57 @@ function settingsPatch() {
       patch.privateProtagonistPreferences = form.protagonistPreferences.trim()
     }
   } else {
-    patch.baseUrl = form.baseUrl.trim()
-    patch.model = form.model
-    patch.temperature = Number(form.temperature)
-    patch.maxTokens = Number(form.maxTokens)
-    patch.historyBudget = Number(form.historyBudget)
+    if (canManageGlobal.value) {
+      patch.baseUrl = form.baseUrl.trim()
+      patch.model = form.model
+      patch.temperature = Number(form.temperature)
+      patch.maxTokens = Number(form.maxTokens)
+      patch.historyBudget = Number(form.historyBudget)
+    }
     patch.userName = form.userName.trim() || 'Protagonista'
     patch.protagonistPreferences = form.protagonistPreferences.trim()
   }
-  if (narrativePromptDirty) {
+  if (canManageGlobal.value) patch.swarmBaseUrl = form.swarmBaseUrl.trim()
+  if (canManageGlobal.value && narrativePromptDirty) {
     patch.narrativePrompt = narrativePromptCustomized.value ? narrativePrompt.value : null
   }
-  if (characterReferencePromptDirty) {
+  if (canManageGlobal.value && characterReferencePromptDirty) {
     patch.characterReferencePrompt = characterReferencePromptCustomized.value
       ? characterReferencePrompt.value
       : null
   }
-  if (apiKeyDirty) {
+  if (canManageGlobal.value && apiKeyDirty) {
     if (privacy.isPrivate && privateLlmSettingsEnabled.value) {
       patch.privateApiKey = form.apiKey.trim()
     } else if (!privacy.isPrivate) {
       patch.apiKey = form.apiKey.trim()
     }
   }
-  if (swarmAuthTokenDirty) patch.swarmAuthToken = form.swarmAuthToken.trim()
+  if (canManageGlobal.value && swarmAuthTokenDirty) {
+    patch.swarmAuthToken = form.swarmAuthToken.trim()
+  }
   return patch
+}
+
+async function activateUsers() {
+  const email = access.session.identity?.email
+  if (!email || activatingUsers.value || access.session.multiUserEnabled) return
+  const accepted = await confirmDialog.ask({
+    title: 'Activar configuración por usuarios',
+    message: `Se asignarán todos los datos actuales a ${email}, que será el administrador de la instancia. La activación no se puede deshacer desde la interfaz.`,
+    confirmLabel: 'Activar'
+  })
+  if (!accepted) return
+  activatingUsers.value = true
+  accessError.value = null
+  try {
+    await flushSave()
+    await access.activate()
+    window.location.reload()
+  } catch (caught) {
+    accessError.value = (caught as Error).message || 'No se pudo activar la configuración por usuarios.'
+    activatingUsers.value = false
+  }
 }
 
 function enqueueSave(revision: number) {
@@ -608,7 +648,7 @@ async function setMockMode(mockMode: boolean) {
 
 async function doExport() {
   const { exportBundle, downloadBundle } = await import('~/lib/transfer')
-  downloadBundle(await exportBundle())
+  downloadBundle(await exportBundle({ demo: privacy.isDemo }))
 }
 
 async function refreshChromeLlmAvailability() {
@@ -779,7 +819,7 @@ function formatBackupSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-await loadBackups()
+if (canManageGlobal.value) await loadBackups()
 
 async function onImportFile(event: Event) {
   const input = event.target as HTMLInputElement
@@ -794,6 +834,7 @@ async function onImportFile(event: Event) {
       characters.load(true),
       backgrounds.load(true),
       stories.load(true),
+      useSoundsStore().load(true),
       useSwarmPromptsStore().load(true)
     ])
     importMessage.value = 'Importación completada'
@@ -806,7 +847,7 @@ async function onImportFile(event: Event) {
 }
 
 async function onPrivateTrigger() {
-  if (privacy.isPrivate) return
+  if (privacy.isPrivateMode) return
 
   privateClickCount += 1
   if (privateClickTimer) clearTimeout(privateClickTimer)
@@ -824,8 +865,26 @@ async function onPrivateTrigger() {
   }, 1000)
 }
 
+async function onDemoTrigger() {
+  demoClickCount += 1
+  if (demoClickTimer) clearTimeout(demoClickTimer)
+
+  if (demoClickCount === 3) {
+    demoClickCount = 0
+    demoClickTimer = null
+    await privacy.toggleDemo()
+    return
+  }
+
+  demoClickTimer = setTimeout(() => {
+    demoClickCount = 0
+    demoClickTimer = null
+  }, 1000)
+}
+
 onBeforeUnmount(() => {
   if (privateClickTimer) clearTimeout(privateClickTimer)
+  if (demoClickTimer) clearTimeout(demoClickTimer)
   if (savedTimer) clearTimeout(savedTimer)
   if (swarmPreviewUrl.value) URL.revokeObjectURL(swarmPreviewUrl.value)
   if (sectionUpdateFrame !== null) cancelAnimationFrame(sectionUpdateFrame)
@@ -858,44 +917,60 @@ onBeforeRouteLeave(async () => {
 </script>
 
 <template>
-  <div ref="settingsPageRef" class="page-shell">
-    <h1 class="mb-6 text-2xl font-bold">Ajustes</h1>
-    <p class="-mt-4 mb-6 min-h-5 text-xs text-[var(--color-fg-muted)]" aria-live="polite">
-      <span v-if="saveStatus === 'saving'">Guardando…</span>
-      <span v-else-if="saveStatus === 'saved'">Guardado</span>
-      <span v-else-if="saveStatus === 'error'" class="text-red-500">
-        {{ saveError || 'Error al guardar' }}
-      </span>
-    </p>
+  <div ref="settingsPageRef" class="settings-page page-shell">
+    <header class="mb-7">
+      <p class="page-kicker">Tu espacio</p>
+      <h1 class="page-title">Ajustes</h1>
+      <p class="mt-2 min-h-5 text-xs text-[var(--color-fg-muted)]" aria-live="polite">
+        <span v-if="saveStatus === 'saving'">Guardando…</span>
+        <span v-else-if="saveStatus === 'saved'">Guardado</span>
+        <span v-else-if="saveStatus === 'error'" class="text-red-500">
+          {{ saveError || 'Error al guardar' }}
+        </span>
+        <span v-else>Personaliza la experiencia y las conexiones de la aplicación.</span>
+      </p>
+      <p
+        v-if="access.session.multiUserEnabled && !access.session.isAdmin"
+        class="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300"
+      >
+        Los ajustes técnicos y los backups los gestiona el administrador de la instancia.
+      </p>
+    </header>
 
     <nav
-      class="sticky top-0 z-20 mb-8 hidden bg-[var(--color-surface)] py-2 sm:block"
+      class="settings-nav-shell sticky top-0 z-20 mb-5 hidden py-3 sm:block"
       aria-label="Secciones de ajustes"
     >
       <div
         ref="settingsNavRef"
-        class="settings-section-nav flex gap-2 overflow-x-auto rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-2 shadow-sm"
+        class="settings-section-nav flex gap-1.5 overflow-x-auto rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface-elevated)] p-2"
         data-testid="settings-section-nav"
       >
         <a
-          v-for="section in settingsSections"
+          v-for="(section, index) in settingsSections"
           :key="section.id"
           :href="`#${section.id}`"
-          class="shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors"
+          class="settings-nav-link shrink-0 rounded-xl px-3 py-2 text-sm font-semibold"
           :class="activeSectionId === section.id
-            ? 'bg-brand-500 text-white'
-            : 'bg-[var(--color-surface-alt)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'"
+            ? 'settings-nav-link-active'
+            : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'"
           :aria-current="activeSectionId === section.id ? 'location' : undefined"
           :data-settings-section="section.id"
           @click.prevent="navigateToSettingsSection(section.id)"
         >
+          <span class="settings-nav-index">{{ String(index + 1).padStart(2, '0') }}</span>
           {{ section.label }}
         </a>
       </div>
     </nav>
 
-    <section id="apariencia" class="mb-8">
-      <h2 class="mb-2 text-lg font-semibold">Apariencia</h2>
+    <section
+      id="apariencia"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'apariencia' }"
+    >
+      <h2>Apariencia</h2>
+      <p>Elige cómo se adapta la interfaz a tu entorno.</p>
       <div class="flex flex-wrap gap-2">
         <button
           type="button"
@@ -929,15 +1004,83 @@ onBeforeRouteLeave(async () => {
           </svg>
           Modo oscuro
         </button>
+        <button
+          type="button"
+          class="h-10 w-12 opacity-0"
+          aria-label="Activar modo privado"
+          :disabled="privacy.switching || privacy.isPrivateMode"
+          @click="onPrivateTrigger"
+        />
+      </div>
+      <div class="mt-5 max-w-sm">
+        <label class="label" for="responseSpeed">Velocidad de escritura</label>
+        <select id="responseSpeed" v-model="form.responseSpeed" class="field">
+          <option value="slow">Lenta</option>
+          <option value="medium">Media</option>
+          <option value="high">Alta</option>
+          <option value="instant">Inmediata</option>
+        </select>
+        <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+          Preferencia personal para mostrar las respuestas recibidas.
+        </p>
       </div>
     </section>
 
-    <section id="llm" class="mt-10" data-testid="llm-settings">
-      <h2 class="mb-2 text-lg font-semibold">LLM</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+    <section
+      id="usuarios"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'usuarios' }"
+      data-testid="access-user-settings"
+    >
+      <h2>Usuarios</h2>
+      <p>
+        Aísla historias, personajes y recursos por la identidad entregada por Cloudflare Access.
+      </p>
+      <label class="flex items-start gap-3">
+        <input
+          type="checkbox"
+          class="mt-1 h-4 w-4 accent-[var(--color-brand-500)]"
+          :checked="access.session.multiUserEnabled"
+          :disabled="access.session.multiUserEnabled || !access.session.canActivate || activatingUsers"
+          @change="activateUsers"
+        >
+        <span>
+          <span class="block text-sm font-semibold">Usar configuración por usuarios</span>
+          <span class="block text-xs text-[var(--color-fg-muted)]">
+            <template v-if="access.session.multiUserEnabled">
+              Activa permanentemente. Usuario actual: {{ access.session.identity?.email }}<template v-if="access.session.isAdmin"> · administrador</template>.
+            </template>
+            <template v-else-if="access.session.identity">
+              Al activar, {{ access.session.identity.email }} recibirá todos los datos existentes y será administrador.
+            </template>
+            <template v-else>
+              Entra mediante Cloudflare Access para poder activarla.
+            </template>
+          </span>
+        </span>
+      </label>
+      <p class="mt-3 text-xs text-[var(--color-fg-muted)]">
+        El identificador del usuario se lee del token de Cloudflare Access. El token completo no se guarda ni se muestra.
+      </p>
+      <p v-if="accessError" class="mt-2 text-xs text-red-500" role="alert">{{ accessError }}</p>
+    </section>
+
+    <section
+      id="llm"
+      class="settings-panel"
+      :class="[
+        { 'settings-panel-active': activeSectionId === 'llm' },
+        { 'opacity-60': !canManageGlobal }
+      ]"
+      :inert="!canManageGlobal"
+      :aria-disabled="!canManageGlobal"
+      data-testid="llm-settings"
+    >
+      <h2>LLM</h2>
+      <p>
         Generación de texto para historias con Chrome o LMStudio.
       </p>
-      <div class="card grid min-w-0 gap-5">
+      <div class="settings-panel-content grid min-w-0 gap-5">
       <label v-if="privacy.isPrivate" class="flex cursor-pointer items-start gap-3">
         <input
           type="checkbox"
@@ -1172,25 +1315,22 @@ onBeforeRouteLeave(async () => {
         </div>
       </div>
 
-      <div>
-        <label class="label" for="responseSpeed">Velocidad de escritura</label>
-        <select id="responseSpeed" v-model="form.responseSpeed" class="field">
-          <option value="slow">Lenta</option>
-          <option value="medium">Media</option>
-          <option value="high">Alta</option>
-          <option value="instant">Inmediata</option>
-        </select>
-        <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-          Controla cómo aparece la respuesta una vez recibida del modelo.
-        </p>
-      </div>
-
       </div>
     </section>
 
-    <section id="prompt-narrativo" class="mt-10" data-testid="narrative-prompt-settings">
-      <h2 class="mb-2 text-lg font-semibold">Prompt narrativo</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+    <section
+      id="prompt-narrativo"
+      class="settings-panel"
+      :class="[
+        { 'settings-panel-active': activeSectionId === 'prompt-narrativo' },
+        { 'opacity-60': !canManageGlobal }
+      ]"
+      :inert="!canManageGlobal"
+      :aria-disabled="!canManageGlobal"
+      data-testid="narrative-prompt-settings"
+    >
+      <h2>Prompt narrativo</h2>
+      <p>
         Prompt usado para preparar cada historia. Si no lo personalizas, se usa el integrado en el código.
       </p>
       <textarea
@@ -1209,9 +1349,19 @@ onBeforeRouteLeave(async () => {
       </button>
     </section>
 
-    <section id="prompt-referencia-personaje" class="mt-10" data-testid="character-reference-prompt-settings">
-      <h2 class="mb-2 text-lg font-semibold">Prompt de referencia de personaje</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+    <section
+      id="prompt-referencia-personaje"
+      class="settings-panel"
+      :class="[
+        { 'settings-panel-active': activeSectionId === 'prompt-referencia-personaje' },
+        { 'opacity-60': !canManageGlobal }
+      ]"
+      :inert="!canManageGlobal"
+      :aria-disabled="!canManageGlobal"
+      data-testid="character-reference-prompt-settings"
+    >
+      <h2>Prompt de referencia de personaje</h2>
+      <p>
         Instrucción enviada al modelo visual para deducir un prompt visual base desde una foto.
         Si no la personalizas, se usa la integrada en el código.
       </p>
@@ -1231,12 +1381,22 @@ onBeforeRouteLeave(async () => {
       </button>
     </section>
 
-    <section id="swarmui" class="mt-10" data-testid="swarm-settings">
-      <h2 class="mb-2 text-lg font-semibold">SwarmUI</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+    <section
+      id="swarmui"
+      class="settings-panel"
+      :class="[
+        { 'settings-panel-active': activeSectionId === 'swarmui' },
+        { 'opacity-60': !canManageGlobal }
+      ]"
+      :inert="!canManageGlobal"
+      :aria-disabled="!canManageGlobal"
+      data-testid="swarm-settings"
+    >
+      <h2>SwarmUI</h2>
+      <p>
         Generación manual de imágenes. No se usa durante las historias.
       </p>
-      <div class="card grid min-w-0 gap-4">
+      <div class="settings-panel-content grid min-w-0 gap-4">
         <div>
           <label class="label" for="swarmBaseUrl">URL de SwarmUI</label>
           <div class="flex min-w-0 gap-2">
@@ -1389,9 +1549,15 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section id="actualizaciones" class="mt-10" data-testid="app-update-settings">
-      <h2 class="mb-2 text-lg font-semibold">Actualizaciones</h2>
-      <div class="card">
+    <section
+      id="actualizaciones"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'actualizaciones' }"
+      data-testid="app-update-settings"
+    >
+      <h2>Actualizaciones</h2>
+      <p>Comprueba la versión instalada y accede al actualizador cuando esté disponible.</p>
+      <div class="settings-panel-content">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div class="min-w-0 text-sm">
             <p>
@@ -1451,9 +1617,13 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section id="protagonista" class="mt-10">
-      <h2 class="mb-2 text-lg font-semibold">Protagonista</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+    <section
+      id="protagonista"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'protagonista' }"
+    >
+      <h2>Protagonista</h2>
+      <p>
         <template v-if="privacy.isPrivate">
           Nombre y preferencias exclusivos del modo privado. El color sigue compartido.
         </template>
@@ -1502,10 +1672,19 @@ onBeforeRouteLeave(async () => {
       </div>
     </section>
 
-    <section id="datos" class="mt-10">
-      <h2 class="mb-2 text-lg font-semibold">Datos</h2>
-      <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
-        Todo se guarda en SQLite y se comparte con los equipos que usan este servidor.
+    <section
+      id="datos"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'datos' }"
+    >
+      <h2>Datos</h2>
+      <p>
+        <template v-if="access.session.multiUserEnabled">
+          Tus datos se guardan en SQLite aislados por usuario. Solo los recursos demo compartidos son visibles en modo privado.
+        </template>
+        <template v-else>
+          Todo se guarda en SQLite y se comparte con los equipos que usan este servidor.
+        </template>
       </p>
       <div class="flex flex-wrap gap-2">
         <div class="flex shrink-0 flex-col items-center gap-1">
@@ -1513,9 +1692,9 @@ onBeforeRouteLeave(async () => {
           <button
             type="button"
             class="h-10 w-12 opacity-0"
-            aria-label="Activar modo privado"
+            aria-label="Alternar modo demo"
             :disabled="privacy.switching"
-            @click="onPrivateTrigger"
+            @click="onDemoTrigger"
           />
         </div>
         <input ref="importInput" type="file" accept="application/json" autocomplete="off" class="hidden" @change="onImportFile" >
@@ -1528,7 +1707,10 @@ onBeforeRouteLeave(async () => {
 
       <p v-if="importMessage" class="mt-2 text-xs text-[var(--color-fg-muted)]">{{ importMessage }}</p>
 
-      <div class="mt-6 rounded-xl border border-[var(--color-border-soft)] p-4">
+      <div
+        v-if="canManageGlobal"
+        class="settings-subpanel mt-6 rounded-2xl border border-[var(--color-border-soft)] p-4"
+      >
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 class="font-semibold">Backups SQLite</h3>
@@ -1618,16 +1800,196 @@ onBeforeRouteLeave(async () => {
           </li>
         </ul>
       </div>
+      <p
+        v-else
+        class="settings-subpanel mt-6 rounded-2xl border border-[var(--color-border-soft)] p-4 text-sm text-[var(--color-fg-muted)]"
+      >
+        Los backups SQLite contienen toda la instancia y solo están disponibles para el administrador.
+      </p>
     </section>
   </div>
 </template>
 
 <style scoped>
+.settings-page {
+  counter-reset: settings-section;
+}
+
+.settings-nav-shell,
+.settings-panel {
+  width: min(100%, 76rem);
+}
+
+.settings-nav-shell {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-canvas) 96%, transparent) 72%,
+    transparent
+  );
+  backdrop-filter: blur(14px);
+}
+
 .settings-section-nav {
   scrollbar-width: none;
+  box-shadow: 0 12px 36px color-mix(in srgb, var(--color-fg) 7%, transparent);
+  backdrop-filter: blur(18px) saturate(130%);
 }
 
 .settings-section-nav::-webkit-scrollbar {
   display: none;
+}
+
+.settings-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--color-surface-alt) 62%, transparent);
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease,
+    box-shadow 180ms ease, transform 180ms ease;
+}
+
+.settings-nav-link:hover {
+  border-color: color-mix(in srgb, var(--color-brand-400) 28%, transparent);
+  background: color-mix(in srgb, var(--color-brand-500) 9%, var(--color-surface-elevated));
+}
+
+.settings-nav-link-active {
+  border-color: color-mix(in srgb, var(--color-brand-300) 55%, transparent);
+  background: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-500));
+  color: white;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-brand-600) 25%, transparent);
+  transform: translateY(-1px);
+}
+
+.settings-nav-index {
+  display: inline-flex;
+  min-width: 1.5rem;
+  height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  opacity: 0.82;
+}
+
+.settings-nav-link-active .settings-nav-index {
+  background: rgb(255 255 255 / 16%);
+  opacity: 1;
+}
+
+.settings-panel {
+  position: relative;
+  counter-increment: settings-section;
+  scroll-margin-top: 6.75rem;
+  overflow: hidden;
+  margin-top: 1.25rem;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 1.5rem;
+  background: var(--color-surface-elevated);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-card);
+  transition: border-color 220ms ease, box-shadow 220ms ease, background-color 220ms ease;
+}
+
+.settings-panel:first-of-type {
+  margin-top: 0;
+}
+
+.settings-panel::after {
+  position: absolute;
+  top: 1.25rem;
+  bottom: 1.25rem;
+  left: 0;
+  width: 0.22rem;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(180deg, var(--color-brand-400), var(--color-brand-700));
+  content: '';
+  opacity: 0;
+  transform: scaleY(0.35);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.settings-panel-active {
+  border-color: color-mix(in srgb, var(--color-brand-400) 60%, var(--color-border-soft));
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-brand-500) 5%, transparent),
+      transparent 34%
+    ),
+    var(--color-surface-elevated);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-brand-400) 12%, transparent),
+    var(--shadow-card-hover);
+}
+
+.settings-panel-active::after {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.settings-panel > h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0;
+  color: var(--color-fg);
+  font-size: 1.2rem;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+
+.settings-panel > h2::before {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-brand-400) 24%, var(--color-border-soft));
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--color-brand-500) 9%, transparent);
+  color: var(--color-brand-600);
+  content: counter(settings-section, decimal-leading-zero);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  transition: color 220ms ease, background-color 220ms ease, border-color 220ms ease;
+}
+
+.settings-panel-active > h2::before {
+  border-color: var(--color-brand-500);
+  background: var(--color-brand-600);
+  color: white;
+}
+
+.settings-panel > p {
+  margin: 0.55rem 0 1.25rem 2.7rem;
+  color: var(--color-fg-muted);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.settings-panel-content {
+  min-width: 0;
+}
+
+.settings-subpanel {
+  background: color-mix(in srgb, var(--color-surface-alt) 56%, transparent);
+}
+
+@media (max-width: 639px) {
+  .settings-panel {
+    scroll-margin-top: 8.5rem;
+    border-radius: 1.25rem;
+    padding: 1.1rem;
+  }
+
+  .settings-panel > p {
+    margin-left: 0;
+  }
 }
 </style>
