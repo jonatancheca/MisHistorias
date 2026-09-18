@@ -43,7 +43,7 @@ import {
   importImageGenerationSeed
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 21
+const EXPORT_VERSION = 22
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ExportedImage {
@@ -83,6 +83,7 @@ interface ExportedStory {
   title: string
   premise: string
   visualMode?: boolean
+  archived?: boolean
   autoGenerateImages?: boolean
   protagonistPreferences?: string
   protagonistPreferencesMode?: 'append' | 'replace'
@@ -139,6 +140,7 @@ export async function exportBundle(): Promise<ExportBundle> {
       title: story.title,
       premise: story.premise,
       visualMode: story.visualMode,
+      archived: story.archived,
       autoGenerateImages: story.autoGenerateImages === true,
       protagonistPreferences: story.protagonistPreferences ?? '',
       protagonistPreferencesMode: story.protagonistPreferencesMode ?? 'append',
@@ -191,7 +193,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (bundle.swarmPrompts !== undefined && (!Array.isArray(bundle.swarmPrompts) || bundle.swarmPrompts.some((item) =>
@@ -332,6 +334,7 @@ export async function importBundle(raw: string) {
       title: String(item.title ?? 'Historia importada'),
       premise: String(item.premise ?? ''),
       visualMode: item.visualMode === true,
+      archived: item.archived === true,
       autoGenerateImages: item.autoGenerateImages === true,
       protagonistPreferences: String(item.protagonistPreferences ?? ''),
       protagonistPreferencesMode:

@@ -86,7 +86,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 32
+const SCHEMA_VERSION = 33
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 
@@ -168,6 +168,11 @@ function storyWithoutImageDescriptions(value: unknown) {
   const story = record(value)
   if (!Array.isArray(story.imageCatalogSnapshot)) return story
   return { ...story, imageCatalogSnapshot: imageCatalogSnapshot(story.imageCatalogSnapshot) }
+}
+
+function storyWithArchived(value: unknown) {
+  const story = storyWithoutImageDescriptions(value)
+  return { ...story, archived: story.archived === true }
 }
 
 function storyWithCharacterColors(
@@ -296,6 +301,7 @@ function rowToStory(row: SqliteRow) {
     title: text(row.title),
     premise: text(row.premise),
     visualMode: row.visual_mode === 1,
+    archived: row.archived === 1,
     autoGenerateImages: row.auto_generate_images === 1,
     protagonistPreferences: text(row.protagonist_preferences),
     protagonistPreferencesMode:
@@ -354,7 +360,7 @@ function rowToStorySave(row: SqliteRow) {
     id: row.id,
     storyId: text(row.story_id),
     name: text(row.name),
-    story: storyWithoutImageDescriptions(parseJson(row.story_json, {})),
+    story: storyWithArchived(parseJson(row.story_json, {})),
     messages: sanitizeSavedMessages(parseJson(row.messages_json, [])),
     debugTraces: parseJson(row.debug_traces_json, []),
     thumbnailDataUrl: text(row.thumbnail_data_url),
@@ -706,6 +712,7 @@ export class MisHistoriasStorage {
           premise TEXT NOT NULL,
           visual_mode INTEGER NOT NULL DEFAULT 0 CHECK (visual_mode IN (0, 1)),
           auto_generate_images INTEGER NOT NULL DEFAULT 0 CHECK (auto_generate_images IN (0, 1)),
+          archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
           protagonist_preferences TEXT NOT NULL,
           protagonist_preferences_mode TEXT NOT NULL CHECK (protagonist_preferences_mode IN ('append', 'replace')),
           character_ids_json TEXT NOT NULL,
@@ -1213,6 +1220,17 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 33) {
+        const storyColumns = this.database
+          .prepare('PRAGMA table_info(stories)')
+          .all() as Array<{ name: string }>
+        if (!storyColumns.some((column) => column.name === 'archived')) {
+          this.database.exec(
+            'ALTER TABLE stories ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'
+          )
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -1652,17 +1670,18 @@ export class MisHistoriasStorage {
         this.database
           .prepare(`
             INSERT INTO stories(
-              scope, id, title, premise, visual_mode, auto_generate_images, protagonist_preferences,
+              scope, id, title, premise, visual_mode, auto_generate_images, archived, protagonist_preferences,
               protagonist_preferences_mode, character_ids_json, character_customizations_json,
               initial_background_id, preset_id, image_catalog_snapshot_json,
               pending_image_instructions_json, context_summary,
               context_summary_through_message_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
               visual_mode = excluded.visual_mode,
               auto_generate_images = excluded.auto_generate_images,
+              archived = excluded.archived,
               protagonist_preferences = excluded.protagonist_preferences,
               protagonist_preferences_mode = excluded.protagonist_preferences_mode,
               character_ids_json = excluded.character_ids_json,
@@ -1683,6 +1702,7 @@ export class MisHistoriasStorage {
             text(value.premise),
             value.visualMode === true ? 1 : 0,
             value.autoGenerateImages === true ? 1 : 0,
+            bool(value.archived),
             text(value.protagonistPreferences),
             value.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
             json(stringArray(value.characterIds)),

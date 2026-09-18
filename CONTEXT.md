@@ -19,3 +19,7 @@ _Evitar_: Prompt visual base
 **Foto de referencia**:
 Imagen temporal usada para deducir un prompt visual base, distinta de una imagen de galería del personaje.
 _Evitar_: Imagen del personaje, imagen predeterminada
+
+**Historia archivada**:
+Historia conservada fuera del catálogo activo sin quedar finalizada ni bloqueada. Mantiene todo su contenido, puede abrirse, editarse y continuarse, y su condición archivada forma parte de ella.
+_Evitar_: Historia eliminada, historia finalizada, historia de solo lectura

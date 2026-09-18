@@ -108,6 +108,8 @@ export interface Story {
   premise: string
   /** Vista alternativa con fondo, personajes superpuestos y diálogo inferior. */
   visualMode: boolean
+  /** Oculta la historia del catálogo activo sin bloquear su contenido. */
+  archived: boolean
   /** Preferencias del protagonista especificas de esta historia */
   protagonistPreferences: string
   /** Anade las preferencias globales o las reemplaza para esta historia */

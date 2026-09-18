@@ -118,18 +118,25 @@ test('selecciona y persiste el modelo real; diagnóstico único, copiable y tran
   expect(slot.messages.filter((message) => message.swarmError)).toHaveLength(1)
   await expect(await page.request.post(`/api/data/storySaves/${slot.id}/load?scope=normal`)).toBeOK()
   expect((await data.list<Message>('messages', 'normal', { storyId: story.id })).filter((message) => message.swarmError)).toHaveLength(1)
+  const storedStory = await data.get<Story>('stories', story.id)
+  const archiveResponse = await page.request.put(`/api/data/stories/${story.id}?scope=normal`, {
+    data: { ...storedStory, archived: true, updatedAt: Date.now() }
+  })
+  await expect(archiveResponse).toBeOK()
   await page.goto('/settings')
   const downloadEvent = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Exportar JSON', exact: true }).click()
   const bundle = JSON.parse(await readFile((await (await downloadEvent).path())!, 'utf8'))
-  expect(bundle.version).toBe(21)
+  expect(bundle.version).toBe(22)
   const exportedStory = bundle.stories.find((item: Story) => item.title === story.title)
+  expect(exportedStory.archived).toBe(true)
   expect(exportedStory.messages.find((message: Message) => message.swarmError).swarmError).toEqual(diagnostic.swarmError)
   await page.locator('input[type="file"][accept="application/json"]').setInputFiles({
     name: 'diagnostico.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bundle))
   })
   await expect.poll(async () => (await data.list<Story>('stories')).length).toBe(2)
   const importedStory = (await data.list<Story>('stories')).find((item) => item.id !== story.id)!
+  expect(importedStory.archived).toBe(true)
   await expect.poll(async () => (await data.list<Message>('messages', 'normal', { storyId: importedStory.id })).filter((message) => message.swarmError).length).toBe(1)
   const imported = (await data.list<Message>('messages', 'normal', { storyId: importedStory.id })).find((message) => message.swarmError)!
   expect((await data.list<Message>('messages', 'normal', { storyId: story.id })).filter((message) => message.swarmError)).toHaveLength(1)

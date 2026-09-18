@@ -110,6 +110,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'title') &&
         hasString(value, 'premise') &&
         typeof value.visualMode === 'boolean' &&
+        typeof value.archived === 'boolean' &&
         (value.autoGenerateImages === undefined || typeof value.autoGenerateImages === 'boolean') &&
         hasString(value, 'protagonistPreferences') &&
         (value.protagonistPreferencesMode === 'append' ||

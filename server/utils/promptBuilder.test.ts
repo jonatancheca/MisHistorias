@@ -42,6 +42,7 @@ const story: Story = {
   title: 'Historia',
   premise: 'Premisa',
   visualMode: false,
+  archived: false,
   protagonistPreferences: '',
   protagonistPreferencesMode: 'append',
   characterIds: [character.id],

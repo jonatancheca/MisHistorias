@@ -494,6 +494,7 @@ export const useStoriesStore = defineStore('stories', () => {
       title: input.title.trim() || 'Historia sin título',
       premise: input.premise.trim(),
       visualMode: input.visualMode === true,
+      archived: false,
       autoGenerateImages: input.autoGenerateImages === true,
       protagonistPreferences: input.protagonistPreferences.trim(),
       protagonistPreferencesMode: input.protagonistPreferencesMode,
@@ -527,6 +528,21 @@ export const useStoriesStore = defineStore('stories', () => {
       debugTraces.value = []
       saveSlots.value = []
     }
+  }
+
+  async function setArchived(id: string, archived: boolean) {
+    const story = stories.value.find((item) => item.id === id)
+    if (!story || story.archived === archived) return
+    const updated: Story = {
+      ...story,
+      archived,
+      updatedAt: Math.max(Date.now(), ...stories.value.map((item) => item.updatedAt + 1))
+    }
+    await putStory(updated)
+    if (activeStory.value?.id === id) activeStory.value = updated
+    stories.value = stories.value
+      .map((item) => (item.id === id ? updated : item))
+      .sort((left, right) => right.updatedAt - left.updatedAt)
   }
 
   async function openStory(id: string) {
@@ -1670,6 +1686,7 @@ export const useStoriesStore = defineStore('stories', () => {
     createStory,
     updateStorySettings,
     setVisualMode,
+    setArchived,
     removeStory,
     openStory,
     createSaveSlot,

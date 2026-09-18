@@ -221,6 +221,54 @@ test.describe('historias', () => {
     expect((await data.get<Story>('stories', story.id)).premise).toBe(story.premise)
   })
 
+  test('archiva, filtra, abre, copia activa y desarchiva historias', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data)
+
+    await page.goto('/')
+    let card = page.locator('li').filter({ hasText: story.title })
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 800 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      await expect(card.getByRole('button', { name: 'Archivar' })).toBeVisible()
+    }
+
+    await card.getByRole('button', { name: 'Archivar' }).click()
+    await expect(card).toHaveCount(0)
+    const archived = await data.get<Story>('stories', story.id)
+    expect(archived.archived).toBe(true)
+    expect(archived.updatedAt).toBeGreaterThan(story.updatedAt)
+
+    await page.getByRole('button', { name: 'Ver archivadas' }).click()
+    card = page.locator('li').filter({ hasText: story.title })
+    await expect(card).toBeVisible()
+    await expect(page.locator('.page-shell > ul > li').first()).toContainText(story.title)
+
+    await card.getByRole('link', { name: story.title }).click()
+    await expect(page.getByRole('heading', { name: story.title })).toBeVisible()
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Ver archivadas' }).click()
+    card = page.locator('li').filter({ hasText: story.title })
+    await card.getByRole('link', { name: 'Copiar' }).click()
+    const copiedTitle = data.unique('Copia-activa')
+    await page.getByLabel('Título').fill(copiedTitle)
+    await page.getByRole('button', { name: 'Empezar historia' }).click()
+    await expect(page.getByRole('heading', { name: copiedTitle })).toBeVisible()
+    const copiedId = new URL(page.url()).pathname.split('/').pop()!
+    expect((await data.get<Story>('stories', copiedId)).archived).toBe(false)
+
+    await page.goto('/')
+    await expect(page.locator('li').filter({ hasText: copiedTitle })).toBeVisible()
+    await page.getByRole('button', { name: 'Ver archivadas' }).click()
+    card = page.locator('li').filter({ hasText: story.title })
+    await card.getByRole('button', { name: 'Desarchivar' }).click()
+    await expect(card).toHaveCount(0)
+    expect((await data.get<Story>('stories', story.id)).archived).toBe(false)
+
+    await page.getByRole('button', { name: 'Ver activas' }).click()
+    await expect(page.locator('.page-shell > ul > li').first()).toContainText(story.title)
+  })
+
   test('añade personajes desde ajustes y conserva su copia independiente', async ({ page, data }) => {
     const { story, character } = await createStoryFixture(data)
     const added = await data.createCharacter({
@@ -374,7 +422,7 @@ test.describe('historias', () => {
       version: number
       stories: Array<{ title: string; saves?: StorySaveSlot[] }>
     }
-    expect(bundle.version).toBe(21)
+    expect(bundle.version).toBe(22)
     expect(bundle.stories.find((item) => item.title === story.title)?.saves).toHaveLength(1)
   })
 

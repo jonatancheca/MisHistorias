@@ -241,6 +241,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
           title: input.title ?? unique('Historia'),
           premise: input.premise ?? 'Planteamiento exclusivo para esta prueba.',
           visualMode: input.visualMode ?? false,
+          archived: false,
           autoGenerateImages: input.autoGenerateImages ?? false,
           protagonistPreferences: input.protagonistPreferences ?? '',
           protagonistPreferencesMode: input.protagonistPreferencesMode ?? 'append',
