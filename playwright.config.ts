@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import { defineConfig, devices } from '@playwright/test'
 
-const port = 3100
+const port = 3069
 const baseURL = `http://localhost:${port}`
 const databasePath = resolve(
   '.data',

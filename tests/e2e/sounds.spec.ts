@@ -19,6 +19,24 @@ function hasDefaultPack(sounds: Sound[]) {
   return DEFAULT_PRIMARY_TAGS.every((tag) => tags.has(tag))
 }
 
+test('recarga sonidos conservando el borrador nuevo', async ({ page, data }) => {
+  const draftTag = data.unique('borrador-sonido')
+  const externalTag = data.unique('sonido-externo')
+
+  await page.goto('/sounds')
+  await page.locator('input[placeholder="puerta, pasos"]').fill(draftTag)
+  await data.createSound(null, [externalTag])
+  await page.getByRole('button', { name: 'Recargar', exact: true }).click()
+
+  await expect(page.getByTestId('sound-card').filter({ hasText: externalTag })).toBeVisible()
+  await expect(page.getByRole('button', { name: `Quitar etiqueta ${draftTag}` })).toBeVisible()
+
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 800 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  }
+})
+
 test('siembra el pack en ambas colecciones sin reponer borrados', async ({ page, data }) => {
   test.setTimeout(60_000)
   await data.patchSettings({ defaultSoundVersion: 0, privateDefaultSoundVersion: 0 })

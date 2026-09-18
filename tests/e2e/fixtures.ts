@@ -109,7 +109,12 @@ export interface TestDataFactory {
   createPreset(input?: PresetInput): Promise<PromptPreset>
   createBackground(input?: BackgroundInput): Promise<Background>
   createImage(character: Character, tags?: string[], scope?: DataScope): Promise<CharacterImage>
-  createSound(character: Character, tags?: string[], scope?: DataScope): Promise<Sound>
+  createSound(
+    character?: Character | null,
+    tags?: string[],
+    scope?: DataScope,
+    background?: Background | null
+  ): Promise<Sound>
   createStory(input: StoryInput): Promise<Story>
   createMessage(input: MessageInput): Promise<Message>
   patchSettings(patch: Partial<AppSettings>): Promise<AppSettings>
@@ -223,12 +228,17 @@ export const test = base.extend<{ data: TestDataFactory }>({
         }
         return putBinary('images', image, scope)
       },
-      async createSound(character, tags = [unique('sonido')], scope = 'normal') {
+      async createSound(
+        character = null,
+        tags = [unique('sonido')],
+        scope = 'normal',
+        background = null
+      ) {
         const sound: Sound = {
           id: unique('sound'),
           tags,
-          characterId: character.id,
-          backgroundId: null,
+          characterId: character?.id ?? null,
+          backgroundId: background?.id ?? null,
           mimeType: 'audio/ogg',
           createdAt: Date.now()
         }

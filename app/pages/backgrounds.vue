@@ -3,15 +3,31 @@ import type { StoredBackground } from '~/lib/db'
 import { primaryTag } from '~/lib/tags'
 
 const backgrounds = useBackgroundsStore()
+const sounds = useSoundsStore()
 const confirmDialog = useConfirmStore()
 
-await backgrounds.load()
+await Promise.all([backgrounds.load(), sounds.load()])
 
 const tags = ref<string[]>([])
 const description = ref('')
 const pendingFile = ref<File | null>(null)
 const busy = ref(false)
 const error = ref<string | null>(null)
+const refreshing = ref(false)
+const refreshError = ref<string | null>(null)
+
+async function reload() {
+  if (refreshing.value) return
+  refreshing.value = true
+  refreshError.value = null
+  try {
+    await Promise.all([backgrounds.load(true), sounds.load(true)])
+  } catch (caught) {
+    refreshError.value = (caught as Error).message || 'No se pudieron recargar los fondos.'
+  } finally {
+    refreshing.value = false
+  }
+}
 
 function selectFile(files: File[]) {
   const file = files[0]
@@ -60,9 +76,23 @@ async function remove(id: string) {
 
 <template>
   <div class="page-shell">
-    <h1 class="mb-2 text-2xl font-bold">Fondos</h1>
-    <p class="mb-6 text-sm text-[var(--color-fg-muted)]">
-      Modelo puede elegir fondo usando cualquiera de sus etiquetas. Cada etiqueta debe ser única.
+    <header class="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-bold">Fondos</h1>
+        <p class="text-sm text-[var(--color-fg-muted)]">
+          Modelo puede elegir fondo usando cualquiera de sus etiquetas. Cada etiqueta debe ser única.
+        </p>
+      </div>
+      <button type="button" class="btn-ghost" :disabled="refreshing" @click="reload">
+        <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 11a8 8 0 0 0-14.7-4L3 9m0 0V4m0 5h5M4 13a8 8 0 0 0 14.7 4L21 15m0 0v5m0-5h-5" />
+        </svg>
+        {{ refreshing ? 'Recargando…' : 'Recargar' }}
+      </button>
+    </header>
+
+    <p v-if="refreshError" class="card mb-4 text-sm text-red-500" role="alert">
+      {{ refreshError }}
     </p>
 
     <section class="card mb-6 grid gap-3 sm:grid-cols-[1fr_2fr_14rem] sm:items-end">

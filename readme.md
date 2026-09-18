@@ -16,7 +16,7 @@ pnpm install
 pnpm dev
 ```
 
-La aplicación escucha en `http://localhost:3000` y en las interfaces de red local.
+La aplicación escucha en `http://localhost:3069` y en las interfaces de red local.
 
 Para copiar una build local, `local-deploy` usa por defecto `../MisHistoriasInstall` respecto al
 proyecto. Puede cambiarse con parámetro o variable de entorno:

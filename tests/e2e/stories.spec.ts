@@ -269,6 +269,32 @@ test.describe('historias', () => {
     await expect(page.locator('.page-shell > ul > li').first()).toContainText(story.title)
   })
 
+  test('recarga el catálogo conservando el filtro de archivadas', async ({ page, data }) => {
+    const character = await data.createCharacter()
+    const first = await data.createStory({ characters: [character] })
+    await expect(await page.request.put(`/api/data/stories/${first.id}?scope=normal`, {
+      data: { ...first, archived: true, updatedAt: Date.now() }
+    })).toBeOK()
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Ver archivadas' }).click()
+    await expect(page.getByRole('link', { name: first.title })).toBeVisible()
+
+    const external = await data.createStory({ characters: [character] })
+    await expect(await page.request.put(`/api/data/stories/${external.id}?scope=normal`, {
+      data: { ...external, archived: true, updatedAt: Date.now() + 1 }
+    })).toBeOK()
+    await page.getByRole('button', { name: 'Recargar', exact: true }).click()
+
+    await expect(page.getByRole('link', { name: external.title })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Ver activas' })).toBeVisible()
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 800 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    }
+  })
+
   test('añade personajes desde ajustes y conserva su copia independiente', async ({ page, data }) => {
     const { story, character } = await createStoryFixture(data)
     const added = await data.createCharacter({

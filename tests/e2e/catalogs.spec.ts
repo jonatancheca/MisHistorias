@@ -675,6 +675,32 @@ test.describe('personajes', () => {
 })
 
 test.describe('fondos', () => {
+  test('recarga fondos y sonidos asociados conservando el borrador nuevo', async ({ page, data }) => {
+    const draftTag = data.unique('borrador-fondo')
+    const draftDescription = data.unique('descripcion-borrador')
+    const externalTag = data.unique('fondo-externo')
+    const soundTag = data.unique('sonido-externo')
+
+    await page.goto('/backgrounds')
+    await page.getByLabel('Etiquetas').fill(draftTag)
+    await page.getByLabel('Descripción').fill(draftDescription)
+
+    const external = await data.createBackground({ tags: [externalTag] })
+    await data.createSound(null, [soundTag], 'normal', external)
+    await page.getByRole('button', { name: 'Recargar', exact: true }).click()
+
+    const card = page.locator('li').filter({ hasText: externalTag })
+    await expect(card).toBeVisible()
+    await expect(card.getByText(soundTag, { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: `Quitar etiqueta ${draftTag}` })).toBeVisible()
+    await expect(page.getByLabel('Descripción', { exact: true })).toHaveValue(draftDescription)
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 800 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    }
+  })
+
   test('sube PNG, edita etiquetas y descripción', async ({ page, data }) => {
     const tag = data.unique('bosque')
     const extraTag = data.unique('exterior')

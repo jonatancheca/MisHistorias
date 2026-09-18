@@ -5,6 +5,8 @@ const confirmDialog = useConfirmStore()
 await stories.load()
 
 const showArchived = ref(false)
+const refreshing = ref(false)
+const refreshError = ref<string | null>(null)
 const visibleStories = computed(() =>
   stories.stories.filter((story) => story.archived === showArchived.value)
 )
@@ -27,6 +29,19 @@ async function remove(id: string) {
 async function setArchived(id: string, archived: boolean) {
   await stories.setArchived(id, archived)
 }
+
+async function reload() {
+  if (refreshing.value) return
+  refreshing.value = true
+  refreshError.value = null
+  try {
+    await stories.load(true)
+  } catch (caught) {
+    refreshError.value = (caught as Error).message || 'No se pudieron recargar las historias.'
+  } finally {
+    refreshing.value = false
+  }
+}
 </script>
 
 <template>
@@ -37,6 +52,12 @@ async function setArchived(id: string, archived: boolean) {
         <p class="text-sm text-[var(--color-fg-muted)]">Cada sesión es una historia nueva.</p>
       </div>
       <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn-ghost" :disabled="refreshing" @click="reload">
+          <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 11a8 8 0 0 0-14.7-4L3 9m0 0V4m0 5h5M4 13a8 8 0 0 0 14.7 4L21 15m0 0v5m0-5h-5" />
+          </svg>
+          {{ refreshing ? 'Recargando…' : 'Recargar' }}
+        </button>
         <button
           type="button"
           class="btn-ghost"
@@ -51,6 +72,10 @@ async function setArchived(id: string, archived: boolean) {
         <NuxtLink to="/stories/new" class="btn-primary">Nueva historia</NuxtLink>
       </div>
     </header>
+
+    <p v-if="refreshError" class="card mb-4 text-sm text-red-500" role="alert">
+      {{ refreshError }}
+    </p>
 
     <p v-if="visibleStories.length === 0" class="card text-sm text-[var(--color-fg-muted)]">
       {{ emptyMessage }}
