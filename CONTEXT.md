@@ -20,6 +20,10 @@ _Evitar_: Prompt visual base
 Imagen temporal usada para deducir un prompt visual base, distinta de una imagen de galería del personaje.
 _Evitar_: Imagen del personaje, imagen predeterminada
 
+**Colección pública**:
+Colección editable de cada Propietario, también llamada colección normal y contrapuesta a la colección privada. Pública describe su ámbito funcional; no implica contenido global, anónimo, compartido entre propietarios ni accesible desde Internet.
+_Evitar_: Colección global, colección compartida, acceso público
+
 **Historia archivada**:
 Historia conservada fuera del catálogo activo sin quedar finalizada ni bloqueada. Mantiene todo su contenido, puede abrirse, editarse y continuarse, y su condición archivada forma parte de ella.
 _Evitar_: Historia eliminada, historia finalizada, historia de solo lectura
