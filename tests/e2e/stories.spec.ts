@@ -69,6 +69,7 @@ async function focusVisualKeyboard(page: Page) {
 test.describe('historias', () => {
   test('crea historia con configuración propia y la edita', async ({ page, data }) => {
     const character = await data.createCharacter()
+    await data.patchSettings({ protagonistPreferences: 'Preferencia global de prueba.' })
     const background = await data.createBackground()
     const title = data.unique('Historia-UI')
     const premise = data.unique('Planteamiento')
@@ -84,8 +85,12 @@ test.describe('historias', () => {
     await page.getByLabel('Planteamiento').fill(premise)
     await page.getByRole('button', { name: /Preferencias del protagonista/ }).click()
     const preferencesDialog = page.getByRole('dialog', { name: 'Preferencias del protagonista' })
+    await expect(preferencesDialog.getByText('Preferencia global de prueba.', { exact: true })).toBeVisible()
+    await expect(preferencesDialog.getByRole('radio', { name: 'Añadir' })).toHaveAttribute('aria-checked', 'true')
     await preferencesDialog.getByLabel('Preferencias del protagonista').fill('Ser prudente.')
-    await preferencesDialog.getByLabel('Combinar con globales').selectOption('replace')
+    await preferencesDialog.getByRole('radio', { name: 'Reemplazar' }).click()
+    await expect(preferencesDialog.getByRole('radio', { name: 'Reemplazar' })).toHaveAttribute('aria-checked', 'true')
+    await expect(preferencesDialog.getByRole('radio', { name: 'Añadir' })).toHaveAttribute('aria-checked', 'false')
     await preferencesDialog.getByRole('button', { name: 'Aplicar preferencias' }).click()
     await expect(page.getByRole('button', { name: /Preferencias del protagonista/ })).toContainText('Solo propias')
     await page.getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
@@ -184,7 +189,7 @@ test.describe('historias', () => {
 
     await page.goto('/stories/new')
     await page.getByLabel('Planteamiento').fill('Historia con nombre fijado al crearla.')
-    await page.getByRole('button', { name: new RegExp(character.name) }).click()
+    await page.getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
     await page.getByRole('button', { name: 'Empezar historia' }).click()
 
     await page.waitForURL((url) => /^\/stories\/(?!new$)[^/]+$/.test(url.pathname))
@@ -208,14 +213,38 @@ test.describe('historias', () => {
 
   test('mantiene creación y selectores compactos a 320 y 390 px', async ({ page, data }) => {
     const character = await data.createCharacter({ name: data.unique('Responsive') })
+    await data.createImage(character, ['primera'])
+    await data.createImage(character, ['segunda'])
     const background = await data.createBackground({ tags: [data.unique('responsive-fondo')] })
 
     await page.goto('/stories/new')
     await page.getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
+    await expect(page.locator('form > div > section').last().getByRole('heading', {
+      name: 'Personajes de la historia'
+    })).toBeVisible()
+
+    const desktopImage = page.getByRole('button', { name: `Ampliar ${character.name}` })
+    const desktopImageSize = await desktopImage.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      return { width: bounds.width, height: bounds.height }
+    })
+    expect(desktopImageSize.width).toBeGreaterThanOrEqual(96)
+    expect(desktopImageSize.height).toBeGreaterThanOrEqual(96)
 
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 800 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+
+      const characterImage = page.getByRole('button', { name: `Ampliar ${character.name}` })
+      const imageSize = await characterImage.evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+        return { width: bounds.width, height: bounds.height }
+      })
+      expect(imageSize.width).toBeGreaterThanOrEqual(80)
+      expect(imageSize.height).toBeGreaterThanOrEqual(80)
+      await characterImage.click()
+      await expect(page.getByRole('dialog', { name: character.name })).toBeVisible()
+      await page.keyboard.press('Escape')
 
       await page.getByRole('button', { name: `Editar ${character.name}` }).click()
       await expect(page.getByRole('dialog', { name: `Editar ${character.name}` })).toBeVisible()

@@ -133,6 +133,13 @@ function characterLabel(characterId: string) {
   return customized || character?.name || 'Personaje'
 }
 
+function characterGalleryItems(characterId: string) {
+  return characters.imagesFor(characterId).flatMap((image) => {
+    const src = characters.urlFor(image.id)
+    return src ? [{ src, alt: characterLabel(characterId) }] : []
+  })
+}
+
 watch(characterIds, (ids) => {
   ids.forEach(ensureCustomization)
 }, { immediate: true })
@@ -223,73 +230,6 @@ watch(characterIds, (ids) => {
       </label>
     </section>
 
-    <section class="rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-4 sm:p-5">
-      <div>
-        <h2 class="font-semibold">Personajes de la historia</h2>
-        <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-          Selecciona el elenco. Quitar un personaje conserva su personalización en esta historia.
-        </p>
-      </div>
-
-      <p v-if="!selectableCharacters.length" class="mt-4 text-sm text-[var(--color-fg-muted)]">
-        No hay personajes disponibles.
-        <NuxtLink to="/characters" class="text-brand-600 underline">Crea uno primero</NuxtLink>.
-      </p>
-      <div v-else class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <article
-          v-for="character in selectableCharacters"
-          :key="character.id"
-          class="grid gap-3 rounded-xl border-2 p-3 transition"
-          :class="selectedIds.has(character.id) ? 'border-brand-500 bg-brand-500/10' : 'border-[var(--color-border-soft)]'"
-        >
-          <button
-            type="button"
-            class="flex min-w-0 items-center gap-3 text-left"
-            :aria-label="selectedIds.has(character.id) ? `Quitar ${characterLabel(character.id)} del elenco` : `Añadir ${characterLabel(character.id)} al elenco`"
-            :aria-pressed="selectedIds.has(character.id)"
-            @click="toggleCharacter(character.id)"
-          >
-            <img
-              v-if="characters.urlFor(characters.defaultImage(character.id)?.id)"
-              :src="characters.urlFor(characters.defaultImage(character.id)?.id)!"
-              alt=""
-              class="h-11 w-11 shrink-0 rounded-full object-cover"
-            >
-            <span v-else class="h-11 w-11 shrink-0 rounded-full bg-brand-500/20" />
-            <span class="min-w-0 flex-1">
-              <span class="block truncate font-medium">{{ characterLabel(character.id) }}</span>
-              <span class="mt-0.5 flex flex-wrap gap-1 text-[0.68rem] text-[var(--color-fg-muted)]">
-                <span v-if="character.archived" class="rounded-full border border-[var(--color-border-soft)] px-1.5 py-0.5">Archivado</span>
-                <span v-if="!selectedIds.has(character.id) && customizationFor(character.id)" class="rounded-full border border-[var(--color-border-soft)] px-1.5 py-0.5">Personalización guardada</span>
-                <span v-if="selectedIds.has(character.id)" class="rounded-full bg-brand-500/15 px-1.5 py-0.5 text-brand-600">En el elenco</span>
-              </span>
-            </span>
-          </button>
-
-          <div v-if="selectedIds.has(character.id) || customizationFor(character.id)" class="flex flex-wrap justify-end gap-2 border-t border-[var(--color-border-soft)] pt-2">
-            <button
-              v-if="selectedIds.has(character.id)"
-              type="button"
-              class="btn-ghost px-3 py-1.5 text-xs"
-              :aria-label="`Editar ${characterLabel(character.id)}`"
-              @click="openCharacterEditor(character.id)"
-            >
-              Editar
-            </button>
-            <button
-              v-else
-              type="button"
-              class="btn-ghost px-3 py-1.5 text-xs text-red-500"
-              :aria-label="`Olvidar personalización de ${characterLabel(character.id)}`"
-              @click="forgetCustomization(character.id)"
-            >
-              Olvidar personalización
-            </button>
-          </div>
-        </article>
-      </div>
-    </section>
-
     <section class="grid gap-3 rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-4 sm:grid-cols-2 sm:p-5">
       <button
         type="button"
@@ -322,6 +262,75 @@ watch(characterIds, (ids) => {
           </span>
         </span>
       </button>
+    </section>
+
+    <section class="rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-4 sm:p-5">
+      <div>
+        <h2 class="font-semibold">Personajes de la historia</h2>
+        <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+          Selecciona el elenco. Quitar un personaje conserva su personalización en esta historia.
+        </p>
+      </div>
+
+      <p v-if="!selectableCharacters.length" class="mt-4 text-sm text-[var(--color-fg-muted)]">
+        No hay personajes disponibles.
+        <NuxtLink to="/characters" class="text-brand-600 underline">Crea uno primero</NuxtLink>.
+      </p>
+      <div v-else class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <article
+          v-for="character in selectableCharacters"
+          :key="character.id"
+          class="grid gap-3 rounded-xl border-2 p-3 transition"
+          :class="selectedIds.has(character.id) ? 'border-brand-500 bg-brand-500/10' : 'border-[var(--color-border-soft)]'"
+        >
+          <div class="flex min-w-0 items-center gap-3">
+            <ImageLightbox
+              v-if="characters.urlFor(characters.defaultImage(character.id)?.id)"
+              :src="characters.urlFor(characters.defaultImage(character.id)?.id)!"
+              :alt="characterLabel(character.id)"
+              container-class="h-20 w-20 shrink-0 sm:h-24 sm:w-24"
+              image-class="h-20 w-20 rounded-xl bg-black/5 object-contain sm:h-24 sm:w-24"
+              :gallery-items="characterGalleryItems(character.id)"
+            />
+            <span v-else class="h-20 w-20 shrink-0 rounded-xl bg-brand-500/20 sm:h-24 sm:w-24" />
+            <button
+              type="button"
+              class="min-w-0 flex-1 self-stretch text-left"
+              :aria-label="selectedIds.has(character.id) ? `Quitar ${characterLabel(character.id)} del elenco` : `Añadir ${characterLabel(character.id)} al elenco`"
+              :aria-pressed="selectedIds.has(character.id)"
+              @click="toggleCharacter(character.id)"
+            >
+              <span class="block truncate font-medium">{{ characterLabel(character.id) }}</span>
+              <span class="mt-1 flex flex-wrap gap-1 text-[0.68rem] text-[var(--color-fg-muted)]">
+                <span v-if="character.archived" class="rounded-full border border-[var(--color-border-soft)] px-1.5 py-0.5">Archivado</span>
+                <span v-if="!selectedIds.has(character.id) && customizationFor(character.id)" class="rounded-full border border-[var(--color-border-soft)] px-1.5 py-0.5">Personalización guardada</span>
+                <span v-if="selectedIds.has(character.id)" class="rounded-full bg-brand-500/15 px-1.5 py-0.5 text-brand-600">En el elenco</span>
+              </span>
+            </button>
+          </div>
+
+          <div v-if="selectedIds.has(character.id) || customizationFor(character.id)" class="flex flex-wrap justify-end gap-2 border-t border-[var(--color-border-soft)] pt-2">
+            <button
+              v-if="selectedIds.has(character.id)"
+              type="button"
+              class="btn-ghost px-3 py-1.5 text-xs"
+              :aria-label="`Editar ${characterLabel(character.id)}`"
+              @click="openCharacterEditor(character.id)"
+            >
+              Editar
+            </button>
+            <button
+              v-else
+              type="button"
+              class="btn-ghost px-3 py-1.5 text-xs text-red-500"
+              :aria-label="`Olvidar personalización de ${characterLabel(character.id)}`"
+              @click="forgetCustomization(character.id)"
+            >
+              Olvidar personalización
+            </button>
+          </div>
+        </article>
+      </div>
     </section>
 
     <StoryCharacterEditDialog

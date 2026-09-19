@@ -10,10 +10,12 @@ const emit = defineEmits<{
   save: [value: { preferences: string; mode: 'append' | 'replace' }]
 }>()
 
+const settings = useSettingsStore()
 const buffer = ref('')
 const bufferMode = ref<'append' | 'replace'>('append')
 const textarea = ref<HTMLTextAreaElement | null>(null)
 let previousFocus: HTMLElement | null = null
+const globalPreferences = computed(() => settings.activeProtagonistPreferences.trim())
 
 watch(() => props.open, async (open) => {
   if (!open) {
@@ -56,7 +58,7 @@ function save() {
           Define instrucciones propias de esta historia y cómo se combinan con las globales.
         </p>
 
-        <div class="mt-4 grid gap-4 sm:grid-cols-[1fr_12rem]">
+        <div class="mt-4 grid gap-4">
           <div>
             <label class="label" for="story-protagonist-preferences">Preferencias del protagonista</label>
             <textarea
@@ -68,13 +70,49 @@ function save() {
               placeholder="Preferencias específicas para esta historia."
             />
           </div>
-          <div>
-            <label class="label" for="story-protagonist-preferences-mode">Combinar con globales</label>
-            <select id="story-protagonist-preferences-mode" v-model="bufferMode" class="field">
-              <option value="append">Añadir</option>
-              <option value="replace">Reemplazar</option>
-            </select>
-          </div>
+
+          <fieldset>
+            <legend class="label">Combinar con preferencias globales</legend>
+            <div
+              class="grid grid-cols-2 overflow-hidden rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] p-1"
+              role="radiogroup"
+              aria-label="Combinar con preferencias globales"
+            >
+              <button
+                type="button"
+                role="radio"
+                class="rounded-lg px-4 py-2.5 text-sm font-semibold transition"
+                :class="bufferMode === 'append' ? 'bg-brand-500 text-white shadow-sm' : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'"
+                :aria-checked="bufferMode === 'append'"
+                @click="bufferMode = 'append'"
+              >
+                Añadir
+              </button>
+              <button
+                type="button"
+                role="radio"
+                class="rounded-lg px-4 py-2.5 text-sm font-semibold transition"
+                :class="bufferMode === 'replace' ? 'bg-brand-500 text-white shadow-sm' : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'"
+                :aria-checked="bufferMode === 'replace'"
+                @click="bufferMode = 'replace'"
+              >
+                Reemplazar
+              </button>
+            </div>
+          </fieldset>
+
+          <section class="rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] p-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-sm font-semibold">Preferencias globales</h3>
+              <span class="text-xs text-[var(--color-fg-muted)]">Solo lectura</span>
+            </div>
+            <p v-if="globalPreferences" class="mt-2 whitespace-pre-wrap text-sm text-[var(--color-fg-muted)]">
+              {{ globalPreferences }}
+            </p>
+            <p v-else class="mt-2 text-sm text-[var(--color-fg-muted)]">
+              No hay preferencias globales configuradas.
+            </p>
+          </section>
         </div>
 
         <div class="mt-5 flex flex-wrap justify-end gap-2">
