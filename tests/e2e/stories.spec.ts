@@ -69,6 +69,7 @@ async function focusVisualKeyboard(page: Page) {
 test.describe('historias', () => {
   test('crea historia con configuración propia y la edita', async ({ page, data }) => {
     const character = await data.createCharacter()
+    await data.patchSettings({ protagonistPreferences: 'Preferencia global de prueba.' })
     const background = await data.createBackground()
     const title = data.unique('Historia-UI')
     const premise = data.unique('Planteamiento')
@@ -78,16 +79,33 @@ test.describe('historias', () => {
     const storyCharacterColor = '#6366f1'
 
     await page.goto('/stories/new')
+    await expect(page.getByRole('button', { name: /Novela Visual/ })).toHaveAttribute('aria-pressed', 'true')
+    await page.getByRole('button', { name: /Chat/ }).click()
     await page.getByLabel('Título').fill(title)
     await page.getByLabel('Planteamiento').fill(premise)
-    await page.getByLabel('Preferencias del protagonista').fill('Ser prudente.')
-    await page.getByLabel('Combinar con globales').selectOption('replace')
-    await page.getByRole('button', { name: new RegExp(character.name) }).click()
-    await page.locator(`#story-character-name-${character.id}`).fill(storyCharacterName)
+    await page.getByRole('button', { name: /Preferencias del protagonista/ }).click()
+    const preferencesDialog = page.getByRole('dialog', { name: 'Preferencias del protagonista' })
+    await expect(preferencesDialog.getByText('Preferencia global de prueba.', { exact: true })).toBeVisible()
+    await expect(preferencesDialog.getByRole('radio', { name: 'Añadir' })).toHaveAttribute('aria-checked', 'true')
+    await preferencesDialog.getByLabel('Preferencias del protagonista').fill('Ser prudente.')
+    await preferencesDialog.getByRole('radio', { name: 'Reemplazar' }).click()
+    await expect(preferencesDialog.getByRole('radio', { name: 'Reemplazar' })).toHaveAttribute('aria-checked', 'true')
+    await expect(preferencesDialog.getByRole('radio', { name: 'Añadir' })).toHaveAttribute('aria-checked', 'false')
+    await preferencesDialog.getByRole('button', { name: 'Aplicar preferencias' }).click()
+    await expect(page.getByRole('button', { name: /Preferencias del protagonista/ })).toContainText('Solo propias')
+    await page.getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
+    await page.getByRole('button', { name: `Editar ${character.name}` }).click()
+    const characterDialog = page.getByRole('dialog', { name: `Editar ${character.name}` })
+    await characterDialog.locator(`#story-character-name-${character.id}`).fill(storyCharacterName)
     await page.locator(`#story-character-prompt-${character.id}`).fill(storyPrompt)
     await page.locator(`#story-character-tags-${character.id}`).fill(storyTag)
     await page.locator(`#story-character-tags-${character.id}`).press('Enter')
-    await page.getByRole('button', { name: new RegExp(background.tags[0]!) }).click()
+    await page.getByRole('dialog', { name: `Editar ${storyCharacterName}` })
+      .getByRole('button', { name: 'Guardar personaje' }).click()
+    await page.getByRole('button', { name: 'Seleccionar fondo inicial' }).click()
+    await page.getByRole('dialog', { name: 'Seleccionar fondo inicial' })
+      .getByRole('button', { name: `Elegir fondo ${background.tags[0]}` }).click()
+    await expect(page.getByRole('button', { name: 'Seleccionar fondo inicial' })).toContainText(background.tags[0]!)
     await page.getByRole('checkbox', { name: 'Crear imágenes nuevas durante la historia' }).check()
     await page.getByRole('button', { name: 'Empezar historia' }).click()
 
@@ -118,15 +136,17 @@ test.describe('historias', () => {
     const form = page.getByRole('heading', { name: 'Ajustes de la historia' }).locator('..')
     await expect(form.getByRole('heading', {
       name: `${character.name} → ${storyCharacterName}`
-    })).toBeVisible()
+    })).toHaveCount(0)
     await form.getByLabel('Título').fill(updatedTitle)
     await form.getByLabel('Planteamiento').fill(updatedPremise)
     await form.getByRole('checkbox', { name: 'Crear imágenes nuevas durante la historia' }).uncheck()
-    await form.locator(`#story-settings-character-name-${character.id}`).fill(updatedCharacterName)
-    await form.locator(`#story-settings-character-color-${character.id}`).fill(storyCharacterColor)
-    await expect(form.getByRole('heading', {
-      name: `${character.name} → ${updatedCharacterName}`
-    })).toBeVisible()
+    await form.getByRole('button', { name: `Editar ${character.name} → ${storyCharacterName}` }).click()
+    const editCharacterDialog = page.getByRole('dialog', { name: `Editar ${storyCharacterName}` })
+    await editCharacterDialog.locator(`#story-settings-character-name-${character.id}`).fill(updatedCharacterName)
+    await page.locator(`#story-settings-character-color-${character.id}`).fill(storyCharacterColor)
+    await page.getByRole('dialog', { name: `Editar ${updatedCharacterName}` })
+      .getByRole('button', { name: 'Guardar personaje' }).click()
+    await expect(form.getByRole('button', { name: `Editar ${character.name} → ${updatedCharacterName}` })).toBeVisible()
     await form.getByRole('button', { name: 'Guardar' }).click()
     await expect(page.getByRole('heading', { name: updatedTitle })).toBeVisible()
     await expect(page.getByText(updatedPremise)).toBeVisible()
@@ -169,7 +189,7 @@ test.describe('historias', () => {
 
     await page.goto('/stories/new')
     await page.getByLabel('Planteamiento').fill('Historia con nombre fijado al crearla.')
-    await page.getByRole('button', { name: new RegExp(character.name) }).click()
+    await page.getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
     await page.getByRole('button', { name: 'Empezar historia' }).click()
 
     await page.waitForURL((url) => /^\/stories\/(?!new$)[^/]+$/.test(url.pathname))
@@ -189,6 +209,55 @@ test.describe('historias', () => {
       .toBeVisible()
     expect((await data.get<Story>('stories', storyId)).characterCustomizations[0]?.name)
       .toBe(character.name)
+  })
+
+  test('mantiene creación y selectores compactos a 320 y 390 px', async ({ page, data }) => {
+    const character = await data.createCharacter({ name: data.unique('Responsive') })
+    await data.createImage(character, ['primera'])
+    await data.createImage(character, ['segunda'])
+    const background = await data.createBackground({ tags: [data.unique('responsive-fondo')] })
+
+    await page.goto('/stories/new')
+    await page.getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
+    await expect(page.locator('form > div > section').last().getByRole('heading', {
+      name: 'Personajes de la historia'
+    })).toBeVisible()
+
+    const desktopImage = page.getByRole('button', { name: `Ampliar ${character.name}` })
+    const desktopImageSize = await desktopImage.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      return { width: bounds.width, height: bounds.height }
+    })
+    expect(desktopImageSize.width).toBeGreaterThanOrEqual(96)
+    expect(desktopImageSize.height).toBeGreaterThanOrEqual(96)
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 800 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+
+      const characterImage = page.getByRole('button', { name: `Ampliar ${character.name}` })
+      const imageSize = await characterImage.evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+        return { width: bounds.width, height: bounds.height }
+      })
+      expect(imageSize.width).toBeGreaterThanOrEqual(80)
+      expect(imageSize.height).toBeGreaterThanOrEqual(80)
+      await characterImage.click()
+      await expect(page.getByRole('dialog', { name: character.name })).toBeVisible()
+      await page.keyboard.press('Escape')
+
+      await page.getByRole('button', { name: `Editar ${character.name}` }).click()
+      await expect(page.getByRole('dialog', { name: `Editar ${character.name}` })).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      await page.getByRole('dialog', { name: `Editar ${character.name}` })
+        .getByRole('button', { name: 'Cancelar' }).click()
+
+      await page.getByRole('button', { name: 'Seleccionar fondo inicial' }).click()
+      const backgroundDialog = page.getByRole('dialog', { name: 'Seleccionar fondo inicial' })
+      await expect(backgroundDialog).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      await backgroundDialog.getByRole('button', { name: `Elegir fondo ${background.tags[0]}` }).click()
+    }
   })
 
   test('copia planteamiento sin título ni mensajes y mantiene independencia', async ({ page, data }) => {
@@ -306,10 +375,13 @@ test.describe('historias', () => {
     await page.goto(`/stories/${story.id}`)
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     const form = page.getByRole('heading', { name: 'Ajustes de la historia' }).locator('..')
-    await form.getByRole('button', { name: `Añadir ${added.name}` }).click()
-    await expect(form.locator(`#story-settings-character-prompt-${added.id}`)).toHaveValue(
+    await form.getByRole('button', { name: `Añadir ${added.name} al elenco` }).click()
+    await form.getByRole('button', { name: `Editar ${added.name}` }).click()
+    const characterDialog = page.getByRole('dialog', { name: `Editar ${added.name}` })
+    await expect(characterDialog.locator(`#story-settings-character-prompt-${added.id}`)).toHaveValue(
       added.prompt
     )
+    await characterDialog.getByRole('button', { name: 'Guardar personaje' }).click()
     await form.getByRole('button', { name: 'Guardar' }).click()
 
     await expect.poll(async () => await data.get<Story>('stories', story.id)).toMatchObject({
@@ -322,7 +394,112 @@ test.describe('historias', () => {
 
     await page.reload()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
-    await expect(page.getByRole('heading', { name: added.name })).toBeVisible()
+    await expect(page.getByRole('button', { name: `Editar ${added.name}` })).toBeVisible()
+  })
+
+  test('recuerda personalización fuera del elenco y permite recuperarla archivada u olvidarla', async ({ page, data }) => {
+    const remembered = await data.createCharacter({
+      name: data.unique('Recordada'),
+      prompt: data.unique('Prompt-global')
+    })
+    const active = await data.createCharacter({ name: data.unique('Activa') })
+    const story = await data.createStory({ characters: [remembered, active] })
+    const rememberedPrompt = data.unique('Prompt-recordado')
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
+    let form = page.getByRole('dialog', { name: 'Ajustes de la historia' })
+    await form.getByRole('button', { name: `Editar ${remembered.name}` }).click()
+    let characterDialog = page.getByRole('dialog', { name: `Editar ${remembered.name}` })
+    await characterDialog.locator(`#story-settings-character-prompt-${remembered.id}`).fill(rememberedPrompt)
+    await characterDialog.getByRole('button', { name: 'Guardar personaje' }).click()
+    await form.getByRole('button', { name: `Quitar ${remembered.name} del elenco` }).click()
+    await expect(form.getByText('Personalización guardada', { exact: true })).toBeVisible()
+    await form.getByRole('button', { name: 'Guardar' }).click()
+
+    let stored = await data.get<Story>('stories', story.id)
+    expect(stored.characterIds).toEqual([active.id])
+    expect(stored.characterCustomizations.find((item) => item.characterId === remembered.id)?.prompt)
+      .toBe(rememberedPrompt)
+    const blocked = await page.request.delete(`/api/data/characters/${remembered.id}?scope=normal`)
+    expect(blocked.status()).toBe(409)
+
+    const archiveResponse = await page.request.put(`/api/data/characters/${remembered.id}?scope=normal`, {
+      data: { ...remembered, archived: true, updatedAt: Date.now() }
+    })
+    expect(archiveResponse.ok()).toBe(true)
+    await page.reload()
+    await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
+    form = page.getByRole('dialog', { name: 'Ajustes de la historia' })
+    const rememberedCard = form.locator('article').filter({ hasText: remembered.name })
+    await expect(rememberedCard.getByText('Archivado', { exact: true })).toBeVisible()
+    await rememberedCard.getByRole('button', { name: `Añadir ${remembered.name} al elenco` }).click()
+    await rememberedCard.getByRole('button', { name: `Editar ${remembered.name}` }).click()
+    characterDialog = page.getByRole('dialog', { name: `Editar ${remembered.name}` })
+    await expect(characterDialog.locator(`#story-settings-character-prompt-${remembered.id}`)).toHaveValue(rememberedPrompt)
+    await characterDialog.getByRole('button', { name: 'Cancelar' }).click()
+    await form.getByRole('button', { name: 'Guardar' }).click()
+
+    stored = await data.get<Story>('stories', story.id)
+    expect(stored.characterIds).toEqual([active.id, remembered.id])
+    await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
+    form = page.getByRole('dialog', { name: 'Ajustes de la historia' })
+    await form.getByRole('button', { name: `Quitar ${remembered.name} del elenco` }).click()
+    await form.getByRole('button', { name: `Olvidar personalización de ${remembered.name}` }).click()
+    await page.getByRole('alertdialog', { name: 'Olvidar personalización' })
+      .getByRole('button', { name: 'Olvidar' }).click()
+    await expect(form.getByText(remembered.name, { exact: true })).toHaveCount(0)
+    await form.getByRole('button', { name: 'Guardar' }).click()
+
+    stored = await data.get<Story>('stories', story.id)
+    expect(stored.characterIds).toEqual([active.id])
+    expect(stored.characterCustomizations.some((item) => item.characterId === remembered.id)).toBe(false)
+    expect((await page.request.delete(`/api/data/characters/${remembered.id}?scope=normal`)).ok()).toBe(true)
+  })
+
+  test('copia personalizaciones recordadas de personajes archivados', async ({ page, data }) => {
+    const archived = await data.createCharacter({
+      name: data.unique('Archivada-copia'),
+      prompt: data.unique('Prompt-global-copia'),
+      archived: true
+    })
+    const active = await data.createCharacter({ name: data.unique('Activa-copia') })
+    const source = await data.createStory({ characters: [active] })
+    const rememberedPrompt = data.unique('Prompt-recordado-copia')
+    const updateResponse = await page.request.put(`/api/data/stories/${source.id}?scope=normal`, {
+      data: {
+        ...source,
+        characterCustomizations: [
+          ...source.characterCustomizations,
+          {
+            characterId: archived.id,
+            name: archived.name,
+            color: archived.color,
+            prompt: rememberedPrompt,
+            tags: [...archived.tags]
+          }
+        ]
+      }
+    })
+    expect(updateResponse.ok()).toBe(true)
+
+    await page.goto(`/stories/new?copyFrom=${source.id}`)
+    const archivedCard = page.locator('article').filter({ hasText: archived.name })
+    await expect(archivedCard.getByText('Archivado', { exact: true })).toBeVisible()
+    await archivedCard.getByRole('button', { name: `Añadir ${archived.name} al elenco` }).click()
+    await archivedCard.getByRole('button', { name: `Editar ${archived.name}` }).click()
+    const characterDialog = page.getByRole('dialog', { name: `Editar ${archived.name}` })
+    await expect(characterDialog.locator(`#story-character-prompt-${archived.id}`)).toHaveValue(rememberedPrompt)
+    await characterDialog.getByRole('button', { name: 'Cancelar' }).click()
+    await page.getByLabel('Título').fill(data.unique('Copia-archivada'))
+    await page.getByRole('button', { name: 'Empezar historia' }).click()
+
+    await page.waitForURL((url) => /^\/stories\/(?!new$)[^/]+$/.test(url.pathname))
+    const copiedId = new URL(page.url()).pathname.split('/').pop()!
+    const copied = await data.get<Story>('stories', copiedId)
+    expect(copied.characterIds).toEqual([active.id, archived.id])
+    expect(copied.characterCustomizations.find((item) => item.characterId === archived.id)?.prompt)
+      .toBe(rememberedPrompt)
   })
 
   test('cancela y confirma borrado de historia', async ({ page, data }) => {
@@ -1218,6 +1395,45 @@ test.describe('chat', () => {
 })
 
 test.describe('novela visual y responsive', () => {
+  for (const width of [320, 390]) {
+    test(`separa cambiar imagen del menú móvil a ${width}px`, async ({ page, data }) => {
+      const { story, character, image } = await createStoryFixture(data, true)
+      await data.createMessage({
+        story,
+        role: 'assistant',
+        raw: `${character.name} [feliz]: Hola.`,
+        segments: [{
+          type: 'dialogue',
+          characterId: character.id,
+          tag: 'feliz',
+          tags: ['feliz'],
+          imageId: image.id,
+          text: 'Hola.'
+        }]
+      })
+      await page.setViewportSize({ width, height: 760 })
+      await page.goto(`/stories/${story.id}`)
+
+      const menu = page.getByTestId('mobile-story-menu-toggle')
+      const changeImage = page.getByRole('button', { name: `Cambiar imagen de ${character.name}` })
+      const assertSeparated = async () => {
+        const menuBox = await menu.boundingBox()
+        const changeBox = await changeImage.boundingBox()
+        expect(menuBox).not.toBeNull()
+        expect(changeBox).not.toBeNull()
+        expect(changeBox!.y).toBeGreaterThanOrEqual(menuBox!.y + menuBox!.height + 8)
+      }
+
+      await expect(changeImage).toBeVisible()
+      await assertSeparated()
+      await menu.click()
+      await expect(menu).toHaveAttribute('aria-expanded', 'true')
+      await assertSeparated()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        .toBe(true)
+    })
+  }
+
   test('permite ampliar y hacer zoom en personajes desde Chat, Novela y editor', async ({ page, data }) => {
     const { story, character, image } = await createStoryFixture(data, true)
     const imageResponse = await page.request.put(`/api/data/images/${image.id}?scope=normal`, {
@@ -2093,16 +2309,54 @@ test.describe('novela visual y responsive', () => {
   for (const width of [320, 390]) {
     test(`menú móvil y editor sin overflow a ${width}px`, async ({ page, data }) => {
       const { story } = await createStoryFixture(data)
+      for (let index = 0; index < 12; index += 1) {
+        const text = `Escena ${index + 1}: contenido suficiente para desplazar la historia en móvil.`
+        await data.createMessage({
+          story,
+          role: 'assistant',
+          raw: text,
+          segments: [{ type: 'narration', text }]
+        })
+      }
       await page.setViewportSize({ width, height: 760 })
       await page.goto(`/stories/${story.id}`)
 
       const toggle = page.getByTestId('mobile-story-menu-toggle')
+      const scroller = page.getByTestId('story-scroller')
+      const navigation = page.locator('#app-navigation')
+      const navigationLinks = page.getByTestId('app-navigation-links')
+      const brand = page.getByTestId('app-brand')
+      const storyHeader = page.locator('#story-header')
+      await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(8)
       await expect(toggle).toBeVisible()
       await expect(toggle).toHaveAttribute('aria-expanded', 'false')
       await toggle.click()
       await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-      await expect(page.locator('#app-navigation')).toBeVisible()
-      await expect(page.locator('#story-header')).toBeVisible()
+      await expect(toggle).toHaveAttribute('aria-label', 'Ocultar menú de historia')
+      await expect(navigation).toBeVisible()
+      await expect(storyHeader).toBeVisible()
+      await toggle.click()
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+      await scroller.evaluate((element) => { element.scrollTop = 0 })
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      await expect(brand).toBeVisible()
+      await expect(navigationLinks).toBeVisible()
+      await expect(storyHeader).toBeVisible()
+
+      await scroller.evaluate((element) => { element.scrollTop = 80 })
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      await expect(navigation).toBeHidden()
+      await expect(storyHeader).toBeHidden()
+
+      await scroller.evaluate((element) => { element.scrollTop = 40 })
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      await expect(brand).toBeHidden()
+      await expect(navigationLinks).toBeVisible()
+      await expect(storyHeader).toBeVisible()
+
+      await scroller.evaluate((element) => { element.scrollTop = 0 })
+      await expect(brand).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
         .toBe(true)
 

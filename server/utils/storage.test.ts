@@ -1740,6 +1740,40 @@ test('limpiar normal no toca privado ni ajustes', () => {
   })
 })
 
+test('bloquea borrar personajes con personalización recordada fuera del elenco activo', () => {
+  withStorage((storage) => {
+    storage.put('characters', 'normal', 'character-remembered', character('character-remembered'))
+    storage.put('stories', 'normal', 'story-remembered', {
+      ...story('story-remembered'),
+      title: 'Historia con personalización',
+      characterIds: [],
+      characterCustomizations: [{
+        characterId: 'character-remembered',
+        name: 'Alias recordado',
+        color: '#123456',
+        prompt: 'Prompt recordado',
+        tags: ['recordada']
+      }]
+    })
+
+    assert.throws(
+      () => storage.delete('characters', 'normal', 'character-remembered'),
+      (caught: unknown) => {
+        const error = caught as {
+          code?: string
+          stories?: Array<{ id: string; title: string }>
+        }
+        assert.equal(error.code, 'ERR_CHARACTER_IN_USE')
+        assert.deepEqual(error.stories, [{
+          id: 'story-remembered',
+          title: 'Historia con personalización'
+        }])
+        return true
+      }
+    )
+  })
+})
+
 test('activa multiusuario, reclama el legado y aísla propietarios compartiendo solo demos privadas', () => {
   withStorage((storage) => {
     storage.put('characters', 'private', 'demo-character', {

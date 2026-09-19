@@ -26,10 +26,10 @@ function onSaveShortcut(event: KeyboardEvent) {
 
 async function onPrivateModeShortcut(event: KeyboardEvent) {
   if (!event.ctrlKey || !event.altKey || event.key.toLowerCase() !== 'p') return
-  if (privacy.isPrivateMode || privacy.switching || isEditableTarget(event.target)) return
+  if (event.repeat || privacy.switching || isEditableTarget(event.target)) return
 
   event.preventDefault()
-  await privacy.activate()
+  await (privacy.isPrivateMode ? privacy.deactivate() : privacy.activate())
 }
 
 async function onDemoModeShortcut(event: KeyboardEvent) {

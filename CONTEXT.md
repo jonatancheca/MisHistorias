@@ -51,3 +51,11 @@ _Evitar_: Propietario global, superusuario de contenido
 **Recurso demo compartido**:
 Historia, personaje o fondo privado visible para otros Usuarios Access en modo privado o demo, junto con las imágenes y sonidos necesarios para consultarlo, sin conceder propiedad ni permiso de edición.
 _Evitar_: Recurso público, recurso sin propietario
+
+**Elenco activo**:
+Personajes que participan en las nuevas respuestas de una historia, en el orden en que fueron añadidos.
+_Evitar_: Todos los personajes personalizados, catálogo de personajes
+
+**Personalización recordada**:
+Instantánea de nombre, color, prompt y etiquetas que una historia conserva para un personaje, aunque no pertenezca al elenco activo.
+_Evitar_: Personaje eliminado, personalización global

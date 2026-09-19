@@ -142,6 +142,32 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
   }
 })
 
+for (const width of [320, 390]) {
+  test(`oculta navegación global al bajar y muestra solo iconos al subir a ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 640 })
+    await page.goto('/settings')
+
+    const main = page.locator('main')
+    const navigation = page.locator('#app-navigation')
+    const navigationLinks = page.getByTestId('app-navigation-links')
+    const brand = page.getByTestId('app-brand')
+    await expect(brand).toBeVisible()
+    await expect(navigationLinks).toBeVisible()
+
+    await main.evaluate((element) => { element.scrollTop = 240 })
+    await expect(navigation).toBeHidden()
+
+    await main.evaluate((element) => { element.scrollTop = 180 })
+    await expect(navigationLinks).toBeVisible()
+    await expect(brand).toBeHidden()
+
+    await main.evaluate((element) => { element.scrollTop = 0 })
+    await expect(brand).toBeVisible()
+    await expect(navigationLinks).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  })
+}
+
 test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) => {
   const userName = data.unique('Protagonista')
   await data.patchSettings({ theme: 'system', mockMode: false, responseSpeed: 'high' })
@@ -165,7 +191,7 @@ test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) =>
   await expect(page.locator('html')).toHaveClass(/dark/)
 })
 
-test('activa modo privado con Ctrl+Alt+P sin cambiar URL ni interrumpir inputs', async ({ page }) => {
+test('alterna modo privado con Ctrl+Alt+P sin cambiar URL ni interrumpir inputs', async ({ page }) => {
   await page.goto('/settings')
 
   await page.getByLabel('Nombre', { exact: true }).focus()
@@ -174,10 +200,26 @@ test('activa modo privado con Ctrl+Alt+P sin cambiar URL ni interrumpir inputs',
 
   await page.locator('main').press('Control+Alt+p')
   await expect(page).toHaveURL('/settings')
-  const leavePrivateMode = page.getByRole('button', { name: 'Salir del modo privado' })
-  await expect(leavePrivateMode).toBeVisible()
-  await leavePrivateMode.click()
+  await expect(page.locator('html')).toHaveClass(/private-scope/)
+  await expect(page.getByRole('button', { name: 'Salir del modo privado' })).toHaveCount(0)
+  const privateTrigger = page.getByRole('button', { name: 'Activar modo privado' })
+  const demoTrigger = page.getByRole('button', { name: 'Alternar modo demo' })
+  await expect(demoTrigger).toBeEnabled()
+  await page.locator('main').press('Control+Alt+p')
+  await expect(page.locator('html')).not.toHaveClass(/private-scope/)
   await expect(page).toHaveURL('/settings')
+
+  await expect(privateTrigger).toBeEnabled()
+  await page.locator('main').press('Control+Alt+d')
+  await expect(page.locator('html')).toHaveClass(/demo-scope/)
+  await expect(demoTrigger).toBeEnabled()
+  await page.locator('main').press('Control+Alt+p')
+  await expect(page.locator('html')).toHaveClass(/private-scope/)
+  await expect(page.locator('html')).not.toHaveClass(/demo-scope/)
+  await expect(demoTrigger).toBeEnabled()
+  await page.locator('main').press('Control+Alt+p')
+  await expect(page.locator('html')).not.toHaveClass(/private-scope|demo-scope/)
+  await expect(privateTrigger).toBeEnabled()
 })
 
 test('prepara Chrome AI y guarda override privado', async ({ page, data }) => {
@@ -494,7 +536,7 @@ test('separa datos normales y privados', async ({ page, data }) => {
   await expect(page.getByText(privateCharacter.name, { exact: true })).toBeVisible()
   await expect(page.getByText(normal.name, { exact: true })).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Salir del modo privado' }).click()
+  await page.locator('main').press('Control+Alt+p')
   await expect(page).toHaveURL('/characters')
   await page.getByRole('link', { name: 'Personajes' }).click()
   await expect(page.getByText(normal.name, { exact: true })).toBeVisible()

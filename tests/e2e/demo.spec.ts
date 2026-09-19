@@ -81,7 +81,12 @@ test.describe('modo demo', () => {
     await page.getByRole('link', { name: story.title }).evaluate((element: HTMLAnchorElement) => element.click())
     await expect(page.getByText(`Fondo inicial · ${contextualBackground.tags[0]}`, { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
-    await expect(page.getByLabel('Nombre en esta historia')).toHaveValue(contextualCharacter.name)
+    const form = page.getByRole('dialog', { name: 'Ajustes de la historia' })
+    await form.getByRole('button', { name: `Editar ${contextualCharacter.name}` }).click()
+    await expect(page.getByRole('dialog', { name: `Editar ${contextualCharacter.name}` })
+      .getByLabel('Nombre en esta historia')).toHaveValue(contextualCharacter.name)
+    await page.getByRole('dialog', { name: `Editar ${contextualCharacter.name}` })
+      .getByRole('button', { name: 'Cancelar' }).click()
     await expect(page.getByRole('checkbox', { name: /Visible en modo demo/ })).toHaveCount(0)
   })
 
@@ -118,6 +123,26 @@ test.describe('modo demo', () => {
       visibleInDemo: true,
       scope: 'private'
     })
+    const rememberedPrivatePrompt = data.unique('Prompt-privado-recordado')
+    const rememberResponse = await page.request.put(
+      `/api/data/stories/${visibleStory.id}?scope=private`,
+      {
+        data: {
+          ...visibleStory,
+          characterCustomizations: [
+            ...visibleStory.characterCustomizations,
+            {
+              characterId: hiddenCharacter.id,
+              name: hiddenCharacter.name,
+              color: hiddenCharacter.color,
+              prompt: rememberedPrivatePrompt,
+              tags: [...hiddenCharacter.tags]
+            }
+          ]
+        }
+      }
+    )
+    expect(rememberResponse.ok()).toBe(true)
     await data.createStory({
       title: data.unique('Oculta'),
       characters: [hiddenCharacter],
@@ -192,7 +217,11 @@ test.describe('modo demo', () => {
       characters: Array<{ id: string }>
       backgrounds: Array<{ id: string }>
       sounds: Array<{ id: string }>
-      stories: Array<{ title: string; messages: Array<{ raw: string }> }>
+      stories: Array<{
+        title: string
+        messages: Array<{ raw: string }>
+        characterCustomizations: Array<{ characterId: string; prompt: string }>
+      }>
       swarmPrompts: unknown[]
     }
 
@@ -212,6 +241,10 @@ test.describe('modo demo', () => {
     expect(exportedStory?.messages[0]?.raw).toContain(contextualSound.tags[0])
     expect(exportedStory?.messages[0]?.raw).not.toContain(hiddenSound.tags[0])
     expect(exportedStory?.messages[0]?.raw).not.toContain(standaloneSound.tags[0])
+    expect(exportedStory?.characterCustomizations.some(
+      (customization) => customization.characterId === hiddenCharacter.id ||
+        customization.prompt === rememberedPrivatePrompt
+    )).toBe(false)
     expect(bundle.swarmPrompts).toEqual([])
   })
 })

@@ -36,6 +36,10 @@ import { blobToDataUrl, dataUrlToBlob } from '~/lib/images'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 import { buildStoryImageCatalog } from '~/lib/imageCatalog'
+import {
+  activeStoryCharacterCustomizations,
+  storyCustomizationIds
+} from '~/lib/storyCharacterCustomizations'
 import { filterSoundDirectives, stripSoundDirectives, stripSoundSegments } from '~/lib/soundTransfer'
 import {
   exportCharacterTransferFields,
@@ -204,6 +208,11 @@ export async function exportBundle(
     createdAt: message.createdAt
   }))
 
+  const exportCharacterCustomizations = (story: Story) => {
+    if (!options.demo) return story.characterCustomizations
+    return activeStoryCharacterCustomizations(story.characterIds, story.characterCustomizations)
+  }
+
   const exportedCharacters: ExportedCharacter[] = await Promise.all(
     characters.map(async (character) => ({
       ...exportCharacterTransferFields(character),
@@ -235,7 +244,7 @@ export async function exportBundle(
       protagonistPreferences: story.protagonistPreferences ?? '',
       protagonistPreferencesMode: story.protagonistPreferencesMode ?? 'append',
       characterIds: story.characterIds,
-      characterCustomizations: story.characterCustomizations,
+      characterCustomizations: exportCharacterCustomizations(story),
       pendingImageInstructions: story.pendingImageInstructions ?? [],
       contextSummary: story.contextSummary ?? '',
       contextSummaryThroughMessageId: story.contextSummaryThroughMessageId,
@@ -243,7 +252,13 @@ export async function exportBundle(
       messages: exportMessages(messages),
       saves: saves.map((save) => ({
         ...save,
-        story: options.demo ? { ...save.story, presetId: null } : save.story,
+        story: options.demo
+          ? {
+              ...save.story,
+              presetId: null,
+              characterCustomizations: exportCharacterCustomizations(save.story)
+            }
+          : save.story,
         messages: exportMessages(save.messages),
         debugTraces: options.demo ? [] : save.debugTraces
       }))
@@ -480,7 +495,11 @@ export async function importBundle(raw: string) {
         customization
       ])
     )
-    const characterCustomizations = (item.characterIds ?? []).flatMap((sourceId: string) => {
+    const customizationSourceIds = storyCustomizationIds(
+      (item.characterIds ?? []).map((sourceId) => String(sourceId)),
+      item.characterCustomizations ?? []
+    )
+    const characterCustomizations = customizationSourceIds.flatMap((sourceId: string) => {
       const characterId = characterIdMap.get(String(sourceId))
       if (!characterId) return []
       const source = exportedCustomizations.get(String(sourceId))
@@ -603,7 +622,10 @@ export async function importBundle(raw: string) {
         protagonistPreferencesMode:
           save.story.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
         characterIds: savedCharacterIds,
-        characterCustomizations: (save.story.characterIds ?? []).flatMap((sourceId) => {
+        characterCustomizations: storyCustomizationIds(
+          (save.story.characterIds ?? []).map((sourceId) => String(sourceId)),
+          save.story.characterCustomizations ?? []
+        ).flatMap((sourceId) => {
           const characterId = characterIdMap.get(String(sourceId))
           if (!characterId) return []
           const source = savedCustomizations.get(String(sourceId))

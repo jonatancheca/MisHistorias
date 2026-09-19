@@ -131,7 +131,7 @@ export interface Story {
   /** Anade las preferencias globales o las reemplaza para esta historia */
   protagonistPreferencesMode: ProtagonistPreferencesMode
   characterIds: string[]
-  /** Prompt y etiquetas descriptivas fijados al crear la historia. */
+  /** Personalizaciones recordadas, incluidas las de personajes fuera del elenco activo. */
   characterCustomizations: StoryCharacterCustomization[]
   /** Fondo inicial; null permite que el modelo decida */
   initialBackgroundId: string | null

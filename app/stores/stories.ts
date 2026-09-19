@@ -67,6 +67,7 @@ import {
   parseStoryImageRequests,
   type CharacterImageJob
 } from '~/lib/storyImageGeneration'
+import { storyCustomizationIds } from '~/lib/storyCharacterCustomizations'
 
 function normalizeCharacterCustomizations(
   characterIds: string[],
@@ -75,7 +76,8 @@ function normalizeCharacterCustomizations(
 ) {
   const requested = new Map(customizations.map((item) => [item.characterId, item]))
   const available = new Map(characters.map((character) => [character.id, character]))
-  return characterIds.flatMap((characterId) => {
+  const customizationIds = storyCustomizationIds(characterIds, customizations)
+  return customizationIds.flatMap((characterId) => {
     const source = requested.get(characterId) ?? available.get(characterId)
     return source
       ? [
@@ -945,20 +947,23 @@ export const useStoriesStore = defineStore('stories', () => {
   async function updateStorySettings(
     title: string,
     premise: string,
+    visualMode: boolean,
     autoGenerateImages: boolean,
     protagonistPreferences: string,
     protagonistPreferencesMode: ProtagonistPreferencesMode,
     characterIds: string[],
     characterCustomizations: StoryCharacterCustomization[],
+    initialBackgroundId: string | null,
     visibleInDemo?: boolean
   ) {
-    if (!activeStory.value || !title.trim() || !premise.trim()) return
+    if (!activeStory.value || !title.trim() || !premise.trim() || !characterIds.length) return
     const charactersStore = useCharactersStore()
     await charactersStore.load()
     const updated: Story = {
       ...activeStory.value,
       title: title.trim(),
       premise: premise.trim(),
+      visualMode,
       autoGenerateImages,
       visibleInDemo: visibleInDemo ?? activeStory.value.visibleInDemo,
       protagonistPreferences: protagonistPreferences.trim(),
@@ -969,6 +974,7 @@ export const useStoriesStore = defineStore('stories', () => {
         charactersStore.characters,
         characterCustomizations
       ),
+      initialBackgroundId,
       pendingImageInstructions: (activeStory.value.pendingImageInstructions ?? [])
         .filter((instruction) => characterIds.includes(instruction.characterId)),
       updatedAt: Date.now()

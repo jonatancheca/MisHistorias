@@ -1,8 +1,17 @@
 <script setup lang="ts">
 const route = useRoute()
-const privacy = usePrivacyStore()
-const { hidden: mobileChromeHidden } = useMobileChrome()
+const mainScroller = ref<HTMLElement | null>(null)
+const {
+  hidden: mobileChromeHidden,
+  atTop: mobileChromeAtTop,
+  hide: hideMobileChrome,
+  show: showMobileChrome,
+  setAtTop: setMobileChromeAtTop
+} = useMobileChrome()
 const isStoryView = computed(() => route.path.startsWith('/stories/') && route.path !== '/stories/new')
+let lastMainScrollTop = 0
+let accumulatedMainScroll = 0
+let desktopMedia: MediaQueryList | null = null
 
 const settings = useSettingsStore()
 const links = computed(() => [
@@ -27,9 +36,64 @@ function iconFor(to: string) {
   return 'settings'
 }
 
-async function leavePrivateMode() {
-  await privacy.deactivate()
+function syncMainScroll() {
+  if (isStoryView.value || !mainScroller.value) return
+
+  const current = mainScroller.value.scrollTop
+  const delta = current - lastMainScrollTop
+  lastMainScrollTop = current
+
+  if (window.innerWidth >= 640) {
+    accumulatedMainScroll = 0
+    showMobileChrome()
+    return
+  }
+
+  const atTop = current <= 8
+  setMobileChromeAtTop(atTop)
+  if (atTop) {
+    accumulatedMainScroll = 0
+    showMobileChrome()
+    return
+  }
+
+  if (Math.sign(delta) !== Math.sign(accumulatedMainScroll)) accumulatedMainScroll = 0
+  accumulatedMainScroll += delta
+  if (accumulatedMainScroll >= 12) {
+    hideMobileChrome()
+    accumulatedMainScroll = 0
+  } else if (accumulatedMainScroll <= -4) {
+    showMobileChrome()
+    accumulatedMainScroll = 0
+  }
 }
+
+async function resetMainScrollTracking() {
+  await nextTick()
+  if (isStoryView.value || !mainScroller.value) return
+  lastMainScrollTop = mainScroller.value.scrollTop
+  accumulatedMainScroll = 0
+  setMobileChromeAtTop(lastMainScrollTop <= 8)
+  showMobileChrome()
+}
+
+function onBreakpointChange(event: MediaQueryListEvent) {
+  if (event.matches) {
+    accumulatedMainScroll = 0
+    return
+  }
+  void resetMainScrollTracking()
+}
+
+watch(() => route.fullPath, resetMainScrollTracking)
+
+onMounted(() => {
+  desktopMedia = window.matchMedia('(min-width: 640px)')
+  desktopMedia.addEventListener('change', onBreakpointChange)
+  void resetMainScrollTracking()
+})
+
+onBeforeUnmount(() => desktopMedia?.removeEventListener('change', onBreakpointChange))
 </script>
 
 <template>
@@ -40,13 +104,21 @@ async function leavePrivateMode() {
       :class="[
         mobileChromeHidden
           ? 'max-h-0 -translate-y-2 overflow-hidden border-b-0 py-0 opacity-0'
-          : 'max-h-32 translate-y-0 py-3 opacity-100',
+          : mobileChromeAtTop
+            ? 'max-h-32 translate-y-0 py-3 opacity-100'
+            : 'max-h-20 translate-y-0 py-3 opacity-100',
         isStoryView ? 'sm:w-[4.5rem] sm:px-2.5 sm:py-5' : 'sm:w-64 sm:p-5'
       ]"
     >
       <div
-        class="mb-3 flex items-center gap-2.5 sm:mb-8"
-        :class="isStoryView ? 'pr-12 sm:hidden' : ''"
+        data-testid="app-brand"
+        class="flex items-center gap-2.5 transition-[max-height,margin,opacity,transform] duration-200 sm:mb-8 sm:max-h-none sm:translate-y-0 sm:overflow-visible sm:opacity-100"
+        :class="[
+          mobileChromeAtTop
+            ? 'mb-3 max-h-12 translate-y-0 opacity-100'
+            : 'mb-0 max-h-0 -translate-y-2 overflow-hidden opacity-0',
+          isStoryView ? 'pr-12 sm:hidden' : ''
+        ]"
       >
         <NuxtLink to="/" class="group flex min-w-0 items-center gap-3">
           <span class="brand-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 via-brand-600 to-brand-800 text-white transition group-hover:-rotate-3 group-hover:scale-105">
@@ -60,30 +132,12 @@ async function leavePrivateMode() {
             <span class="block truncate text-lg font-bold tracking-[-0.03em]">Mis historias</span>
           </span>
         </NuxtLink>
-        <button
-          v-if="privacy.isPrivateMode"
-          type="button"
-          class="ml-auto rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-elevated)] p-2 text-[var(--color-fg-muted)] transition hover:border-brand-300 hover:text-brand-600"
-          aria-label="Salir del modo privado"
-          title="Salir del modo privado"
-          :disabled="privacy.switching"
-          @click="leavePrivateMode"
-        >
-          <svg
-            aria-hidden="true"
-            class="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <rect x="5" y="11" width="14" height="10" rx="2" />
-            <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-          </svg>
-        </button>
       </div>
 
-      <nav class="grid min-w-0 grid-cols-6 gap-1 sm:flex sm:flex-1 sm:flex-col sm:gap-1.5">
+      <nav
+        data-testid="app-navigation-links"
+        class="grid min-w-0 grid-cols-6 gap-1 sm:flex sm:flex-1 sm:flex-col sm:gap-1.5"
+      >
         <NuxtLink
           v-for="link in links"
           :key="link.to"
@@ -191,7 +245,12 @@ async function leavePrivateMode() {
       </div>
     </aside>
 
-    <main class="app-main min-h-0 min-w-0 flex-1 overflow-y-auto">
+    <main
+      ref="mainScroller"
+      class="app-main min-h-0 min-w-0 flex-1 overflow-y-auto"
+      :class="isStoryView ? 'z-40 sm:z-auto' : ''"
+      @scroll.passive="syncMainScroll"
+    >
       <slot />
     </main>
   </div>
