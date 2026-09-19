@@ -28,6 +28,7 @@ const backgrounds = useBackgroundsStore()
 const privacy = usePrivacyStore()
 const confirmDialog = useConfirmStore()
 const editingCharacterId = ref<string | null>(null)
+const characterPickerOpen = ref(false)
 const backgroundPickerOpen = ref(false)
 const preferencesOpen = ref(false)
 
@@ -40,6 +41,19 @@ const selectableCharacters = computed(() => characters.characters.filter((charac
   (!privacy.isDemo || character.visibleInDemo) &&
   (!character.archived || customizationsById.value.has(character.id))
 ))
+const selectedCharacters = computed(() => characterIds.value.flatMap((characterId) => {
+  const character = characters.byId(characterId)
+  return character ? [character] : []
+}))
+const pickerCharacters = computed(() => selectableCharacters.value
+  .filter((character) => !selectedIds.value.has(character.id))
+  .map((character) => ({
+    id: character.id,
+    label: characterLabel(character.id),
+    tags: [...(customizationFor(character.id)?.tags ?? character.tags ?? [])],
+    archived: Boolean(character.archived),
+    customized: Boolean(customizationFor(character.id))
+  })))
 const selectableBackgroundIds = computed(() => backgrounds.backgrounds
   .filter((background) => !background.readOnly && (!privacy.isDemo || background.visibleInDemo))
   .map((background) => background.id)
@@ -88,6 +102,11 @@ function toggleCharacter(characterId: string) {
   characterIds.value = [...characterIds.value, characterId]
 }
 
+function selectCharacter(characterId: string) {
+  if (!selectedIds.value.has(characterId)) toggleCharacter(characterId)
+  characterPickerOpen.value = false
+}
+
 function openCharacterEditor(characterId: string) {
   if (!ensureCustomization(characterId)) return
   editingCharacterId.value = characterId
@@ -133,13 +152,6 @@ function characterLabel(characterId: string) {
   const customized = customizationFor(characterId)?.name.trim() ?? ''
   if (character?.name && customized && character.name !== customized) return `${character.name} → ${customized}`
   return customized || character?.name || 'Personaje'
-}
-
-function characterGalleryItems(characterId: string) {
-  return characters.imagesFor(characterId).flatMap((image) => {
-    const src = characters.urlFor(image.id)
-    return src ? [{ src, alt: characterLabel(characterId) }] : []
-  })
 }
 
 watch(characterIds, (ids) => {
@@ -267,69 +279,81 @@ watch(characterIds, (ids) => {
     </section>
 
     <section class="rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-4 sm:p-5">
-      <div>
-        <h2 class="font-semibold">Personajes de la historia</h2>
-        <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-          Selecciona el elenco. Quitar un personaje conserva su personalización en esta historia.
-        </p>
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="font-semibold">Personajes de la historia</h2>
+          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+            Aquí solo aparece el elenco seleccionado. Quitar un personaje conserva su personalización.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="btn-primary shrink-0"
+          :disabled="!pickerCharacters.length"
+          @click="characterPickerOpen = true"
+        >
+          <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Añadir personaje
+        </button>
       </div>
 
-      <p v-if="!selectableCharacters.length" class="mt-4 text-sm text-[var(--color-fg-muted)]">
+      <p v-if="!selectableCharacters.length && !selectedCharacters.length" class="mt-4 text-sm text-[var(--color-fg-muted)]">
         No hay personajes disponibles.
         <NuxtLink to="/characters" class="text-brand-600 underline">Crea uno primero</NuxtLink>.
       </p>
-      <div v-else class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <p v-else-if="!selectedCharacters.length" class="empty-state mt-4 rounded-xl border border-[var(--color-border-soft)] p-6 text-sm text-[var(--color-fg-muted)]">
+        Añade al menos un personaje para comenzar la historia.
+      </p>
+      <div v-else class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         <article
-          v-for="character in selectableCharacters"
+          v-for="character in selectedCharacters"
           :key="character.id"
-          class="grid gap-3 rounded-xl border-2 p-3 transition"
-          :class="selectedIds.has(character.id) ? 'border-brand-500 bg-brand-500/10' : 'border-[var(--color-border-soft)]'"
+          class="grid min-w-0 gap-3 rounded-xl border-2 border-brand-500 bg-brand-500/10 p-3"
+          data-testid="selected-story-character"
         >
-          <div class="flex min-w-0 items-center gap-3">
-            <ImageLightbox
-              v-if="characters.urlFor(characters.defaultImage(character.id)?.id)"
-              :src="characters.urlFor(characters.defaultImage(character.id)?.id)!"
-              :alt="characterLabel(character.id)"
-              container-class="h-20 w-20 shrink-0 sm:h-24 sm:w-24"
-              image-class="h-20 w-20 rounded-xl bg-black/5 object-contain sm:h-24 sm:w-24"
-              :gallery-items="characterGalleryItems(character.id)"
+          <header class="flex min-w-0 items-center gap-2">
+            <span class="min-w-0 flex-1 truncate font-semibold">{{ characterLabel(character.id) }}</span>
+            <CharacterTagsTooltip
+              :tags="customizationFor(character.id)?.tags ?? character.tags ?? []"
+              :label="characterLabel(character.id)"
             />
-            <span v-else class="h-20 w-20 shrink-0 rounded-xl bg-brand-500/20 sm:h-24 sm:w-24" />
-            <button
-              type="button"
-              class="min-w-0 flex-1 self-stretch text-left"
-              :aria-label="selectedIds.has(character.id) ? `Quitar ${characterLabel(character.id)} del elenco` : `Añadir ${characterLabel(character.id)} al elenco`"
-              :aria-pressed="selectedIds.has(character.id)"
-              @click="toggleCharacter(character.id)"
-            >
-              <span class="block truncate font-medium">{{ characterLabel(character.id) }}</span>
-              <span class="mt-1 flex flex-wrap gap-1 text-[0.68rem] text-[var(--color-fg-muted)]">
-                <span v-if="character.archived" class="rounded-full border border-[var(--color-border-soft)] px-1.5 py-0.5">Archivado</span>
-                <span v-if="!selectedIds.has(character.id) && customizationFor(character.id)" class="rounded-full border border-[var(--color-border-soft)] px-1.5 py-0.5">Personalización guardada</span>
-                <span v-if="selectedIds.has(character.id)" class="rounded-full bg-brand-500/15 px-1.5 py-0.5 text-brand-600">En el elenco</span>
-              </span>
-            </button>
+          </header>
+          <div class="flex min-w-0 gap-2">
+            <CharacterImageCarousel
+              :character-id="character.id"
+              :alt="characterLabel(character.id)"
+              class="h-64 min-w-0 flex-1 sm:h-72"
+            />
+            <div class="flex w-10 shrink-0 flex-col gap-2">
+              <button
+                type="button"
+                class="btn-ghost h-10 w-10 px-0"
+                :aria-label="`Editar ${characterLabel(character.id)}`"
+                title="Editar"
+                @click="openCharacterEditor(character.id)"
+              >
+                <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m4 20 4.5-1 10-10a2.12 2.12 0 0 0-3-3l-10 10zM13.5 8l3 3" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="btn-ghost h-10 w-10 px-0 text-red-500"
+                :aria-label="`Quitar ${characterLabel(character.id)} del elenco`"
+                title="Quitar del elenco"
+                @click="toggleCharacter(character.id)"
+              >
+                <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 12h14" />
+                </svg>
+              </button>
+            </div>
           </div>
-
-          <div v-if="selectedIds.has(character.id) || customizationFor(character.id)" class="flex flex-wrap justify-end gap-2 border-t border-[var(--color-border-soft)] pt-2">
-            <button
-              v-if="selectedIds.has(character.id)"
-              type="button"
-              class="btn-ghost px-3 py-1.5 text-xs"
-              :aria-label="`Editar ${characterLabel(character.id)}`"
-              @click="openCharacterEditor(character.id)"
-            >
-              Editar
-            </button>
-            <button
-              v-else
-              type="button"
-              class="btn-ghost px-3 py-1.5 text-xs text-red-500"
-              :aria-label="`Olvidar personalización de ${characterLabel(character.id)}`"
-              @click="forgetCustomization(character.id)"
-            >
-              Olvidar personalización
-            </button>
+          <div class="flex flex-wrap gap-1 text-[0.68rem] text-[var(--color-fg-muted)]">
+            <span v-if="character.archived" class="rounded-full border border-[var(--color-border-soft)] px-1.5 py-0.5">Archivado</span>
+            <span class="rounded-full bg-brand-500/15 px-1.5 py-0.5 text-brand-600">En el elenco</span>
           </div>
         </article>
       </div>
@@ -342,6 +366,13 @@ watch(characterIds, (ids) => {
       :suggestions="characterTagSuggestions"
       @close="editingCharacterId = null"
       @save="saveCharacter"
+    />
+    <StoryCharacterPickerDialog
+      :open="characterPickerOpen"
+      :characters="pickerCharacters"
+      @close="characterPickerOpen = false"
+      @select="selectCharacter"
+      @forget="forgetCustomization"
     />
     <StoryBackgroundPickerDialog
       :open="backgroundPickerOpen"

@@ -23,6 +23,13 @@ async function createStoryFixture(data: TestDataFactory, visualMode = false) {
   return { character, image, background, preset, story }
 }
 
+async function addStoryCharacter(page: Page, scope: Page | Locator, name: string) {
+  await scope.getByRole('button', { name: 'Añadir personaje' }).click()
+  const picker = page.getByRole('dialog', { name: 'Añadir personaje' })
+  await expect(picker).toBeVisible()
+  await picker.getByRole('button', { name: `Añadir ${name} al elenco` }).click()
+}
+
 async function prepareVisualResponse(
   page: Page,
   data: TestDataFactory,
@@ -93,7 +100,7 @@ test.describe('historias', () => {
     await expect(preferencesDialog.getByRole('radio', { name: 'Añadir' })).toHaveAttribute('aria-checked', 'false')
     await preferencesDialog.getByRole('button', { name: 'Aplicar preferencias' }).click()
     await expect(page.getByRole('button', { name: /Preferencias del protagonista/ })).toContainText('Solo propias')
-    await page.getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
+    await addStoryCharacter(page, page, character.name)
     await page.getByRole('button', { name: `Editar ${character.name}` }).click()
     const characterDialog = page.getByRole('dialog', { name: `Editar ${character.name}` })
     await characterDialog.locator(`#story-character-name-${character.id}`).fill(storyCharacterName)
@@ -189,7 +196,7 @@ test.describe('historias', () => {
 
     await page.goto('/stories/new')
     await page.getByLabel('Planteamiento').fill('Historia con nombre fijado al crearla.')
-    await page.getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
+    await addStoryCharacter(page, page, character.name)
     await page.getByRole('button', { name: 'Empezar historia' }).click()
 
     await page.waitForURL((url) => /^\/stories\/(?!new$)[^/]+$/.test(url.pathname))
@@ -218,12 +225,25 @@ test.describe('historias', () => {
     const background = await data.createBackground({ tags: [data.unique('responsive-fondo')] })
 
     await page.goto('/stories/new')
-    await page.getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
+    await expect(page.getByText(character.name, { exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Añadir personaje' }).click()
+    const characterPicker = page.getByRole('dialog', { name: 'Añadir personaje' })
+    const pickerCard = characterPicker.getByTestId('story-character-picker-card')
+      .filter({ hasText: character.name })
+    await expect(pickerCard).toBeVisible()
+    await expect(pickerCard.getByRole('button', { name: 'Archivar' })).toHaveCount(0)
+    await expect(pickerCard.getByRole('button', { name: 'Copiar' })).toHaveCount(0)
+    await expect(pickerCard.getByRole('button', { name: 'Exportar' })).toHaveCount(0)
+    await expect(pickerCard.getByRole('button', { name: 'Borrar' })).toHaveCount(0)
+    await pickerCard.getByRole('button', { name: `Imagen siguiente de ${character.name}` }).click()
+    await expect(pickerCard.getByTestId('character-image-carousel')).toHaveAttribute('data-active-index', '1')
+    await pickerCard.getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
     await expect(page.locator('form > div > section').last().getByRole('heading', {
       name: 'Personajes de la historia'
     })).toBeVisible()
 
-    const desktopImage = page.getByRole('button', { name: `Ampliar ${character.name}` })
+    const selectedCard = page.getByTestId('selected-story-character')
+    const desktopImage = selectedCard.getByRole('button', { name: `Ampliar ${character.name}` }).first()
     const desktopImageSize = await desktopImage.evaluate((element) => {
       const bounds = element.getBoundingClientRect()
       return { width: bounds.width, height: bounds.height }
@@ -235,13 +255,20 @@ test.describe('historias', () => {
       await page.setViewportSize({ width, height: 800 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
 
-      const characterImage = page.getByRole('button', { name: `Ampliar ${character.name}` })
+      const characterImage = selectedCard.getByRole('button', { name: `Ampliar ${character.name}` }).first()
       const imageSize = await characterImage.evaluate((element) => {
         const bounds = element.getBoundingClientRect()
         return { width: bounds.width, height: bounds.height }
       })
       expect(imageSize.width).toBeGreaterThanOrEqual(80)
       expect(imageSize.height).toBeGreaterThanOrEqual(80)
+      await expect(selectedCard.getByLabel(new RegExp(`^Etiquetas de ${character.name}:`))).toBeHidden()
+      await selectedCard.locator(`[aria-label="Imágenes de ${character.name}"]`).evaluate((element) => {
+        element.scrollLeft = element.clientWidth
+        element.dispatchEvent(new Event('scroll'))
+      })
+      await expect(selectedCard.getByTestId('character-image-carousel'))
+        .toHaveAttribute('data-active-index', '1')
       await characterImage.click()
       await expect(page.getByRole('dialog', { name: character.name })).toBeVisible()
       await page.keyboard.press('Escape')
@@ -375,7 +402,7 @@ test.describe('historias', () => {
     await page.goto(`/stories/${story.id}`)
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     const form = page.getByRole('heading', { name: 'Ajustes de la historia' }).locator('..')
-    await form.getByRole('button', { name: `Añadir ${added.name} al elenco` }).click()
+    await addStoryCharacter(page, form, added.name)
     await form.getByRole('button', { name: `Editar ${added.name}` }).click()
     const characterDialog = page.getByRole('dialog', { name: `Editar ${added.name}` })
     await expect(characterDialog.locator(`#story-settings-character-prompt-${added.id}`)).toHaveValue(
@@ -414,7 +441,7 @@ test.describe('historias', () => {
     await characterDialog.locator(`#story-settings-character-prompt-${remembered.id}`).fill(rememberedPrompt)
     await characterDialog.getByRole('button', { name: 'Guardar personaje' }).click()
     await form.getByRole('button', { name: `Quitar ${remembered.name} del elenco` }).click()
-    await expect(form.getByText('Personalización guardada', { exact: true })).toBeVisible()
+    await expect(form.getByText(remembered.name, { exact: true })).toHaveCount(0)
     await form.getByRole('button', { name: 'Guardar' }).click()
 
     let stored = await data.get<Story>('stories', story.id)
@@ -431,10 +458,12 @@ test.describe('historias', () => {
     await page.reload()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     form = page.getByRole('dialog', { name: 'Ajustes de la historia' })
-    const rememberedCard = form.locator('article').filter({ hasText: remembered.name })
+    await form.getByRole('button', { name: 'Añadir personaje' }).click()
+    let characterPicker = page.getByRole('dialog', { name: 'Añadir personaje' })
+    const rememberedCard = characterPicker.locator('article').filter({ hasText: remembered.name })
     await expect(rememberedCard.getByText('Archivado', { exact: true })).toBeVisible()
     await rememberedCard.getByRole('button', { name: `Añadir ${remembered.name} al elenco` }).click()
-    await rememberedCard.getByRole('button', { name: `Editar ${remembered.name}` }).click()
+    await form.getByRole('button', { name: `Editar ${remembered.name}` }).click()
     characterDialog = page.getByRole('dialog', { name: `Editar ${remembered.name}` })
     await expect(characterDialog.locator(`#story-settings-character-prompt-${remembered.id}`)).toHaveValue(rememberedPrompt)
     await characterDialog.getByRole('button', { name: 'Cancelar' }).click()
@@ -445,10 +474,13 @@ test.describe('historias', () => {
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     form = page.getByRole('dialog', { name: 'Ajustes de la historia' })
     await form.getByRole('button', { name: `Quitar ${remembered.name} del elenco` }).click()
-    await form.getByRole('button', { name: `Olvidar personalización de ${remembered.name}` }).click()
+    await form.getByRole('button', { name: 'Añadir personaje' }).click()
+    characterPicker = page.getByRole('dialog', { name: 'Añadir personaje' })
+    await characterPicker.getByRole('button', { name: `Olvidar personalización de ${remembered.name}` }).click()
     await page.getByRole('alertdialog', { name: 'Olvidar personalización' })
       .getByRole('button', { name: 'Olvidar' }).click()
-    await expect(form.getByText(remembered.name, { exact: true })).toHaveCount(0)
+    await expect(characterPicker.getByText(remembered.name, { exact: true })).toHaveCount(0)
+    await characterPicker.getByRole('button', { name: 'Cerrar galería de personajes' }).click()
     await form.getByRole('button', { name: 'Guardar' }).click()
 
     stored = await data.get<Story>('stories', story.id)
@@ -484,10 +516,12 @@ test.describe('historias', () => {
     expect(updateResponse.ok()).toBe(true)
 
     await page.goto(`/stories/new?copyFrom=${source.id}`)
-    const archivedCard = page.locator('article').filter({ hasText: archived.name })
+    await page.getByRole('button', { name: 'Añadir personaje' }).click()
+    const characterPicker = page.getByRole('dialog', { name: 'Añadir personaje' })
+    const archivedCard = characterPicker.locator('article').filter({ hasText: archived.name })
     await expect(archivedCard.getByText('Archivado', { exact: true })).toBeVisible()
     await archivedCard.getByRole('button', { name: `Añadir ${archived.name} al elenco` }).click()
-    await archivedCard.getByRole('button', { name: `Editar ${archived.name}` }).click()
+    await page.getByRole('button', { name: `Editar ${archived.name}` }).click()
     const characterDialog = page.getByRole('dialog', { name: `Editar ${archived.name}` })
     await expect(characterDialog.locator(`#story-character-prompt-${archived.id}`)).toHaveValue(rememberedPrompt)
     await characterDialog.getByRole('button', { name: 'Cancelar' }).click()

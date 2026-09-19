@@ -91,14 +91,6 @@ async function setArchived(id: string, archived: boolean) {
   await characters.setArchived(id, archived)
 }
 
-function galleryItems(characterId: string) {
-  const characterName = characters.byId(characterId)?.name ?? 'Personaje'
-  return characters.imagesFor(characterId).map((image) => ({
-    src: characters.urlFor(image.id)!,
-    alt: characterName
-  }))
-}
-
 async function exportCharacter(id: string) {
   const character = characters.byId(id)
   if (!character || exportingId.value) return
@@ -237,113 +229,97 @@ function cancelImport() {
       {{ showArchived ? 'No hay personajes archivados.' : 'Aún no hay personajes.' }}
     </p>
 
-    <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       <li
         v-for="character in visibleCharacters"
         :key="character.id"
-        class="character-card card flex h-full flex-col"
+        class="character-card card grid min-w-0 gap-3 p-4"
       >
-        <div class="flex items-start gap-3">
-          <ImageLightbox
-            v-if="characters.urlFor(characters.defaultImage(character.id)?.id)"
-            :src="characters.urlFor(characters.defaultImage(character.id)?.id)!"
-            alt=""
-            container-class="h-24 w-24 shrink-0"
-            image-class="h-24 w-24 rounded-xl bg-black/5 object-contain"
-            :gallery-items="galleryItems(character.id)"
+        <header class="flex min-w-0 items-center gap-2">
+          <NuxtLink
+            :to="`/characters/${character.id}`"
+            class="flex min-w-0 flex-1 items-center gap-2 font-semibold hover:text-brand-600"
+          >
+            <span
+              class="inline-block h-3 w-3 shrink-0 rounded-full"
+              :style="{ backgroundColor: characters.colorOf(character.id) }"
+            />
+            <span class="truncate">{{ character.name }}</span>
+          </NuxtLink>
+          <CharacterTagsTooltip :tags="character.tags ?? []" :label="character.name" />
+        </header>
+
+        <div class="flex min-w-0 gap-2">
+          <CharacterImageCarousel
+            :character-id="character.id"
+            :alt="character.name"
+            class="h-72 min-w-0 flex-1 sm:h-80"
           />
-          <div v-else class="h-24 w-24 shrink-0 rounded-xl bg-brand-500/20" />
-          <div class="min-w-0 flex-1">
+          <div class="character-actions flex w-10 shrink-0 flex-col gap-2">
             <NuxtLink
-              :to="`/characters/${character.id}`"
-              class="flex items-center gap-2 truncate font-semibold hover:text-brand-600"
+              :to="{ path: '/characters/new', query: { copyFrom: character.id } }"
+              class="character-action btn-ghost h-10 w-10 px-0"
+              aria-label="Copiar"
+              title="Copiar"
             >
-              <span
-                class="inline-block h-3 w-3 shrink-0 rounded-full"
-                :style="{ backgroundColor: characters.colorOf(character.id) }"
-              />
-              <span class="truncate">{{ character.name }}</span>
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="11" height="11" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
             </NuxtLink>
-            <p class="mt-2 text-xs text-[var(--color-fg-muted)]">
-              {{ characters.imagesFor(character.id).length }} imágenes
-            </p>
-            <p v-if="character.readOnly" class="mt-1 text-xs font-semibold text-brand-600">
-              Demo compartido · solo lectura
-            </p>
+            <button
+              v-if="!character.readOnly"
+              type="button"
+              class="character-action btn-ghost h-10 w-10 px-0"
+              :aria-label="character.archived ? 'Desarchivar' : 'Archivar'"
+              :title="character.archived ? 'Desarchivar' : 'Archivar'"
+              @click="setArchived(character.id, !character.archived)"
+            >
+              <svg v-if="character.archived" aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7h16v13H4zM3 3h18v4H3zM12 16v-5m0 0-3 3m3-3 3 3" />
+              </svg>
+              <svg v-else aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
+              </svg>
+            </button>
+            <button
+              v-if="!character.readOnly"
+              type="button"
+              class="character-action btn-ghost h-10 w-10 px-0"
+              aria-label="Exportar"
+              title="Exportar"
+              :disabled="Boolean(exportingId)"
+              @click="exportCharacter(character.id)"
+            >
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
+                <path d="M5 21h14" />
+              </svg>
+            </button>
+            <button
+              v-if="!character.readOnly"
+              type="button"
+              class="character-action btn-danger h-10 w-10 px-0"
+              aria-label="Borrar"
+              title="Borrar"
+              @click="remove(character.id)"
+            >
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18m-4 0v-2H7v2m2 5v6m6-6v6M5 6l1 15h12l1-15" />
+              </svg>
+            </button>
           </div>
         </div>
-        <p
-          class="mt-3 line-clamp-3 text-sm text-[var(--color-fg-muted)]"
-          :title="character.prompt"
-        >
-          {{ character.prompt }}
-        </p>
-        <div v-if="character.tags?.length" class="mt-2 flex flex-wrap gap-1">
-          <span
-            v-for="tag in character.tags"
-            :key="tag"
-            class="inline-flex max-w-full truncate rounded-full bg-brand-500/15 px-2 py-0.5 text-xs"
-          >
-            {{ tag }}
-          </span>
-        </div>
-        <div class="character-actions mt-auto flex flex-nowrap gap-2 pt-3">
-          <NuxtLink
-            :to="{ path: '/characters/new', query: { copyFrom: character.id } }"
-            class="character-action btn-ghost inline-flex items-center gap-1.5"
-            aria-label="Copiar"
-            title="Copiar"
-          >
-            <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="9" y="9" width="11" height="11" rx="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-            <span class="character-action-label">Copiar</span>
-          </NuxtLink>
-          <button
-            v-if="!character.readOnly"
-            type="button"
-            class="character-action btn-ghost inline-flex shrink-0 items-center gap-1.5 px-2"
-            :aria-label="character.archived ? 'Desarchivar' : 'Archivar'"
-            :title="character.archived ? 'Desarchivar' : 'Archivar'"
-            @click="setArchived(character.id, !character.archived)"
-          >
-            <svg v-if="character.archived" aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M4 7h16v13H4zM3 3h18v4H3zM12 16v-5m0 0-3 3m3-3 3 3" />
-            </svg>
-            <svg v-else aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
-            </svg>
-          </button>
-          <button
-            v-if="!character.readOnly"
-            type="button"
-            class="character-action btn-ghost inline-flex items-center gap-1.5"
-            aria-label="Exportar"
-            title="Exportar"
-            :disabled="Boolean(exportingId)"
-            @click="exportCharacter(character.id)"
-          >
-            <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
-              <path d="M5 21h14" />
-            </svg>
-            <span class="character-action-label">
-              {{ exportingId === character.id ? 'Exportando…' : 'Exportar' }}
-            </span>
-          </button>
-          <button
-            v-if="!character.readOnly"
-            type="button"
-            class="character-action btn-danger inline-flex shrink-0 items-center gap-1.5 px-2"
-            aria-label="Borrar"
-            title="Borrar"
-            @click="remove(character.id)"
-          >
-            <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 6h18m-4 0v-2H7v2m2 5v6m6-6v6M5 6l1 15h12l1-15" />
-            </svg>
-          </button>
+        <div class="min-w-0">
+          <p class="text-xs text-[var(--color-fg-muted)]">
+            {{ characters.imagesFor(character.id).length }} imágenes
+          </p>
+          <p v-if="character.readOnly" class="mt-1 text-xs font-semibold text-brand-600">
+            Demo compartido · solo lectura
+          </p>
+          <p class="mt-2 line-clamp-3 text-sm text-[var(--color-fg-muted)]" :title="character.prompt">
+            {{ character.prompt }}
+          </p>
         </div>
       </li>
     </ul>
@@ -362,22 +338,5 @@ function cancelImport() {
 <style scoped>
 .character-card {
   container-type: inline-size;
-}
-
-@container (max-width: 360px) {
-  .character-actions {
-    gap: 0.25rem;
-  }
-
-  .character-action {
-    width: 2.5rem;
-    flex: none;
-    justify-content: center;
-    padding-inline: 0;
-  }
-
-  .character-action-label {
-    display: none;
-  }
 }
 </style>

@@ -76,7 +76,9 @@ test.describe('modo demo', () => {
 
     await page.getByRole('link', { name: 'Historias', exact: true }).click()
     await page.getByRole('link', { name: 'Nueva historia', exact: true }).click()
-    await page.getByRole('button', { name: `Añadir ${visible.name} al elenco` }).click()
+    await page.getByRole('button', { name: 'Añadir personaje' }).click()
+    await page.getByRole('dialog', { name: 'Añadir personaje' })
+      .getByRole('button', { name: `Añadir ${visible.name} al elenco` }).click()
     await page.getByRole('button', { name: `Editar ${visible.name}` }).click()
     const characterDialog = page.getByRole('dialog', { name: `Editar ${visible.name}` })
     await expect(characterDialog.getByRole('button', {

@@ -261,7 +261,28 @@ test.describe('personajes', () => {
   })
 
   test('mantiene visibles las acciones a 320 y 390 px sin overflow', async ({ page, data }) => {
-    const character = await data.createCharacter()
+    const characterTag = data.unique('etiqueta-galería')
+    const character = await data.createCharacter({ tags: [characterTag] })
+    await data.createImage(character, ['primera'])
+    await data.createImage(character, ['segunda'])
+
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/characters')
+    const desktopCard = page.locator('li').filter({ hasText: character.name })
+    const carousel = desktopCard.getByTestId('character-image-carousel')
+    const desktopBounds = await carousel.evaluate((element) => element.getBoundingClientRect())
+    expect(desktopBounds.height).toBeGreaterThanOrEqual(300)
+    await desktopCard.getByRole('button', { name: `Imagen siguiente de ${character.name}` }).click()
+    await expect(carousel).toHaveAttribute('data-active-index', '1')
+    const tagsButton = desktopCard.getByLabel(`Etiquetas de ${character.name}: ${characterTag}`)
+    await tagsButton.hover()
+    await expect(desktopCard.getByRole('tooltip')).toContainText(characterTag)
+    const desktopLayout = await desktopCard.evaluate((element) => {
+      const image = element.querySelector('[data-testid="character-image-carousel"]')!.getBoundingClientRect()
+      const actions = element.querySelector('.character-actions')!.getBoundingClientRect()
+      return { actionsRightOfImage: actions.left >= image.right - 1 }
+    })
+    expect(desktopLayout.actionsRightOfImage).toBe(true)
 
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 700 })
@@ -277,6 +298,7 @@ test.describe('personajes', () => {
         scrollWidth: element.scrollWidth
       }))
       expect(actionSize.scrollWidth).toBeLessThanOrEqual(actionSize.clientWidth)
+      await expect(card.getByLabel(`Etiquetas de ${character.name}: ${characterTag}`)).toBeHidden()
       expect(await page.evaluate(() => document.documentElement.scrollWidth))
         .toBeLessThanOrEqual(width)
     }
