@@ -43,6 +43,7 @@ const accessError = ref<string | null>(null)
 
 const settingsSections = [
   { id: 'apariencia', label: 'Apariencia' },
+  { id: 'protagonista', label: 'Protagonista' },
   { id: 'usuarios', label: 'Usuarios' },
   { id: 'llm', label: 'LLM' },
   { id: 'prompt-narrativo', label: 'Prompt narrativo' },
@@ -50,7 +51,6 @@ const settingsSections = [
   { id: 'swarmui', label: 'SwarmUI' },
   { id: 'prompts-swarmui', label: 'Prompts SwarmUI' },
   { id: 'actualizaciones', label: 'Actualizaciones' },
-  { id: 'protagonista', label: 'Protagonista' },
   { id: 'datos', label: 'Datos' }
 ] as const
 type SettingsSectionId = typeof settingsSections[number]['id']
@@ -1028,6 +1028,61 @@ onBeforeRouteLeave(async () => {
     </section>
 
     <section
+      id="protagonista"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'protagonista' }"
+    >
+      <h2>Protagonista</h2>
+      <p>
+        <template v-if="privacy.isPrivate">
+          Nombre y preferencias exclusivos del modo privado. El color sigue compartido.
+        </template>
+        <template v-else>Nombre, color y preferencias con los que apareces en todas las historias.</template>
+      </p>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="label" for="userName">{{ privacy.isPrivate ? 'Nombre privado' : 'Nombre' }}</label>
+          <input
+            id="userName"
+            v-model="form.userName"
+            autocomplete="off"
+            class="field"
+            placeholder="Protagonista"
+            @input="markPrivateUserNameDirty"
+          >
+        </div>
+        <div>
+          <label class="label" for="userColor">Color</label>
+          <div class="flex items-center gap-3">
+            <input
+            id="userColor"
+            v-model="form.userColor"
+            type="color"
+            autocomplete="off"
+            class="h-9 w-14 cursor-pointer rounded border border-[var(--color-border-soft)] bg-transparent"
+            >
+            <span class="text-sm font-semibold" :style="{ color: form.userColor }">
+              {{ form.userName || 'Protagonista' }}
+            </span>
+          </div>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="label" for="protagonistPreferences">
+            {{ privacy.isPrivate ? 'Preferencias globales privadas' : 'Preferencias globales' }}
+          </label>
+          <textarea
+            id="protagonistPreferences"
+            v-model="form.protagonistPreferences"
+            autocomplete="off"
+            class="field min-h-28"
+            placeholder="Personalidad, límites, objetivos o forma de actuar del protagonista."
+            @input="markPrivateProtagonistPreferencesDirty"
+          />
+        </div>
+      </div>
+    </section>
+
+    <section
       id="usuarios"
       class="settings-panel"
       :class="{ 'settings-panel-active': activeSectionId === 'usuarios' }"
@@ -1625,61 +1680,6 @@ onBeforeRouteLeave(async () => {
               Descargar actualizador
             </a>
           </div>
-        </div>
-      </div>
-    </section>
-
-    <section
-      id="protagonista"
-      class="settings-panel"
-      :class="{ 'settings-panel-active': activeSectionId === 'protagonista' }"
-    >
-      <h2>Protagonista</h2>
-      <p>
-        <template v-if="privacy.isPrivate">
-          Nombre y preferencias exclusivos del modo privado. El color sigue compartido.
-        </template>
-        <template v-else>Nombre, color y preferencias con los que apareces en todas las historias.</template>
-      </p>
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label class="label" for="userName">{{ privacy.isPrivate ? 'Nombre privado' : 'Nombre' }}</label>
-          <input
-            id="userName"
-            v-model="form.userName"
-            autocomplete="off"
-            class="field"
-            placeholder="Protagonista"
-            @input="markPrivateUserNameDirty"
-          >
-        </div>
-        <div>
-          <label class="label" for="userColor">Color</label>
-          <div class="flex items-center gap-3">
-            <input
-            id="userColor"
-            v-model="form.userColor"
-            type="color"
-            autocomplete="off"
-            class="h-9 w-14 cursor-pointer rounded border border-[var(--color-border-soft)] bg-transparent"
-            >
-            <span class="text-sm font-semibold" :style="{ color: form.userColor }">
-              {{ form.userName || 'Protagonista' }}
-            </span>
-          </div>
-        </div>
-        <div class="sm:col-span-2">
-          <label class="label" for="protagonistPreferences">
-            {{ privacy.isPrivate ? 'Preferencias globales privadas' : 'Preferencias globales' }}
-          </label>
-          <textarea
-            id="protagonistPreferences"
-            v-model="form.protagonistPreferences"
-            autocomplete="off"
-            class="field min-h-28"
-            placeholder="Personalidad, límites, objetivos o forma de actuar del protagonista."
-            @input="markPrivateProtagonistPreferencesDirty"
-          />
         </div>
       </div>
     </section>

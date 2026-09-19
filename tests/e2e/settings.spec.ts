@@ -102,6 +102,7 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
     links.map(link => link.getAttribute('data-settings-section'))
   )).toEqual([
     'apariencia',
+    'protagonista',
     'usuarios',
     'llm',
     'prompt-narrativo',
@@ -109,7 +110,20 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
     'swarmui',
     'prompts-swarmui',
     'actualizaciones',
+    'datos'
+  ])
+  expect(await page.locator('.settings-page > section').evaluateAll(sections =>
+    sections.map(section => section.id)
+  )).toEqual([
+    'apariencia',
     'protagonista',
+    'usuarios',
+    'llm',
+    'prompt-narrativo',
+    'prompt-referencia-personaje',
+    'swarmui',
+    'prompts-swarmui',
+    'actualizaciones',
     'datos'
   ])
   await expect(nav.getByRole('link', { name: 'Apariencia' }))
