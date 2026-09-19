@@ -50,7 +50,7 @@ import {
   importImageGenerationSeed
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 23
+const EXPORT_VERSION = 24
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_SOUND_BYTES = 10 * 1024 * 1024
 
@@ -84,6 +84,7 @@ interface ExportedBackground {
   id: string
   tags?: string[]
   tag?: string
+  style?: string
   description: string
   visibleInDemo?: boolean
   dataUrl: string
@@ -113,6 +114,7 @@ interface ExportedStory {
   contextSummary?: string
   contextSummaryThroughMessageId?: string
   initialBackgroundId?: string | null
+  backgroundStyle?: string | null
   messages: Array<Pick<Message, 'id' | 'role' | 'raw' | 'segments' | 'generationMode' | 'swarmError' | 'createdAt'>>
   saves?: StorySaveSlot[]
 }
@@ -249,6 +251,7 @@ export async function exportBundle(
       contextSummary: story.contextSummary ?? '',
       contextSummaryThroughMessageId: story.contextSummaryThroughMessageId,
       initialBackgroundId: story.initialBackgroundId ?? null,
+      backgroundStyle: story.backgroundStyle ?? null,
       messages: exportMessages(messages),
       saves: saves.map((save) => ({
         ...save,
@@ -273,6 +276,7 @@ export async function exportBundle(
       backgrounds.map(async (background) => ({
         id: background.id,
         tags: background.tags,
+        style: background.style ?? '',
         description: background.description,
         visibleInDemo: background.visibleInDemo,
         dataUrl: await blobToDataUrl(background.blob)
@@ -304,7 +308,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (bundle.swarmPrompts !== undefined && (!Array.isArray(bundle.swarmPrompts) || bundle.swarmPrompts.some((item) =>
@@ -410,6 +414,7 @@ export async function importBundle(raw: string) {
     const background: StoredBackground = {
       id: newId(),
       tags: uniqueTags,
+      style: String(item.style ?? '').trim(),
       description: String(item.description ?? ''),
       mimeType: blob.type || 'image/webp',
       visibleInDemo: item.visibleInDemo === true,
@@ -537,6 +542,7 @@ export async function importBundle(raw: string) {
       initialBackgroundId: item.initialBackgroundId
         ? (backgroundIdMap.get(String(item.initialBackgroundId)) ?? null)
         : null,
+      backgroundStyle: String(item.backgroundStyle ?? '').trim() || null,
       imageCatalogSnapshot: buildStoryImageCatalog(
         storyCharacterIds,
         importedCharacters,
@@ -650,6 +656,7 @@ export async function importBundle(raw: string) {
         initialBackgroundId: save.story.initialBackgroundId
           ? (backgroundIdMap.get(String(save.story.initialBackgroundId)) ?? null)
           : null,
+        backgroundStyle: String(save.story.backgroundStyle ?? '').trim() || null,
         imageCatalogSnapshot: buildStoryImageCatalog(
           savedCharacterIds,
           importedCharacters,

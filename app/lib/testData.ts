@@ -201,6 +201,7 @@ async function seedNormalData() {
     {
       id: TEST_DATA_IDS.backgroundForest,
       tags: ['bosque', 'exterior'],
+      style: 'Realista',
       description: 'Bosque verde al amanecer.',
       mimeType: 'image/svg+xml',
       createdAt: TEST_TIME + 30,
@@ -209,6 +210,7 @@ async function seedNormalData() {
     {
       id: TEST_DATA_IDS.backgroundTavern,
       tags: ['taberna', 'interior'],
+      style: 'Realista',
       description: 'Taberna cálida iluminada por velas.',
       mimeType: 'image/svg+xml',
       createdAt: TEST_TIME + 31,

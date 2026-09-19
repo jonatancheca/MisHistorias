@@ -687,9 +687,9 @@ test.describe('personajes', () => {
     const bundle = JSON.parse(await readFile(jsonPath!, 'utf8')) as {
       version: number
       characters: Array<{ id: string; name: string; images: Array<{ dataUrl: string; originalDataUrl: string }> }>
-      stories: unknown[]; backgrounds: unknown[]; presets: unknown[]
+      stories: unknown[]; backgrounds: unknown[]; presets: unknown[]; sounds: unknown[]
     }
-    expect(bundle.version).toBe(23)
+    expect(bundle.version).toBe(24)
     const exportedCharacter = bundle.characters.find((item) => item.id === source.id)!
     expect(Buffer.from(exportedCharacter.images[0]!.dataUrl.split(',')[1]!, 'base64')).toEqual(croppedBytes)
     expect(Buffer.from(exportedCharacter.images[0]!.originalDataUrl.split(',')[1]!, 'base64')).toEqual(PNG_BYTES)
@@ -698,6 +698,8 @@ test.describe('personajes', () => {
     bundle.stories = []
     bundle.backgrounds = []
     bundle.presets = []
+    bundle.sounds = []
+    bundle.version = 23
     await page.locator('input[type="file"][accept="application/json"]').setInputFiles({
       name: 'original.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bundle))
     })
@@ -836,11 +838,14 @@ test.describe('fondos', () => {
     const extraTag = data.unique('exterior')
     const description = data.unique('Bosque-nocturno')
     const updatedDescription = data.unique('Bosque-actualizado')
+    const style = data.unique('Manga')
+    const updatedStyle = data.unique('Dibujo')
 
     await page.goto('/backgrounds')
-    await page.getByLabel('Etiquetas').fill(tag)
-    await page.getByLabel('Etiquetas').press('Enter')
+    await page.getByLabel('Etiquetas', { exact: true }).fill(tag)
+    await page.getByLabel('Etiquetas', { exact: true }).press('Enter')
     await page.getByLabel('Descripción').fill(description)
+    await page.getByLabel('Estilo', { exact: true }).fill(style)
     await page.locator('input[type="file"]').setInputFiles({
       name: 'fondo.png',
       mimeType: 'image/png',
@@ -864,6 +869,7 @@ test.describe('fondos', () => {
 
     const card = page.locator('li').filter({ hasText: tag })
     await expect(card).toBeVisible()
+    await expect(card.getByLabel('Estilo del fondo')).toHaveValue(style)
     await card.getByLabel('Etiquetas del fondo').fill(extraTag)
     await card.getByLabel('Etiquetas del fondo').press('Enter')
     await expect.poll(async () => (await data.list<Background>('backgrounds')).find(
@@ -871,14 +877,20 @@ test.describe('fondos', () => {
     )?.tags).toContain(extraTag)
     await card.getByLabel('Descripción del fondo').fill(updatedDescription)
     await card.getByLabel('Descripción del fondo').press('Tab')
+    await card.getByLabel('Estilo del fondo').fill(updatedStyle)
+    await card.getByLabel('Estilo del fondo').press('Tab')
 
     await expect.poll(async () => (await data.list<Background>('backgrounds')).find(
       (background) => background.tags.includes(tag)
     )?.description).toBe(updatedDescription)
+    await expect.poll(async () => (await data.list<Background>('backgrounds')).find(
+      (background) => background.tags.includes(tag)
+    )?.style).toBe(updatedStyle)
     const stored = (await data.list<Background>('backgrounds')).find(
       (background) => background.tags.includes(tag)
     )
     expect(stored).toMatchObject({ tags: [tag, extraTag], description: updatedDescription })
+    expect(stored?.style).toBe(updatedStyle)
   })
 
   test('rechaza etiqueta duplicada y confirma borrado', async ({ page, data }) => {

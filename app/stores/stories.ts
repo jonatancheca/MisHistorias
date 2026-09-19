@@ -68,6 +68,7 @@ import {
   type CharacterImageJob
 } from '~/lib/storyImageGeneration'
 import { storyCustomizationIds } from '~/lib/storyCharacterCustomizations'
+import { matchesBackgroundStyle, normalizeBackgroundStyle } from '~/lib/backgroundStyles'
 
 function normalizeCharacterCustomizations(
   characterIds: string[],
@@ -493,6 +494,7 @@ export const useStoriesStore = defineStore('stories', () => {
     characterIds: string[]
     characterCustomizations: StoryCharacterCustomization[]
     initialBackgroundId: string | null
+    backgroundStyle: string | null
   }) {
     const charactersStore = useCharactersStore()
     await charactersStore.load()
@@ -514,6 +516,7 @@ export const useStoriesStore = defineStore('stories', () => {
         input.characterCustomizations
       ),
       initialBackgroundId: input.initialBackgroundId,
+      backgroundStyle: normalizeBackgroundStyle(input.backgroundStyle) || null,
       imageCatalogSnapshot: buildStoryImageCatalog(
         input.characterIds,
         charactersStore.characters,
@@ -697,6 +700,11 @@ export const useStoriesStore = defineStore('stories', () => {
     const storyCharacters = activeStory.value
       ? storyCharactersWithCustomNames(activeStory.value, characters.characters)
       : []
+    const storyBackgrounds = activeStory.value
+      ? backgrounds.backgrounds.filter((background) =>
+          matchesBackgroundStyle(background, activeStory.value?.backgroundStyle)
+        )
+      : backgrounds.backgrounds
     const updated: Message = {
       ...current,
       raw,
@@ -705,7 +713,7 @@ export const useStoriesStore = defineStore('stories', () => {
           ? parseSegments(
               raw,
               storyCharacters,
-              backgrounds.backgrounds,
+              storyBackgrounds,
               settings.activeUserName,
               characters.images,
               current.id,
@@ -954,6 +962,7 @@ export const useStoriesStore = defineStore('stories', () => {
     characterIds: string[],
     characterCustomizations: StoryCharacterCustomization[],
     initialBackgroundId: string | null,
+    backgroundStyle: string | null,
     visibleInDemo?: boolean
   ) {
     if (!activeStory.value || !title.trim() || !premise.trim() || !characterIds.length) return
@@ -975,6 +984,7 @@ export const useStoriesStore = defineStore('stories', () => {
         characterCustomizations
       ),
       initialBackgroundId,
+      backgroundStyle: normalizeBackgroundStyle(backgroundStyle) || null,
       pendingImageInstructions: (activeStory.value.pendingImageInstructions ?? [])
         .filter((instruction) => characterIds.includes(instruction.characterId)),
       updatedAt: Date.now()
@@ -1289,12 +1299,15 @@ export const useStoriesStore = defineStore('stories', () => {
       )
     )
     if (story.initialBackgroundId) referencedBackgroundIds.add(story.initialBackgroundId)
+    const matchingBackgrounds = backgroundsStore.backgrounds.filter((background) =>
+      matchesBackgroundStyle(background, story.backgroundStyle)
+    )
     const storyBackgrounds = privacy.isDemo
-      ? backgroundsStore.backgrounds.filter(
+      ? matchingBackgrounds.filter(
           (background) =>
             background.visibleInDemo || referencedBackgroundIds.has(background.id)
         )
-      : backgroundsStore.backgrounds
+      : matchingBackgrounds
     const pendingForRequest = options.consumePendingImageInstructions
       ? validPendingImageInstructions(story, charactersStore.images)
       : []

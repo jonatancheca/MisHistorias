@@ -74,6 +74,64 @@ async function focusVisualKeyboard(page: Page) {
 }
 
 test.describe('historias', () => {
+  test('selecciona un estilo y limita fondos visibles y enviados al LLM', async ({ page, data }) => {
+    const character = await data.createCharacter()
+    const manga = await data.createBackground({ tags: [data.unique('manga')], style: 'Manga' })
+    const realistic = await data.createBackground({ tags: [data.unique('realista')], style: 'Realista' })
+    const unclassified = await data.createBackground({ tags: [data.unique('sin-estilo')] })
+    await data.patchSettings({
+      mockMode: false,
+      model: 'test-model',
+      useChromeLlm: false,
+      privateUseChromeLlm: null,
+      responseSpeed: 'instant'
+    })
+    let requestMessages: Array<{ role: string; content: string }> = []
+    await page.route('**/api/llm/chat', async (route) => {
+      requestMessages = route.request().postDataJSON().messages
+      await route.fulfill({
+        json: { content: `Fondo [${manga.tags[0]}]:\nLa escena continúa.`, finishReason: 'stop' }
+      })
+    })
+
+    await page.goto('/stories/new')
+    await page.getByLabel('Título').fill(data.unique('Historia-estilo'))
+    await page.getByLabel('Planteamiento').fill('Una aventura con dirección artística coherente.')
+    await addStoryCharacter(page, page, character.name)
+    await page.getByLabel('Estilo de fondos').selectOption({ label: 'Manga' })
+    await page.getByRole('button', { name: 'Seleccionar fondo inicial' }).click()
+    const picker = page.getByRole('dialog', { name: 'Seleccionar fondo inicial' })
+    await expect(picker.getByRole('button', { name: `Elegir fondo ${manga.tags[0]}` })).toBeVisible()
+    await expect(picker.getByRole('button', { name: `Elegir fondo ${realistic.tags[0]}` })).toHaveCount(0)
+    await expect(picker.getByRole('button', { name: `Elegir fondo ${unclassified.tags[0]}` })).toHaveCount(0)
+    await picker.getByRole('button', { name: `Elegir fondo ${manga.tags[0]}` }).click()
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 800 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    }
+
+    await page.getByRole('button', { name: 'Empezar historia' }).click()
+    await expect(page).not.toHaveURL(/\/stories\/new$/)
+    await expect(page).toHaveURL(/\/stories\/[^/]+$/)
+    const storyId = new URL(page.url()).pathname.split('/').pop()!
+    expect(await data.get<Story>('stories', storyId)).toMatchObject({
+      backgroundStyle: 'Manga',
+      initialBackgroundId: manga.id
+    })
+
+    await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Comienza.')
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+    await expect.poll(async () => (
+      await data.list<Message>('messages', 'normal', { storyId })
+    ).some((message) => message.role === 'assistant')).toBe(true)
+
+    const systemContent = requestMessages[0]?.content ?? ''
+    expect(systemContent).toContain(`[${manga.tags[0]}]`)
+    expect(systemContent).not.toContain(`[${realistic.tags[0]}]`)
+    expect(systemContent).not.toContain(`[${unclassified.tags[0]}]`)
+  })
+
   test('crea historia con configuración propia y la edita', async ({ page, data }) => {
     const character = await data.createCharacter()
     await data.patchSettings({ protagonistPreferences: 'Preferencia global de prueba.' })
@@ -780,7 +838,7 @@ test.describe('historias', () => {
       version: number
       stories: Array<{ title: string; saves?: StorySaveSlot[] }>
     }
-    expect(bundle.version).toBe(23)
+    expect(bundle.version).toBe(24)
     expect(bundle.stories.find((item) => item.title === story.title)?.saves).toHaveLength(1)
   })
 

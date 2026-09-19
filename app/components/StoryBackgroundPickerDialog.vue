@@ -70,6 +70,9 @@ useDialogEscape(
               <img :src="backgrounds.urlFor(background.id)!" alt="" class="h-16 w-24 shrink-0 rounded-lg object-contain">
               <span class="min-w-0">
                 <span class="block truncate font-medium">{{ primaryTag(background) }}</span>
+                <span v-if="background.style" class="block truncate text-xs font-medium text-brand-600">
+                  {{ background.style }}
+                </span>
                 <span class="line-clamp-2 block text-xs text-[var(--color-fg-muted)]">
                   {{ background.description || 'Sin descripción' }}
                 </span>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { StoredBackground } from '~/lib/db'
+import { availableBackgroundStyles } from '~/lib/backgroundStyles'
 import { primaryTag } from '~/lib/tags'
 
 const backgrounds = useBackgroundsStore()
@@ -10,6 +11,7 @@ const privacy = usePrivacyStore()
 await Promise.all([backgrounds.load(), sounds.load()])
 
 const tags = ref<string[]>([])
+const style = ref('')
 const description = ref('')
 const pendingFile = ref<File | null>(null)
 const busy = ref(false)
@@ -22,6 +24,7 @@ const visibleBackgrounds = computed(() =>
     ? backgrounds.backgrounds.filter((background) => background.visibleInDemo)
     : backgrounds.backgrounds
 )
+const styleSuggestions = computed(() => availableBackgroundStyles(backgrounds.backgrounds))
 
 async function reload() {
   if (refreshing.value) return
@@ -49,8 +52,9 @@ async function processFile(file: Blob) {
   busy.value = true
   error.value = null
   try {
-    await backgrounds.addBackground(file, tags.value, description.value)
+    await backgrounds.addBackground(file, tags.value, description.value, style.value)
     tags.value = []
+    style.value = ''
     description.value = ''
   } catch (caught) {
     error.value = (caught as Error).message || 'No se pudo procesar el fondo.'
@@ -61,7 +65,7 @@ async function processFile(file: Blob) {
 
 async function update(
   id: string,
-  patch: Partial<Pick<StoredBackground, 'tags' | 'description'>>
+  patch: Partial<Pick<StoredBackground, 'tags' | 'style' | 'description'>>
 ) {
   error.value = null
   try {
@@ -116,10 +120,21 @@ async function copyBackground(id: string) {
       {{ refreshError }}
     </p>
 
-    <section class="card mb-6 grid gap-3 sm:grid-cols-[1fr_2fr_14rem] sm:items-end">
+    <section class="card mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_2fr_14rem] xl:items-end">
       <div>
         <label class="label" for="background-tags">Etiquetas</label>
         <TagInput id="background-tags" v-model="tags" placeholder="taberna" />
+      </div>
+      <div>
+        <label class="label" for="background-style">Estilo</label>
+        <input
+          id="background-style"
+          v-model="style"
+          list="background-style-suggestions"
+          autocomplete="off"
+          class="field"
+          placeholder="Realista, manga, dibujo…"
+        >
       </div>
       <div>
         <label class="label" for="background-description">Descripción</label>
@@ -139,7 +154,10 @@ async function copyBackground(id: string) {
         @select="selectFile"
         @error="error = $event"
       />
-      <p v-if="error" class="text-sm text-red-500 sm:col-span-3" role="alert">{{ error }}</p>
+      <datalist id="background-style-suggestions">
+        <option v-for="item in styleSuggestions" :key="item" :value="item" />
+      </datalist>
+      <p v-if="error" class="text-sm text-red-500 sm:col-span-2 xl:col-span-4" role="alert">{{ error }}</p>
     </section>
 
     <p v-if="visibleBackgrounds.length === 0" class="empty-state card py-10 text-sm text-[var(--color-fg-muted)]">
@@ -183,6 +201,18 @@ async function copyBackground(id: string) {
               placeholder="neutral"
               @update:model-value="update(background.id, { tags: $event })"
             />
+            <input
+              class="field"
+              :value="background.style ?? ''"
+              :list="`background-style-suggestions-${background.id}`"
+              autocomplete="off"
+              aria-label="Estilo del fondo"
+              placeholder="Sin estilo"
+              @change="update(background.id, { style: ($event.target as HTMLInputElement).value })"
+            >
+            <datalist :id="`background-style-suggestions-${background.id}`">
+              <option v-for="item in styleSuggestions" :key="item" :value="item" />
+            </datalist>
             <input
               class="field"
               :value="background.description"

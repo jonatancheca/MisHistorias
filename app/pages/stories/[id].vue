@@ -87,6 +87,7 @@ const autoGenerateImages = ref(false)
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
 const storyInitialBackgroundId = ref<string | null>(null)
+const storyBackgroundStyle = ref<string | null>(null)
 const storyVisibleInDemo = ref(false)
 
 useDialogEscape(
@@ -411,6 +412,7 @@ function openStoryPreferences() {
   storyPreferences.value = stories.activeStory.protagonistPreferences ?? ''
   storyPreferencesMode.value = stories.activeStory.protagonistPreferencesMode ?? 'append'
   storyInitialBackgroundId.value = stories.activeStory.initialBackgroundId ?? null
+  storyBackgroundStyle.value = stories.activeStory.backgroundStyle ?? null
   storyVisibleInDemo.value = stories.activeStory.visibleInDemo
   storyCharacterIds.value = [...stories.activeStory.characterIds]
   storyCharacterCustomizations.value = (stories.activeStory.characterCustomizations ?? [])
@@ -430,6 +432,7 @@ async function saveStoryPreferences() {
     storyCharacterIds.value,
     storyCharacterCustomizations.value.map((item) => ({ ...item, tags: [...item.tags] })),
     storyInitialBackgroundId.value,
+    storyBackgroundStyle.value,
     storyVisibleInDemo.value
   )
   storyPreferencesOpen.value = false
@@ -1532,6 +1535,7 @@ onBeforeRouteLeave(() => {
             v-model:character-ids="storyCharacterIds"
             v-model:character-customizations="storyCharacterCustomizations"
             v-model:initial-background-id="storyInitialBackgroundId"
+            v-model:background-style="storyBackgroundStyle"
             v-model:visible-in-demo="storyVisibleInDemo"
             id-prefix="story-settings-character"
             title-required

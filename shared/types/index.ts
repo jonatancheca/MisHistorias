@@ -75,6 +75,8 @@ export interface Background {
   id: string
   /** Etiquetas únicas que el modelo usa en `Fondo [etiqueta]:` */
   tags: string[]
+  /** Estilo visual inventado por el usuario; vacío indica que no está clasificado. */
+  style?: string
   description: string
   mimeType: string
   /** Permite mostrar el fondo en el catálogo del modo demo. */
@@ -135,6 +137,8 @@ export interface Story {
   characterCustomizations: StoryCharacterCustomization[]
   /** Fondo inicial; null permite que el modelo decida */
   initialBackgroundId: string | null
+  /** Limita el catálogo de fondos de la historia a un único estilo; null no filtra. */
+  backgroundStyle?: string | null
   /** Permite que el modelo solicite imágenes nuevas durante la historia. */
   autoGenerateImages?: boolean
   /** Legacy field ignored after narrative preset retirement. */

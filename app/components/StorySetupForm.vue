@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import type { StoryCharacterCustomization } from '#shared/types'
+import {
+  availableBackgroundStyles,
+  matchesBackgroundStyle,
+  normalizeBackgroundStyle
+} from '~/lib/backgroundStyles'
 import { DEFAULT_CHARACTER_COLOR, normalizeColor } from '~/lib/colors'
 import { primaryTag } from '~/lib/tags'
 
@@ -21,6 +26,7 @@ const protagonistPreferencesMode = defineModel<'append' | 'replace'>('protagonis
 const characterIds = defineModel<string[]>('characterIds', { required: true })
 const characterCustomizations = defineModel<StoryCharacterCustomization[]>('characterCustomizations', { required: true })
 const initialBackgroundId = defineModel<string | null>('initialBackgroundId', { required: true })
+const backgroundStyle = defineModel<string | null>('backgroundStyle', { required: true })
 const visibleInDemo = defineModel<boolean>('visibleInDemo', { default: false })
 
 const characters = useCharactersStore()
@@ -54,11 +60,21 @@ const pickerCharacters = computed(() => selectableCharacters.value
     archived: Boolean(character.archived),
     customized: Boolean(customizationFor(character.id))
   })))
+const backgroundStyles = computed(() => availableBackgroundStyles(
+  backgrounds.backgrounds.filter((background) => !background.readOnly)
+))
 const selectableBackgroundIds = computed(() => backgrounds.backgrounds
-  .filter((background) => !background.readOnly && (!privacy.isDemo || background.visibleInDemo))
+  .filter((background) =>
+    !background.readOnly &&
+    (!privacy.isDemo || background.visibleInDemo) &&
+    matchesBackgroundStyle(background, backgroundStyle.value)
+  )
   .map((background) => background.id)
 )
-const selectedBackground = computed(() => backgrounds.byId(initialBackgroundId.value))
+const selectedBackground = computed(() => {
+  const background = backgrounds.byId(initialBackgroundId.value)
+  return background && matchesBackgroundStyle(background, backgroundStyle.value) ? background : null
+})
 const editingCustomization = computed(() =>
   editingCharacterId.value ? customizationsById.value.get(editingCharacterId.value) ?? null : null
 )
@@ -139,6 +155,11 @@ async function forgetCustomization(characterId: string) {
 function selectBackground(backgroundId: string | null) {
   initialBackgroundId.value = backgroundId
   backgroundPickerOpen.value = false
+}
+
+function selectBackgroundStyle(value: string) {
+  backgroundStyle.value = normalizeBackgroundStyle(value) || null
+  if (!selectedBackground.value) initialBackgroundId.value = null
 }
 
 function savePreferences(value: { preferences: string; mode: 'append' | 'replace' }) {
@@ -244,7 +265,7 @@ watch(characterIds, (ids) => {
       </label>
     </section>
 
-    <section class="grid gap-3 rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-4 sm:grid-cols-2 sm:p-5">
+    <section class="grid gap-3 rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3">
       <button
         type="button"
         class="rounded-xl border border-[var(--color-border-soft)] p-4 text-left transition hover:border-brand-400"
@@ -254,6 +275,22 @@ watch(characterIds, (ids) => {
         <span class="mt-1 block font-semibold">{{ preferencesSummary }}</span>
         <span class="mt-1 block text-xs text-[var(--color-fg-muted)]">Pulsa para configurarlas.</span>
       </button>
+
+      <label class="rounded-xl border border-[var(--color-border-soft)] p-4">
+        <span class="block text-xs font-medium uppercase tracking-wide text-[var(--color-fg-muted)]">Estilo de fondos</span>
+        <select
+          class="field mt-2"
+          aria-label="Estilo de fondos"
+          :value="backgroundStyle ?? ''"
+          @change="selectBackgroundStyle(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="">Todos los estilos</option>
+          <option v-for="item in backgroundStyles" :key="item" :value="item">{{ item }}</option>
+        </select>
+        <span class="mt-1 block text-xs text-[var(--color-fg-muted)]">
+          Solo estos fondos estarán disponibles para la historia y el LLM.
+        </span>
+      </label>
 
       <button
         type="button"
@@ -272,7 +309,7 @@ watch(characterIds, (ids) => {
           <span class="block text-xs font-medium uppercase tracking-wide text-[var(--color-fg-muted)]">Fondo inicial</span>
           <span class="mt-1 block truncate font-semibold">{{ selectedBackground ? primaryTag(selectedBackground) : 'Que decida el LLM' }}</span>
           <span class="mt-1 line-clamp-1 block text-xs text-[var(--color-fg-muted)]">
-            {{ selectedBackground?.description || (selectedBackground ? 'Sin descripción' : 'Pulsa para elegir un fondo.') }}
+            {{ selectedBackground?.description || (selectedBackground ? 'Sin descripción' : (selectableBackgroundIds.length ? 'Pulsa para elegir un fondo.' : 'No hay fondos de este estilo.')) }}
           </span>
         </span>
       </button>

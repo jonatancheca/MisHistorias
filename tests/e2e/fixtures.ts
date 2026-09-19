@@ -78,6 +78,7 @@ interface PresetInput {
 
 interface BackgroundInput {
   tags?: string[]
+  style?: string
   description?: string
   visibleInDemo?: boolean
   scope?: DataScope
@@ -94,6 +95,7 @@ interface StoryInput {
   protagonistPreferencesMode?: 'append' | 'replace'
   characters: Character[]
   background?: Background | null
+  backgroundStyle?: string | null
   preset?: PromptPreset | null
   scope?: DataScope
 }
@@ -217,6 +219,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
         const background: Background = {
           id: unique('background'),
           tags: input.tags ?? [unique('fondo')],
+          style: input.style ?? '',
           description: input.description ?? 'Fondo creado exclusivamente para esta prueba.',
           mimeType: 'image/png',
           visibleInDemo: input.visibleInDemo ?? false,
@@ -272,6 +275,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
             tags: [...character.tags]
           })),
           initialBackgroundId: input.background?.id ?? null,
+          backgroundStyle: input.backgroundStyle ?? null,
           presetId: input.preset?.id ?? null,
           imageCatalogSnapshot: [],
           pendingImageInstructions: [],

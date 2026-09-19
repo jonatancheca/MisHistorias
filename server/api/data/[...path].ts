@@ -121,6 +121,8 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasStringArray(value, 'characterIds') &&
         hasCharacterCustomizations(value) &&
         (value.initialBackgroundId === null || typeof value.initialBackgroundId === 'string') &&
+        (value.backgroundStyle === undefined || value.backgroundStyle === null ||
+          (typeof value.backgroundStyle === 'string' && value.backgroundStyle.length <= 100)) &&
         (value.presetId === undefined || value.presetId === null || typeof value.presetId === 'string') &&
         (value.imageCatalogSnapshot === undefined || Array.isArray(value.imageCatalogSnapshot)) &&
         (value.contextSummary === undefined || typeof value.contextSummary === 'string') &&
@@ -192,6 +194,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
     case 'backgrounds':
       valid =
         hasStringArray(value, 'tags') &&
+        (value.style === undefined || (typeof value.style === 'string' && value.style.length <= 100)) &&
         hasString(value, 'description') &&
         hasString(value, 'mimeType') &&
         String(value.mimeType).startsWith('image/') &&

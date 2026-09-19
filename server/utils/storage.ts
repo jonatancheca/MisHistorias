@@ -99,7 +99,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 35
+const SCHEMA_VERSION = 36
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 const OWNED_TABLES = [
@@ -307,6 +307,7 @@ function rowToBackground(row: SqliteRow) {
   return {
     id: row.id,
     tags: parseJson<string[]>(row.tags_json, []),
+    style: text(row.style),
     description: text(row.description),
     mimeType: text(row.mime_type, 'application/octet-stream'),
     visibleInDemo: integer(row.visible_in_demo) === 1,
@@ -355,6 +356,9 @@ function rowToStory(row: SqliteRow) {
     characterCustomizations: parseJson<Story['characterCustomizations']>(row.character_customizations_json, []),
     initialBackgroundId:
       typeof row.initial_background_id === 'string' ? row.initial_background_id : null,
+    backgroundStyle: typeof row.background_style === 'string' && row.background_style
+      ? row.background_style
+      : null,
     presetId: typeof row.preset_id === 'string' ? row.preset_id : null,
     imageCatalogSnapshot:
       row.image_catalog_snapshot_json === null
@@ -804,6 +808,7 @@ export class MisHistoriasStorage {
           owner_id TEXT,
           id TEXT NOT NULL,
           tags_json TEXT NOT NULL,
+          style TEXT NOT NULL DEFAULT '',
           description TEXT NOT NULL,
           mime_type TEXT NOT NULL,
           visible_in_demo INTEGER NOT NULL DEFAULT 0 CHECK (visible_in_demo IN (0, 1)),
@@ -849,6 +854,7 @@ export class MisHistoriasStorage {
           character_ids_json TEXT NOT NULL,
           character_customizations_json TEXT NOT NULL,
           initial_background_id TEXT,
+          background_style TEXT,
           preset_id TEXT,
           image_catalog_snapshot_json TEXT,
           pending_image_instructions_json TEXT NOT NULL DEFAULT '[]',
@@ -1431,6 +1437,21 @@ export class MisHistoriasStorage {
         `)
       }
 
+      if (version.user_version < 36) {
+        const backgroundColumns = this.database
+          .prepare('PRAGMA table_info(backgrounds)')
+          .all() as Array<{ name: string }>
+        if (!backgroundColumns.some((item) => item.name === 'style')) {
+          this.database.exec("ALTER TABLE backgrounds ADD COLUMN style TEXT NOT NULL DEFAULT ''")
+        }
+        const storyColumns = this.database
+          .prepare('PRAGMA table_info(stories)')
+          .all() as Array<{ name: string }>
+        if (!storyColumns.some((item) => item.name === 'background_style')) {
+          this.database.exec('ALTER TABLE stories ADD COLUMN background_style TEXT')
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -1734,7 +1755,7 @@ export class MisHistoriasStorage {
       case 'backgrounds': {
         const filter = this.accessFilter(resource, 'backgrounds', access)
         return (this.database.prepare(
-          `SELECT scope, owner_id, id, tags_json, description, mime_type, visible_in_demo, created_at FROM backgrounds WHERE scope = ?${filter.sql} ORDER BY created_at`
+          `SELECT scope, owner_id, id, tags_json, style, description, mime_type, visible_in_demo, created_at FROM backgrounds WHERE scope = ?${filter.sql} ORDER BY created_at`
         ).all(scope, ...filter.args) as SqliteRow[])
           .map((row) => this.withReadOnly(rowToBackground(row), row, access))
       }
@@ -1992,6 +2013,7 @@ export class MisHistoriasStorage {
       metadata: {
         id,
         tags: copiedTags,
+        style: source.style,
         description: source.description,
         mimeType: source.mimeType,
         visibleInDemo: false,
@@ -2206,10 +2228,10 @@ export class MisHistoriasStorage {
             INSERT INTO stories(
               scope, owner_id, id, title, premise, visual_mode, auto_generate_images, archived, visible_in_demo, protagonist_preferences,
               protagonist_preferences_mode, character_ids_json, character_customizations_json,
-              initial_background_id, preset_id, image_catalog_snapshot_json,
+              initial_background_id, background_style, preset_id, image_catalog_snapshot_json,
               pending_image_instructions_json, context_summary,
               context_summary_through_message_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
@@ -2222,6 +2244,7 @@ export class MisHistoriasStorage {
               character_ids_json = excluded.character_ids_json,
               character_customizations_json = excluded.character_customizations_json,
               initial_background_id = excluded.initial_background_id,
+              background_style = excluded.background_style,
               preset_id = excluded.preset_id,
               image_catalog_snapshot_json = excluded.image_catalog_snapshot_json,
               pending_image_instructions_json = excluded.pending_image_instructions_json,
@@ -2245,6 +2268,7 @@ export class MisHistoriasStorage {
             json(stringArray(value.characterIds)),
             json(value.characterCustomizations),
             typeof value.initialBackgroundId === 'string' ? value.initialBackgroundId : null,
+            text(value.backgroundStyle).trim() || null,
             typeof value.presetId === 'string' ? value.presetId : null,
             value.imageCatalogSnapshot === undefined ? null : json(value.imageCatalogSnapshot),
             json(Array.isArray(value.pendingImageInstructions) ? value.pendingImageInstructions : []),
@@ -2480,10 +2504,11 @@ export class MisHistoriasStorage {
       }
       this.database
         .prepare(`
-          INSERT INTO backgrounds(scope, owner_id, id, tags_json, description, mime_type, visible_in_demo, created_at, data)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO backgrounds(scope, owner_id, id, tags_json, style, description, mime_type, visible_in_demo, created_at, data)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(scope, id) DO UPDATE SET
             tags_json = excluded.tags_json,
+            style = excluded.style,
             description = excluded.description,
             mime_type = excluded.mime_type,
             visible_in_demo = excluded.visible_in_demo,
@@ -2495,6 +2520,7 @@ export class MisHistoriasStorage {
           ownerId,
           id,
           json(preparedTags),
+          text(value.style).trim(),
           text(value.description),
           text(value.mimeType, 'application/octet-stream'),
           bool(value.visibleInDemo),

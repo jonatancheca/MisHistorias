@@ -9,6 +9,7 @@ import {
   type StoredBackground
 } from '~/lib/db'
 import { normalizeImage } from '~/lib/images'
+import { normalizeBackgroundStyle } from '~/lib/backgroundStyles'
 import { hasTag, nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 
 export const useBackgroundsStore = defineStore('backgrounds', () => {
@@ -94,12 +95,13 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     return prepared
   }
 
-  async function addBackground(file: Blob, tags: string[], description: string) {
+  async function addBackground(file: Blob, tags: string[], description: string, style = '') {
     const preparedTags = prepareTags(tags)
     const { blob, mimeType } = await normalizeImage(file)
     const background: StoredBackground = {
       id: newId(),
       tags: preparedTags,
+      style: normalizeBackgroundStyle(style),
       description: description.trim(),
       mimeType,
       visibleInDemo: usePrivacyStore().isDemo,
@@ -114,7 +116,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
 
   async function updateBackground(
     id: string,
-    patch: Partial<Pick<StoredBackground, 'tags' | 'description' | 'visibleInDemo'>>
+    patch: Partial<Pick<StoredBackground, 'tags' | 'style' | 'description' | 'visibleInDemo'>>
   ) {
     const current = byId(id)
     if (!current) return null
@@ -123,6 +125,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
       ...current,
       ...patch,
       tags,
+      style: normalizeBackgroundStyle(patch.style ?? current.style),
       description: (patch.description ?? current.description).trim()
     }
     await putBackground(updated)

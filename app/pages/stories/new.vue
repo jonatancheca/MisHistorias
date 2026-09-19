@@ -67,6 +67,7 @@ const initialBackgroundId = ref<string | null>(
     ? copiedStory.initialBackgroundId
     : null
 )
+const backgroundStyle = ref<string | null>(copiedStory?.backgroundStyle ?? null)
 const saving = ref(false)
 
 const canSubmit = computed(
@@ -89,7 +90,8 @@ async function submit() {
         ...customization,
         tags: [...customization.tags]
       })),
-      initialBackgroundId: initialBackgroundId.value
+      initialBackgroundId: initialBackgroundId.value,
+      backgroundStyle: backgroundStyle.value
     })
     await navigateTo(`/stories/${story.id}`)
   } finally {
@@ -119,6 +121,7 @@ async function submit() {
         v-model:character-ids="selected"
         v-model:character-customizations="characterCustomizations"
         v-model:initial-background-id="initialBackgroundId"
+        v-model:background-style="backgroundStyle"
         id-prefix="story-character"
       />
 
