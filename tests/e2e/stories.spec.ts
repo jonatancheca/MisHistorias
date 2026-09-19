@@ -391,6 +391,35 @@ test.describe('historias', () => {
     }
   })
 
+  test('alinea nueva historia con recargar y ver archivadas', async ({ page }) => {
+    await page.goto('/')
+
+    const actions = page.getByTestId('story-library-actions')
+    const reload = actions.getByRole('button', { name: 'Recargar', exact: true })
+    const archived = actions.getByRole('button', { name: 'Ver archivadas' })
+    const create = actions.getByRole('link', { name: 'Nueva historia' })
+
+    for (const width of [1280, 390, 320]) {
+      await page.setViewportSize({ width, height: 800 })
+      const [reloadBox, archivedBox, createBox] = await Promise.all([
+        reload.boundingBox(),
+        archived.boundingBox(),
+        create.boundingBox()
+      ])
+
+      expect(reloadBox).not.toBeNull()
+      expect(archivedBox).not.toBeNull()
+      expect(createBox).not.toBeNull()
+      expect(Math.abs(createBox!.x - reloadBox!.x)).toBeLessThanOrEqual(1)
+      expect(Math.abs(
+        createBox!.x + createBox!.width - (archivedBox!.x + archivedBox!.width)
+      )).toBeLessThanOrEqual(1)
+      expect(createBox!.y).toBeGreaterThan(reloadBox!.y + reloadBox!.height)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(width)
+    }
+  })
+
   test('añade personajes desde ajustes y conserva su copia independiente', async ({ page, data }) => {
     const { story, character } = await createStoryFixture(data)
     const added = await data.createCharacter({

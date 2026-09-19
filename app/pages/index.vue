@@ -75,8 +75,16 @@ async function reload() {
           </span>
         </div>
       </div>
-      <div class="relative z-10 flex flex-wrap gap-2">
-        <button type="button" class="btn-ghost" :disabled="refreshing" @click="reload">
+      <div
+        data-testid="story-library-actions"
+        class="relative z-10 grid w-full grid-cols-2 gap-2 sm:w-max sm:grid-cols-[max-content_max-content]"
+      >
+        <button
+          type="button"
+          class="btn-ghost min-w-0 gap-1.5 px-1.5 text-[0.8125rem] sm:gap-2 sm:px-3.5 sm:text-sm"
+          :disabled="refreshing"
+          @click="reload"
+        >
           <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M20 11a8 8 0 0 0-14.7-4L3 9m0 0V4m0 5h5M4 13a8 8 0 0 0 14.7 4L21 15m0 0v5m0-5h-5" />
           </svg>
@@ -84,7 +92,7 @@ async function reload() {
         </button>
         <button
           type="button"
-          class="btn-ghost"
+          class="btn-ghost min-w-0 gap-1.5 px-1.5 text-[0.8125rem] sm:gap-2 sm:px-3.5 sm:text-sm"
           :aria-pressed="showArchived"
           @click="showArchived = !showArchived"
         >
@@ -93,7 +101,7 @@ async function reload() {
           </svg>
           {{ showArchived ? 'Ver activas' : 'Ver archivadas' }}
         </button>
-        <NuxtLink to="/stories/new" class="btn-primary">
+        <NuxtLink to="/stories/new" class="btn-primary col-span-2">
           <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25">
             <path d="M12 5v14M5 12h14" />
           </svg>
