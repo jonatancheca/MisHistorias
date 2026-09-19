@@ -80,6 +80,42 @@ test('oculta funciones sin URL y permite configurar sin valor por defecto', asyn
   expect(await response.text()).toContain('Falta la URL de SwarmUI')
 })
 
+test('desplaza a los metadatos de IA al abrirlos en mobile', async ({ page, data }) => {
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  const character = await data.createCharacter()
+  await page.route('**/api/swarm/catalog', (route) => route.fulfill({ json: CATALOG }))
+  await page.route('**/api/swarm/generate', (route) => route.fulfill({
+    contentType: 'image/png',
+    body: PNG_BYTES
+  }))
+
+  await page.goto(`/characters/${character.id}`)
+  await page.getByTestId('character-swarm-toggle').click()
+  await page.getByLabel('Modelo SwarmUI').selectOption('model-a')
+  await page.getByLabel('Prompt de imagen (inglés y editable)').fill('Mobile metadata test portrait.')
+  await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
+  await expect(page.getByText('Imagen generada y guardada en la galería.')).toBeVisible()
+
+  const main = page.locator('main')
+  const metadataToggle = page.getByRole('button', { name: 'Mostrar metadatos de IA' })
+  const metadata = page.getByTestId('image-generation-metadata')
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 480 })
+    await metadataToggle.evaluate((element) => element.scrollIntoView({ behavior: 'auto', block: 'end' }))
+    const scrollTopBefore = await main.evaluate((element) => element.scrollTop)
+
+    await metadataToggle.click()
+
+    await expect(metadataToggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(metadata).toBeInViewport()
+    await expect.poll(() => main.evaluate((element) => element.scrollTop)).toBeGreaterThan(scrollTopBefore)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+
+    await metadataToggle.click()
+    await expect(metadata).toHaveCount(0)
+  }
+})
+
 test('recarga personajes y prompts editados en otra pestaña', async ({ page, data }) => {
   await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
   const character = await data.createCharacter({ name: data.unique('Personaje-original') })

@@ -85,6 +85,21 @@ const galleryItems = computed(() => {
   }))
 })
 const metadataOpenId = ref<string | null>(null)
+function generationMetadataId(imageId: string) {
+  return `character-image-generation-metadata-${imageId}`
+}
+
+async function toggleGenerationMetadata(imageId: string) {
+  const opening = metadataOpenId.value !== imageId
+  metadataOpenId.value = opening ? imageId : null
+  if (!opening || !window.matchMedia('(max-width: 639px)').matches) return
+
+  await nextTick()
+  document.getElementById(generationMetadataId(imageId))?.scrollIntoView({
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    block: 'start'
+  })
+}
 const imageTagSuggestions = computed(() =>
   characters.images
     .filter((image) => !privacy.isDemo || characters.byId(image.characterId)?.visibleInDemo)
@@ -704,11 +719,14 @@ function removeFromLightbox(item: { id?: string }) {
             type="button"
             class="absolute bottom-2 left-2 rounded-full bg-brand-600 px-2.5 py-1 text-xs font-bold text-white shadow"
             aria-label="Mostrar metadatos de IA"
-            @click.stop="metadataOpenId = metadataOpenId === image.id ? null : image.id"
+            :aria-controls="generationMetadataId(image.id)"
+            :aria-expanded="metadataOpenId === image.id"
+            @click.stop="toggleGenerationMetadata(image.id)"
           >IA</button>
         </div>
         <ImageGenerationMetadataPanel
           v-if="image.generation && metadataOpenId === image.id"
+          :id="generationMetadataId(image.id)"
           :generation="image.generation"
         />
         <div class="min-w-0 flex-1 space-y-2">
