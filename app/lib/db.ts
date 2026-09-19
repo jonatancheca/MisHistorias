@@ -243,8 +243,11 @@ export async function copyBackground(sourceId: string) {
   })
 }
 
-export async function putBackground(background: StoredBackground) {
-  await putBinary('backgrounds', background)
+export async function putBackground(
+  background: StoredBackground,
+  scope: DataScope = activeDataScope.value
+) {
+  await putBinary('backgrounds', background, scope)
   return background
 }
 

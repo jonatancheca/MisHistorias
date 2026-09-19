@@ -31,7 +31,7 @@ test.describe('modo demo', () => {
     await expect(page).toHaveURL('/characters')
 
     await page.goto('/settings')
-    await page.getByLabel('Nombre', { exact: true }).focus()
+    await page.getByPlaceholder('Protagonista', { exact: true }).focus()
     await page.keyboard.press('Control+Alt+d')
     await expect(page.locator('html')).not.toHaveClass(/demo-scope/)
 
@@ -71,8 +71,9 @@ test.describe('modo demo', () => {
 
     await expect(page.getByRole('button', { name: visibleCharacterTag, exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: hiddenCharacterTag, exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: visibleImageTag, exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: hiddenImageTag, exact: true })).toHaveCount(0)
+    const imageTags = page.getByTestId('character-image-tags')
+    await expect(imageTags.getByText(visibleImageTag, { exact: true })).toBeVisible()
+    await expect(imageTags.getByText(hiddenImageTag, { exact: true })).toHaveCount(0)
 
     await page.getByRole('link', { name: 'Historias', exact: true }).click()
     await page.getByRole('link', { name: 'Nueva historia', exact: true }).click()

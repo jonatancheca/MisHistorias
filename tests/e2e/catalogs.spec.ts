@@ -781,8 +781,9 @@ test.describe('personajes', () => {
     await data.createImage(privateCharacter, [privateTag], 'private')
 
     await page.goto(`/characters/${publicCharacter.id}`)
-    await expect(page.getByRole('button', { name: publicTag, exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: privateTag, exact: true })).toHaveCount(0)
+    const imageTags = page.getByTestId('character-image-tags')
+    await expect(imageTags.getByText(publicTag, { exact: true })).toBeVisible()
+    await expect(imageTags.getByText(privateTag, { exact: true })).toHaveCount(0)
 
     await page.goto('/settings')
     const privateTrigger = page.getByRole('button', { name: 'Activar modo privado', exact: true })
@@ -793,16 +794,16 @@ test.describe('personajes', () => {
     await expect(page.getByRole('button', { name: 'Salir del modo privado', exact: true })).toHaveCount(0)
     await page.getByRole('link', { name: 'Personajes', exact: true }).click()
     await page.getByRole('link', { name: privateCharacter.name, exact: true }).click()
-    await expect(page.getByRole('button', { name: privateTag, exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: publicTag, exact: true })).toHaveCount(0)
+    await expect(imageTags.getByText(privateTag, { exact: true })).toBeVisible()
+    await expect(imageTags.getByText(publicTag, { exact: true })).toHaveCount(0)
 
     await page.getByRole('link', { name: 'Ajustes', exact: true }).click()
     await page.locator('main').press('Control+Alt+p')
     await expect(page).toHaveURL('/settings')
     await page.getByRole('link', { name: 'Personajes', exact: true }).click()
     await page.getByRole('link', { name: publicCharacter.name, exact: true }).click()
-    await expect(page.getByRole('button', { name: publicTag, exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: privateTag, exact: true })).toHaveCount(0)
+    await expect(imageTags.getByText(publicTag, { exact: true })).toBeVisible()
+    await expect(imageTags.getByText(privateTag, { exact: true })).toHaveCount(0)
   })
 })
 
@@ -815,7 +816,7 @@ test.describe('fondos', () => {
 
     await page.goto('/backgrounds')
     await page.getByLabel('Etiquetas').fill(draftTag)
-    await page.getByLabel('Descripción').fill(draftDescription)
+    await page.getByLabel('Descripción', { exact: true }).fill(draftDescription)
 
     const external = await data.createBackground({ tags: [externalTag] })
     await data.createSound(null, [soundTag], 'normal', external)
@@ -844,9 +845,9 @@ test.describe('fondos', () => {
     await page.goto('/backgrounds')
     await page.getByLabel('Etiquetas', { exact: true }).fill(tag)
     await page.getByLabel('Etiquetas', { exact: true }).press('Enter')
-    await page.getByLabel('Descripción').fill(description)
+    await page.getByLabel('Descripción', { exact: true }).fill(description)
     await page.getByLabel('Estilo', { exact: true }).fill(style)
-    await page.locator('input[type="file"]').setInputFiles({
+    await page.locator('input[type="file"][accept="image/*"]').setInputFiles({
       name: 'fondo.png',
       mimeType: 'image/png',
       buffer: PNG_BYTES

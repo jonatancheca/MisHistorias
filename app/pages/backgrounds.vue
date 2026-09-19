@@ -208,6 +208,7 @@ async function copyBackground(id: string) {
               autocomplete="off"
               aria-label="Estilo del fondo"
               placeholder="Sin estilo"
+              @input="background.style = ($event.target as HTMLInputElement).value"
               @change="update(background.id, { style: ($event.target as HTMLInputElement).value })"
             >
             <datalist :id="`background-style-suggestions-${background.id}`">

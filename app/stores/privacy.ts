@@ -35,6 +35,7 @@ export const usePrivacyStore = defineStore('privacy', () => {
     const characters = useCharactersStore()
     const backgrounds = useBackgroundsStore()
     const sounds = useSoundsStore()
+    const swarmPrompts = useSwarmPromptsStore()
 
     try {
       await stories.stop()
@@ -48,13 +49,14 @@ export const usePrivacyStore = defineStore('privacy', () => {
         characters.resetForScope()
         backgrounds.resetForScope()
         sounds.resetForScope()
-        useSwarmPromptsStore().resetForScope()
+        swarmPrompts.resetForScope()
 
         await Promise.all([
           stories.load(),
           characters.load(),
           backgrounds.load(),
           sounds.load(),
+          swarmPrompts.load(),
         ])
       }
 

@@ -129,20 +129,20 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
   await expect(nav.getByRole('link', { name: 'Apariencia' }))
     .toHaveAttribute('aria-current', 'location')
 
-  await nav.getByRole('link', { name: 'SwarmUI' }).click()
+  const swarmLink = nav.locator('[data-settings-section="swarmui"]')
+  await swarmLink.click()
   await expect(page).toHaveURL(/\/settings#swarmui$/)
-  await expect(nav.getByRole('link', { name: 'SwarmUI' }))
-    .toHaveAttribute('aria-current', 'location')
+  await expect(swarmLink).toHaveAttribute('aria-current', 'location')
 
-  await nav.getByRole('link', { name: 'Prompts SwarmUI' }).click()
+  const swarmPromptsLink = nav.locator('[data-settings-section="prompts-swarmui"]')
+  await swarmPromptsLink.click()
   await expect(page).toHaveURL(/\/settings#prompts-swarmui$/)
-  await expect(nav.getByRole('link', { name: 'Prompts SwarmUI' }))
-    .toHaveAttribute('aria-current', 'location')
+  await expect(swarmPromptsLink).toHaveAttribute('aria-current', 'location')
 
-  await nav.getByRole('link', { name: 'Datos' }).click()
+  const dataLink = nav.locator('[data-settings-section="datos"]')
+  await dataLink.click()
   await expect(page).toHaveURL(/\/settings#datos$/)
-  await expect(nav.getByRole('link', { name: 'Datos' }))
-    .toHaveAttribute('aria-current', 'location')
+  await expect(dataLink).toHaveAttribute('aria-current', 'location')
 
   await page.goBack()
   await expect(page).toHaveURL(/\/settings#prompts-swarmui$/)
@@ -302,7 +302,7 @@ test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) =>
   await page.getByRole('button', { name: 'Modo oscuro' }).click()
   await page.getByRole('checkbox', { name: /Modo prueba \(sin LLM\)/ }).check()
   await page.getByLabel('Velocidad de escritura').selectOption('instant')
-  await page.getByLabel('Nombre', { exact: true }).fill(userName)
+  await page.getByPlaceholder('Protagonista', { exact: true }).fill(userName)
   await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
 
   const response = await page.request.get('/api/settings')
@@ -320,7 +320,7 @@ test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) =>
 test('alterna modo privado con Ctrl+Alt+P sin cambiar URL ni interrumpir inputs', async ({ page }) => {
   await page.goto('/settings')
 
-  await page.getByLabel('Nombre', { exact: true }).focus()
+  await page.getByPlaceholder('Protagonista', { exact: true }).focus()
   await page.keyboard.press('Control+Alt+p')
   await expect(page.locator('html')).not.toHaveClass(/private-scope/)
 
@@ -532,6 +532,7 @@ test('muestra, crea y restaura backups SQLite con confirmación', async ({ page,
   const existingRow = page.getByRole('listitem').filter({
     has: page.getByText(existing.name, { exact: true })
   })
+  const backupList = page.getByTestId('backup-list')
   await expect(existingRow).toBeVisible()
   await expect(existingRow.getByText('Manual', { exact: true })).toBeVisible()
 
@@ -552,7 +553,7 @@ test('muestra, crea y restaura backups SQLite con confirmación', async ({ page,
   await expect(page.getByRole('alert')).toContainText(
     'no es un backup SQLite válido de Mis Historias'
   )
-  await expect(page.getByRole('listitem')).toHaveCount(1)
+  await expect(backupList.getByRole('listitem')).toHaveCount(1)
 
   await uploadInput.setInputFiles({
     name: existing.name,
@@ -571,7 +572,7 @@ test('muestra, crea y restaura backups SQLite con confirmación', async ({ page,
 
   await page.getByRole('button', { name: 'Crear backup' }).click()
   await expect(page.getByText(/^Backup creado:/)).toBeVisible()
-  await expect(page.getByRole('listitem')).toHaveCount(3)
+  await expect(backupList.getByRole('listitem')).toHaveCount(3)
 
   await existingRow.getByRole('button', { name: 'Restaurar' }).click()
   const dialog = page.getByRole('alertdialog', { name: 'Restaurar backup' })

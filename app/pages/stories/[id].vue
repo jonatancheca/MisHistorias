@@ -1398,8 +1398,8 @@ onBeforeRouteLeave(() => {
         <div
           v-if="stories.waitingForResponse"
           data-testid="thinking-indicator"
-          class="mb-2 flex min-w-0 items-center justify-center gap-3 text-sm text-[var(--color-fg-muted)] sm:-translate-x-8"
-          :class="!stories.activeStory.visualMode ? 'lg:!translate-x-24' : ''"
+          class="mb-2 flex min-w-0 items-center justify-center gap-3 text-sm text-[var(--color-fg-muted)] sm:-translate-x-9"
+          :class="!stories.activeStory.visualMode ? 'lg:!translate-x-[5.75rem]' : ''"
           role="status"
           aria-live="polite"
         >

@@ -158,6 +158,7 @@ test('recarga personajes y prompts editados en otra pestaña', async ({ page, da
   }
   await page.goto('/swarm-prompts')
   await expect(page).toHaveURL(/\/settings#prompts-swarmui$/)
+  const promptSettings = page.getByTestId('swarm-prompt-settings')
   await expect(await page.request.put(`/api/data/swarmPrompts/${prompt.id}?scope=normal`, {
     data: prompt
   })).toBeOK()
@@ -168,8 +169,8 @@ test('recarga personajes y prompts editados en otra pestaña', async ({ page, da
     data: updatedPrompt
   })).toBeOK()
   await page.getByRole('button', { name: 'Recargar', exact: true }).click()
-  await expect(page.getByLabel('Nombre', { exact: true })).toHaveValue(updatedPrompt.name)
-  await expect(page.getByLabel('Prompt', { exact: true })).toHaveValue(updatedPrompt.prompt)
+  await expect(promptSettings.getByLabel('Nombre', { exact: true })).toHaveValue(updatedPrompt.name)
+  await expect(promptSettings.getByLabel('Prompt', { exact: true })).toHaveValue(updatedPrompt.prompt)
 
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 800 })
@@ -187,13 +188,14 @@ test('mantiene catálogo y crea conjunto con semillas compartidas, etiquetas y t
     await route.fulfill({ contentType: 'image/png', body: PNG_BYTES })
   })
   await page.goto('/swarm-prompts')
+  const promptSettings = page.getByTestId('swarm-prompt-settings')
   await expect(page.getByRole('button', { name: 'Guardar', exact: true })).toHaveCount(0)
   for (const [name, prompt, tag] of [['Sentada', ', sitting', 'sentada'], ['De pie', 'standing', 'de pie']]) {
     await page.getByRole('button', { name: 'Nuevo prompt', exact: true }).click()
-    await page.getByLabel('Nombre', { exact: true }).fill(name!)
-    await page.getByLabel('Prompt', { exact: true }).fill(prompt!)
-    await page.getByLabel('Etiquetas de imagen', { exact: true }).fill(tag!)
-    await page.getByLabel('Etiquetas de imagen', { exact: true }).press('Enter')
+    await promptSettings.getByLabel('Nombre', { exact: true }).fill(name!)
+    await promptSettings.getByLabel('Prompt', { exact: true }).fill(prompt!)
+    await promptSettings.getByLabel('Etiquetas de imagen', { exact: true }).fill(tag!)
+    await promptSettings.getByLabel('Etiquetas de imagen', { exact: true }).press('Enter')
     await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
   }
   const prompts = await data.list<SwarmPrompt>('swarmPrompts')
@@ -365,8 +367,9 @@ test('edita y borra prompts sin mezclar catálogo normal y privado', async ({ pa
   await expect(await page.request.put(`/api/data/swarmPrompts/${prompt.id}?scope=normal`, { data: prompt })).toBeOK()
   await expect(await page.request.put(`/api/data/swarmPrompts/${prompt.id}?scope=private`, { data: { ...prompt, name: 'Prompt privado' } })).toBeOK()
   await page.goto('/swarm-prompts')
+  const promptSettings = page.getByTestId('swarm-prompt-settings')
   await page.getByRole('button', { name: 'Prompt normal', exact: true }).click()
-  await page.getByLabel('Nombre', { exact: true }).fill('Normal editado')
+  await promptSettings.getByLabel('Nombre', { exact: true }).fill('Normal editado')
   await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
   await page.goto('/settings')
   const trigger = page.getByRole('button', { name: 'Activar modo privado' })

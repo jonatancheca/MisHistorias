@@ -17,6 +17,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
   const urls = ref<Record<string, string>>({})
   const loaded = ref(false)
   let loadRevision = 0
+  let updateQueue: Promise<void> = Promise.resolve()
 
   function syncUrls() {
     const next: Record<string, string> = {}
@@ -118,6 +119,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     id: string,
     patch: Partial<Pick<StoredBackground, 'tags' | 'style' | 'description' | 'visibleInDemo'>>
   ) {
+    const scope = getActiveDataScope()
     const current = byId(id)
     if (!current) return null
     const tags = patch.tags === undefined ? current.tags : prepareTags(patch.tags, id)
@@ -128,10 +130,18 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
       style: normalizeBackgroundStyle(patch.style ?? current.style),
       description: (patch.description ?? current.description).trim()
     }
-    await putBackground(updated)
     backgrounds.value = backgrounds.value.map((background) =>
       background.id === id ? updated : background
     )
+    const result = updateQueue.then(
+      () => putBackground(updated, scope),
+      () => putBackground(updated, scope)
+    )
+    updateQueue = result.then(
+      () => undefined,
+      () => undefined
+    )
+    await result
     return updated
   }
 

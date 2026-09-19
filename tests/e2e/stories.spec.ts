@@ -380,6 +380,7 @@ test.describe('historias', () => {
     expect(response.ok()).toBe(true)
 
     await page.reload()
+    await page.getByTestId('visual-mode-toggle').click()
     await expect(page.getByTestId('chat-scene-stage').getByText(character.name, { exact: true }))
       .toBeVisible()
     expect((await data.get<Story>('stories', storyId)).characterCustomizations[0]?.name)
@@ -1134,7 +1135,7 @@ test.describe('chat', () => {
 
     await expect(page.getByText('Narración: La historia avanza.', { exact: true })).toBeVisible()
     await expect(page.getByTestId('compacting-indicator')).toContainText(
-      'Compactando la historia'
+      'El Narrador está compactando el historial'
     )
     await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toBeDisabled()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
@@ -1179,6 +1180,7 @@ test.describe('chat', () => {
       mockMode: false,
       model: 'qwen-test',
       responseSpeed: 'instant',
+      historyBudget: 100_000,
       useChromeLlm: false,
       privateUseChromeLlm: null
     })

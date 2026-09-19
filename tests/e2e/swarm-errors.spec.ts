@@ -71,7 +71,7 @@ test('selecciona y persiste el modelo real; diagnóstico único, copiable y tran
   await expect(model.locator('option', { hasText: MODEL })).toHaveCount(1)
   await model.selectOption(MODEL)
   await expect.poll(async () => (await data.get<Character>('characters', character.id)).imageGenerationModel).toBe(MODEL)
-  await page.getByRole('link', { name: 'Histórias', exact: true }).click()
+  await page.getByRole('link', { name: 'Historias', exact: true }).click()
   await page.getByRole('link', { name: story.title, exact: true }).click()
   await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Continúa.')
   await page.getByRole('button', { name: 'Enviar', exact: true }).click()
@@ -203,7 +203,7 @@ for (const action of ['cancel', 'navigate', 'scope'] as const) {
     try {
       if (action === 'cancel') await page.getByTestId('cancel-image-generation').click()
       else {
-        await page.getByRole('link', { name: action === 'scope' ? 'Ajustes' : 'Histórias', exact: true }).click()
+        await page.getByRole('link', { name: action === 'scope' ? 'Ajustes' : 'Historias', exact: true }).click()
         if (action === 'scope') {
           const trigger = page.getByRole('button', { name: 'Activar modo privado' })
           await trigger.click(); await trigger.click(); await trigger.click()
@@ -259,7 +259,7 @@ test('retira diagnóstico si se navega mientras SQLite termina de guardarlo', as
   await page.getByRole('button', { name: 'Enviar', exact: true }).click()
   try {
     await expect.poll(() => saved).toBe(true)
-    await page.getByRole('link', { name: 'Histórias', exact: true }).click()
+    await page.getByRole('link', { name: 'Historias', exact: true }).click()
   } finally { release() }
   await expect.poll(async () => (await data.list<Message>('messages', 'normal', { storyId: story.id })).filter((message) => message.swarmError).length).toBe(0)
 })

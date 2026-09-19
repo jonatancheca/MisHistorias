@@ -216,7 +216,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         class="flex max-h-[calc(100dvh-1rem)] w-full max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl lg:flex-row"
       >
         <div
-          class="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-black/40"
+          class="relative flex min-h-64 min-w-0 flex-1 overflow-hidden bg-black/40 lg:min-h-0"
         >
           <div
             ref="viewport"

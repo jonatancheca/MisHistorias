@@ -2019,7 +2019,7 @@ onBeforeRouteLeave(async () => {
         <p v-else-if="backups.length === 0" class="mt-4 text-sm text-[var(--color-fg-muted)]">
           No hay backups todavía.
         </p>
-        <ul v-else class="mt-4 divide-y divide-[var(--color-border-soft)]">
+        <ul v-else class="mt-4 divide-y divide-[var(--color-border-soft)]" data-testid="backup-list">
           <li
             v-for="backup in backups"
             :key="backup.name"
