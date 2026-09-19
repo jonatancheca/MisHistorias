@@ -2,6 +2,7 @@
 import type { LlmDebugTrace, Message } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
 import { isAiInstruction } from '~/lib/chatInstructions'
+import { stripBracketedText } from '~/lib/storyDisplayText'
 import { primaryTag, tagKey } from '~/lib/tags'
 
 const props = defineProps<{
@@ -32,6 +33,7 @@ const expandedImageTags = ref<Record<string, boolean>>({})
 
 const userName = computed(() => settings.activeUserName)
 const userColor = computed(() => normalizeColor(settings.settings.userColor, DEFAULT_USER_COLOR))
+const visibleUserText = computed(() => stripBracketedText(props.message.raw))
 
 interface FlowRow {
   key: string
@@ -89,7 +91,7 @@ const rows = computed<FlowRow[]>(() => {
         background: true,
         sound: false,
         narration: false,
-        text: segment.text,
+        text: stripBracketedText(segment.text),
         name: 'Fondo',
         color: '',
         tag: primaryTag(background) ?? segment.tag,
@@ -109,7 +111,7 @@ const rows = computed<FlowRow[]>(() => {
         background: false,
         sound: true,
         narration: false,
-        text: segment.text,
+        text: stripBracketedText(segment.text),
         name: 'Sonido',
         color: '',
         tag: sound?.tags[0] ?? segment.tag,
@@ -126,7 +128,7 @@ const rows = computed<FlowRow[]>(() => {
         background: false,
         sound: false,
         narration: false,
-        text: segment.text,
+        text: stripBracketedText(segment.text),
         name: userName.value,
         color: userColor.value,
         tag: null,
@@ -143,7 +145,7 @@ const rows = computed<FlowRow[]>(() => {
         background: false,
         sound: false,
         narration: true,
-        text: segment.text,
+        text: stripBracketedText(segment.text),
         name: '',
         color: '',
         tag: null,
@@ -171,7 +173,7 @@ const rows = computed<FlowRow[]>(() => {
       background: false,
       sound: false,
       narration: false,
-      text: segment.text,
+      text: stripBracketedText(segment.text),
       name: props.characterNames?.[segment.characterId] ?? characters.byId(segment.characterId)?.name ?? 'Personaje',
       color: props.characterColors?.[segment.characterId] ?? characters.colorOf(segment.characterId),
       tag: primaryTag(image) ?? requestedTags[0] ?? null,
@@ -232,7 +234,7 @@ function confirmEdit() {
       <template v-else-if="message.role === 'user'">
         <p class="text-[15px] leading-relaxed">
           <span class="font-semibold" :style="{ color: userColor }">{{ userName }}:</span>
-          <span class="ml-1 whitespace-pre-wrap">{{ message.raw }}</span>
+          <span class="ml-1 whitespace-pre-wrap">{{ visibleUserText }}</span>
         </p>
       </template>
 
@@ -250,11 +252,10 @@ function confirmEdit() {
                 v-else
                 class="rounded-xl border border-dashed border-[var(--color-border-soft)] p-4 text-sm text-[var(--color-fg-muted)]"
               >
-                Fondo [{{ row.tag || 'sin etiqueta' }}] · fondo no disponible
+                Fondo no disponible
               </div>
               <figcaption v-if="row.imageUrl" class="mt-1 text-xs text-[var(--color-fg-muted)]">
-                Fondo<span v-if="row.tag"> · {{ row.tag }}</span>
-                <span v-if="row.text"> · {{ row.text }}</span>
+                Fondo<span v-if="row.text"> · {{ row.text }}</span>
               </figcaption>
             </figure>
             <p
@@ -262,7 +263,7 @@ function confirmEdit() {
               class="rounded-xl border border-[var(--color-border-soft)] p-3"
             >
               <span class="mb-2 block text-xs font-medium text-[var(--color-fg-muted)]">
-                Sonido [{{ row.tag || 'sin etiqueta' }}]
+                Sonido
               </span>
               <audio v-if="row.soundUrl" :src="row.soundUrl" controls preload="metadata" class="w-full" />
               <span v-else class="text-sm text-[var(--color-fg-muted)]">Sonido no disponible</span>

@@ -64,6 +64,39 @@ describe('pasos de novela visual', () => {
     assert.equal(frames[1]?.backgroundId, 'forest')
   })
 
+  it('oculta corchetes sin perder estado visual ni pasos de sonido', () => {
+    const frames = buildVisualNovelFrames([{
+      id: 'user-brackets',
+      storyId: 'story-1',
+      role: 'user',
+      raw: 'Entro [acción privada] ahora.',
+      segments: [],
+      createdAt: 1
+    }, {
+      id: 'assistant-brackets',
+      storyId: 'story-1',
+      role: 'assistant',
+      raw: '',
+      segments: [
+        { type: 'background', characterId: null, backgroundId: 'forest', tag: 'bosque', text: '' },
+        { type: 'narration', characterId: null, tag: null, text: '[acotación]' },
+        { type: 'dialogue', characterId: 'alicia', tag: 'feliz', text: 'Hola [susurra] mundo.' },
+        { type: 'sound', characterId: null, soundId: 'bell', tag: 'campana', text: '[suena lejos]' }
+      ],
+      createdAt: 2
+    }], {
+      initialBackgroundId: null,
+      initialBackgroundTag: null
+    })
+
+    assert.deepEqual(frames.map((frame) => frame.kind), ['user', 'dialogue', 'sound'])
+    assert.deepEqual(frames.map((frame) => frame.text), ['Entro ahora.', 'Hola mundo.', ''])
+    assert.equal(frames[1]?.backgroundId, 'forest')
+    assert.equal(frames[1]?.characterStates[0]?.tag, 'feliz')
+    assert.equal(frames[2]?.soundId, 'bell')
+    assert.equal(frames[2]?.soundTag, 'campana')
+  })
+
   it('omite instrucciones IA y Narrador de los pasos visibles', () => {
     const frames = buildVisualNovelFrames([
       messages[0]!,

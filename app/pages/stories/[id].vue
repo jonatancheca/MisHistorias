@@ -1228,7 +1228,7 @@ onBeforeRouteLeave(() => {
                     @click.stop
                   >
                     <span class="shrink-0 text-xs font-medium text-slate-300">
-                      Sonido [{{ activeVisualFrame.soundTag || 'sin etiqueta' }}]
+                      Sonido
                     </span>
                     <audio
                       v-if="visualSoundUrl"

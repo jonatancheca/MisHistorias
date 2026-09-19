@@ -1,5 +1,6 @@
 import type { Message, MessageSegment } from '#shared/types'
 import { isAiInstruction } from './chatInstructions.ts'
+import { stripBracketedText } from './storyDisplayText.ts'
 
 export interface VisualNovelCharacterState {
   characterId: string
@@ -85,13 +86,14 @@ export function buildVisualNovelFrames(
     if (message.swarmError) continue
     if (message.role === 'user') {
       if (isAiInstruction(message.raw)) continue
-      if (message.raw.trim()) {
+      const visibleText = stripBracketedText(message.raw)
+      if (visibleText) {
         frames.push({
           id: `${message.id}:user`,
           messageId: message.id,
           segmentIndex: null,
           kind: 'user',
-          text: message.raw,
+          text: visibleText,
           backgroundId,
           backgroundTag,
           characterStates: cloneCharacterStates(characterStates)
@@ -114,7 +116,7 @@ export function buildVisualNovelFrames(
           messageId: message.id,
           segmentIndex,
           kind: 'sound',
-          text: segment.text,
+          text: stripBracketedText(segment.text),
           soundId: Object.prototype.hasOwnProperty.call(segment, 'soundId')
             ? (segment.soundId ?? null)
             : (options.resolveSoundId?.(segment.tag) ?? null),
@@ -149,14 +151,15 @@ export function buildVisualNovelFrames(
         (segment.type === 'dialogue' && Boolean(segment.characterId)) ||
         segment.type === 'protagonist-dialogue'
       )
-      if (!segment.text.trim() && !isRecognizedDialogue) return
+      const visibleText = stripBracketedText(segment.text)
+      if (!visibleText && !isRecognizedDialogue) return
 
       frames.push({
         id: `${message.id}:${segmentIndex}`,
         messageId: message.id,
         segmentIndex,
         kind,
-        text: segment.text,
+        text: visibleText,
         backgroundId,
         backgroundTag,
         characterStates: cloneCharacterStates(characterStates)

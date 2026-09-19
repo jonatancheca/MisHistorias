@@ -1719,6 +1719,74 @@ test.describe('chat', () => {
 
 test.describe('novela visual y responsive', () => {
   for (const width of [320, 390]) {
+    test(`oculta anotaciones entre corchetes en chat y novela a ${width}px`, async ({ page, data }) => {
+      const { story, character, image, background } = await createStoryFixture(data, true)
+      const sound = await data.createSound(character, [data.unique('campana-oculta')])
+      const userMessage = await data.createMessage({
+        story,
+        role: 'user',
+        raw: 'Entro [acción privada] ahora.',
+        segments: []
+      })
+      const assistantMessage = await data.createMessage({
+        story,
+        role: 'assistant',
+        raw: `${character.name} [feliz][armadura]: Hola [susurra] mundo.`,
+        segments: [
+          {
+            type: 'background',
+            characterId: null,
+            backgroundId: background.id,
+            tag: background.tags[0]!,
+            text: '[cambio oculto]'
+          },
+          {
+            type: 'dialogue',
+            characterId: character.id,
+            tag: 'feliz',
+            tags: ['feliz', 'armadura'],
+            imageId: image.id,
+            text: 'Hola [susurra] mundo.'
+          },
+          { type: 'narration', characterId: null, tag: null, text: 'El [secreto] final.' },
+          {
+            type: 'sound',
+            characterId: null,
+            soundId: sound.id,
+            tag: sound.tags[0]!,
+            text: '[suena lejos]'
+          }
+        ]
+      })
+
+      await page.setViewportSize({ width, height: 760 })
+      await page.goto(`/stories/${story.id}`)
+      await page.getByTestId('story-start-button').evaluate((button: HTMLButtonElement) => button.click())
+      const frame = page.getByTestId('visual-novel-frame')
+      await expect(frame).toContainText('Entro ahora.')
+      await page.getByTestId('visual-novel-next').evaluate((button: HTMLButtonElement) => button.click())
+      await expect(frame).toContainText('Hola mundo.')
+      await page.getByTestId('visual-novel-next').evaluate((button: HTMLButtonElement) => button.click())
+      await expect(frame).toContainText('El final.')
+      await page.getByTestId('visual-novel-next').evaluate((button: HTMLButtonElement) => button.click())
+      await expect(frame.getByTestId('visual-novel-sound')).toContainText('Sonido')
+      await expect(frame).not.toContainText(/acción privada|susurra|secreto|suena lejos|\[/)
+
+      await page.getByTestId('visual-mode-toggle').evaluate((button: HTMLButtonElement) => button.click())
+      const userBubble = page.locator(`[data-story-message-id="${userMessage.id}"]`)
+      const assistantBubble = page.locator(`[data-story-message-id="${assistantMessage.id}"]`)
+      await expect(userBubble).toContainText('Entro ahora.')
+      await expect(assistantBubble).toContainText('Hola mundo.')
+      await expect(assistantBubble).toContainText('El final.')
+      await expect(assistantBubble).toContainText('Sonido')
+      await expect(userBubble).not.toContainText(/acción privada|\[/)
+      await expect(assistantBubble).not.toContainText(/cambio oculto|susurra|secreto|suena lejos|\[/)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        .toBe(true)
+    })
+  }
+
+  for (const width of [320, 390]) {
     test(`separa cambiar imagen del menú móvil a ${width}px`, async ({ page, data }) => {
       const { story, character, image } = await createStoryFixture(data, true)
       await data.createMessage({
@@ -1986,7 +2054,7 @@ test.describe('novela visual y responsive', () => {
 
   test('muestra y vuelve a reproducir sonidos al navegar en Novela Visual', async ({ page, data }) => {
     const { story, character } = await createStoryFixture(data, true)
-    const sound = await data.createSound(character, ['campana'])
+    const sound = await data.createSound(character, [data.unique('campana')])
     await data.createMessage({
       story,
       role: 'assistant',
@@ -2017,10 +2085,11 @@ test.describe('novela visual y responsive', () => {
     await expect(page.getByTestId('visual-novel-frame')).toContainText('Antes.')
     await page.getByTestId('visual-novel-next').click()
     const soundFrame = page.getByTestId('visual-novel-sound')
-    await expect(soundFrame).toContainText('Sonido [campana]')
+    await expect(soundFrame).toContainText('Sonido')
+    await expect(soundFrame).not.toContainText('campana')
     await expect(soundFrame.locator('audio')).toBeVisible()
     expect(await soundFrame.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true)
-    const labelBounds = await soundFrame.getByText('Sonido [campana]').boundingBox()
+    const labelBounds = await soundFrame.getByText('Sonido', { exact: true }).boundingBox()
     const playerBounds = await soundFrame.locator('audio').boundingBox()
     expect(playerBounds!.x).toBeGreaterThan(labelBounds!.x)
     expect(Math.abs(
@@ -2122,8 +2191,8 @@ test.describe('novela visual y responsive', () => {
       const seen: string[] = []
       Object.assign(window, { __visualFrameTexts: seen })
       new MutationObserver(() => {
-        // El reproductor «Sonido [etiqueta]» es un fotograma válido, no un
-        // prefijo de imagen filtrado al texto del diálogo o la narración.
+        // El reproductor de sonido es un fotograma válido, no un prefijo de
+        // imagen filtrado al texto del diálogo o la narración.
         const text = document.querySelector('[data-testid="visual-novel-frame"] > p')?.textContent ?? ''
         if (text.trim()) seen.push(text)
       }).observe(document.body, { childList: true, characterData: true, subtree: true })
