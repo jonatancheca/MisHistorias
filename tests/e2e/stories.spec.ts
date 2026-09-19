@@ -214,6 +214,21 @@ test.describe('historias', () => {
     await expect(picker.getByRole('button', { name: `Elegir fondo ${manga.tags[0]}` })).toBeVisible()
     await expect(picker.getByRole('button', { name: `Elegir fondo ${realistic.tags[0]}` })).toHaveCount(0)
     await expect(picker.getByRole('button', { name: `Elegir fondo ${unclassified.tags[0]}` })).toHaveCount(0)
+    await picker.getByRole('button', { name: `Ampliar fondo ${manga.tags[0]}` }).click()
+    const lightbox = page.getByRole('dialog', { name: `fondo ${manga.tags[0]}` })
+    await expect(lightbox).toBeVisible()
+    await expect(picker).toBeVisible()
+    await expect(picker.getByRole('button', { name: `Elegir fondo ${manga.tags[0]}` })).toHaveAttribute('aria-pressed', 'false')
+    await lightbox.getByRole('button', { name: 'Cerrar imagen' }).click()
+    await expect(lightbox).toHaveCount(0)
+    await expect(picker).toBeVisible()
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 800 })
+      await picker.getByRole('button', { name: `Ampliar fondo ${manga.tags[0]}` }).click()
+      await expect(lightbox).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      await lightbox.getByRole('button', { name: 'Cerrar imagen' }).click()
+    }
     await picker.getByRole('button', { name: `Elegir fondo ${manga.tags[0]}` }).click()
 
     for (const width of [320, 390]) {

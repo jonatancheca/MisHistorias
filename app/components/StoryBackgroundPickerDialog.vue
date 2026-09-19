@@ -57,18 +57,27 @@ useDialogEscape(
               <span class="block text-xs text-[var(--color-fg-muted)]">Elegirá un fondo al abrir la escena.</span>
             </button>
 
-            <button
+            <article
               v-for="background in availableBackgrounds"
               :key="background.id"
-              type="button"
               class="flex items-center gap-3 rounded-xl border-2 p-3 text-left transition"
               :class="selectedId === background.id ? 'border-brand-500 bg-brand-500/10' : 'border-[var(--color-border-soft)] hover:border-brand-400'"
-              :aria-label="`Elegir fondo ${primaryTag(background)}`"
-              :aria-pressed="selectedId === background.id"
-              @click="emit('select', background.id)"
             >
-              <img :src="backgrounds.urlFor(background.id)!" alt="" class="h-16 w-24 shrink-0 rounded-lg object-contain">
-              <span class="min-w-0">
+              <ImageLightbox
+                :src="backgrounds.urlFor(background.id)!"
+                :alt="`fondo ${primaryTag(background)}`"
+                image-class="h-16 w-24 rounded-lg object-contain"
+                container-class="h-16 w-24 shrink-0"
+                selectable
+                @select="emit('select', background.id)"
+              />
+              <button
+                type="button"
+                class="min-w-0 flex-1 text-left"
+                :aria-label="`Elegir fondo ${primaryTag(background)}`"
+                :aria-pressed="selectedId === background.id"
+                @click="emit('select', background.id)"
+              >
                 <span class="block truncate font-medium">{{ primaryTag(background) }}</span>
                 <span v-if="background.style" class="block truncate text-xs font-medium text-brand-600">
                   {{ background.style }}
@@ -76,8 +85,8 @@ useDialogEscape(
                 <span class="line-clamp-2 block text-xs text-[var(--color-fg-muted)]">
                   {{ background.description || 'Sin descripción' }}
                 </span>
-              </span>
-            </button>
+              </button>
+            </article>
           </div>
 
           <p v-if="!availableBackgrounds.length" class="mt-3 text-sm text-[var(--color-fg-muted)]">
