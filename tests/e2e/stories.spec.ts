@@ -420,6 +420,48 @@ test.describe('historias', () => {
     }
   })
 
+  test('numera historias por orden de creación aunque cambie su orden visible', async ({ page, data }) => {
+    const character = await data.createCharacter()
+    const oldest = await data.createStory({
+      characters: [character],
+      title: data.unique('Historia-antigua')
+    })
+    const archived = await data.createStory({
+      characters: [character],
+      title: data.unique('Historia-intermedia'),
+      archived: true
+    })
+    const newest = await data.createStory({
+      characters: [character],
+      title: data.unique('Historia-reciente')
+    })
+    const updatedAt = Date.now() + 10_000
+
+    for (const [story, creationOffset, updateOffset] of [
+      [oldest, 1, 300],
+      [archived, 2, 100],
+      [newest, 3, 200]
+    ] as const) {
+      await expect(await page.request.put(`/api/data/stories/${story.id}?scope=normal`, {
+        data: {
+          ...story,
+          createdAt: creationOffset,
+          updatedAt: updatedAt + updateOffset
+        }
+      })).toBeOK()
+    }
+
+    await page.goto('/')
+
+    const cardFor = (title: string) => page.locator('.story-card').filter({ hasText: title })
+    await expect(cardFor(oldest.title).locator('.story-index')).toHaveText('01')
+    await expect(cardFor(newest.title).locator('.story-index')).toHaveText('03')
+    await expect(page.locator('.story-card').first()).toContainText(oldest.title)
+
+    await page.getByRole('button', { name: 'Ver archivadas' }).click()
+    await expect(cardFor(archived.title).locator('.story-index')).toHaveText('02')
+  })
+
   test('añade personajes desde ajustes y conserva su copia independiente', async ({ page, data }) => {
     const { story, character } = await createStoryFixture(data)
     const added = await data.createCharacter({

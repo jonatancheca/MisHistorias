@@ -13,6 +13,11 @@ const catalogStories = computed(() =>
     ? stories.stories.filter((story) => story.visibleInDemo)
     : stories.stories
 )
+const storyNumbers = computed(() => new Map(
+  [...catalogStories.value]
+    .sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id))
+    .map((story, index) => [story.id, index + 1])
+))
 const visibleStories = computed(() =>
   catalogStories.value.filter((story) => story.archived === showArchived.value)
 )
@@ -127,12 +132,12 @@ async function reload() {
 
     <ul class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <li
-        v-for="(story, index) in visibleStories"
+        v-for="story in visibleStories"
         :key="story.id"
         class="story-card card flex min-h-48 flex-col gap-5 pl-6"
       >
         <div class="flex min-w-0 items-start gap-3">
-          <span class="story-index">{{ String(index + 1).padStart(2, '0') }}</span>
+          <span class="story-index">{{ String(storyNumbers.get(story.id)).padStart(2, '0') }}</span>
           <div class="min-w-0 flex-1 pt-0.5">
             <p class="text-[0.65rem] font-bold tracking-[0.12em] text-brand-600 uppercase">
               {{ story.readOnly ? 'Demo compartida · solo lectura' : story.archived ? 'Historia archivada' : 'Historia en curso' }}
