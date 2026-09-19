@@ -195,7 +195,7 @@ function cancelImport() {
         </button>
         <button type="button" class="btn-ghost" :disabled="importing" @click="importInput?.click()">
           <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
+            <path d="M12 17V5m0 0-4 4m4-4 4 4" />
             <path d="M5 21h14" />
           </svg>
           {{ importing ? 'Importando…' : 'Importar' }}

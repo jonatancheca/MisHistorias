@@ -29,6 +29,16 @@ async function uploadCharacterZip(page: import('@playwright/test').Page, buffer:
 }
 
 test.describe('personajes', () => {
+  test('muestra flecha hacia arriba en la acción de importar', async ({ page }) => {
+    await page.goto('/characters')
+
+    const importButton = page.getByRole('button', { name: 'Importar', exact: true })
+    await expect(importButton).toBeVisible()
+    await expect(importButton.locator('svg')).toHaveAttribute('aria-hidden', 'true')
+    await expect(importButton.locator('path').first())
+      .toHaveAttribute('d', 'M12 17V5m0 0-4 4m4-4 4 4')
+  })
+
   test('conserva mensajes de error con acentos sin usar statusMessage', async ({ page }) => {
     const response = await page.request.get('/api/data/characters?scope=invalido')
 
