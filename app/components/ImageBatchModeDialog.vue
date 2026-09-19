@@ -42,7 +42,7 @@ function trapFocus(event: KeyboardEvent) {
       >
         <h2 id="batch-image-title" class="text-lg font-bold">Añadir {{ count }} imágenes</h2>
         <p id="batch-image-description" class="mt-2 text-sm text-[var(--color-fg-muted)]">
-          Todas usarán las etiquetas indicadas. ¿Quieres recortarlas individualmente?
+          ¿Quieres recortarlas individualmente? Al terminar podrás indicar etiquetas para todas.
         </p>
         <div class="mt-5 flex flex-wrap justify-end gap-2">
           <button ref="cancelButton" type="button" class="btn-ghost" @click="emit('choose', 'cancel')">

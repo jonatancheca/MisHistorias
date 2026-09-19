@@ -23,12 +23,12 @@ const settings = useSettingsStore()
 const swarmPrompts = useSwarmPromptsStore()
 const confirmDialog = useConfirmStore()
 await settings.load()
-const pendingTags = ref<string[]>([])
 const pendingFiles = ref<File[]>([])
 const batchMode = ref<'original' | 'crop' | 'preview' | null>(null)
-const batchTags = ref<string[]>([])
 const processingCurrent = ref(false)
 const busy = ref(false)
+const uploadedImageIds = ref<string[]>([])
+const savingUploadedTags = ref(false)
 const editingImage = ref<StoredImage | null>(null)
 const editingBusy = ref(false)
 const error = ref<string | null>(null)
@@ -256,10 +256,15 @@ function visibleImageTags(tags: string[]) {
 }
 
 function selectFiles(files: File[]) {
-  if (busy.value || editingImage.value || editingBusy.value || files.length === 0) return
+  if (
+    busy.value ||
+    editingImage.value ||
+    editingBusy.value ||
+    uploadedImageIds.value.length > 0 ||
+    files.length === 0
+  ) return
   error.value = null
   notice.value = null
-  batchTags.value = [...pendingTags.value]
   pendingFiles.value = [...files]
   addedCount = 0
   failedCount = 0
@@ -269,7 +274,8 @@ function selectFiles(files: File[]) {
 }
 
 async function addPendingImage(file: Blob, originalFile?: Blob) {
-  await characters.addImage(props.characterId, file, batchTags.value, originalFile)
+  const image = await characters.addImage(props.characterId, file, [], originalFile)
+  uploadedImageIds.value.push(image.id)
 }
 
 function finishBatch() {
@@ -281,13 +287,34 @@ function finishBatch() {
   const summary = `${parts.join(', ') || 'No se añadió ninguna imagen'}.`
   if (failedCount) error.value = summary
   else notice.value = summary
-  if (addedCount) {
-    pendingTags.value = []
-  }
   pendingFiles.value = []
   batchMode.value = null
   processingCurrent.value = false
   busy.value = false
+}
+
+function skipUploadedTags() {
+  uploadedImageIds.value = []
+}
+
+async function saveUploadedTags(tags: string[]) {
+  if (savingUploadedTags.value || uploadedImageIds.value.length === 0) return
+  savingUploadedTags.value = true
+  error.value = null
+  try {
+    await Promise.all(
+      uploadedImageIds.value.map((id) => characters.updateImage(id, { tags }))
+    )
+    const count = uploadedImageIds.value.length
+    uploadedImageIds.value = []
+    notice.value = count === 1
+      ? 'Imagen añadida y etiquetada.'
+      : `${count} imágenes añadidas y etiquetadas.`
+  } catch (caught) {
+    error.value = (caught as Error).message || 'No se pudieron guardar las etiquetas.'
+  } finally {
+    savingUploadedTags.value = false
+  }
 }
 
 function cancelBatch() {
@@ -641,16 +668,6 @@ function removeFromLightbox(item: { id?: string }) {
     </div>
 
     <div class="card mb-4 grid gap-3">
-      <div>
-        <label class="label" for="new-tags">Nueva etiqueta</label>
-        <TagInput
-          id="new-tags"
-          v-model="pendingTags"
-          :suggestions="imageTagSuggestions"
-          show-all-suggestions
-          placeholder="feliz"
-        />
-      </div>
       <ImageUploadDropZone
         :busy="busy"
         multiple
@@ -795,6 +812,15 @@ function removeFromLightbox(item: { id?: string }) {
       v-if="busy && pendingFiles.length > 1 && batchMode === null"
       :count="pendingFiles.length"
       @choose="chooseBatchMode"
+    />
+
+    <CharacterImageTagsDialog
+      v-if="uploadedImageIds.length > 0 && !busy"
+      :count="uploadedImageIds.length"
+      :suggestions="imageTagSuggestions"
+      :saving="savingUploadedTags"
+      @cancel="skipUploadedTags"
+      @save="saveUploadedTags"
     />
 
     <ImageCropDialog

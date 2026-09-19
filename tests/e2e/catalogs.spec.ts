@@ -157,8 +157,12 @@ test.describe('personajes', () => {
 
   test('previsualiza una imagen y prioriza añadir originales', async ({ page, data }) => {
     const character = await data.createCharacter()
+    const singleTag = data.unique('subida-individual')
+    const batchTag = data.unique('subida-lote')
     await page.goto(`/characters/${character.id}`)
     const upload = page.locator('input[type="file"][accept="image/*"]')
+
+    await expect(page.getByLabel('Etiquetas', { exact: true })).toHaveCount(0)
 
     await upload.setInputFiles({ name: 'una.png', mimeType: 'image/png', buffer: PNG_BYTES })
     const preview = page.getByRole('dialog', { name: 'Añadir imagen' })
@@ -182,6 +186,26 @@ test.describe('personajes', () => {
     await expect(crop.getByRole('button', { name: 'Guardar recorte' })).toBeVisible()
     await crop.getByRole('button', { name: 'Usar original' }).click()
     await expect(page.getByRole('status').filter({ hasText: '1 imagen añadida' })).toBeVisible()
+    const singleTagsDialog = page.getByRole('dialog', { name: 'Etiquetas de la imagen subida' })
+    await expect(singleTagsDialog).toBeVisible()
+    expect(await data.list<CharacterImage>('images', 'normal', { characterId: character.id }))
+      .toMatchObject([{ tags: ['neutral'], isDefault: true }])
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 700 })
+      const layout = await singleTagsDialog.evaluate((section) => ({
+        clientWidth: section.clientWidth,
+        scrollWidth: section.scrollWidth,
+        pageScrollWidth: document.documentElement.scrollWidth
+      }))
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
+      expect(layout.pageScrollWidth).toBeLessThanOrEqual(width)
+    }
+    await singleTagsDialog.getByLabel('Etiquetas', { exact: true }).fill(singleTag)
+    await singleTagsDialog.getByLabel('Etiquetas', { exact: true }).press('Enter')
+    await singleTagsDialog.getByRole('button', { name: 'Guardar etiquetas' }).click()
+    await expect.poll(async () => (
+      await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
+    )[0]?.tags).toEqual([singleTag])
 
     await upload.setInputFiles([
       { name: 'dos.png', mimeType: 'image/png', buffer: PNG_BYTES },
@@ -195,6 +219,16 @@ test.describe('personajes', () => {
     await expect.poll(async () => (
       await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
     ).length).toBe(3)
+    const batchTagsDialog = page.getByRole('dialog', { name: 'Etiquetas de las 2 imágenes subidas' })
+    await expect(batchTagsDialog).toContainText('Las etiquetas se aplicarán a todas')
+    await batchTagsDialog.getByLabel('Etiquetas', { exact: true }).fill(batchTag)
+    await batchTagsDialog.getByLabel('Etiquetas', { exact: true }).press('Enter')
+    await batchTagsDialog.getByRole('button', { name: 'Guardar etiquetas' }).click()
+    await expect.poll(async () => (
+      await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
+    ).map((image) => image.tags)).toEqual([[singleTag], [batchTag], [batchTag]])
+    expect((await data.list<CharacterImage>('images', 'normal', { characterId: character.id }))
+      .filter((image) => image.isDefault)).toHaveLength(1)
   })
 
   test('recorta imágenes guardadas y restaura siempre la primera original', async ({ page, data }) => {
@@ -204,6 +238,8 @@ test.describe('personajes', () => {
       name: 'original.png', mimeType: 'image/png', buffer: createPng(128, 96)
     })
     await page.getByRole('dialog', { name: 'Añadir imagen' }).getByRole('button', { name: 'Añadir', exact: true }).click()
+    await page.getByRole('dialog', { name: 'Etiquetas de la imagen subida' })
+      .getByRole('button', { name: 'Omitir' }).click()
     const card = page.getByTestId('character-image-card')
     await expect(card).toHaveCount(1)
     const image = (await data.list<CharacterImage>('images', 'normal', { characterId: character.id }))[0]!
@@ -253,6 +289,8 @@ test.describe('personajes', () => {
     })
     await page.getByRole('dialog', { name: 'Añadir imagen' }).getByRole('button', { name: 'Recortar', exact: true }).click()
     await page.getByRole('dialog', { name: 'Recortar imagen' }).getByRole('button', { name: 'Guardar recorte' }).click()
+    await page.getByRole('dialog', { name: 'Etiquetas de la imagen subida' })
+      .getByRole('button', { name: 'Omitir' }).click()
     await expect(card).toHaveCount(2)
     const added = (await data.list<CharacterImage>('images', 'normal', { characterId: character.id }))
       .find((item) => item.id !== image.id)!
