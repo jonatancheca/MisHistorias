@@ -821,7 +821,7 @@ test.describe('fondos', () => {
     }
   })
 
-  test('sube PNG, edita etiquetas y descripción', async ({ page, data }) => {
+  test('previsualiza PNG antes de añadir, permite recortarlo y edita sus datos', async ({ page, data }) => {
     const tag = data.unique('bosque')
     const extraTag = data.unique('exterior')
     const description = data.unique('Bosque-nocturno')
@@ -836,8 +836,21 @@ test.describe('fondos', () => {
       mimeType: 'image/png',
       buffer: PNG_BYTES
     })
-    await page.getByRole('dialog', { name: 'Recortar imagen' })
-      .getByRole('button', { name: 'Usar original' }).click()
+    const preview = page.getByRole('dialog', { name: 'Añadir imagen' })
+    await expect(preview.getByRole('img', { name: 'Vista previa de imagen' })).toBeVisible()
+    const add = preview.getByRole('button', { name: 'Añadir', exact: true })
+    await expect(add).toBeFocused()
+    expect(await add.getAttribute('class')).toContain('btn-primary')
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 700 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    }
+
+    await preview.getByRole('button', { name: 'Recortar', exact: true }).click()
+    const crop = page.getByRole('dialog', { name: 'Recortar imagen' })
+    await expect(crop.getByRole('button', { name: 'Guardar recorte' })).toBeVisible()
+    await crop.getByRole('button', { name: 'Usar original' }).click()
 
     const card = page.locator('li').filter({ hasText: tag })
     await expect(card).toBeVisible()

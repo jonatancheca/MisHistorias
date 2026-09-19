@@ -213,6 +213,7 @@ async function copyBackground(id: string) {
     <ImageCropDialog
       v-if="pendingFile"
       :file="pendingFile"
+      :start-cropping="false"
       @cancel="pendingFile = null"
       @confirm="processFile"
     />
