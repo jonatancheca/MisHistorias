@@ -22,6 +22,7 @@ const sounds = useSoundsStore()
 const settings = useSettingsStore()
 const privacy = usePrivacyStore()
 const confirmDialog = useConfirmStore()
+const access = useAccessStore()
 const {
   hidden: mobileChromeHidden,
   hide: hideMobileChrome,
@@ -89,6 +90,8 @@ const storyPreferencesMode = ref<'append' | 'replace'>('append')
 const storyInitialBackgroundId = ref<string | null>(null)
 const storyBackgroundStyle = ref<string | null>(null)
 const storyVisibleInDemo = ref(false)
+const copyingSharedStory = ref(false)
+const copySharedStoryError = ref<string | null>(null)
 
 useDialogEscape(
   () => storyPreferencesOpen.value,
@@ -436,6 +439,32 @@ async function saveStoryPreferences() {
     storyVisibleInDemo.value
   )
   storyPreferencesOpen.value = false
+}
+
+async function copySharedStory() {
+  const story = stories.activeStory
+  if (!story?.readOnly || copyingSharedStory.value) return
+  const destination = access.session.identity?.email
+    ? `la colección privada de ${access.session.identity.email}`
+    : 'tu colección privada'
+  const accepted = await confirmDialog.ask({
+    title: 'Copiar historia demo',
+    message: `Se creará una copia independiente de «${story.title}» en ${destination}, incluidos sus mensajes y los recursos necesarios. La historia original no cambiará.`,
+    confirmLabel: 'Copiar a mi colección'
+  })
+  if (!accepted) return
+
+  copyingSharedStory.value = true
+  copySharedStoryError.value = null
+  try {
+    const copied = await stories.copySharedDemoStory(story.id)
+    if (!copied) throw new Error('La historia ya no está disponible para copiar.')
+    await navigateTo(`/stories/${copied.id}`)
+  } catch (caught) {
+    copySharedStoryError.value = (caught as Error).message || 'No se pudo copiar la historia demo.'
+  } finally {
+    copyingSharedStory.value = false
+  }
 }
 
 async function onMissingStoryPrivateTrigger() {
@@ -993,13 +1022,32 @@ onBeforeRouteLeave(() => {
             {{ stories.activeStory.premise }}
           </p>
           <p
-            v-if="stories.activeStory.readOnly"
+            v-if="stories.activeStory.readOnly && stories.activeStory.visibleInDemo"
             class="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-300"
           >
             Historia demo compartida · solo lectura
           </p>
+          <p v-if="copySharedStoryError" class="mt-1 text-xs text-red-500" role="alert">
+            {{ copySharedStoryError }}
+          </p>
         </div>
         <div class="flex shrink-0 gap-1 sm:gap-2">
+          <button
+            v-if="stories.activeStory.readOnly && stories.activeStory.visibleInDemo"
+            type="button"
+            class="btn-primary h-10 w-10 shrink-0 px-0 py-0 sm:w-auto sm:px-3"
+            data-testid="copy-shared-story"
+            aria-label="Copiar a mi colección privada"
+            title="Copiar a mi colección privada"
+            :disabled="copyingSharedStory"
+            @click="copySharedStory"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="8" y="8" width="11" height="11" rx="2" />
+              <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+            </svg>
+            <span class="hidden sm:inline">{{ copyingSharedStory ? 'Copiando…' : 'Copiar' }}</span>
+          </button>
           <button
             v-if="!stories.activeStory.readOnly"
             type="button"

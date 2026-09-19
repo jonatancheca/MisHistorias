@@ -22,6 +22,7 @@ import {
   deleteStory,
   deleteStorySave as dbDeleteStorySave,
   createStorySave as dbCreateStorySave,
+  copySharedDemoStory as dbCopySharedDemoStory,
   loadStorySave as dbLoadStorySave,
   listLlmDebugTraces,
   listMessages,
@@ -540,6 +541,19 @@ export const useStoriesStore = defineStore('stories', () => {
       debugTraces.value = []
       saveSlots.value = []
     }
+  }
+
+  async function copySharedDemoStory(id: string) {
+    const source = stories.value.find((story) => story.id === id)
+    if (!source?.readOnly || !source.visibleInDemo) return null
+    const copied = await dbCopySharedDemoStory(id)
+    await Promise.all([
+      load(true),
+      useCharactersStore().load(true),
+      useBackgroundsStore().load(true),
+      useSoundsStore().load(true)
+    ])
+    return copied
   }
 
   async function setArchived(id: string, archived: boolean) {
@@ -1748,6 +1762,7 @@ export const useStoriesStore = defineStore('stories', () => {
     setArchived,
     setDemoVisibility,
     removeStory,
+    copySharedDemoStory,
     openStory,
     createSaveSlot,
     loadSaveSlot,

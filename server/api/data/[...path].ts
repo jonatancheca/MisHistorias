@@ -385,6 +385,12 @@ function mapStorageError(caught: unknown): never {
   if (error.code === 'ERR_READ_ONLY_RESOURCE') {
     throw createError({ statusCode: 404, statusMessage: 'Registro no encontrado' })
   }
+  if (error.code === 'ERR_DEMO_COPY_IDENTITY_REQUIRED') {
+    throw createError({ statusCode: 409, statusMessage: 'El modo multiusuario no está activo' })
+  }
+  if (error.code === 'ERR_DEMO_COPY_INCOMPLETE') {
+    throw createError({ statusCode: 409, statusMessage: 'La historia demo tiene recursos incompletos' })
+  }
   if (error.code === 'ERR_CHARACTER_IN_USE') {
     const stories = (caught as { stories?: Array<{ id: string; title: string }> }).stories ?? []
     throw createError({
@@ -471,6 +477,22 @@ export default defineEventHandler(async (event) => {
     ) {
       const copied = storage.copyBackground(scope, asId(segments[1]), access)
       if (!copied) throw createError({ statusCode: 404, statusMessage: 'Fondo no encontrado' })
+      return copied
+    }
+
+    if (
+      segments[0] === 'stories' &&
+      segments[1] &&
+      segments[2] === 'copy-shared-demo' &&
+      event.method === 'POST'
+    ) {
+      if (scope !== 'private') {
+        throw createError({ statusCode: 404, statusMessage: 'Historia demo no encontrada' })
+      }
+      const copied = storage.copySharedDemoStory(asId(segments[1]), access)
+      if (!copied) {
+        throw createError({ statusCode: 404, statusMessage: 'Historia demo no encontrada' })
+      }
       return copied
     }
 

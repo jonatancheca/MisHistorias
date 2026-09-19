@@ -2332,6 +2332,371 @@ export class MisHistoriasStorage {
     }, ownAccess)
   }
 
+  copySharedDemoStory(sourceId: string, access: StorageAccess) {
+    if (!access.ownerId) {
+      throw Object.assign(new Error('La copia requiere una identidad de usuario'), {
+        code: 'ERR_DEMO_COPY_IDENTITY_REQUIRED'
+      })
+    }
+
+    return this.transaction(() => {
+      const scope: DataScope = 'private'
+      const sourceRow = this.database.prepare(`
+        SELECT * FROM stories
+        WHERE scope = ? AND id = ? AND visible_in_demo = 1
+          AND owner_id IS NOT NULL AND owner_id <> ?
+      `).get(scope, sourceId, access.ownerId) as SqliteRow | undefined
+      if (!sourceRow || typeof sourceRow.owner_id !== 'string') return null
+
+      const sourceOwnerId = sourceRow.owner_id
+      const sourceStory = rowToStory(sourceRow) as Story
+      const sourceMessages = (this.database.prepare(`
+        SELECT * FROM messages
+        WHERE scope = ? AND owner_id = ? AND story_id = ?
+        ORDER BY created_at, id
+      `).all(scope, sourceOwnerId, sourceId) as SqliteRow[]).map(rowToMessage) as Message[]
+
+      const characterIds = new Set<string>()
+      const imageIds = new Set<string>()
+      const backgroundIds = new Set<string>()
+      const soundIds = new Set<string>()
+
+      const collectStoryReferences = (story: Story) => {
+        story.characterIds.forEach((id) => characterIds.add(id))
+        if (story.initialBackgroundId) backgroundIds.add(story.initialBackgroundId)
+        story.imageCatalogSnapshot?.forEach((entry) => {
+          if (story.characterIds.includes(entry.characterId)) imageIds.add(entry.imageId)
+        })
+        story.pendingImageInstructions?.forEach((instruction) => {
+          if (story.characterIds.includes(instruction.characterId)) imageIds.add(instruction.imageId)
+        })
+      }
+      const collectMessageReferences = (message: Message) => {
+        for (const rawSegment of message.segments) {
+          const segment = record(rawSegment)
+          if (typeof segment.imageId === 'string') imageIds.add(segment.imageId)
+          if (typeof segment.backgroundId === 'string') backgroundIds.add(segment.backgroundId)
+          if (typeof segment.soundId === 'string') soundIds.add(segment.soundId)
+        }
+      }
+
+      collectStoryReferences(sourceStory)
+      sourceMessages.forEach(collectMessageReferences)
+
+      const characterRows = this.database.prepare(`
+        SELECT * FROM characters WHERE scope = ? AND owner_id = ?
+      `).all(scope, sourceOwnerId) as SqliteRow[]
+      const imageRows = this.database.prepare(`
+        SELECT images.*, image_blobs.data AS blob_data
+        FROM images
+        INNER JOIN image_blobs
+          ON image_blobs.scope = images.scope AND image_blobs.id = images.blob_id
+        WHERE images.scope = ? AND images.owner_id = ? AND image_blobs.owner_id = ?
+      `).all(scope, sourceOwnerId, sourceOwnerId) as SqliteRow[]
+      const backgroundRows = this.database.prepare(`
+        SELECT * FROM backgrounds WHERE scope = ? AND owner_id = ?
+      `).all(scope, sourceOwnerId) as SqliteRow[]
+      const soundRows = this.database.prepare(`
+        SELECT * FROM sounds WHERE scope = ? AND owner_id = ?
+      `).all(scope, sourceOwnerId) as SqliteRow[]
+
+      const selectedCharacters = characterRows.filter((row) => characterIds.has(row.id))
+      const selectedCharacterIds = new Set(selectedCharacters.map((row) => row.id))
+      const selectedImages = imageRows.filter((row) =>
+        typeof row.character_id === 'string' && selectedCharacterIds.has(row.character_id)
+      )
+      const selectedImageIds = new Set(selectedImages.map((row) => row.id))
+      const selectedBackgrounds = backgroundRows.filter((row) => backgroundIds.has(row.id))
+      const selectedBackgroundIds = new Set(selectedBackgrounds.map((row) => row.id))
+      const selectedSounds = soundRows.filter((row) => soundIds.has(row.id))
+      const sourceMessageIds = new Set(sourceMessages.map((message) => message.id))
+
+      const missingRequiredResource =
+        [...characterIds].some((id) => !selectedCharacterIds.has(id)) ||
+        [...imageIds].some((id) => !selectedImageIds.has(id)) ||
+        [...backgroundIds].some((id) => !selectedBackgroundIds.has(id)) ||
+        [...soundIds].some((id) => !selectedSounds.some((row) => row.id === id)) ||
+        (Boolean(sourceStory.contextSummaryThroughMessageId) &&
+          !sourceMessageIds.has(sourceStory.contextSummaryThroughMessageId!))
+      if (missingRequiredResource) {
+        throw Object.assign(new Error('La historia demo tiene recursos requeridos incompletos'), {
+          code: 'ERR_DEMO_COPY_INCOMPLETE'
+        })
+      }
+
+      const freshId = (table: string) => {
+        let id = randomUUID()
+        while (this.database.prepare(`SELECT 1 FROM ${table} WHERE scope = ? AND id = ?`).get(scope, id)) {
+          id = randomUUID()
+        }
+        return id
+      }
+      const characterIdMap = new Map(selectedCharacters.map((row) => [row.id, freshId('characters')]))
+      const imageIdMap = new Map(selectedImages.map((row) => [row.id, freshId('images')]))
+      const backgroundIdMap = new Map(selectedBackgrounds.map((row) => [row.id, freshId('backgrounds')]))
+      const soundIdMap = new Map(selectedSounds.map((row) => [row.id, freshId('sounds')]))
+      const messageIdMap = new Map<string, string>()
+      const storyId = freshId('stories')
+
+      const messageIdFor = (id: string) => {
+        const current = messageIdMap.get(id)
+        if (current) return current
+        const mapped = freshId('messages')
+        messageIdMap.set(id, mapped)
+        return mapped
+      }
+      sourceMessages.forEach((message) => messageIdFor(message.id))
+
+      const usedBackgroundTags = new Set(
+        (this.database.prepare(`
+          SELECT tags_json FROM backgrounds WHERE scope = ? AND owner_id = ?
+        `).all(scope, access.ownerId) as Array<{ tags_json: string }>)
+          .flatMap((row) => parseJson<string[]>(row.tags_json, []))
+          .map(tagKey)
+      )
+      const usedSoundTags = new Set(
+        (this.database.prepare(`
+          SELECT tags_json FROM sounds WHERE scope = ? AND owner_id = ?
+        `).all(scope, access.ownerId) as Array<{ tags_json: string }>)
+          .flatMap((row) => parseJson<string[]>(row.tags_json, []))
+          .map(tagKey)
+      )
+      const backgroundTagsById = new Map<string, Map<string, string>>()
+      const soundTagsById = new Map<string, Map<string, string>>()
+      const mappedBackgroundTag = new Map<string, string>()
+      const mappedSoundTag = new Map<string, string>()
+
+      const remapTags = (
+        rawTags: unknown,
+        used: Set<string>,
+        byId: Map<string, Map<string, string>>,
+        global: Map<string, string>,
+        id: string
+      ) => {
+        const mapping = new Map<string, string>()
+        const copied = parseJson<string[]>(rawTags, []).map((tag) => {
+          const next = nextAvailableTag(tag, used)
+          used.add(tagKey(next))
+          mapping.set(tagKey(tag), next)
+          if (!global.has(tagKey(tag))) global.set(tagKey(tag), next)
+          return next
+        })
+        byId.set(id, mapping)
+        return copied
+      }
+
+      const backgroundTagsForCopy = new Map(selectedBackgrounds.map((row) => [
+        row.id,
+        remapTags(row.tags_json, usedBackgroundTags, backgroundTagsById, mappedBackgroundTag, row.id)
+      ]))
+      const soundTagsForCopy = new Map(selectedSounds.map((row) => [
+        row.id,
+        remapTags(row.tags_json, usedSoundTags, soundTagsById, mappedSoundTag, row.id)
+      ]))
+
+      const rewriteDirectives = (raw: string) => raw
+        .replace(/((?:Fondo)\s*\[)([^\]]+)(\])/gi, (match, prefix: string, tag: string, suffix: string) => {
+          const mapped = mappedBackgroundTag.get(tagKey(tag))
+          return mapped ? `${prefix}${mapped}${suffix}` : match
+        })
+        .replace(/((?:Sonido)\s*\[)([^\]]+)(\])/gi, (match, prefix: string, tag: string, suffix: string) => {
+          const mapped = mappedSoundTag.get(tagKey(tag))
+          return mapped ? `${prefix}${mapped}${suffix}` : match
+        })
+
+      const mappedSegmentTag = (
+        segment: Record<string, unknown>,
+        resourceId: unknown,
+        byId: Map<string, Map<string, string>>,
+        global: Map<string, string>
+      ) => {
+        if (typeof segment.tag !== 'string') return segment.tag
+        const mapping = typeof resourceId === 'string' ? byId.get(resourceId) : undefined
+        return mapping?.get(tagKey(segment.tag)) ?? global.get(tagKey(segment.tag)) ?? segment.tag
+      }
+      const mapMessage = (message: Message): Message => {
+        const mappedSegments = message.segments.map((rawSegment) => {
+          const segment = record(rawSegment)
+          return {
+            ...segment,
+            characterId: typeof segment.characterId === 'string'
+              ? characterIdMap.get(segment.characterId) ?? null
+              : segment.characterId ?? null,
+            ...(typeof segment.imageId === 'string'
+              ? { imageId: imageIdMap.get(segment.imageId) ?? null }
+              : {}),
+            ...(typeof segment.backgroundId === 'string'
+              ? { backgroundId: backgroundIdMap.get(segment.backgroundId) ?? null }
+              : {}),
+            ...(typeof segment.soundId === 'string'
+              ? { soundId: soundIdMap.get(segment.soundId) ?? null }
+              : {}),
+            ...(segment.type === 'background'
+              ? { tag: mappedSegmentTag(segment, segment.backgroundId, backgroundTagsById, mappedBackgroundTag) }
+              : segment.type === 'sound'
+                ? { tag: mappedSegmentTag(segment, segment.soundId, soundTagsById, mappedSoundTag) }
+                : {})
+          }
+        }) as Message['segments']
+        const swarmErrorCharacterId = message.swarmError
+          ? characterIdMap.get(message.swarmError.characterId)
+          : undefined
+        const swarmError = message.swarmError && swarmErrorCharacterId
+          ? {
+              ...message.swarmError,
+              characterId: swarmErrorCharacterId
+            }
+          : undefined
+        return {
+          ...message,
+          id: messageIdFor(message.id),
+          storyId,
+          raw: rewriteDirectives(message.raw),
+          segments: mappedSegments,
+          swarmError
+        }
+      }
+      const mapStory = (story: Story, createdAt = story.createdAt): Story => {
+        const writable = { ...story }
+        delete writable.readOnly
+        return {
+          ...writable,
+          id: storyId,
+          archived: false,
+          visibleInDemo: false,
+          characterIds: story.characterIds.flatMap((id) => {
+            const mapped = characterIdMap.get(id)
+            return mapped ? [mapped] : []
+          }),
+          characterCustomizations: story.characterCustomizations.flatMap((customization) => {
+            const mapped = characterIdMap.get(customization.characterId)
+            return mapped ? [{ ...customization, characterId: mapped }] : []
+          }),
+          initialBackgroundId: story.initialBackgroundId
+            ? backgroundIdMap.get(story.initialBackgroundId) ?? null
+            : null,
+          presetId: null,
+          imageCatalogSnapshot: story.imageCatalogSnapshot?.flatMap((entry) => {
+            const imageId = imageIdMap.get(entry.imageId)
+            const characterId = characterIdMap.get(entry.characterId)
+            return imageId && characterId ? [{ ...entry, imageId, characterId }] : []
+          }),
+          pendingImageInstructions: story.pendingImageInstructions?.flatMap((instruction) => {
+            const imageId = imageIdMap.get(instruction.imageId)
+            const characterId = characterIdMap.get(instruction.characterId)
+            return imageId && characterId ? [{ ...instruction, imageId, characterId }] : []
+          }),
+          ...(story.contextSummaryThroughMessageId
+            ? { contextSummaryThroughMessageId: messageIdFor(story.contextSummaryThroughMessageId) }
+            : {}),
+          createdAt,
+          updatedAt: createdAt
+        }
+      }
+
+      const insertCharacter = this.database.prepare(`
+        INSERT INTO characters(
+          scope, owner_id, id, name, prompt, tags_json, color, image_generation_preset,
+          image_generation_lora, image_generation_seed, image_generation_prompt_prefix,
+          image_generation_model, archived, visible_in_demo, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+      `)
+      for (const row of selectedCharacters) {
+        insertCharacter.run(
+          scope, access.ownerId, characterIdMap.get(row.id), row.name, row.prompt, row.tags_json,
+          row.color, row.image_generation_preset, row.image_generation_lora,
+          row.image_generation_seed, row.image_generation_prompt_prefix, row.image_generation_model,
+          row.archived, row.created_at, row.updated_at
+        )
+      }
+
+      const insertBlob = this.database.prepare(`
+        INSERT INTO image_blobs(scope, owner_id, id, data) VALUES (?, ?, ?, ?)
+      `)
+      const insertImage = this.database.prepare(`
+        INSERT INTO images(
+          scope, owner_id, id, character_id, tags_json, is_default, mime_type, created_at,
+          blob_id, original_data, original_mime_type, generation_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      for (const row of selectedImages) {
+        const id = imageIdMap.get(row.id)!
+        insertBlob.run(scope, access.ownerId, id, row.blob_data)
+        insertImage.run(
+          scope, access.ownerId, id, characterIdMap.get(text(row.character_id)), row.tags_json,
+          row.is_default, row.mime_type, row.created_at, id, row.original_data,
+          row.original_mime_type, row.generation_json
+        )
+      }
+
+      const insertBackground = this.database.prepare(`
+        INSERT INTO backgrounds(
+          scope, owner_id, id, tags_json, style, description, mime_type,
+          visible_in_demo, created_at, data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+      `)
+      for (const row of selectedBackgrounds) {
+        insertBackground.run(
+          scope, access.ownerId, backgroundIdMap.get(row.id), json(backgroundTagsForCopy.get(row.id)),
+          row.style, row.description, row.mime_type, row.created_at, row.data
+        )
+      }
+
+      const insertSound = this.database.prepare(`
+        INSERT INTO sounds(
+          scope, owner_id, id, tags_json, character_id, background_id,
+          mime_type, created_at, data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      for (const row of selectedSounds) {
+        insertSound.run(
+          scope, access.ownerId, soundIdMap.get(row.id), json(soundTagsForCopy.get(row.id)),
+          typeof row.character_id === 'string' ? characterIdMap.get(row.character_id) ?? null : null,
+          typeof row.background_id === 'string' ? backgroundIdMap.get(row.background_id) ?? null : null,
+          row.mime_type, row.created_at, row.data
+        )
+      }
+
+      const now = Date.now()
+      const copiedStory = mapStory(sourceStory, now)
+      this.database.prepare(`
+        INSERT INTO stories(
+          scope, owner_id, id, title, premise, visual_mode, auto_generate_images,
+          archived, visible_in_demo, protagonist_preferences, protagonist_preferences_mode,
+          character_ids_json, character_customizations_json, initial_background_id,
+          background_style, preset_id, image_catalog_snapshot_json,
+          pending_image_instructions_json, context_summary,
+          context_summary_through_message_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        scope, access.ownerId, copiedStory.id, copiedStory.title, copiedStory.premise,
+        bool(copiedStory.visualMode), bool(copiedStory.autoGenerateImages), bool(copiedStory.archived),
+        bool(copiedStory.visibleInDemo), copiedStory.protagonistPreferences,
+        copiedStory.protagonistPreferencesMode, json(copiedStory.characterIds),
+        json(copiedStory.characterCustomizations), copiedStory.initialBackgroundId,
+        copiedStory.backgroundStyle ?? null, copiedStory.presetId ?? null,
+        copiedStory.imageCatalogSnapshot === undefined ? null : json(copiedStory.imageCatalogSnapshot),
+        json(copiedStory.pendingImageInstructions ?? []), copiedStory.contextSummary ?? '',
+        copiedStory.contextSummaryThroughMessageId ?? null, copiedStory.createdAt, copiedStory.updatedAt
+      )
+
+      const copiedMessages = sourceMessages.map(mapMessage)
+      const insertMessage = this.database.prepare(`
+        INSERT INTO messages(
+          scope, owner_id, id, story_id, role, raw, segments_json, swarm_error_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      for (const message of copiedMessages) {
+        insertMessage.run(
+          scope, access.ownerId, message.id, storyId, message.role, message.raw,
+          json(message.segments), message.swarmError ? json(message.swarmError) : null, message.createdAt
+        )
+      }
+
+      return this.get('stories', scope, storyId, { ownerId: access.ownerId })
+    })
+  }
+
   importCharacter(
     scope: DataScope,
     targetId: string | null,

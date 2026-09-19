@@ -1950,6 +1950,448 @@ test('activa multiusuario, reclama el legado y aísla propietarios compartiendo 
   })
 })
 
+test('copia una historia demo ajena completa, autónoma y atómica en la colección privada', () => {
+  withStorage((storage) => {
+    storage.put('characters', 'private', 'source-character', {
+      ...character('source-character'),
+      visibleInDemo: true
+    })
+    storage.put('characters', 'private', 'source-remembered-character', {
+      ...character('source-remembered-character'),
+      name: 'Personaje recordado'
+    })
+    storage.putBinary('images', 'private', 'source-image', {
+      metadata: {
+        id: 'source-image',
+        characterId: 'source-character',
+        tags: ['neutral'],
+        isDefault: true,
+        mimeType: 'image/png',
+        generation: { seed: 42, prompt: 'retrato' },
+        createdAt: 10
+      },
+      data: new Uint8Array([1, 2, 3]),
+      original: { mimeType: 'image/png', data: new Uint8Array([4, 5, 6]) }
+    })
+    storage.putBinary('backgrounds', 'private', 'source-background', {
+      metadata: {
+        id: 'source-background',
+        tags: ['bosque'],
+        style: 'Manga',
+        description: 'Bosque de la historia',
+        mimeType: 'image/png',
+        visibleInDemo: false,
+        createdAt: 11
+      },
+      data: new Uint8Array([7, 8, 9])
+    })
+    storage.putBinary('backgrounds', 'private', 'source-background-manga-unused', {
+      metadata: {
+        id: 'source-background-manga-unused',
+        tags: ['castillo'],
+        style: ' manga ',
+        description: 'Castillo Manga aún no usado',
+        mimeType: 'image/png',
+        visibleInDemo: false,
+        createdAt: 11
+      },
+      data: new Uint8Array([7, 9])
+    })
+    storage.putBinary('backgrounds', 'private', 'source-background-realistic-unused', {
+      metadata: {
+        id: 'source-background-realistic-unused',
+        tags: ['ciudad'],
+        style: 'Realista',
+        description: 'Ciudad fuera del estilo seleccionado',
+        mimeType: 'image/png',
+        visibleInDemo: false,
+        createdAt: 11
+      },
+      data: new Uint8Array([8, 9])
+    })
+    storage.putBinary('backgrounds', 'private', 'source-background-realistic-explicit', {
+      metadata: {
+        id: 'source-background-realistic-explicit',
+        tags: ['cueva'],
+        style: 'Realista',
+        description: 'Cueva explícita fuera del estilo',
+        mimeType: 'image/png',
+        visibleInDemo: false,
+        createdAt: 11
+      },
+      data: new Uint8Array([9, 9])
+    })
+    storage.putBinary('sounds', 'private', 'source-character-sound', {
+      metadata: {
+        id: 'source-character-sound',
+        tags: ['campana'],
+        characterId: 'source-character',
+        backgroundId: null,
+        mimeType: 'audio/ogg',
+        createdAt: 12
+      },
+      data: new Uint8Array([10, 11])
+    })
+    storage.putBinary('sounds', 'private', 'source-standalone-sound', {
+      metadata: {
+        id: 'source-standalone-sound',
+        tags: ['trueno'],
+        characterId: null,
+        backgroundId: null,
+        mimeType: 'audio/ogg',
+        createdAt: 13
+      },
+      data: new Uint8Array([12, 13])
+    })
+    storage.putBinary('sounds', 'private', 'source-global-unused-sound', {
+      metadata: {
+        id: 'source-global-unused-sound',
+        tags: ['viento'],
+        characterId: null,
+        backgroundId: null,
+        mimeType: 'audio/ogg',
+        createdAt: 13
+      },
+      data: new Uint8Array([14, 15])
+    })
+    storage.putBinary('sounds', 'private', 'source-character-unused-sound', {
+      metadata: {
+        id: 'source-character-unused-sound',
+        tags: ['susurro'],
+        characterId: 'source-character',
+        backgroundId: null,
+        mimeType: 'audio/ogg',
+        createdAt: 13
+      },
+      data: new Uint8Array([16, 17])
+    })
+    storage.put('presets', 'private', 'source-preset', {
+      id: 'source-preset',
+      name: 'Narrador demo',
+      content: 'Narra con detalle.',
+      createdAt: 14,
+      updatedAt: 14
+    })
+    storage.put('stories', 'private', 'source-story', {
+      ...story('source-story'),
+      title: 'Historia compartida',
+      visibleInDemo: true,
+      visualMode: true,
+      autoGenerateImages: true,
+      protagonistPreferences: 'Protagonista valiente',
+      characterIds: ['source-character'],
+      characterCustomizations: [{
+        characterId: 'source-character',
+        name: 'Alicia',
+        color: '#123456',
+        prompt: 'Heroína',
+        tags: ['valiente']
+      }, {
+        characterId: 'source-remembered-character',
+        name: 'Recuerdo',
+        color: '#654321',
+        prompt: 'Personaje fuera del elenco activo',
+        tags: ['recordado']
+      }],
+      initialBackgroundId: 'source-background',
+      backgroundStyle: 'Manga',
+      presetId: 'source-preset',
+      imageCatalogSnapshot: [{
+        imageId: 'source-image',
+        characterId: 'source-character',
+        characterName: 'Alicia',
+        tags: ['neutral'],
+        isDefault: true
+      }],
+      pendingImageInstructions: [{
+        characterId: 'source-character',
+        imageId: 'source-image',
+        tags: ['neutral']
+      }],
+      contextSummary: 'Alicia llegó al bosque.',
+      contextSummaryThroughMessageId: 'source-message-2'
+    })
+    storage.put('messages', 'private', 'source-message-1', {
+      id: 'source-message-1',
+      storyId: 'source-story',
+      role: 'user',
+      raw: 'Entra en el bosque.',
+      segments: [],
+      swarmError: {
+        characterId: 'source-remembered-character',
+        characterName: 'Recuerdo',
+        tags: ['recordado'],
+        call: {
+          target: 'swarm', operation: '/API/GenerateText2Image', request: null,
+          requestSent: false, response: null, message: 'Diagnóstico privado fuera del elenco'
+        }
+      },
+      createdAt: 20
+    })
+    storage.put('messages', 'private', 'source-message-2', {
+      id: 'source-message-2',
+      storyId: 'source-story',
+      role: 'assistant',
+      raw: 'Fondo [bosque]:\nFondo [cueva]:\nSonido [campana]:\nSonido [trueno]:',
+      segments: [
+        {
+          type: 'dialogue', characterId: 'source-character', imageId: 'source-image',
+          tag: 'neutral', text: 'Adelante.'
+        },
+        {
+          type: 'background', characterId: null, backgroundId: 'source-background',
+          tag: 'bosque', text: ''
+        },
+        {
+          type: 'background', characterId: null,
+          backgroundId: 'source-background-realistic-explicit', tag: 'cueva', text: ''
+        },
+        {
+          type: 'sound', characterId: null, soundId: 'source-character-sound',
+          tag: 'campana', text: ''
+        },
+        {
+          type: 'sound', characterId: null, soundId: 'source-standalone-sound',
+          tag: 'trueno', text: ''
+        }
+      ],
+      swarmError: {
+        characterId: 'source-character',
+        characterName: 'Alicia',
+        tags: ['neutral'],
+        call: {
+          target: 'swarm', operation: '/API/GenerateText2Image', request: null,
+          requestSent: false, response: null, message: 'Diagnóstico compartido del elenco'
+        }
+      },
+      createdAt: 21
+    })
+    storage.put('llmDebugTraces', 'private', 'source-trace', {
+      id: 'source-trace',
+      storyId: 'source-story',
+      requestMessageId: 'source-message-1',
+      responseMessageId: 'source-message-2',
+      status: 'success',
+      request: {},
+      response: {},
+      createdAt: 22
+    })
+    storage.activateMultiUser({ id: 'source-owner', email: 'source@example.com' })
+    const sourceAccess = { ownerId: 'source-owner', includeSharedDemo: true }
+    const sourceSave = storage.createStorySave(
+      'private',
+      'source-story',
+      'Antes del bosque',
+      'data:image/webp;base64,AA==',
+      sourceAccess
+    )
+
+    storage.rememberAccessIdentity({ id: 'destination-owner', email: 'destination@example.com' })
+    const destinationAccess = { ownerId: 'destination-owner', includeSharedDemo: true }
+    storage.putBinary('backgrounds', 'private', 'destination-background', {
+      metadata: {
+        id: 'destination-background',
+        tags: ['bosque'],
+        style: 'Realista',
+        description: 'Fondo ya existente',
+        mimeType: 'image/png',
+        visibleInDemo: false,
+        createdAt: 30
+      },
+      data: new Uint8Array([20])
+    }, destinationAccess)
+    storage.putBinary('sounds', 'private', 'destination-sound', {
+      metadata: {
+        id: 'destination-sound',
+        tags: ['campana'],
+        characterId: null,
+        backgroundId: null,
+        mimeType: 'audio/ogg',
+        createdAt: 31
+      },
+      data: new Uint8Array([21])
+    }, destinationAccess)
+
+    const copied = storage.copySharedDemoStory('source-story', destinationAccess)!
+    assert.notEqual(copied.id, 'source-story')
+    assert.equal(copied.readOnly, undefined)
+    assert.equal(copied.visibleInDemo, false)
+    assert.equal(copied.archived, false)
+    assert.equal(copied.backgroundStyle, 'Manga')
+    assert.equal(copied.contextSummary, 'Alicia llegó al bosque.')
+    assert.notEqual(copied.contextSummaryThroughMessageId, 'source-message-2')
+    assert.equal(copied.presetId, null)
+    assert.equal(storage.list('presets', 'private', {}, { ownerId: 'destination-owner' }).length, 0)
+    assert.equal(copied.characterIds.length, 1)
+    assert.equal(copied.characterCustomizations.length, 1)
+    assert.equal(copied.characterCustomizations[0]?.name, 'Alicia')
+    assert.equal(
+      storage.list('characters', 'private', {}, { ownerId: 'destination-owner' }).length,
+      1
+    )
+
+    const copiedCharacter = storage.get(
+      'characters', 'private', copied.characterIds[0]!, destinationAccess
+    )!
+    assert.notEqual(copiedCharacter.id, 'source-character')
+    assert.equal(copiedCharacter.visibleInDemo, false)
+    const copiedImages = storage.list(
+      'images', 'private', { characterId: copiedCharacter.id }, destinationAccess
+    )
+    assert.equal(copiedImages.length, 1)
+    assert.notEqual(copiedImages[0]?.id, 'source-image')
+    assert.deepEqual(
+      Array.from(storage.getBinary('images', 'private', copiedImages[0]!.id, destinationAccess)!.data),
+      [1, 2, 3]
+    )
+    assert.deepEqual(
+      Array.from(storage.getOriginalImage('private', copiedImages[0]!.id, destinationAccess)!.data),
+      [4, 5, 6]
+    )
+    assert.equal(copied.imageCatalogSnapshot?.[0]?.imageId, copiedImages[0]?.id)
+    assert.equal(copied.pendingImageInstructions?.[0]?.imageId, copiedImages[0]?.id)
+
+    const copiedBackground = storage.get(
+      'backgrounds', 'private', copied.initialBackgroundId!, destinationAccess
+    )!
+    assert.equal(copiedBackground.style, 'Manga')
+    assert.deepEqual(copiedBackground.tags, ['bosque-2'])
+    assert.equal(copiedBackground.visibleInDemo, false)
+    assert.deepEqual(
+      Array.from(storage.getBinary('backgrounds', 'private', copiedBackground.id, destinationAccess)!.data),
+      [7, 8, 9]
+    )
+    const ownedCopiedBackgrounds = storage.list(
+      'backgrounds', 'private', {}, { ownerId: 'destination-owner' }
+    ).filter((background) => background.id !== 'destination-background')
+    assert.equal(ownedCopiedBackgrounds.length, 2)
+    assert.equal(
+      ownedCopiedBackgrounds.some((background) => background.description === 'Castillo Manga aún no usado'),
+      false
+    )
+    assert.equal(
+      ownedCopiedBackgrounds.some((background) => background.description === 'Ciudad fuera del estilo seleccionado'),
+      false
+    )
+    assert.ok(ownedCopiedBackgrounds.some((background) =>
+      background.description === 'Cueva explícita fuera del estilo'
+    ))
+
+    const copiedSounds = storage.list('sounds', 'private', {}, { ownerId: 'destination-owner' })
+      .filter((sound) => sound.id !== 'destination-sound')
+    assert.equal(copiedSounds.length, 2)
+    assert.ok(copiedSounds.some((sound) => sound.tags.includes('campana-2')))
+    assert.ok(copiedSounds.some((sound) => sound.tags.includes('trueno')))
+    assert.equal(copiedSounds.some((sound) => sound.tags.includes('viento')), false)
+    assert.equal(copiedSounds.some((sound) => sound.tags.includes('susurro')), false)
+    assert.ok(copiedSounds.some((sound) => sound.characterId === copiedCharacter.id))
+
+    const copiedMessages = storage.list(
+      'messages', 'private', { storyId: copied.id }, destinationAccess
+    )
+    assert.equal(copiedMessages.length, 2)
+    assert.ok(copiedMessages.every((message) => message.id.startsWith('source-message-') === false))
+    assert.equal(copiedMessages[0]?.swarmError, undefined)
+    const copiedAssistant = copiedMessages[1]!
+    assert.equal(copiedAssistant.swarmError?.characterId, copiedCharacter.id)
+    assert.match(copiedAssistant.raw, /Fondo \[bosque-2\]/)
+    assert.match(copiedAssistant.raw, /Sonido \[campana-2\]/)
+    assert.equal(copiedAssistant.segments[0]?.characterId, copiedCharacter.id)
+    assert.equal(copiedAssistant.segments[0]?.imageId, copiedImages[0]?.id)
+    assert.equal(copiedAssistant.segments[1]?.backgroundId, copiedBackground.id)
+
+    const copiedTraces = storage.list(
+      'llmDebugTraces', 'private', { storyId: copied.id }, destinationAccess
+    )
+    assert.equal(copiedTraces.length, 0)
+    const copiedSaves = storage.list(
+      'storySaves', 'private', { storyId: copied.id }, destinationAccess
+    )
+    assert.equal(copiedSaves.length, 0)
+
+    const original = storage.get('stories', 'private', 'source-story', sourceAccess)!
+    assert.equal(original.visibleInDemo, true)
+    assert.equal(original.initialBackgroundId, 'source-background')
+    assert.deepEqual(
+      storage.get('backgrounds', 'private', 'source-background', sourceAccess)?.tags,
+      ['bosque']
+    )
+    assert.equal(
+      storage.list('llmDebugTraces', 'private', { storyId: 'source-story' }, sourceAccess).length,
+      1
+    )
+    assert.equal(
+      storage.list('storySaves', 'private', { storyId: 'source-story' }, sourceAccess)[0]?.id,
+      sourceSave?.id
+    )
+    storage.put('stories', 'private', copied.id, { ...copied, title: 'Copia editada' }, destinationAccess)
+    assert.equal(storage.get('stories', 'private', 'source-story', sourceAccess)?.title, 'Historia compartida')
+    storage.put('messages', 'private', 'destination-continuation', {
+      id: 'destination-continuation',
+      storyId: copied.id,
+      role: 'user',
+      raw: 'La copia continúa por otro camino.',
+      segments: [],
+      createdAt: 40
+    }, destinationAccess)
+    assert.equal(
+      storage.list('messages', 'private', { storyId: copied.id }, destinationAccess).length,
+      3
+    )
+    assert.equal(
+      storage.list('messages', 'private', { storyId: 'source-story' }, sourceAccess).length,
+      2
+    )
+    assert.equal(storage.copySharedDemoStory(copied.id, destinationAccess), null)
+
+    const destinationCountsBefore = {
+      characters: storage.list('characters', 'private', {}, { ownerId: 'destination-owner' }).length,
+      images: storage.list('images', 'private', {}, { ownerId: 'destination-owner' }).length,
+      backgrounds: storage.list('backgrounds', 'private', {}, { ownerId: 'destination-owner' }).length,
+      sounds: storage.list('sounds', 'private', {}, { ownerId: 'destination-owner' }).length,
+      messages: storage.list('messages', 'private', {}, { ownerId: 'destination-owner' }).length,
+      stories: storage.list('stories', 'private', {}, { ownerId: 'destination-owner' }).length
+    }
+    storage.put('stories', 'private', 'source-story', {
+      ...original,
+      imageCatalogSnapshot: [{
+        imageId: 'missing-image',
+        characterId: 'source-character',
+        characterName: 'Alicia',
+        tags: ['ausente'],
+        isDefault: false
+      }]
+    }, sourceAccess)
+    assert.throws(
+      () => storage.copySharedDemoStory('source-story', destinationAccess),
+      (caught: unknown) => (caught as { code?: string }).code === 'ERR_DEMO_COPY_INCOMPLETE'
+    )
+    storage.put('stories', 'private', 'source-story', {
+      ...original,
+      contextSummaryThroughMessageId: 'missing-message'
+    }, sourceAccess)
+    assert.throws(
+      () => storage.copySharedDemoStory('source-story', destinationAccess),
+      (caught: unknown) => (caught as { code?: string }).code === 'ERR_DEMO_COPY_INCOMPLETE'
+    )
+    storage.put('stories', 'private', 'source-story', original, sourceAccess)
+    storage.database.exec('PRAGMA ignore_check_constraints = ON')
+    storage.database.prepare(`
+      UPDATE sounds SET background_id = ? WHERE scope = ? AND id = ?
+    `).run('source-background', 'private', 'source-character-sound')
+    storage.database.exec('PRAGMA ignore_check_constraints = OFF')
+    assert.throws(() => storage.copySharedDemoStory('source-story', destinationAccess))
+    assert.deepEqual({
+      characters: storage.list('characters', 'private', {}, { ownerId: 'destination-owner' }).length,
+      images: storage.list('images', 'private', {}, { ownerId: 'destination-owner' }).length,
+      backgrounds: storage.list('backgrounds', 'private', {}, { ownerId: 'destination-owner' }).length,
+      sounds: storage.list('sounds', 'private', {}, { ownerId: 'destination-owner' }).length,
+      messages: storage.list('messages', 'private', {}, { ownerId: 'destination-owner' }).length,
+      stories: storage.list('stories', 'private', {}, { ownerId: 'destination-owner' }).length
+    }, destinationCountsBefore)
+  })
+})
+
 test('reasigna identidad completa y audita ambas colecciones sin romper dependencias', () => {
   withStorage((storage) => {
     for (const scope of ['normal', 'private'] as const) {

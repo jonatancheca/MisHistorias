@@ -74,6 +74,116 @@ async function focusVisualKeyboard(page: Page) {
 }
 
 test.describe('historias', () => {
+  test('confirma y copia una demo ajena a la colección privada', async ({ page }) => {
+    const now = Date.now()
+    const sharedStory: Story = {
+      id: 'shared-demo-story',
+      title: 'Demo de otra autora',
+      premise: 'Una aventura compartida en solo lectura.',
+      visualMode: false,
+      archived: false,
+      visibleInDemo: true,
+      autoGenerateImages: false,
+      protagonistPreferences: '',
+      protagonistPreferencesMode: 'append',
+      characterIds: [],
+      characterCustomizations: [],
+      initialBackgroundId: null,
+      backgroundStyle: 'Manga',
+      presetId: null,
+      imageCatalogSnapshot: [],
+      pendingImageInstructions: [],
+      contextSummary: 'Contexto compartido.',
+      createdAt: now - 1_000,
+      updatedAt: now - 1_000,
+      readOnly: true
+    }
+    const copiedStory: Story = {
+      ...sharedStory,
+      id: 'copied-private-story',
+      visibleInDemo: false,
+      readOnly: undefined,
+      createdAt: now,
+      updatedAt: now
+    }
+    let copied = false
+    let copyRequests = 0
+
+    await page.route('**/api/access', async (route) => {
+      await route.fulfill({
+        json: {
+          multiUserEnabled: true,
+          identity: { id: 'visitor-sub', email: 'visitante@example.com' },
+          isAdmin: false,
+          canActivate: false
+        }
+      })
+    })
+    await page.route('**/api/data/**', async (route) => {
+      const url = new URL(route.request().url())
+      if (
+        route.request().method() === 'POST' &&
+        url.pathname === '/api/data/stories/shared-demo-story/copy-shared-demo'
+      ) {
+        copied = true
+        copyRequests += 1
+        await route.fulfill({ json: copiedStory })
+        return
+      }
+      if (url.pathname === '/api/data/stories') {
+        await route.fulfill({ json: url.searchParams.get('scope') === 'private'
+          ? copied ? [copiedStory, sharedStory] : [sharedStory]
+          : [] })
+        return
+      }
+      if (
+        ['/api/data/characters', '/api/data/images', '/api/data/backgrounds', '/api/data/sounds',
+          '/api/data/messages', '/api/data/llmDebugTraces', '/api/data/storySaves']
+          .includes(url.pathname)
+      ) {
+        await route.fulfill({ json: [] })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.goto('/settings')
+    const privateTrigger = page.getByRole('button', { name: 'Activar modo privado' })
+    await privateTrigger.click()
+    await privateTrigger.click()
+    await privateTrigger.click()
+    await expect(page.locator('html')).toHaveClass(/private-scope/)
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.getByRole('link', { name: 'Historias', exact: true }).click()
+    await page.getByRole('link', { name: sharedStory.title, exact: true }).click()
+    await expect(page.getByText('Historia demo compartida · solo lectura')).toBeVisible()
+    const copyButton = page.getByTestId('copy-shared-story')
+    await expect(copyButton).toBeVisible()
+    await copyButton.click()
+    const confirmation = page.getByRole('alertdialog', { name: 'Copiar historia demo' })
+    await expect(confirmation).toContainText('visitante@example.com')
+    await expect(confirmation).toContainText('mensajes y los recursos necesarios')
+    expect(copyRequests).toBe(0)
+
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 })
+      await expect.poll(() => page.evaluate(() => ({
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth
+      }))).toEqual({ viewport: width, document: width })
+    }
+
+    await confirmation.getByRole('button', { name: 'Copiar a mi colección' }).click()
+    await expect(page).toHaveURL(`/stories/${copiedStory.id}`)
+    await expect(page.getByText('Historia demo compartida · solo lectura')).toHaveCount(0)
+    await expect(page.getByTestId('copy-shared-story')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Ajustes de la historia' })).toBeVisible()
+    await expect(page.getByPlaceholder('Escribe lo que haces o dices…')).toBeEditable()
+    await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toBeEnabled()
+    expect(copyRequests).toBe(1)
+  })
+
   test('selecciona un estilo y limita fondos visibles y enviados al LLM', async ({ page, data }) => {
     const character = await data.createCharacter()
     const manga = await data.createBackground({ tags: [data.unique('manga')], style: 'Manga' })

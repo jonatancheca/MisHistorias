@@ -288,6 +288,13 @@ export async function putStory(story: Story) {
   return putJson('stories', story)
 }
 
+export async function copySharedDemoStory(id: string) {
+  return $fetch<Story>(
+    dataUrl(`stories/${encodeURIComponent(id)}/copy-shared-demo`, 'private'),
+    { method: 'POST' }
+  )
+}
+
 export async function putStoryInScope(
   story: Story,
   scope: DataScope,
