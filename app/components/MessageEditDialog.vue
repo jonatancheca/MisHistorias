@@ -23,6 +23,17 @@ watch(() => props.message, async (message) => {
   await nextTick()
   textarea.value?.focus()
 })
+
+function save() {
+  if (!props.message || props.disabled) return
+  emit('save', props.message.id, buffer.value)
+}
+
+function onSaveShortcut(event: KeyboardEvent) {
+  if (event.repeat || event.isComposing) return
+  event.preventDefault()
+  save()
+}
 </script>
 
 <template>
@@ -39,7 +50,7 @@ watch(() => props.message, async (message) => {
         aria-modal="true"
         aria-labelledby="message-edit-title"
         class="w-full max-w-2xl rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-5 shadow-2xl"
-        @submit.prevent="!disabled && emit('save', message.id, buffer)"
+        @submit.prevent="save"
       >
         <h2 id="message-edit-title" class="mb-3 text-lg font-bold">Editar mensaje</h2>
         <label class="label" for="message-edit-text">Texto completo del mensaje</label>
@@ -50,10 +61,23 @@ watch(() => props.message, async (message) => {
           autocomplete="off"
           class="field min-h-40 max-h-[60dvh] resize-y"
           :disabled="disabled"
+          @keydown.ctrl.enter.exact="onSaveShortcut"
           @keydown.shift.tab.prevent="cancelButton?.focus()"
         />
         <div class="mt-3 flex justify-end gap-2">
-          <button type="submit" class="btn-primary" :disabled="disabled">Guardar</button>
+          <button
+            type="submit"
+            class="btn-primary gap-2"
+            :disabled="disabled"
+            aria-keyshortcuts="Control+Enter"
+            title="Guardar (Ctrl+Enter)"
+          >
+            <span>Guardar</span>
+            <kbd
+              aria-hidden="true"
+              class="rounded border border-white/30 px-1.5 py-0.5 text-[11px] font-medium leading-none"
+            >Ctrl+Enter</kbd>
+          </button>
           <button
             ref="cancelButton"
             type="button"

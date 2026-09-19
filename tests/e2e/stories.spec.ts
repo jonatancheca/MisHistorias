@@ -1991,7 +1991,16 @@ test.describe('novela visual y responsive', () => {
     expect((await data.get<Message>('messages', assistant.id)).raw).toBe(assistant.raw)
     await actions.getByRole('button', { name: 'Editar mensaje' }).click()
     await text.fill('Primera editada.\nSegunda editada.')
-    await editor.getByRole('button', { name: 'Guardar' }).click()
+    const saveButton = editor.getByRole('button', { name: 'Guardar' })
+    await expect(saveButton).toHaveAttribute('aria-keyshortcuts', 'Control+Enter')
+    await expect(saveButton.getByText('Ctrl+Enter')).toBeVisible()
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 760 })
+      await expect(saveButton.getByText('Ctrl+Enter')).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    }
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await text.press('Control+Enter')
     await expect(editor).toHaveCount(0)
     await expect(frame).toContainText('Segunda editada.')
     expect((await data.get<Message>('messages', assistant.id)).raw).toBe('Primera editada.\nSegunda editada.')
