@@ -1051,8 +1051,25 @@ test.describe('chat', () => {
         await responseReady
         await route.fulfill({ json: { content: 'La espera termina.', finishReason: 'stop' } })
       })
+      await page.setViewportSize({ width: 1280, height: 900 })
       await page.goto(`/stories/${story.id}`)
-      await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Comienza.')
+      const input = page.getByPlaceholder('Escribe lo que haces o dices…')
+      await input.fill('Comienza.')
+      const readVisualGeometry = () => page.evaluate(() => {
+        const bounds = (selector: string) => {
+          const rect = document.querySelector<HTMLElement>(selector)?.getBoundingClientRect()
+          return rect
+            ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+            : null
+        }
+        return {
+          view: bounds('[data-testid="visual-novel-view"]'),
+          dialogue: bounds('[data-testid="visual-novel-dialogue"]'),
+          footer: bounds('footer'),
+          input: bounds('textarea[placeholder="Escribe lo que haces o dices…"]')
+        }
+      })
+      const visualGeometryBefore = visualMode ? await readVisualGeometry() : null
       await page.getByRole('button', { name: 'Enviar', exact: true }).click()
       const indicator = page.getByTestId('thinking-indicator')
       try {
@@ -1066,9 +1083,17 @@ test.describe('chat', () => {
           await expect(indicator).toHaveText('Creando historia…')
           await expect(page.locator('footer').getByTestId('thinking-indicator')).toHaveCount(1)
           const statusBounds = await indicator.boundingBox()
-          const inputBounds = await page.getByPlaceholder('Escribe lo que haces o dices…').boundingBox()
+          const inputBounds = await input.boundingBox()
           expect(statusBounds!.y + statusBounds!.height).toBeLessThanOrEqual(inputBounds!.y)
           expect(Math.abs(statusBounds!.x + statusBounds!.width / 2 - width / 2)).toBeLessThanOrEqual(1)
+          expect(await indicator.evaluate(element => getComputedStyle(element).position)).toBe(
+            visualMode && width >= 640 ? 'absolute' : 'static'
+          )
+          if (visualMode && width === 1280) {
+            expect(await readVisualGeometry()).toEqual(visualGeometryBefore)
+            await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toHaveCount(0)
+            await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
+          }
           expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
         }
       } finally {

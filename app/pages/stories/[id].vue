@@ -1393,28 +1393,41 @@ onBeforeRouteLeave(() => {
 
       <footer
         v-if="!stories.activeStory.readOnly"
-        class="border-t border-[var(--color-border-soft)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4"
+        class="relative border-t border-[var(--color-border-soft)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4"
       >
         <div
           v-if="stories.waitingForResponse"
           data-testid="thinking-indicator"
-          class="mb-2 flex min-w-0 items-center justify-center gap-3 text-sm text-[var(--color-fg-muted)] sm:-translate-x-9"
-          :class="!stories.activeStory.visualMode ? 'lg:!translate-x-[5.75rem]' : ''"
+          class="mb-2 flex min-w-0 items-center justify-center text-sm text-[var(--color-fg-muted)] sm:-translate-x-9"
+          :class="
+            stories.activeStory.visualMode
+              ? 'sm:pointer-events-none sm:absolute sm:inset-x-0 sm:bottom-full sm:z-20'
+              : 'lg:!translate-x-[5.75rem]'
+          "
           role="status"
           aria-live="polite"
         >
-          <span>Creando historia…</span>
-          <span class="flex shrink-0 items-center gap-1" aria-hidden="true">
-            <span class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none" />
-            <span
-              class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
-              style="animation-delay: 120ms"
-            />
-            <span
-              class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
-              style="animation-delay: 240ms"
-            />
-          </span>
+          <div
+            class="flex items-center gap-3"
+            :class="
+              stories.activeStory.visualMode
+                ? 'sm:rounded-full sm:border sm:border-white/25 sm:bg-slate-950/85 sm:px-4 sm:py-2 sm:text-white sm:shadow-lg sm:backdrop-blur-sm'
+                : ''
+            "
+          >
+            <span>Creando historia…</span>
+            <span class="flex shrink-0 items-center gap-1" aria-hidden="true">
+              <span class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none" />
+              <span
+                class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
+                style="animation-delay: 120ms"
+              />
+              <span
+                class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
+                style="animation-delay: 240ms"
+              />
+            </span>
+          </div>
         </div>
         <div
           v-if="stories.generatingImages"
@@ -1470,7 +1483,22 @@ onBeforeRouteLeave(() => {
             @keydown.enter.exact.prevent="submit"
           />
           <div class="grid shrink-0 grid-cols-3 gap-2 sm:w-72">
-            <button type="submit" class="btn-primary" :disabled="stories.generating">Enviar</button>
+            <button
+              v-if="stories.activeStory.visualMode && stories.generating"
+              type="button"
+              class="btn-ghost hidden h-full w-full items-center justify-center sm:flex"
+              @click="stories.stop({ preserveAutoResponse: true })"
+            >
+              Parar
+            </button>
+            <button
+              type="submit"
+              class="btn-primary"
+              :class="stories.activeStory.visualMode && stories.generating ? 'sm:hidden' : ''"
+              :disabled="stories.generating"
+            >
+              Enviar
+            </button>
             <span class="group relative min-w-0">
               <button
                 type="button"
@@ -1515,6 +1543,7 @@ onBeforeRouteLeave(() => {
               v-if="stories.generating"
               type="button"
               class="btn-ghost col-span-4"
+              :class="stories.activeStory.visualMode ? 'sm:hidden' : ''"
               @click="stories.stop({ preserveAutoResponse: true })"
             >
               Parar
