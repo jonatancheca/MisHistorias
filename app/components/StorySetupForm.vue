@@ -56,6 +56,7 @@ const pickerCharacters = computed(() => selectableCharacters.value
   .map((character) => ({
     id: character.id,
     label: characterLabel(character.id),
+    prompt: customizationFor(character.id)?.prompt ?? character.prompt,
     tags: [...(customizationFor(character.id)?.tags ?? character.tags ?? [])],
     archived: Boolean(character.archived),
     customized: Boolean(customizationFor(character.id))

@@ -2,6 +2,7 @@
 interface PickerCharacter {
   id: string
   label: string
+  prompt: string
   tags: string[]
   archived: boolean
   customized: boolean
@@ -17,6 +18,21 @@ const emit = defineEmits<{
   select: [characterId: string]
   forget: [characterId: string]
 }>()
+
+const mobilePromptCharacterId = ref<string | null>(null)
+const promptIdPrefix = useId()
+
+function promptDescriptionId(characterId: string, target: 'tooltip' | 'panel') {
+  return `${promptIdPrefix}-${characterId}-${target}`
+}
+
+function toggleMobilePrompt(characterId: string) {
+  mobilePromptCharacterId.value = mobilePromptCharacterId.value === characterId ? null : characterId
+}
+
+watch(() => props.open, (open) => {
+  if (!open) mobilePromptCharacterId.value = null
+})
 
 useDialogEscape(
   () => props.open,
@@ -51,13 +67,38 @@ useDialogEscape(
             <article
               v-for="character in characters"
               :key="character.id"
-              class="grid min-w-0 gap-3 rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-elevated)] p-3"
+              class="story-character-picker-card relative grid min-w-0 gap-3 rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-elevated)] p-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
               data-testid="story-character-picker-card"
+              tabindex="0"
+              :aria-describedby="character.prompt.trim() ? promptDescriptionId(character.id, 'tooltip') : undefined"
             >
               <header class="flex min-w-0 items-center gap-2">
                 <span class="min-w-0 flex-1 truncate font-semibold">{{ character.label }}</span>
+                <button
+                  v-if="character.prompt.trim()"
+                  type="button"
+                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--color-border-soft)] bg-[var(--color-surface)] text-[var(--color-fg-muted)] focus:outline-none focus:ring-2 focus:ring-brand-500 sm:hidden"
+                  :aria-label="`${mobilePromptCharacterId === character.id ? 'Ocultar' : 'Mostrar'} prompt de ${character.label}`"
+                  :aria-controls="promptDescriptionId(character.id, 'panel')"
+                  :aria-expanded="mobilePromptCharacterId === character.id"
+                  data-testid="character-prompt-toggle"
+                  @click="toggleMobilePrompt(character.id)"
+                >
+                  <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 11v6M12 7h.01" />
+                  </svg>
+                </button>
                 <CharacterTagsTooltip :tags="character.tags" :label="character.label" />
               </header>
+              <p
+                v-if="character.prompt.trim() && mobilePromptCharacterId === character.id"
+                :id="promptDescriptionId(character.id, 'panel')"
+                class="whitespace-pre-wrap break-words rounded-lg bg-brand-500/10 p-3 text-sm text-[var(--color-fg-muted)] sm:hidden"
+                data-testid="character-mobile-prompt"
+              >
+                {{ character.prompt }}
+              </p>
               <div class="flex min-w-0 gap-2">
                 <CharacterImageCarousel
                   :character-id="character.id"
@@ -94,6 +135,15 @@ useDialogEscape(
                 <span v-if="character.archived" class="rounded-full border border-[var(--color-border-soft)] px-1.5 py-0.5">Archivado</span>
                 <span v-if="character.customized" class="rounded-full border border-[var(--color-border-soft)] px-1.5 py-0.5">Personalización guardada</span>
               </div>
+              <p
+                v-if="character.prompt.trim()"
+                :id="promptDescriptionId(character.id, 'tooltip')"
+                role="tooltip"
+                class="character-prompt-tooltip pointer-events-none invisible absolute top-12 right-3 left-3 z-30 hidden whitespace-pre-wrap break-words rounded-xl bg-slate-950 px-3 py-2 text-sm leading-snug text-white opacity-0 shadow-xl transition sm:block"
+                data-testid="story-character-prompt-tooltip"
+              >
+                {{ character.prompt }}
+              </p>
             </article>
           </div>
         </div>
@@ -101,3 +151,11 @@ useDialogEscape(
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.story-character-picker-card:hover .character-prompt-tooltip,
+.story-character-picker-card:focus-within .character-prompt-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+</style>

@@ -471,6 +471,60 @@ test.describe('historias', () => {
     }
   })
 
+  test('muestra el prompt efectivo al elegir personajes en escritorio y móvil', async ({ page, data }) => {
+    const globalPrompt = data.unique('Prompt-global-selector')
+    const rememberedPrompt = `${data.unique('Prompt-recordado-selector')}\nSegunda línea completa.`
+    const character = await data.createCharacter({
+      name: data.unique('Prompt-selector'),
+      prompt: globalPrompt
+    })
+    const blankCharacter = await data.createCharacter({
+      name: data.unique('Sin-prompt-selector'),
+      prompt: '   '
+    })
+    const source = await data.createStory({ characters: [character] })
+    const response = await page.request.put(`/api/data/stories/${source.id}?scope=normal`, {
+      data: {
+        ...source,
+        characterIds: [],
+        characterCustomizations: source.characterCustomizations.map((customization) => ({
+          ...customization,
+          prompt: rememberedPrompt
+        }))
+      }
+    })
+    expect(response.ok()).toBe(true)
+
+    await page.goto(`/stories/new?copyFrom=${source.id}`)
+    await page.getByRole('button', { name: 'Añadir personaje' }).click()
+    const picker = page.getByRole('dialog', { name: 'Añadir personaje' })
+    const card = picker.getByTestId('story-character-picker-card').filter({ hasText: character.name })
+    const tooltip = card.getByTestId('story-character-prompt-tooltip')
+    const blankCard = picker.getByTestId('story-character-picker-card').filter({ hasText: blankCharacter.name })
+
+    await expect(tooltip).toBeHidden()
+    await card.hover()
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toHaveText(rememberedPrompt)
+    await picker.getByRole('heading', { name: 'Añadir personaje' }).hover()
+    await card.focus()
+    await expect(tooltip).toBeVisible()
+    await expect(blankCard.getByTestId('story-character-prompt-tooltip')).toHaveCount(0)
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 800 })
+      const showPrompt = card.getByRole('button', { name: `Mostrar prompt de ${character.name}` })
+      await expect(showPrompt).toBeVisible()
+      await expect(blankCard.getByTestId('character-prompt-toggle')).toHaveCount(0)
+      await showPrompt.click()
+      await expect(card.getByTestId('character-mobile-prompt')).toHaveText(rememberedPrompt)
+      await expect(page.getByTestId('selected-story-character')).toHaveCount(0)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      await card.getByRole('button', { name: `Ocultar prompt de ${character.name}` }).click()
+      await expect(card.getByTestId('character-mobile-prompt')).toHaveCount(0)
+    }
+  })
+
   test('copia planteamiento sin título ni mensajes y mantiene independencia', async ({ page, data }) => {
     const { story } = await createStoryFixture(data, true)
     await data.createMessage({ story, role: 'user', raw: 'Mensaje que no debe copiarse.' })
