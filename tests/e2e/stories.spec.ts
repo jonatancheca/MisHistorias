@@ -462,6 +462,56 @@ test.describe('historias', () => {
     await expect(cardFor(archived.title).locator('.story-index')).toHaveText('02')
   })
 
+  test('muestra tooltips accesibles solo cuando el texto de una historia queda truncado', async ({ page, data }) => {
+    const character = await data.createCharacter()
+    const longTitle = `${data.unique('Historia')} ${'muy larga '.repeat(14)}`.trim()
+    const longPremise = `${data.unique('Planteamiento')} ${'con muchos detalles narrativos '.repeat(20)}`.trim()
+    const story = await data.createStory({
+      characters: [character],
+      title: longTitle,
+      premise: longPremise
+    })
+    const shortStory = await data.createStory({
+      characters: [character],
+      title: 'Breve',
+      premise: 'Texto completo.'
+    })
+
+    await page.setViewportSize({ width: 320, height: 800 })
+    await page.goto('/')
+
+    const card = page.locator('.story-card').filter({ hasText: longTitle })
+    const title = card.getByRole('link', { name: longTitle })
+    const titleTooltip = card.getByRole('tooltip', { name: longTitle })
+    await expect(title).toHaveAttribute('aria-describedby', `story-title-tooltip-${story.id}`)
+    await expect(titleTooltip).toBeHidden()
+    await title.hover()
+    await expect(titleTooltip).toBeVisible()
+
+    const premise = card.locator(`p[aria-describedby="story-premise-tooltip-${story.id}"]`)
+    const premiseTooltip = card.getByRole('tooltip', { name: longPremise })
+    await expect(premise).toHaveAttribute('tabindex', '0')
+    await premise.focus()
+    await expect(premiseTooltip).toBeVisible()
+
+    const archive = card.getByRole('button', { name: 'Archivar' })
+    const archiveTooltip = card.getByRole('tooltip', { name: 'Archivar historia' })
+    await archive.focus()
+    await expect(archiveTooltip).toBeVisible()
+    await expect(archive).toHaveAttribute('aria-describedby', `story-archive-tooltip-${story.id}`)
+
+    const shortCard = page.locator('.story-card', {
+      has: page.locator(`a[href="/stories/${shortStory.id}"]`)
+    })
+    await expect(shortCard.getByRole('link', { name: shortStory.title }))
+      .not.toHaveAttribute('aria-describedby', /.+/)
+    await expect(shortCard.locator(`#story-title-tooltip-${shortStory.id}`)).toHaveCount(0)
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 800 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    }
+  })
+
   test('añade personajes desde ajustes y conserva su copia independiente', async ({ page, data }) => {
     const { story, character } = await createStoryFixture(data)
     const added = await data.createCharacter({

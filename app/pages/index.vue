@@ -142,15 +142,34 @@ async function reload() {
             <p class="text-[0.65rem] font-bold tracking-[0.12em] text-brand-600 uppercase">
               {{ story.readOnly ? 'Demo compartida · solo lectura' : story.archived ? 'Historia archivada' : 'Historia en curso' }}
             </p>
-            <NuxtLink
-              :to="`/stories/${story.id}`"
-              class="mt-1 block truncate text-xl font-bold tracking-[-0.025em] hover:text-brand-600"
+            <OverflowTooltip
+              :text="story.title"
+              :tooltip-id="`story-title-tooltip-${story.id}`"
             >
-              {{ story.title }}
-            </NuxtLink>
-            <p class="mt-2 line-clamp-2 text-sm leading-relaxed text-[var(--color-fg-muted)]">
-              {{ story.premise || 'Una historia esperando su siguiente capítulo.' }}
-            </p>
+              <template #default="{ describedBy }">
+                <NuxtLink
+                  :to="`/stories/${story.id}`"
+                  :aria-describedby="describedBy"
+                  class="mt-1 block truncate text-xl font-bold tracking-[-0.025em] hover:text-brand-600"
+                >
+                  {{ story.title }}
+                </NuxtLink>
+              </template>
+            </OverflowTooltip>
+            <OverflowTooltip
+              :text="story.premise || 'Una historia esperando su siguiente capítulo.'"
+              :tooltip-id="`story-premise-tooltip-${story.id}`"
+            >
+              <template #default="{ describedBy, overflowing }">
+                <p
+                  :aria-describedby="describedBy"
+                  :tabindex="overflowing ? 0 : undefined"
+                  class="mt-2 line-clamp-2 text-sm leading-relaxed text-[var(--color-fg-muted)]"
+                >
+                  {{ story.premise || 'Una historia esperando su siguiente capítulo.' }}
+                </p>
+              </template>
+            </OverflowTooltip>
           </div>
         </div>
 
@@ -165,21 +184,29 @@ async function reload() {
           >
             Copiar
           </NuxtLink>
-          <button
-            v-if="!story.readOnly"
-            type="button"
-            class="btn-ghost inline-flex min-h-9 shrink-0 items-center px-2.5 py-1.5"
-            :aria-label="story.archived ? 'Desarchivar' : 'Archivar'"
-            :title="story.archived ? 'Desarchivar' : 'Archivar'"
-            @click="setArchived(story.id, !story.archived)"
-          >
-            <svg v-if="story.archived" aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M4 7h16v13H4zM3 3h18v4H3zM12 16v-5m0 0-3 3m3-3 3 3" />
-            </svg>
-            <svg v-else aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
-            </svg>
-          </button>
+          <span v-if="!story.readOnly" class="group relative inline-flex">
+            <button
+              type="button"
+              class="btn-ghost inline-flex min-h-9 shrink-0 items-center px-2.5 py-1.5"
+              :aria-label="story.archived ? 'Desarchivar' : 'Archivar'"
+              :aria-describedby="`story-archive-tooltip-${story.id}`"
+              @click="setArchived(story.id, !story.archived)"
+            >
+              <svg v-if="story.archived" aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7h16v13H4zM3 3h18v4H3zM12 16v-5m0 0-3 3m3-3 3 3" />
+              </svg>
+              <svg v-else aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
+              </svg>
+            </button>
+            <span
+              :id="`story-archive-tooltip-${story.id}`"
+              role="tooltip"
+              class="pointer-events-none invisible absolute right-0 bottom-full z-30 mb-2 w-max max-w-[calc(100vw-3rem)] rounded-lg bg-slate-950 px-3 py-2 text-xs leading-snug text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+            >
+              {{ story.archived ? 'Desarchivar historia' : 'Archivar historia' }}
+            </span>
+          </span>
           <button
             v-if="!story.readOnly"
             type="button"
