@@ -103,10 +103,21 @@ type SettingsSectionId = typeof settingsSections[number]['id']
 const settingsPageRef = ref<HTMLElement | null>(null)
 const settingsNavRef = ref<HTMLElement | null>(null)
 const activeSectionId = ref<SettingsSectionId>('apariencia')
+const settingsNavDragging = ref(false)
 let pageScrollContainer: HTMLElement | null = null
 let sectionUpdateFrame: number | null = null
 let navScrollFrame: number | null = null
 let pendingHashBehavior: ScrollBehavior | null = null
+let settingsNavDrag: {
+  pointerId: number
+  startX: number
+  scrollLeft: number
+  moved: boolean
+} | null = null
+let suppressSettingsNavClick = false
+let settingsNavClickResetTimer: ReturnType<typeof setTimeout> | null = null
+
+const SETTINGS_NAV_DRAG_THRESHOLD = 6
 
 const form = reactive({ ...settings.settings })
 const narrativePrompt = ref(settings.settings.narrativePrompt ?? DEFAULT_PRESET_CONTENT)
@@ -278,6 +289,70 @@ function navigateToSettingsSection(id: SettingsSectionId) {
 
   pendingHashBehavior = behavior
   void router.push({ path: route.path, query: route.query, hash })
+}
+
+function startSettingsNavDrag(event: PointerEvent) {
+  const nav = settingsNavRef.value
+  if (
+    event.pointerType !== 'mouse'
+    || event.button !== 0
+    || !nav
+    || nav.scrollWidth <= nav.clientWidth
+  ) return
+
+  if (settingsNavClickResetTimer) clearTimeout(settingsNavClickResetTimer)
+  settingsNavClickResetTimer = null
+  suppressSettingsNavClick = false
+  settingsNavDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    scrollLeft: nav.scrollLeft,
+    moved: false
+  }
+}
+
+function moveSettingsNavDrag(event: PointerEvent) {
+  const nav = settingsNavRef.value
+  if (!nav || !settingsNavDrag || settingsNavDrag.pointerId !== event.pointerId) return
+
+  const deltaX = event.clientX - settingsNavDrag.startX
+  if (!settingsNavDrag.moved && Math.abs(deltaX) < SETTINGS_NAV_DRAG_THRESHOLD) return
+
+  if (!settingsNavDrag.moved) {
+    settingsNavDrag.moved = true
+    nav.setPointerCapture(event.pointerId)
+  }
+  settingsNavDragging.value = true
+  event.preventDefault()
+  nav.scrollLeft = settingsNavDrag.scrollLeft - deltaX
+}
+
+function endSettingsNavDrag(event: PointerEvent, suppressClick: boolean) {
+  const nav = settingsNavRef.value
+  if (!nav || !settingsNavDrag || settingsNavDrag.pointerId !== event.pointerId) return
+
+  const moved = settingsNavDrag.moved
+  settingsNavDrag = null
+  settingsNavDragging.value = false
+  if (nav.hasPointerCapture(event.pointerId)) nav.releasePointerCapture(event.pointerId)
+  if (!moved || !suppressClick) return
+
+  suppressSettingsNavClick = true
+  settingsNavClickResetTimer = setTimeout(() => {
+    suppressSettingsNavClick = false
+    settingsNavClickResetTimer = null
+  }, 0)
+}
+
+function onSettingsNavClick(event: MouseEvent, id: SettingsSectionId) {
+  event.preventDefault()
+  if (suppressSettingsNavClick) {
+    suppressSettingsNavClick = false
+    if (settingsNavClickResetTimer) clearTimeout(settingsNavClickResetTimer)
+    settingsNavClickResetTimer = null
+    return
+  }
+  navigateToSettingsSection(id)
 }
 
 watch(
@@ -975,6 +1050,7 @@ onBeforeUnmount(() => {
   if (swarmPreviewUrl.value) URL.revokeObjectURL(swarmPreviewUrl.value)
   if (sectionUpdateFrame !== null) cancelAnimationFrame(sectionUpdateFrame)
   if (navScrollFrame !== null) cancelAnimationFrame(navScrollFrame)
+  if (settingsNavClickResetTimer) clearTimeout(settingsNavClickResetTimer)
   pageScrollContainer?.removeEventListener('scroll', queueSectionUpdate)
   window.removeEventListener('resize', queueSectionUpdate)
   void flushSave()
@@ -1030,7 +1106,12 @@ onBeforeRouteLeave(async () => {
       <div
         ref="settingsNavRef"
         class="settings-section-nav flex gap-1.5 overflow-x-auto rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface-elevated)] p-2"
+        :class="{ 'settings-section-nav-dragging': settingsNavDragging }"
         data-testid="settings-section-nav"
+        @pointerdown="startSettingsNavDrag"
+        @pointermove="moveSettingsNavDrag"
+        @pointerup="endSettingsNavDrag($event, true)"
+        @pointercancel="endSettingsNavDrag($event, false)"
       >
         <a
           v-for="(section, index) in settingsSections"
@@ -1042,7 +1123,8 @@ onBeforeRouteLeave(async () => {
             : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'"
           :aria-current="activeSectionId === section.id ? 'location' : undefined"
           :data-settings-section="section.id"
-          @click.prevent="navigateToSettingsSection(section.id)"
+          :draggable="false"
+          @click="onSettingsNavClick($event, section.id)"
         >
           <span class="settings-nav-index">{{ String(index + 1).padStart(2, '0') }}</span>
           {{ section.label }}
@@ -2082,8 +2164,14 @@ onBeforeRouteLeave(async () => {
 
 .settings-section-nav {
   scrollbar-width: none;
+  cursor: grab;
   box-shadow: 0 12px 36px color-mix(in srgb, var(--color-fg) 7%, transparent);
   backdrop-filter: blur(18px) saturate(130%);
+}
+
+.settings-section-nav-dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .settings-section-nav::-webkit-scrollbar {

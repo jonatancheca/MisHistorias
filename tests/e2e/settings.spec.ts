@@ -131,6 +131,34 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
   await expect(nav.getByRole('link', { name: 'Apariencia' }))
     .toHaveAttribute('aria-current', 'location')
 
+  const protagonistLink = nav.getByRole('link', { name: 'Protagonista' })
+  const protagonistBox = await protagonistLink.boundingBox()
+  expect(protagonistBox).not.toBeNull()
+  expect(await nav.evaluate(element => element.scrollWidth)).toBeGreaterThan(
+    await nav.evaluate(element => element.clientWidth)
+  )
+  const initialUrl = page.url()
+  const initialScrollLeft = await nav.evaluate(element => element.scrollLeft)
+  await page.mouse.move(
+    protagonistBox!.x + protagonistBox!.width / 2,
+    protagonistBox!.y + protagonistBox!.height / 2
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    protagonistBox!.x + protagonistBox!.width / 2 - 120,
+    protagonistBox!.y + protagonistBox!.height / 2,
+    { steps: 5 }
+  )
+  await page.mouse.up()
+  await expect.poll(() => nav.evaluate(element => element.scrollLeft))
+    .toBeGreaterThan(initialScrollLeft)
+  await expect(page).toHaveURL(initialUrl)
+
+  await nav.evaluate(element => { element.scrollLeft = 0 })
+  await protagonistLink.click()
+  await expect(page).toHaveURL(/\/settings#protagonista$/)
+  await expect(protagonistLink).toHaveAttribute('aria-current', 'location')
+
   const swarmLink = nav.locator('[data-settings-section="swarmui"]')
   await swarmLink.click()
   await expect(page).toHaveURL(/\/settings#swarmui$/)
