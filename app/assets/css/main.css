@@ -353,6 +353,11 @@ h3 {
 }
 
 @media (max-width: 639px) {
+  .app-main::before,
+  .library-hero::after {
+    border-color: transparent;
+  }
+
   .page-shell {
     padding: 1rem;
   }
