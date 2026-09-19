@@ -8,7 +8,16 @@ import { primaryTag, tagKey } from '~/lib/tags'
 import { generateCharacterImagePrompt } from '~/lib/characterImagePrompt'
 import { fetchSwarmCatalog, type SwarmCatalog } from '~/lib/swarm'
 
-const props = defineProps<{ characterId: string }>()
+const props = withDefaults(defineProps<{
+  characterId: string
+  manageImages?: boolean
+  appearanceDisabled?: boolean
+  unavailableMessage?: string
+}>(), {
+  manageImages: true,
+  appearanceDisabled: false,
+  unavailableMessage: ''
+})
 const imageGenerationPreset = defineModel<string>('imageGenerationPreset', { required: true })
 const imageGenerationLora = defineModel<string>('imageGenerationLora', { required: true })
 const imageGenerationSeed = defineModel<string>('imageGenerationSeed', { required: true })
@@ -57,7 +66,12 @@ onBeforeUnmount(() => {
 })
 onBeforeRouteLeave(() => { cancelGeneration() })
 watch(activeDataScope, cancelGeneration, { flush: 'sync' })
-watch(swarmConfigured, (configured) => { if (!configured) { cancelGeneration(); generationOpen.value = false } })
+watch(swarmConfigured, (configured) => {
+  if (!configured) {
+    cancelGeneration()
+    swarmCatalog.value = null
+  }
+})
 const generationModel = computed({
   get: () => imageGenerationModel.value,
   set: (value: string) => { imageGenerationModel.value = value }
@@ -123,7 +137,7 @@ async function loadSwarmCatalog() {
 
 async function toggleGeneration() {
   generationOpen.value = !generationOpen.value
-  if (!generationOpen.value) return
+  if (!generationOpen.value || !props.manageImages || !swarmConfigured.value) return
   try {
     await Promise.all([
       swarmPrompts.load(true).then(() => {
@@ -460,13 +474,15 @@ function removeFromLightbox(item: { id?: string }) {
 <template>
   <section>
     <h2 class="mb-1 text-lg font-semibold">Imágenes</h2>
-    <p class="mb-4 text-sm text-[var(--color-fg-muted)]">
+    <p v-if="props.manageImages" class="mb-4 text-sm text-[var(--color-fg-muted)]">
       Pulsa una imagen para ampliarla y editar sus etiquetas.
       Imágenes se limitan a 1920px y se guardan en WebP.
     </p>
+    <p v-else-if="props.unavailableMessage" class="mb-4 text-sm text-[var(--color-fg-muted)]">
+      {{ props.unavailableMessage }}
+    </p>
 
     <button
-      v-if="swarmConfigured"
       type="button"
       class="btn-primary mb-4"
       data-testid="character-swarm-toggle"
@@ -477,11 +493,20 @@ function removeFromLightbox(item: { id?: string }) {
     </button>
 
     <div
-      v-if="swarmConfigured && generationOpen"
+      v-if="generationOpen"
       class="card mb-4 grid min-w-0 gap-3"
       data-testid="character-swarm-generator"
     >
-      <fieldset :disabled="generationBusy" class="grid min-w-0 gap-3">
+      <fieldset :disabled="generationBusy || props.appearanceDisabled" class="grid min-w-0 gap-4">
+        <CharacterAppearanceEditor v-model="imageGenerationPromptPrefix" />
+        <p v-if="!props.manageImages" class="text-sm text-[var(--color-fg-muted)]">
+          {{ props.unavailableMessage }}
+        </p>
+        <p v-else-if="!swarmConfigured" class="text-sm text-[var(--color-fg-muted)]">
+          Configura la <NuxtLink to="/settings#swarmui" class="underline">URL de SwarmUI</NuxtLink>
+          para generar imágenes. La apariencia y la foto de referencia siguen disponibles.
+        </p>
+        <template v-if="props.manageImages && swarmConfigured">
         <div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
           <div>
             <h3 class="font-semibold">Generar imagen con SwarmUI</h3>
@@ -650,6 +675,7 @@ function removeFromLightbox(item: { id?: string }) {
           Selecciona al menos un prompt SwarmUI para crear el conjunto.
         </p>
         <p v-else-if="!generationPrompt.trim() && !imageGenerationPromptPrefix.trim()" class="text-sm text-[var(--color-fg-muted)]">Indica el prompt base o un prefijo para crear el conjunto.</p>
+        </template>
       </fieldset>
       <ImageGenerationProgressDialog
         v-if="generationProgressOpen"
@@ -667,7 +693,7 @@ function removeFromLightbox(item: { id?: string }) {
       </p>
     </div>
 
-    <div class="card mb-4 grid gap-3">
+    <div v-if="props.manageImages" class="card mb-4 grid gap-3">
       <ImageUploadDropZone
         :busy="busy"
         multiple
@@ -681,11 +707,11 @@ function removeFromLightbox(item: { id?: string }) {
       <p v-else-if="notice" class="text-sm text-green-600" role="status">{{ notice }}</p>
     </div>
 
-    <p v-if="images.length === 0" class="text-sm text-[var(--color-fg-muted)]">
+    <p v-if="props.manageImages && images.length === 0" class="text-sm text-[var(--color-fg-muted)]">
       Sin imágenes todavía.
     </p>
 
-    <ul class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <ul v-if="props.manageImages" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <li
         v-for="image in images"
         :key="image.id"
@@ -809,13 +835,13 @@ function removeFromLightbox(item: { id?: string }) {
     </ul>
 
     <ImageBatchModeDialog
-      v-if="busy && pendingFiles.length > 1 && batchMode === null"
+      v-if="props.manageImages && busy && pendingFiles.length > 1 && batchMode === null"
       :count="pendingFiles.length"
       @choose="chooseBatchMode"
     />
 
     <CharacterImageTagsDialog
-      v-if="uploadedImageIds.length > 0 && !busy"
+      v-if="props.manageImages && uploadedImageIds.length > 0 && !busy"
       :count="uploadedImageIds.length"
       :suggestions="imageTagSuggestions"
       :saving="savingUploadedTags"
@@ -824,7 +850,7 @@ function removeFromLightbox(item: { id?: string }) {
     />
 
     <ImageCropDialog
-      v-if="editingImage"
+      v-if="props.manageImages && editingImage"
       :file="editingImage.blob"
       :saving="editingBusy"
       :save-error="error"
@@ -834,7 +860,7 @@ function removeFromLightbox(item: { id?: string }) {
     />
 
     <ImageCropDialog
-      v-if="(batchMode === 'crop' || batchMode === 'preview') && pendingFile && !processingCurrent"
+      v-if="props.manageImages && (batchMode === 'crop' || batchMode === 'preview') && pendingFile && !processingCurrent"
       :file="pendingFile"
       :start-cropping="batchMode === 'crop'"
       @cancel="skipCrop"

@@ -74,6 +74,18 @@ async function resetMainScrollTracking() {
   showMobileChrome()
 }
 
+async function resetMainScrollPosition() {
+  await nextTick()
+  if (!mainScroller.value) return
+  mainScroller.value.scrollTop = 0
+  mainScroller.value.scrollLeft = 0
+  if (isStoryView.value) return
+  lastMainScrollTop = 0
+  accumulatedMainScroll = 0
+  setMobileChromeAtTop(true)
+  showMobileChrome()
+}
+
 function onBreakpointChange(event: MediaQueryListEvent) {
   if (event.matches) {
     accumulatedMainScroll = 0
@@ -82,7 +94,7 @@ function onBreakpointChange(event: MediaQueryListEvent) {
   void resetMainScrollTracking()
 }
 
-watch(() => route.fullPath, resetMainScrollTracking)
+watch(() => route.fullPath, resetMainScrollPosition)
 
 onMounted(() => {
   desktopMedia = window.matchMedia('(min-width: 640px)')

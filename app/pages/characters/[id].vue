@@ -270,7 +270,6 @@ onBeforeRouteLeave(flushSave)
             Describen al personaje y no se mezclan con etiquetas de imagen. Pulsa badges o escribe una nueva.
           </p>
         </div>
-        <CharacterAppearanceEditor v-model="imageGenerationPromptPrefix" />
         <div class="flex min-h-10 items-center gap-3">
           <button v-if="isNew" type="submit" class="btn-primary" :disabled="!name.trim() || saving">
             Guardar
@@ -285,24 +284,23 @@ onBeforeRouteLeave(flushSave)
       </form>
 
       <CharacterImageEditor
-        v-if="!isNew && existing && !existing.readOnly"
         v-model:image-generation-preset="imageGenerationPreset"
         v-model:image-generation-lora="imageGenerationLora"
         v-model:image-generation-seed="imageGenerationSeed"
         v-model:image-generation-prompt-prefix="imageGenerationPromptPrefix"
         v-model:image-generation-model="imageGenerationModel"
         :character-id="characterId"
+        :manage-images="Boolean(!isNew && existing && !existing.readOnly)"
+        :appearance-disabled="Boolean(existing?.readOnly)"
+        :unavailable-message="existing?.readOnly
+          ? 'Personaje demo compartido: la apariencia puede consultarse, pero no modificarse.'
+          : copiedCharacter
+            ? 'Las imágenes se copiarán al guardar el personaje.'
+            : 'Guarda el personaje para poder añadir o generar imágenes.'"
       />
       <section v-if="!isNew && existing && !existing.readOnly" class="card mt-8 max-w-3xl">
         <SoundEditor :character-id="characterId" title="Sonidos del personaje" />
       </section>
-      <p v-else-if="isNew" class="text-sm text-[var(--color-fg-muted)]">
-        {{
-          copiedCharacter
-            ? 'Las imágenes se copiarán al guardar el personaje.'
-            : 'Guarda el personaje para poder añadirle imágenes.'
-        }}
-      </p>
     </template>
   </div>
 </template>

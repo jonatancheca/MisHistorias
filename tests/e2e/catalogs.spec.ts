@@ -85,6 +85,9 @@ test.describe('personajes', () => {
     })
 
     await page.goto('/characters/new')
+    await expect(page.getByLabel('Prompt visual base')).toHaveCount(0)
+    await page.getByTestId('character-swarm-toggle').click()
+    await expect(page.getByTestId('character-swarm-generator')).toBeVisible()
     await page.locator('input[type=file][accept*="image/jpeg"]').setInputFiles({
       name: 'referencia.png', mimeType: 'image/png', buffer: PNG_BYTES
     })
@@ -137,6 +140,9 @@ test.describe('personajes', () => {
     })
 
     await page.goto(`/characters/${character.id}`)
+    await expect(page.getByLabel('Prompt visual base')).toHaveCount(0)
+    await page.getByTestId('character-swarm-toggle').click()
+    await expect(page.getByTestId('character-swarm-generator')).toBeVisible()
     await page.locator('input[type=file][accept*="image/jpeg"]').setInputFiles({
       name: 'referencia.webp', mimeType: 'image/webp', buffer: PNG_BYTES
     })
@@ -201,20 +207,9 @@ test.describe('personajes', () => {
 
     await backLink.click()
     const card = page.locator('li').filter({ hasText: character.name })
-    const imageCount = card.getByText('1 imágenes', { exact: true })
     const demoBadge = card.getByText('Visible en demo', { exact: true })
     await expect(demoBadge).toBeVisible()
-    const badgeLayout = await card.evaluate((element) => {
-      const count = Array.from(element.querySelectorAll('p'))
-        .find((item) => item.textContent?.trim() === '1 imágenes')!
-        .getBoundingClientRect()
-      const badge = Array.from(element.querySelectorAll('span'))
-        .find((item) => item.textContent?.trim() === 'Visible en demo')!
-        .getBoundingClientRect()
-      return { countBottom: count.bottom, badgeTop: badge.top }
-    })
-    expect(await imageCount.isVisible()).toBe(true)
-    expect(badgeLayout.badgeTop).toBeGreaterThanOrEqual(badgeLayout.countBottom)
+    await expect(card.getByText('1 imágenes', { exact: true })).toHaveCount(0)
 
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 844 })
@@ -370,7 +365,12 @@ test.describe('personajes', () => {
 
   test('mantiene visibles las acciones a 320 y 390 px sin overflow', async ({ page, data }) => {
     const characterTag = data.unique('etiqueta-galería')
-    const character = await data.createCharacter({ tags: [characterTag] })
+    const characterPrompt = 'Exploradora de tierras lejanas que recuerda cada promesa, protege a su tripulación y nunca abandona una misión difícil.'
+    const character = await data.createCharacter({
+      name: data.unique('Nombre completo del personaje móvil'),
+      prompt: characterPrompt,
+      tags: [characterTag]
+    })
     await data.createImage(character, ['primera'])
     await data.createImage(character, ['segunda'])
 
@@ -382,15 +382,19 @@ test.describe('personajes', () => {
     expect(desktopBounds.height).toBeGreaterThanOrEqual(300)
     await desktopCard.getByRole('button', { name: `Imagen siguiente de ${character.name}` }).click()
     await expect(carousel).toHaveAttribute('data-active-index', '1')
-    const tagsButton = desktopCard.getByLabel(`Etiquetas de ${character.name}: ${characterTag}`)
+    const tagsButton = desktopCard.getByLabel(
+      `Etiquetas de ${character.name}: ${characterTag}`,
+      { exact: true }
+    )
     await tagsButton.hover()
     await expect(desktopCard.getByRole('tooltip')).toContainText(characterTag)
     const desktopLayout = await desktopCard.evaluate((element) => {
       const image = element.querySelector('[data-testid="character-image-carousel"]')!.getBoundingClientRect()
       const actions = element.querySelector('.character-actions')!.getBoundingClientRect()
-      return { actionsRightOfImage: actions.left >= image.right - 1 }
+      return { actionsBelowImage: actions.top >= image.bottom - 1 }
     })
-    expect(desktopLayout.actionsRightOfImage).toBe(true)
+    expect(desktopLayout.actionsBelowImage).toBe(true)
+    await expect(desktopCard.getByText('2 imágenes', { exact: true })).toHaveCount(0)
 
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 700 })
@@ -403,12 +407,51 @@ test.describe('personajes', () => {
       }
       const actionSize = await actions.evaluate((element) => ({
         clientWidth: element.clientWidth,
-        scrollWidth: element.scrollWidth
+        scrollWidth: element.scrollWidth,
+        tops: Array.from(element.children).map((child) => child.getBoundingClientRect().top)
       }))
       expect(actionSize.scrollWidth).toBeLessThanOrEqual(actionSize.clientWidth)
-      await expect(card.getByLabel(`Etiquetas de ${character.name}: ${characterTag}`)).toBeHidden()
+      expect(Math.max(...actionSize.tops) - Math.min(...actionSize.tops)).toBeLessThanOrEqual(1)
+      const tagsButton = card.getByTestId('character-tags-toggle')
+      await expect(tagsButton).toBeVisible()
+      await expect(tagsButton).toHaveAttribute(
+        'aria-label',
+        `Mostrar etiquetas de ${character.name}: ${characterTag}`
+      )
+      await expect(tagsButton).toHaveAttribute('aria-expanded', 'false')
+      await tagsButton.click()
+      await expect(card.getByTestId('character-mobile-tags')).toContainText(characterTag)
+      await expect(tagsButton).toHaveAttribute('aria-expanded', 'true')
+      await expect(tagsButton).toHaveAttribute(
+        'aria-label',
+        `Ocultar etiquetas de ${character.name}: ${characterTag}`
+      )
+      await tagsButton.click()
+      await expect(card.getByTestId('character-mobile-tags')).toHaveCount(0)
+      const textLayout = await card.evaluate((element) => {
+        const name = element.querySelector('.character-card-link span:last-child')!
+        const prompt = Array.from(element.querySelectorAll('p'))
+          .find((item) => item.textContent?.includes('Exploradora de tierras lejanas'))!
+        return {
+          nameFullyVisible: name.scrollHeight <= name.clientHeight + 1,
+          promptFullyVisible: prompt.scrollHeight <= prompt.clientHeight + 1
+        }
+      })
+      expect(textLayout).toEqual({ nameFullyVisible: true, promptFullyVisible: true })
       expect(await page.evaluate(() => document.documentElement.scrollWidth))
         .toBeLessThanOrEqual(width)
+
+      const main = page.locator('main')
+      await main.evaluate((element) => { element.scrollTop = element.scrollHeight })
+      expect(await main.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+      const promptBounds = await card.getByText(characterPrompt, { exact: true }).boundingBox()
+      expect(promptBounds).not.toBeNull()
+      await page.mouse.click(
+        promptBounds!.x + promptBounds!.width / 2,
+        promptBounds!.y + promptBounds!.height / 2
+      )
+      await expect(page).toHaveURL(`/characters/${character.id}`)
+      await expect.poll(() => main.evaluate((element) => element.scrollTop)).toBe(0)
     }
   })
 

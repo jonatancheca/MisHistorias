@@ -233,99 +233,96 @@ function cancelImport() {
       <li
         v-for="character in visibleCharacters"
         :key="character.id"
-        class="character-card card grid min-w-0 gap-3 p-4"
+        class="character-card card relative grid min-w-0 gap-3 p-4"
       >
-        <header class="flex min-w-0 items-center gap-2">
+        <header class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
           <NuxtLink
             :to="`/characters/${character.id}`"
-            class="flex min-w-0 flex-1 items-center gap-2 font-semibold hover:text-brand-600"
+            class="character-card-link flex min-w-0 items-start gap-2 font-semibold hover:text-brand-600"
           >
             <span
-              class="inline-block h-3 w-3 shrink-0 rounded-full"
+              class="mt-1 inline-block h-3 w-3 shrink-0 rounded-full"
               :style="{ backgroundColor: characters.colorOf(character.id) }"
             />
-            <span class="truncate">{{ character.name }}</span>
+            <span class="min-w-0 break-words sm:truncate">{{ character.name }}</span>
           </NuxtLink>
           <CharacterTagsTooltip :tags="character.tags ?? []" :label="character.name" />
         </header>
 
-        <div class="flex min-w-0 gap-2">
+        <div class="relative z-10 min-w-0">
           <CharacterImageCarousel
             :character-id="character.id"
             :alt="character.name"
-            class="h-72 min-w-0 flex-1 sm:h-80"
+            class="h-72 min-w-0 sm:h-80"
           />
-          <div class="character-actions flex w-10 shrink-0 flex-col gap-2">
-            <NuxtLink
-              :to="{ path: '/characters/new', query: { copyFrom: character.id } }"
-              class="character-action btn-ghost h-10 w-10 px-0"
-              aria-label="Copiar"
-              title="Copiar"
-            >
-              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="11" height="11" rx="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-            </NuxtLink>
-            <button
-              v-if="!character.readOnly"
-              type="button"
-              class="character-action btn-ghost h-10 w-10 px-0"
-              :aria-label="character.archived ? 'Desarchivar' : 'Archivar'"
-              :title="character.archived ? 'Desarchivar' : 'Archivar'"
-              @click="setArchived(character.id, !character.archived)"
-            >
-              <svg v-if="character.archived" aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M4 7h16v13H4zM3 3h18v4H3zM12 16v-5m0 0-3 3m3-3 3 3" />
-              </svg>
-              <svg v-else aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
-              </svg>
-            </button>
-            <button
-              v-if="!character.readOnly"
-              type="button"
-              class="character-action btn-ghost h-10 w-10 px-0"
-              aria-label="Exportar"
-              title="Exportar"
-              :disabled="Boolean(exportingId)"
-              @click="exportCharacter(character.id)"
-            >
-              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
-                <path d="M5 21h14" />
-              </svg>
-            </button>
-            <button
-              v-if="!character.readOnly"
-              type="button"
-              class="character-action btn-danger h-10 w-10 px-0"
-              aria-label="Borrar"
-              title="Borrar"
-              @click="remove(character.id)"
-            >
-              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 6h18m-4 0v-2H7v2m2 5v6m6-6v6M5 6l1 15h12l1-15" />
-              </svg>
-            </button>
-          </div>
         </div>
         <div class="min-w-0">
-          <p class="text-xs text-[var(--color-fg-muted)]">
-            {{ characters.imagesFor(character.id).length }} imágenes
-          </p>
           <span
             v-if="character.visibleInDemo"
-            class="mt-1 inline-flex rounded-full bg-brand-500/15 px-2 py-0.5 text-xs font-semibold text-brand-600"
+            class="inline-flex rounded-full bg-brand-500/15 px-2 py-0.5 text-xs font-semibold text-brand-600"
           >
             Visible en demo
           </span>
           <p v-if="character.readOnly" class="mt-1 text-xs font-semibold text-brand-600">
             Demo compartido · solo lectura
           </p>
-          <p class="mt-2 line-clamp-3 text-sm text-[var(--color-fg-muted)]" :title="character.prompt">
+          <p class="mt-2 text-sm break-words text-[var(--color-fg-muted)] sm:line-clamp-3" :title="character.prompt">
             {{ character.prompt }}
           </p>
+        </div>
+        <div class="character-actions relative z-10 flex flex-wrap justify-end gap-2">
+          <NuxtLink
+            :to="{ path: '/characters/new', query: { copyFrom: character.id } }"
+            class="character-action btn-ghost h-10 w-10 px-0"
+            aria-label="Copiar"
+            title="Copiar"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="11" height="11" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          </NuxtLink>
+          <button
+            v-if="!character.readOnly"
+            type="button"
+            class="character-action btn-ghost h-10 w-10 px-0"
+            :aria-label="character.archived ? 'Desarchivar' : 'Archivar'"
+            :title="character.archived ? 'Desarchivar' : 'Archivar'"
+            @click="setArchived(character.id, !character.archived)"
+          >
+            <svg v-if="character.archived" aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 7h16v13H4zM3 3h18v4H3zM12 16v-5m0 0-3 3m3-3 3 3" />
+            </svg>
+            <svg v-else aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
+            </svg>
+          </button>
+          <button
+            v-if="!character.readOnly"
+            type="button"
+            class="character-action btn-ghost h-10 w-10 px-0"
+            aria-label="Exportar"
+            title="Exportar"
+            :disabled="Boolean(exportingId)"
+            @click="exportCharacter(character.id)"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
+              <path d="M5 21h14" />
+            </svg>
+          </button>
+          <button
+            v-if="!character.readOnly"
+            type="button"
+            class="character-action btn-danger h-10 w-10 px-0"
+            aria-label="Borrar"
+            title="Borrar"
+            @click="remove(character.id)"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18m-4 0v-2H7v2m2 5v6m6-6v6M5 6l1 15h12l1-15" />
+            </svg>
+          </button>
         </div>
       </li>
     </ul>
@@ -344,5 +341,12 @@ function cancelImport() {
 <style scoped>
 .character-card {
   container-type: inline-size;
+}
+
+.character-card-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
 }
 </style>
