@@ -13,13 +13,11 @@ let lastMainScrollTop = 0
 let accumulatedMainScroll = 0
 let desktopMedia: MediaQueryList | null = null
 
-const settings = useSettingsStore()
 const links = computed(() => [
   { to: '/', label: 'Historias' },
   { to: '/characters', label: 'Personajes' },
   { to: '/backgrounds', label: 'Fondos' },
   { to: '/sounds', label: 'Sonidos' },
-  ...(settings.settings.swarmBaseUrl.trim() ? [{ to: '/swarm-prompts', label: 'Prompts SwarmUI' }] : []),
   { to: '/settings', label: 'Ajustes' }
 ])
 
@@ -32,7 +30,6 @@ function iconFor(to: string) {
   if (to === '/characters') return 'users'
   if (to === '/backgrounds') return 'image'
   if (to === '/sounds') return 'sound'
-  if (to === '/swarm-prompts') return 'document'
   return 'settings'
 }
 
@@ -136,7 +133,7 @@ onBeforeUnmount(() => desktopMedia?.removeEventListener('change', onBreakpointCh
 
       <nav
         data-testid="app-navigation-links"
-        class="grid min-w-0 grid-cols-6 gap-1 sm:flex sm:flex-1 sm:flex-col sm:gap-1.5"
+        class="grid min-w-0 grid-cols-5 gap-1 sm:flex sm:flex-1 sm:flex-col sm:gap-1.5"
       >
         <NuxtLink
           v-for="link in links"
@@ -202,18 +199,6 @@ onBeforeUnmount(() => desktopMedia?.removeEventListener('change', onBreakpointCh
             <path d="M9 18V5l12-2v13" />
             <circle cx="6" cy="18" r="3" />
             <circle cx="18" cy="16" r="3" />
-          </svg>
-          <svg
-            v-else-if="iconFor(link.to) === 'document'"
-            aria-hidden="true"
-            class="h-5 w-5 shrink-0 sm:h-4 sm:w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-            <path d="M14 2v6h6M8 13h8m-8 4h8" />
           </svg>
           <svg
             v-else

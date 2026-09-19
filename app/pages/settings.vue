@@ -48,6 +48,7 @@ const settingsSections = [
   { id: 'prompt-narrativo', label: 'Prompt narrativo' },
   { id: 'prompt-referencia-personaje', label: 'Prompt de referencia de personaje' },
   { id: 'swarmui', label: 'SwarmUI' },
+  { id: 'prompts-swarmui', label: 'Prompts SwarmUI' },
   { id: 'actualizaciones', label: 'Actualizaciones' },
   { id: 'protagonista', label: 'Protagonista' },
   { id: 'datos', label: 'Datos' }
@@ -1547,6 +1548,17 @@ onBeforeRouteLeave(async () => {
           </div>
         </template>
       </div>
+    </section>
+
+    <section
+      id="prompts-swarmui"
+      class="settings-panel"
+      :class="{ 'settings-panel-active': activeSectionId === 'prompts-swarmui' }"
+      data-testid="swarm-prompt-settings"
+    >
+      <h2>Prompts SwarmUI</h2>
+      <p>Gestiona los prompts predefinidos usados para crear conjuntos de imágenes.</p>
+      <SwarmPromptSettings />
     </section>
 
     <section

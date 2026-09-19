@@ -639,12 +639,12 @@ function removeFromLightbox(item: { id?: string }) {
           >
             Crear conjunto de imágenes
           </button>
-          <NuxtLink v-if="swarmPrompts.prompts.length" to="/swarm-prompts" class="text-sm underline">
+          <NuxtLink v-if="swarmPrompts.prompts.length" to="/settings#prompts-swarmui" class="text-sm underline">
             Gestionar prompts SwarmUI
           </NuxtLink>
         </div>
         <p v-if="!swarmPrompts.prompts.length" class="text-sm text-[var(--color-fg-muted)]">
-          Crea al menos un <NuxtLink to="/swarm-prompts" class="underline">prompt SwarmUI</NuxtLink> para generar un conjunto.
+          Crea al menos un <NuxtLink to="/settings#prompts-swarmui" class="underline">prompt SwarmUI</NuxtLink> para generar un conjunto.
         </p>
         <p v-else-if="!selectedSwarmPrompts.length" class="text-sm text-[var(--color-fg-muted)]">
           Selecciona al menos un prompt SwarmUI para crear el conjunto.

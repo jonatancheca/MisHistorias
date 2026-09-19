@@ -72,7 +72,10 @@ test('oculta funciones sin URL y permite configurar sin valor por defecto', asyn
   await page.goto('/settings')
   await expect(page.getByLabel('URL de SwarmUI')).toHaveValue('')
   await expect(page.getByLabel('Token de SwarmUI (opcional)')).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Prompts SwarmUI', exact: true })).toHaveCount(0)
+  await expect(page.getByTestId('app-navigation-links')
+    .getByRole('link', { name: 'Prompts SwarmUI', exact: true })).toHaveCount(0)
+  await expect(page.getByTestId('swarm-prompt-settings'))
+    .toContainText('Indica primero la URL de SwarmUI.')
   await page.goto(`/characters/${character.id}`)
   await expect(page.getByTestId('character-swarm-toggle')).toHaveCount(0)
   const response = await page.request.get('/api/swarm/catalog')
@@ -154,6 +157,7 @@ test('recarga personajes y prompts editados en otra pestaña', async ({ page, da
     updatedAt: Date.now()
   }
   await page.goto('/swarm-prompts')
+  await expect(page).toHaveURL(/\/settings#prompts-swarmui$/)
   await expect(await page.request.put(`/api/data/swarmPrompts/${prompt.id}?scope=normal`, {
     data: prompt
   })).toBeOK()
@@ -368,7 +372,9 @@ test('edita y borra prompts sin mezclar catálogo normal y privado', async ({ pa
   const trigger = page.getByRole('button', { name: 'Activar modo privado' })
   await trigger.click(); await trigger.click(); await trigger.click()
   await expect(page).toHaveURL('/settings')
-  await page.getByRole('link', { name: 'Prompts SwarmUI', exact: true }).click()
+  await page.getByTestId('settings-section-nav')
+    .locator('[data-settings-section="prompts-swarmui"]')
+    .click()
   await expect(page.getByRole('button', { name: 'Normal editado', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Prompt privado', exact: true }).click()
   await page.getByRole('button', { name: 'Borrar', exact: true }).click()

@@ -97,7 +97,21 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
 
   const nav = page.getByTestId('settings-section-nav')
   await expect(nav).toBeVisible()
-  await expect(nav.getByRole('link')).toHaveCount(9)
+  await expect(nav.getByRole('link')).toHaveCount(10)
+  expect(await nav.getByRole('link').evaluateAll(links =>
+    links.map(link => link.getAttribute('data-settings-section'))
+  )).toEqual([
+    'apariencia',
+    'usuarios',
+    'llm',
+    'prompt-narrativo',
+    'prompt-referencia-personaje',
+    'swarmui',
+    'prompts-swarmui',
+    'actualizaciones',
+    'protagonista',
+    'datos'
+  ])
   await expect(nav.getByRole('link', { name: 'Apariencia' }))
     .toHaveAttribute('aria-current', 'location')
 
@@ -106,14 +120,19 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
   await expect(nav.getByRole('link', { name: 'SwarmUI' }))
     .toHaveAttribute('aria-current', 'location')
 
+  await nav.getByRole('link', { name: 'Prompts SwarmUI' }).click()
+  await expect(page).toHaveURL(/\/settings#prompts-swarmui$/)
+  await expect(nav.getByRole('link', { name: 'Prompts SwarmUI' }))
+    .toHaveAttribute('aria-current', 'location')
+
   await nav.getByRole('link', { name: 'Datos' }).click()
   await expect(page).toHaveURL(/\/settings#datos$/)
   await expect(nav.getByRole('link', { name: 'Datos' }))
     .toHaveAttribute('aria-current', 'location')
 
   await page.goBack()
-  await expect(page).toHaveURL(/\/settings#swarmui$/)
-  await expect(nav.getByRole('link', { name: 'SwarmUI' }))
+  await expect(page).toHaveURL(/\/settings#prompts-swarmui$/)
+  await expect(nav.getByRole('link', { name: 'Prompts SwarmUI' }))
     .toHaveAttribute('aria-current', 'location')
 
   await page.goForward()
