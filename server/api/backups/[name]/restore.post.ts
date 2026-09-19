@@ -1,8 +1,8 @@
 import { getStorage } from '../../../utils/storage'
 import { requireAccessAdmin } from '../../../utils/access'
 
-export default defineEventHandler((event) => {
-  const session = requireAccessAdmin(event)
+export default defineEventHandler(async (event) => {
+  const session = await requireAccessAdmin(event)
   const name = getRouterParam(event, 'name')
   if (!name) {
     throw createError({ statusCode: 400, message: 'Falta el nombre del backup' })

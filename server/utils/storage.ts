@@ -13,6 +13,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
 import { readStorySwarmError } from '../../shared/utils/swarmError.ts'
 import type {
+  AccessConfiguration,
   AccessIdentity,
   DatabaseBackup,
   DatabaseBackupKind,
@@ -115,7 +116,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 38
+const SCHEMA_VERSION = 39
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 const ERROR_TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
@@ -776,6 +777,15 @@ export class MisHistoriasStorage {
       user_version: number
     }
     const safety = this.createBackup('before-restore', currentVersion.user_version).backup
+    const currentSettings = this.readSettings()?.value ?? {}
+    const currentAccessConfiguration = {
+      teamDomain: typeof currentSettings.accessTeamDomain === 'string'
+        ? currentSettings.accessTeamDomain
+        : null,
+      audience: typeof currentSettings.accessAudience === 'string'
+        ? currentSettings.accessAudience
+        : null
+    }
     const temporaryPath = `${this.path}.restore-${randomUUID()}.tmp`
     const previousPath = `${this.path}.restore-${randomUUID()}.previous`
 
@@ -784,6 +794,31 @@ export class MisHistoriasStorage {
       const validation = this.readBackupVersion(temporaryPath)
       if (!validation.valid || validation.schemaVersion !== backup.schemaVersion) {
         throw new Error('La copia seleccionada no superó la validación final')
+      }
+
+      const restoredDatabase = new DatabaseSync(temporaryPath)
+      try {
+        const row = restoredDatabase.prepare(
+          "SELECT value_json FROM settings WHERE key = 'app'"
+        ).get() as { value_json: string } | undefined
+        if (row) {
+          const value = parseJson<Record<string, unknown>>(row.value_json, {})
+          if (currentAccessConfiguration.teamDomain === null) delete value.accessTeamDomain
+          else value.accessTeamDomain = currentAccessConfiguration.teamDomain
+          if (currentAccessConfiguration.audience === null) delete value.accessAudience
+          else value.accessAudience = currentAccessConfiguration.audience
+          restoredDatabase.prepare(
+            "UPDATE settings SET value_json = ? WHERE key = 'app'"
+          ).run(json(value))
+        }
+        const integrity = restoredDatabase.prepare('PRAGMA quick_check').get() as {
+          quick_check: string
+        }
+        if (integrity.quick_check !== 'ok') {
+          throw new Error('El backup restaurado no superó la comprobación SQLite')
+        }
+      } finally {
+        restoredDatabase.close()
       }
 
       this.close()
@@ -1611,6 +1646,54 @@ export class MisHistoriasStorage {
         `)
       }
 
+      if (version.user_version < 39) {
+        const referenceTables = {
+          characterId: 'characters',
+          imageId: 'images',
+          backgroundId: 'backgrounds',
+          soundId: 'sounds'
+        } as const
+        const ownedReference = Object.fromEntries(
+          Object.entries(referenceTables).map(([key, table]) => [
+            key,
+            this.database.prepare(
+              `SELECT 1 FROM ${table} WHERE scope = ? AND id = ? AND owner_id = ?`
+            )
+          ])
+        ) as Record<keyof typeof referenceTables, ReturnType<DatabaseSync['prepare']>>
+        const messages = this.database.prepare(`
+          SELECT scope, id, owner_id, segments_json
+          FROM messages WHERE owner_id IS NOT NULL
+        `).all() as Array<{
+          scope: string
+          id: string
+          owner_id: string
+          segments_json: string
+        }>
+        const updateMessage = this.database.prepare(
+          'UPDATE messages SET segments_json = ? WHERE scope = ? AND id = ?'
+        )
+        for (const message of messages) {
+          const segments = parseJson<unknown[]>(message.segments_json, [])
+          let changed = false
+          for (const segment of segments) {
+            if (!segment || typeof segment !== 'object' || Array.isArray(segment)) continue
+            const candidate = segment as Record<string, unknown>
+            for (const key of Object.keys(referenceTables) as Array<keyof typeof referenceTables>) {
+              const id = candidate[key]
+              if (
+                typeof id === 'string' && id &&
+                !ownedReference[key].get(message.scope, id, message.owner_id)
+              ) {
+                candidate[key] = null
+                changed = true
+              }
+            }
+          }
+          if (changed) updateMessage.run(json(segments), message.scope, message.id)
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -1687,7 +1770,7 @@ export class MisHistoriasStorage {
     }
   }
 
-  activateMultiUser(identity: AccessIdentity) {
+  activateMultiUser(identity: AccessIdentity, configuration?: AccessConfiguration) {
     return this.transaction(() => {
       identity = cleanIdentity(identity)
       this.rememberAccessIdentity(identity)
@@ -1710,7 +1793,15 @@ export class MisHistoriasStorage {
         claimed[table] = Number(result.changes)
       }
 
-      const settings = this.readSettings()?.value ?? {}
+      const settings = {
+        ...(this.readSettings()?.value ?? {}),
+        ...(configuration
+          ? {
+              accessTeamDomain: configuration.teamDomain,
+              accessAudience: configuration.audience
+            }
+          : {})
+      }
       const personal = Object.fromEntries(
         PERSONAL_SETTING_KEYS.flatMap((key) => Object.hasOwn(settings, key) ? [[key, settings[key]]] : [])
       )
@@ -1993,6 +2084,33 @@ export class MisHistoriasStorage {
     }
   }
 
+  private assertMessageReferences(
+    scope: DataScope,
+    segments: unknown,
+    access?: StorageAccess
+  ) {
+    if (!access || !Array.isArray(segments)) return
+    const ownAccess = { ownerId: access.ownerId }
+    const references: Array<[string, DataResource]> = [
+      ['characterId', 'characters'],
+      ['imageId', 'images'],
+      ['backgroundId', 'backgrounds'],
+      ['soundId', 'sounds']
+    ]
+    for (const segment of segments) {
+      if (!segment || typeof segment !== 'object' || Array.isArray(segment)) continue
+      const candidate = segment as Record<string, unknown>
+      for (const [key, resource] of references) {
+        const id = candidate[key]
+        if (typeof id === 'string' && id && !this.get(resource, scope, id, ownAccess)) {
+          throw Object.assign(new Error('El mensaje referencia recursos de otro usuario'), {
+            code: 'ERR_READ_ONLY_RESOURCE'
+          })
+        }
+      }
+    }
+  }
+
   private accessFilter(resource: DataResource, alias: string, access?: StorageAccess) {
     if (!access) return { sql: '', args: [] as unknown[] }
     if (!access.ownerId) return { sql: ` AND ${alias}.owner_id IS NULL`, args: [] as unknown[] }
@@ -2009,6 +2127,7 @@ export class MisHistoriasStorage {
         sql: ` AND (${own} OR ${alias}.visible_in_demo = 1 OR EXISTS (
           SELECT 1 FROM stories shared_story, json_each(shared_story.character_ids_json) character_id
           WHERE shared_story.scope = ${alias}.scope
+            AND shared_story.owner_id = ${alias}.owner_id
             AND shared_story.visible_in_demo = 1
             AND character_id.value = ${alias}.id
         ))`,
@@ -2020,6 +2139,7 @@ export class MisHistoriasStorage {
         sql: ` AND (${own} OR ${alias}.visible_in_demo = 1 OR EXISTS (
           SELECT 1 FROM stories shared_story
           WHERE shared_story.scope = ${alias}.scope
+            AND shared_story.owner_id = ${alias}.owner_id
             AND shared_story.visible_in_demo = 1
             AND shared_story.initial_background_id = ${alias}.id
         ) OR EXISTS (
@@ -2028,6 +2148,8 @@ export class MisHistoriasStorage {
             ON shared_story.scope = shared_message.scope AND shared_story.id = shared_message.story_id,
             json_each(shared_message.segments_json) segment
           WHERE shared_message.scope = ${alias}.scope
+            AND shared_message.owner_id = ${alias}.owner_id
+            AND shared_story.owner_id = ${alias}.owner_id
             AND shared_story.visible_in_demo = 1
             AND json_extract(segment.value, '$.backgroundId') = ${alias}.id
         ))`,
@@ -2039,10 +2161,12 @@ export class MisHistoriasStorage {
         sql: ` AND (${own} OR EXISTS (
           SELECT 1 FROM characters shared_character
           WHERE shared_character.scope = ${alias}.scope
+            AND shared_character.owner_id = ${alias}.owner_id
             AND shared_character.id = ${alias}.character_id
             AND (shared_character.visible_in_demo = 1 OR EXISTS (
               SELECT 1 FROM stories shared_story, json_each(shared_story.character_ids_json) character_id
               WHERE shared_story.scope = shared_character.scope
+                AND shared_story.owner_id = ${alias}.owner_id
                 AND shared_story.visible_in_demo = 1
                 AND character_id.value = shared_character.id
             ))
@@ -2055,11 +2179,13 @@ export class MisHistoriasStorage {
         sql: ` AND (${own} OR EXISTS (
           SELECT 1 FROM characters shared_character
           WHERE shared_character.scope = ${alias}.scope
+            AND shared_character.owner_id = ${alias}.owner_id
             AND shared_character.id = ${alias}.character_id
             AND shared_character.visible_in_demo = 1
         ) OR EXISTS (
           SELECT 1 FROM backgrounds shared_background
           WHERE shared_background.scope = ${alias}.scope
+            AND shared_background.owner_id = ${alias}.owner_id
             AND shared_background.id = ${alias}.background_id
             AND shared_background.visible_in_demo = 1
         ) OR EXISTS (
@@ -2068,6 +2194,8 @@ export class MisHistoriasStorage {
             ON shared_story.scope = shared_message.scope AND shared_story.id = shared_message.story_id,
             json_each(shared_message.segments_json) segment
           WHERE shared_message.scope = ${alias}.scope
+            AND shared_message.owner_id = ${alias}.owner_id
+            AND shared_story.owner_id = ${alias}.owner_id
             AND shared_story.visible_in_demo = 1
             AND json_extract(segment.value, '$.soundId') = ${alias}.id
         ))`,
@@ -2079,6 +2207,7 @@ export class MisHistoriasStorage {
         sql: ` AND (${own} OR EXISTS (
           SELECT 1 FROM stories shared_story
           WHERE shared_story.scope = ${alias}.scope
+            AND shared_story.owner_id = ${alias}.owner_id
             AND shared_story.id = ${alias}.story_id
             AND shared_story.visible_in_demo = 1
         ))`,
@@ -2897,6 +3026,7 @@ export class MisHistoriasStorage {
         })
       }
     }
+    if (resource === 'messages') this.assertMessageReferences(scope, value.segments, access)
     if (resource === 'stories' && access) {
       const ownAccess = { ownerId: access.ownerId }
       for (const characterId of stringArray(value.characterIds)) {

@@ -18,6 +18,7 @@ import {
   previewIdentityReassignment,
   reassignIdentity,
   restoreDatabaseBackup,
+  updateAccessConfiguration,
   uploadDatabaseBackup
 } from '~/lib/db'
 import {
@@ -44,7 +45,10 @@ const canManageGlobal = computed(
   () => !access.session.multiUserEnabled || access.session.isAdmin
 )
 const activatingUsers = ref(false)
+const updatingAccessConfiguration = ref(false)
 const accessError = ref<string | null>(null)
+const accessMessage = ref<string | null>(null)
+const accessConfirmationEmail = ref(access.session.identity?.email ?? '')
 const identityTransfer = reactive({
   sourceId: '',
   sourceEmail: '',
@@ -362,8 +366,13 @@ function settingsPatch() {
 }
 
 async function activateUsers() {
-  const email = access.session.identity?.email
-  if (!email || activatingUsers.value || access.session.multiUserEnabled) return
+  const email = accessConfirmationEmail.value.trim()
+  const configuration = {
+    teamDomain: form.accessTeamDomain.trim(),
+    audience: form.accessAudience.trim()
+  }
+  if (!email || !configuration.teamDomain || !configuration.audience ||
+      activatingUsers.value || access.session.multiUserEnabled) return
   const accepted = await confirmDialog.ask({
     title: 'Activar configuración por usuarios',
     message: `Se asignarán todos los datos actuales a ${email}, que será el administrador de la instancia. La activación no se puede deshacer desde la interfaz.`,
@@ -372,13 +381,34 @@ async function activateUsers() {
   if (!accepted) return
   activatingUsers.value = true
   accessError.value = null
+  accessMessage.value = null
   try {
     await flushSave()
-    await access.activate()
+    await access.activate(email, configuration)
     window.location.reload()
   } catch (caught) {
     accessError.value = (caught as Error).message || 'No se pudo activar la configuración por usuarios.'
     activatingUsers.value = false
+  }
+}
+
+async function saveAccessConfiguration() {
+  if (!access.session.isAdmin || updatingAccessConfiguration.value) return
+  updatingAccessConfiguration.value = true
+  accessError.value = null
+  accessMessage.value = null
+  try {
+    const saved = await updateAccessConfiguration({
+      teamDomain: form.accessTeamDomain.trim(),
+      audience: form.accessAudience.trim()
+    })
+    form.accessTeamDomain = saved.teamDomain
+    form.accessAudience = saved.audience
+    accessMessage.value = 'Configuración de Cloudflare Access actualizada.'
+  } catch (caught) {
+    accessError.value = apiErrorMessage(caught, 'No se pudo actualizar Cloudflare Access.')
+  } finally {
+    updatingAccessConfiguration.value = false
   }
 }
 
@@ -1145,14 +1175,52 @@ onBeforeRouteLeave(async () => {
     >
       <h2>Usuarios</h2>
       <p>
-        Aísla historias, personajes y recursos por la identidad entregada por Cloudflare Access.
+        Aísla historias, personajes y recursos por una identidad de Cloudflare Access validada criptográficamente.
       </p>
+      <div
+        v-if="!access.session.multiUserEnabled || access.session.isAdmin"
+        class="mb-4 grid min-w-0 gap-4 sm:grid-cols-2"
+      >
+        <label class="grid min-w-0 gap-1 text-xs font-semibold">
+          Dominio del equipo
+          <input
+            v-model="form.accessTeamDomain"
+            class="field min-w-0"
+            type="url"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://equipo.cloudflareaccess.com"
+          >
+        </label>
+        <label class="grid min-w-0 gap-1 text-xs font-semibold">
+          Audience de la aplicación
+          <input
+            v-model="form.accessAudience"
+            class="field min-w-0"
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </label>
+        <label
+          v-if="!access.session.multiUserEnabled"
+          class="grid min-w-0 gap-1 text-xs font-semibold sm:col-span-2"
+        >
+          Confirma tu email de Access
+          <input
+            v-model="accessConfirmationEmail"
+            class="field min-w-0"
+            type="email"
+            autocomplete="email"
+            spellcheck="false"
+          >
+        </label>
+      </div>
       <label class="flex items-start gap-3">
         <input
           type="checkbox"
           class="mt-1 h-4 w-4 accent-[var(--color-brand-500)]"
           :checked="access.session.multiUserEnabled"
-          :disabled="access.session.multiUserEnabled || !access.session.canActivate || activatingUsers"
+          :disabled="access.session.multiUserEnabled || !access.session.canActivate || activatingUsers || !accessConfirmationEmail.trim() || !form.accessTeamDomain.trim() || !form.accessAudience.trim()"
           @change="activateUsers"
         >
         <span>
@@ -1161,18 +1229,26 @@ onBeforeRouteLeave(async () => {
             <template v-if="access.session.multiUserEnabled">
               Activa permanentemente. Usuario actual: {{ access.session.identity?.email }}<template v-if="access.session.isAdmin"> · administrador</template>.
             </template>
-            <template v-else-if="access.session.identity">
-              Al activar, {{ access.session.identity.email }} recibirá todos los datos existentes y será administrador.
-            </template>
             <template v-else>
-              Entra mediante Cloudflare Access para poder activarla.
+              Al activar, el usuario del token que coincida con el email confirmado recibirá todos los datos existentes y será administrador.
             </template>
           </span>
         </span>
       </label>
       <p class="mt-3 text-xs text-[var(--color-fg-muted)]">
-        El identificador del usuario se lee del token de Cloudflare Access. El token completo no se guarda ni se muestra.
+        Se comprueban firma, emisor, audience y caducidad. El token completo no se guarda ni se muestra.
       </p>
+      <div v-if="access.session.multiUserEnabled && access.session.isAdmin" class="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="btn-ghost"
+          :disabled="updatingAccessConfiguration || !form.accessTeamDomain.trim() || !form.accessAudience.trim()"
+          @click="saveAccessConfiguration"
+        >
+          {{ updatingAccessConfiguration ? 'Validando…' : 'Actualizar Cloudflare Access' }}
+        </button>
+      </div>
+      <p v-if="accessMessage" class="mt-2 text-xs text-emerald-600" role="status">{{ accessMessage }}</p>
       <p v-if="accessError" class="mt-2 text-xs text-red-500" role="alert">{{ accessError }}</p>
 
       <div

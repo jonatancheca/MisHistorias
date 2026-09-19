@@ -434,7 +434,7 @@ export default defineEventHandler(async (event) => {
     const query = getQuery(event)
     const scope = asScope(query.scope)
     const storage = getStorage()
-    const access = storageAccessFor(event, scope)
+    const access = await storageAccessFor(event, scope)
 
     if (segments[0] === 'clear' && event.method === 'POST') {
       storage.clear(scope, access)

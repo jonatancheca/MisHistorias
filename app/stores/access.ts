@@ -1,4 +1,4 @@
-import type { AccessSession } from '#shared/types'
+import type { AccessConfiguration, AccessSession } from '#shared/types'
 import { activateMultiUser, readAccessSession } from '~/lib/db'
 
 const EMPTY_SESSION: AccessSession = {
@@ -20,10 +20,8 @@ export const useAccessStore = defineStore('access', () => {
     return session.value
   }
 
-  async function activate() {
-    const email = session.value.identity?.email
-    if (!email) throw new Error('No hay identidad de Cloudflare Access.')
-    session.value = await activateMultiUser(email)
+  async function activate(email: string, configuration: AccessConfiguration) {
+    session.value = await activateMultiUser(email, configuration)
     loaded.value = true
     return session.value
   }

@@ -10,5 +10,9 @@ await copyFile(
   resolve(projectDirectory, 'scripts/start-server.mjs'),
   resolve(outputDirectory, 'start-server.mjs')
 )
+await copyFile(
+  resolve(projectDirectory, 'scripts/access-config.mjs'),
+  resolve(outputDirectory, 'access-config.mjs')
+)
 
-console.log('Copied .output/start-server.mjs')
+console.log('Copied .output/start-server.mjs and .output/access-config.mjs')

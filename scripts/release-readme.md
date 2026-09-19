@@ -22,3 +22,16 @@ reinicia el servidor y restaura la versión anterior si la nueva no responde cor
 
 También puedes descargar el `update.ps1` más reciente desde Ajustes o desde la última release,
 copiarlo sobre este archivo y ejecutarlo con el mismo comando.
+
+## Recuperar Cloudflare Access
+
+Con el modo multiusuario activo, la aplicación deja de servir la API si faltan o dejan de ser
+válidos el dominio del equipo o el audience. Si no puedes corregirlos desde Ajustes, cierra la
+ventana del servidor y ejecuta desde esta carpeta:
+
+```powershell
+.\node.exe .\install1\access-config.mjs --team-domain https://equipo.cloudflareaccess.com --audience TU_AUDIENCE
+```
+
+Vuelve a abrir `start.bat` después. El script solo modifica la configuración Access de la base
+local; no desactiva el aislamiento ni crea una ruta de recuperación por HTTP.

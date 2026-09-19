@@ -10,8 +10,8 @@ const SOURCES = new Set<ErrorTraceSource>([
   'llm', 'swarmui', 'backup', 'update', 'sqlite', 'server', 'client'
 ])
 
-export default defineEventHandler((event) => {
-  requireAccessAdmin(event)
+export default defineEventHandler(async (event) => {
+  await requireAccessAdmin(event)
   const query = getQuery(event)
   const source = typeof query.source === 'string' && SOURCES.has(query.source as ErrorTraceSource)
     ? query.source as ErrorTraceSource

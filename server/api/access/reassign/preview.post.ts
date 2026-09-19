@@ -8,7 +8,7 @@ import { getStorage } from '../../../utils/storage.ts'
 export default defineEventHandler(async (event) => {
   try {
     const request = identityReassignmentRequest(await readBody(event))
-    requireIdentityReassignmentAccess(event, request)
+    await requireIdentityReassignmentAccess(event, request)
     return getStorage().previewIdentityReassignment(request)
   } catch (caught) {
     mapIdentityReassignmentError(caught)

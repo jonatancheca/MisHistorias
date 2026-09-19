@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { H3Event } from 'h3'
 import type { ErrorTrace, ErrorTraceSource } from '../../shared/types/index.ts'
 import { sanitizeSwarmDiagnostic } from '../../shared/utils/swarmError.ts'
-import { readAccessSession } from './access.ts'
+import { accessSessionFromEvent } from './access.ts'
 import { getStorage, type DataScope } from './storage.ts'
 
 const MAX_PAYLOAD_BYTES = 256 * 1024
@@ -115,7 +115,7 @@ export function recordOperationalError(event: H3Event | undefined, input: Operat
   try {
     const storage = getStorage()
     const secrets = readConfiguredOperationalSecrets()
-    const session = event ? readAccessSession(event, true) : null
+    const session = event ? accessSessionFromEvent(event) : null
     const request = preparePayload(input.request, secrets)
     const response = preparePayload(input.response, secrets)
     const message = truncateUtf8(

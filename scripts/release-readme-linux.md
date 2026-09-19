@@ -15,8 +15,8 @@ El instalador registra `mishistorias.service`, lo habilita al arrancar Ubuntu y 
 aplicación como usuario que invocó `sudo`, nunca como root. La aplicación escucha en
 `http://localhost:3010` y en la red local.
 
-No hay autenticación ni HTTPS. Cualquier equipo con acceso a la red puede leer, modificar o
-borrar los datos, incluida la colección privada.
+La instalación no añade autenticación ni HTTPS por sí sola. Antes de exponerla en red, protégela
+con Cloudflare Tunnel y Access y activa el modo multiusuario desde Ajustes.
 
 Los datos quedan en `install1/.data`. Conserva esa carpeta al mover o respaldar la instalación.
 
@@ -43,3 +43,17 @@ Para actualizar archivos sin volver a arrancar el servicio:
 ```bash
 sudo ./update.sh --no-restart
 ```
+
+## Recuperar Cloudflare Access
+
+Con el modo multiusuario activo, una configuración Access ausente o inválida cierra la API. Si
+no puedes corregirla desde Ajustes, detén el servicio y ejecuta desde la carpeta instalada:
+
+```bash
+sudo systemctl stop mishistorias.service
+./node ./install1/access-config.mjs --team-domain https://equipo.cloudflareaccess.com --audience TU_AUDIENCE
+sudo systemctl start mishistorias.service
+```
+
+El script solo modifica la configuración Access de la base local. No desactiva el aislamiento
+ni expone una ruta de recuperación por HTTP.

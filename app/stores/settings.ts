@@ -6,6 +6,8 @@ import { DEFAULT_CHARACTER_REFERENCE_PROMPT } from '~/lib/characterReferenceProm
 import { DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
 
 const DEFAULTS: AppSettings = {
+  accessTeamDomain: '',
+  accessAudience: '',
   baseUrl: 'http://localhost:1234',
   apiKey: '',
   apiKeyConfigured: false,

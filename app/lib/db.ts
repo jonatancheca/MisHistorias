@@ -1,5 +1,6 @@
 import { isReactive, isRef, ref, toRaw, unref } from 'vue'
 import type {
+  AccessConfiguration,
   AccessSession,
   AppSettings,
   Background,
@@ -425,10 +426,17 @@ export async function readAccessSession() {
   return $fetch<AccessSession>('/api/access')
 }
 
-export async function activateMultiUser(email: string) {
+export async function activateMultiUser(email: string, configuration: AccessConfiguration) {
   return $fetch<AccessSession & { claimed: Record<string, number> }>('/api/access/activate', {
     method: 'POST',
-    body: { email }
+    body: { email, ...configuration }
+  })
+}
+
+export async function updateAccessConfiguration(configuration: AccessConfiguration) {
+  return $fetch<AccessConfiguration>('/api/access/config', {
+    method: 'POST',
+    body: configuration
   })
 }
 

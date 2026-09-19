@@ -17,7 +17,7 @@ function uploadedName(event: Parameters<typeof getHeader>[0]) {
 }
 
 export default defineEventHandler(async (event) => {
-  requireAccessAdmin(event)
+  await requireAccessAdmin(event)
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-backup-upload-'))
   const uploadPath = join(directory, 'upload.sqlite')
 

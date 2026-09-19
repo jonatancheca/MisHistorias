@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
     if (!fingerprint) {
       throw createError({ statusCode: 400, statusMessage: 'Falta la previsualización confirmada' })
     }
-    const session = requireIdentityReassignmentAccess(event, request)
+    const session = await requireIdentityReassignmentAccess(event, request)
     return getStorage().reassignIdentity(request, session.identity!, fingerprint)
   } catch (caught) {
     mapIdentityReassignmentError(caught)

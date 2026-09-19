@@ -123,7 +123,8 @@ jobs:
             README.md \
             NODE-LICENSE.txt \
             install1/server/index.mjs \
-            install1/start-server.mjs
+            install1/start-server.mjs \
+            install1/access-config.mjs
           do
             grep -Fxq "$required" <<< "$entries"
           done
@@ -137,7 +138,8 @@ jobs:
             README.md \
             NODE-LICENSE.txt \
             install1/server/index.mjs \
-            install1/start-server.mjs
+            install1/start-server.mjs \
+            install1/access-config.mjs
           do
             grep -Fxq "$required" <<< "$linux_entries"
           done

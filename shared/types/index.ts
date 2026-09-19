@@ -162,6 +162,11 @@ export interface AccessIdentity {
   email: string
 }
 
+export interface AccessConfiguration {
+  teamDomain: string
+  audience: string
+}
+
 export interface AccessSession {
   multiUserEnabled: boolean
   identity: AccessIdentity | null
@@ -356,6 +361,10 @@ export interface StorySaveSlot {
 }
 
 export interface AppSettings {
+  /** Dominio de equipo usado para validar los JWT de Cloudflare Access. */
+  accessTeamDomain: string
+  /** Audience tag de la aplicación protegida por Cloudflare Access. */
+  accessAudience: string
   baseUrl: string
   /** Token opcional de LM Studio. Solo se mantiene en memoria mientras se edita. */
   apiKey: string

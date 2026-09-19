@@ -125,7 +125,7 @@ function publicSettings(row: ReturnType<ReturnType<typeof getStorage>['readSetti
 
 export default defineEventHandler(async (event) => {
   const storage = getStorage()
-  const session = readAccessSession(event)
+  const session = await readAccessSession(event)
   const ownerId = session.multiUserEnabled ? session.identity!.id : undefined
   if (event.method === 'GET') return publicSettings(storage.readSettings(ownerId))
   if (event.method !== 'PATCH') {
