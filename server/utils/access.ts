@@ -1,7 +1,11 @@
 import { Buffer } from 'node:buffer'
 import { createError, getHeader, type H3Event } from 'h3'
-import type { AccessIdentity, AccessSession } from '../../shared/types/index.ts'
-import type { DataScope, StorageAccess } from './storage.ts'
+import type {
+  AccessIdentity,
+  AccessSession,
+  IdentityReassignmentRequest
+} from '../../shared/types/index.ts'
+import type { DataScope, StorageAccess, StoredAccessState } from './storage.ts'
 import { getStorage } from './storage.ts'
 
 interface AccessTokenPayload {
@@ -55,11 +59,13 @@ export function readAccessIdentity(event: H3Event): AccessIdentity | null {
 }
 
 export function readAccessSession(event: H3Event, allowMissingIdentity = false): AccessSession {
-  const state = getStorage().readAccessState()
+  const storage = getStorage()
+  const state = storage.readAccessState()
   const identity = readAccessIdentity(event)
   if (state.multiUserEnabled && !identity && !allowMissingIdentity) {
     throw createError({ statusCode: 401, statusMessage: 'Identidad de Cloudflare Access requerida' })
   }
+  if (identity) storage.rememberAccessIdentity(identity)
   return {
     multiUserEnabled: state.multiUserEnabled,
     identity,
@@ -79,6 +85,37 @@ export function requireAccessIdentity(event: H3Event) {
 export function requireAccessAdmin(event: H3Event) {
   const session = readAccessSession(event)
   if (session.multiUserEnabled && !session.isAdmin) {
+    throw createError({ statusCode: 403, statusMessage: 'Operación reservada al administrador' })
+  }
+  return session
+}
+
+export function canRecoverAdministrator(
+  state: StoredAccessState,
+  identity: AccessIdentity,
+  request: IdentityReassignmentRequest
+) {
+  const sameEmail = (left: string | null, right: string) =>
+    Boolean(left && left.localeCompare(right, undefined, { sensitivity: 'accent' }) === 0)
+  return request.source.id === state.adminOwnerId &&
+    sameEmail(state.adminEmail, request.source.email) &&
+    request.destination.id === identity.id &&
+    sameEmail(identity.email, request.destination.email) &&
+    sameEmail(state.adminEmail, identity.email)
+}
+
+export function requireIdentityReassignmentAccess(
+  event: H3Event,
+  request: IdentityReassignmentRequest
+) {
+  const session = readAccessSession(event)
+  if (!session.multiUserEnabled || !session.identity) {
+    throw createError({ statusCode: 409, statusMessage: 'El modo multiusuario no está activo' })
+  }
+  if (session.isAdmin) return session
+
+  const state = getStorage().readAccessState()
+  if (!canRecoverAdministrator(state, session.identity, request)) {
     throw createError({ statusCode: 403, statusMessage: 'Operación reservada al administrador' })
   }
   return session

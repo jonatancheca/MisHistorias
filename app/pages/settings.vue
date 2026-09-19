@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { AppSettings, DatabaseBackup } from '#shared/types'
+import type {
+  AppSettings,
+  DatabaseBackup,
+  IdentityReassignmentPreview,
+  IdentityReassignmentResource
+} from '#shared/types'
 import { fetchLlmModels } from '~/lib/llm'
 import {
   getChromeLlmAvailability,
@@ -10,8 +15,10 @@ import {
   createDatabaseBackup,
   databaseBackupDownloadUrl,
   listDatabaseBackups,
+  previewIdentityReassignment,
   readApiKey,
   readSwarmAuthToken,
+  reassignIdentity,
   restoreDatabaseBackup,
   uploadDatabaseBackup
 } from '~/lib/db'
@@ -40,6 +47,42 @@ const canManageGlobal = computed(
 )
 const activatingUsers = ref(false)
 const accessError = ref<string | null>(null)
+const identityTransfer = reactive({
+  sourceId: '',
+  sourceEmail: '',
+  destinationId: access.session.identity?.id ?? '',
+  destinationEmail: access.session.identity?.email ?? ''
+})
+const identityTransferPreview = ref<IdentityReassignmentPreview | null>(null)
+const identityTransferAction = ref<'preview' | 'reassign' | null>(null)
+const identityTransferError = ref<string | null>(null)
+const identityTransferMessage = ref<string | null>(null)
+const identityResourceLabels: Record<IdentityReassignmentResource, string> = {
+  characters: 'personajes',
+  imageBlobs: 'archivos de imagen',
+  images: 'imágenes de personajes',
+  backgrounds: 'fondos',
+  sounds: 'sonidos',
+  stories: 'historias',
+  messages: 'mensajes',
+  llmDebugTraces: 'diagnósticos LLM',
+  storySaves: 'partidas',
+  presets: 'presets',
+  swarmPrompts: 'prompts SwarmUI'
+}
+const canPreviewIdentityTransfer = computed(() =>
+  identityTransfer.sourceId.trim() &&
+  identityTransfer.sourceEmail.trim() &&
+  identityTransfer.destinationId.trim() &&
+  identityTransfer.destinationEmail.trim() &&
+  !identityTransferAction.value
+)
+
+watch(identityTransfer, () => {
+  identityTransferPreview.value = null
+  identityTransferError.value = null
+  identityTransferMessage.value = null
+})
 
 const settingsSections = [
   { id: 'apariencia', label: 'Apariencia' },
@@ -346,6 +389,79 @@ async function activateUsers() {
   } catch (caught) {
     accessError.value = (caught as Error).message || 'No se pudo activar la configuración por usuarios.'
     activatingUsers.value = false
+  }
+}
+
+function identityTransferRequest() {
+  return {
+    source: {
+      id: identityTransfer.sourceId.trim(),
+      email: identityTransfer.sourceEmail.trim()
+    },
+    destination: {
+      id: identityTransfer.destinationId.trim(),
+      email: identityTransfer.destinationEmail.trim()
+    }
+  }
+}
+
+function affectedIdentityEntries(
+  scope: IdentityReassignmentPreview['affected']['normal']
+) {
+  return (Object.entries(scope) as Array<[IdentityReassignmentResource, number]>)
+    .filter(([, count]) => count > 0)
+    .map(([resource, count]) => ({ resource, count, label: identityResourceLabels[resource] }))
+}
+
+async function previewIdentityTransfer() {
+  if (!canPreviewIdentityTransfer.value) return
+  identityTransferAction.value = 'preview'
+  identityTransferError.value = null
+  identityTransferMessage.value = null
+  try {
+    const preview = await previewIdentityReassignment(identityTransferRequest())
+    identityTransfer.sourceId = preview.source.id
+    identityTransfer.sourceEmail = preview.source.email
+    identityTransfer.destinationId = preview.destination.id
+    identityTransfer.destinationEmail = preview.destination.email
+    await nextTick()
+    identityTransferPreview.value = preview
+  } catch (caught) {
+    identityTransferError.value = backupErrorMessage(
+      caught,
+      'No se pudo previsualizar la reasignación.'
+    )
+  } finally {
+    identityTransferAction.value = null
+  }
+}
+
+async function confirmIdentityTransfer() {
+  const preview = identityTransferPreview.value
+  if (!preview || identityTransferAction.value) return
+  const accepted = await confirmDialog.ask({
+    title: 'Reasignar identidad Access',
+    message: `Se moverán ${preview.affected.total} registros de ${preview.source.email} (${preview.source.id}) a ${preview.destination.email} (${preview.destination.id}).${preview.movesAdministrator ? ' También se transferirá la administración de la instancia.' : ''} La operación es transaccional y quedará auditada.`,
+    confirmLabel: 'Reasignar'
+  })
+  if (!accepted) return
+
+  identityTransferAction.value = 'reassign'
+  identityTransferError.value = null
+  identityTransferMessage.value = null
+  try {
+    const result = await reassignIdentity(preview)
+    await access.load(true)
+    identityTransferPreview.value = null
+    identityTransferMessage.value = `Reasignación completada. Auditoría: ${result.auditId}`
+  } catch (caught) {
+    identityTransferPreview.value = null
+    identityTransferError.value = backupErrorMessage(
+      caught,
+      'No se pudo completar la reasignación.'
+    )
+  } finally {
+    identityTransferAction.value = null
   }
 }
 
@@ -1119,6 +1235,138 @@ onBeforeRouteLeave(async () => {
         El identificador del usuario se lee del token de Cloudflare Access. El token completo no se guarda ni se muestra.
       </p>
       <p v-if="accessError" class="mt-2 text-xs text-red-500" role="alert">{{ accessError }}</p>
+
+      <div
+        v-if="access.session.multiUserEnabled"
+        class="settings-subpanel mt-6 min-w-0 rounded-2xl border border-[var(--color-border-soft)] p-4"
+        data-testid="identity-reassignment"
+      >
+        <h3 class="font-semibold">Reasignar identidad Access</h3>
+        <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+          Mueve ambas colecciones y todos sus recursos de un sub antiguo a otro ya reconocido por esta instancia. No mezcla datos existentes del destino.
+        </p>
+        <p v-if="access.session.identity" class="mt-3 min-w-0 text-xs text-[var(--color-fg-muted)]">
+          Identidad actual:
+          <strong>{{ access.session.identity.email }}</strong>
+          · <code class="break-all">{{ access.session.identity.id }}</code>
+        </p>
+
+        <div class="mt-4 grid min-w-0 gap-4 lg:grid-cols-2">
+          <fieldset class="grid min-w-0 gap-3 rounded-xl border border-[var(--color-border-soft)] p-3">
+            <legend class="px-1 text-sm font-semibold">Identidad anterior</legend>
+            <label class="grid min-w-0 gap-1 text-xs font-semibold">
+              Sub anterior
+              <input
+                v-model="identityTransfer.sourceId"
+                class="field min-w-0"
+                autocomplete="off"
+                spellcheck="false"
+              >
+            </label>
+            <label class="grid min-w-0 gap-1 text-xs font-semibold">
+              Email anterior
+              <input
+                v-model="identityTransfer.sourceEmail"
+                class="field min-w-0"
+                type="email"
+                autocomplete="off"
+                spellcheck="false"
+              >
+            </label>
+          </fieldset>
+
+          <fieldset class="grid min-w-0 gap-3 rounded-xl border border-[var(--color-border-soft)] p-3">
+            <legend class="px-1 text-sm font-semibold">Identidad actual</legend>
+            <label class="grid min-w-0 gap-1 text-xs font-semibold">
+              Sub de destino
+              <input
+                v-model="identityTransfer.destinationId"
+                class="field min-w-0"
+                autocomplete="off"
+                spellcheck="false"
+                :readonly="!access.session.isAdmin"
+              >
+            </label>
+            <label class="grid min-w-0 gap-1 text-xs font-semibold">
+              Email de destino
+              <input
+                v-model="identityTransfer.destinationEmail"
+                class="field min-w-0"
+                type="email"
+                autocomplete="off"
+                spellcheck="false"
+                :readonly="!access.session.isAdmin"
+              >
+            </label>
+          </fieldset>
+        </div>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="btn-ghost"
+            :disabled="!canPreviewIdentityTransfer"
+            @click="previewIdentityTransfer"
+          >
+            {{ identityTransferAction === 'preview' ? 'Revisando…' : 'Previsualizar' }}
+          </button>
+          <button
+            v-if="identityTransferPreview"
+            type="button"
+            class="btn-danger"
+            :disabled="identityTransferAction !== null"
+            @click="confirmIdentityTransfer"
+          >
+            {{ identityTransferAction === 'reassign' ? 'Reasignando…' : 'Confirmar reasignación' }}
+          </button>
+        </div>
+
+        <div
+          v-if="identityTransferPreview"
+          class="mt-4 rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] p-3 text-sm"
+          data-testid="identity-reassignment-preview"
+        >
+          <p class="font-semibold">
+            {{ identityTransferPreview.affected.total }} registros afectados
+          </p>
+          <div class="mt-2 grid gap-3 sm:grid-cols-2">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">Colección normal</p>
+              <ul v-if="affectedIdentityEntries(identityTransferPreview.affected.normal).length" class="mt-1 list-disc pl-5">
+                <li v-for="entry in affectedIdentityEntries(identityTransferPreview.affected.normal)" :key="entry.resource">
+                  {{ entry.count }} {{ entry.label }}
+                </li>
+              </ul>
+              <p v-else class="mt-1 text-xs text-[var(--color-fg-muted)]">Sin datos</p>
+            </div>
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">Colección privada</p>
+              <ul v-if="affectedIdentityEntries(identityTransferPreview.affected.private).length" class="mt-1 list-disc pl-5">
+                <li v-for="entry in affectedIdentityEntries(identityTransferPreview.affected.private)" :key="entry.resource">
+                  {{ entry.count }} {{ entry.label }}
+                </li>
+              </ul>
+              <p v-else class="mt-1 text-xs text-[var(--color-fg-muted)]">Sin datos</p>
+            </div>
+          </div>
+          <p v-if="identityTransferPreview.affected.userSettings" class="mt-2">
+            Ajustes personales: {{ identityTransferPreview.affected.userSettings }}
+          </p>
+          <p v-if="identityTransferPreview.movesAdministrator" class="mt-2 font-semibold text-amber-600 dark:text-amber-300">
+            La administración de la instancia también pasará al destino.
+          </p>
+        </div>
+
+        <p v-if="identityTransferError" class="mt-3 text-xs text-red-500" role="alert">
+          {{ identityTransferError }}
+        </p>
+        <p v-if="identityTransferMessage" class="mt-3 break-all text-xs text-emerald-600" role="status">
+          {{ identityTransferMessage }}
+        </p>
+        <p class="mt-4 text-xs text-[var(--color-fg-muted)]">
+          Recuperación del administrador: accede con la nueva identidad que conserve el email administrador, indica arriba el sub y email anteriores y usa la identidad actual como destino. Solo esa coincidencia permite recuperar la administración sin ser todavía administrador.
+        </p>
+      </div>
     </section>
 
     <section

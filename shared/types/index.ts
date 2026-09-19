@@ -169,6 +169,43 @@ export interface AccessSession {
   canActivate: boolean
 }
 
+export type IdentityReassignmentResource =
+  | 'characters'
+  | 'imageBlobs'
+  | 'images'
+  | 'backgrounds'
+  | 'sounds'
+  | 'stories'
+  | 'messages'
+  | 'llmDebugTraces'
+  | 'storySaves'
+  | 'presets'
+  | 'swarmPrompts'
+
+export interface IdentityReassignmentRequest {
+  source: AccessIdentity
+  destination: AccessIdentity
+}
+
+export interface IdentityReassignmentCounts {
+  normal: Record<IdentityReassignmentResource, number>
+  private: Record<IdentityReassignmentResource, number>
+  userSettings: number
+  total: number
+}
+
+export interface IdentityReassignmentPreview extends IdentityReassignmentRequest {
+  affected: IdentityReassignmentCounts
+  movesAdministrator: boolean
+  fingerprint: string
+}
+
+export interface IdentityReassignmentResult {
+  auditId: string
+  completedAt: number
+  preview: IdentityReassignmentPreview
+}
+
 export type MessageRole = 'user' | 'assistant'
 
 export type Theme = 'system' | 'light' | 'dark'

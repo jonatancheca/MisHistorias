@@ -6,6 +6,9 @@ import type {
   Character,
   CharacterImage,
   DatabaseBackup,
+  IdentityReassignmentPreview,
+  IdentityReassignmentRequest,
+  IdentityReassignmentResult,
   LlmDebugTrace,
   Message,
   Sound,
@@ -427,6 +430,24 @@ export async function activateMultiUser(email: string) {
   return $fetch<AccessSession & { claimed: Record<string, number> }>('/api/access/activate', {
     method: 'POST',
     body: { email }
+  })
+}
+
+export async function previewIdentityReassignment(request: IdentityReassignmentRequest) {
+  return $fetch<IdentityReassignmentPreview>('/api/access/reassign/preview', {
+    method: 'POST',
+    body: request
+  })
+}
+
+export async function reassignIdentity(preview: IdentityReassignmentPreview) {
+  return $fetch<IdentityReassignmentResult>('/api/access/reassign', {
+    method: 'POST',
+    body: {
+      source: preview.source,
+      destination: preview.destination,
+      fingerprint: preview.fingerprint
+    }
   })
 }
 

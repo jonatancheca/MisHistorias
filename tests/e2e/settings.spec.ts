@@ -175,6 +175,99 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
   }
 })
 
+test('previsualiza y confirma reasignación Access sin overflow', async ({ page }) => {
+  const accessSession = {
+    multiUserEnabled: true,
+    identity: { id: 'new-admin-sub', email: 'admin@example.com' },
+    isAdmin: true,
+    canActivate: false
+  }
+  const preview = {
+    source: { id: 'old-admin-sub', email: 'admin@example.com' },
+    destination: accessSession.identity,
+    affected: {
+      normal: {
+        characters: 2,
+        imageBlobs: 2,
+        images: 2,
+        backgrounds: 1,
+        sounds: 1,
+        stories: 1,
+        messages: 3,
+        llmDebugTraces: 1,
+        storySaves: 1,
+        presets: 1,
+        swarmPrompts: 1
+      },
+      private: {
+        characters: 1,
+        imageBlobs: 1,
+        images: 1,
+        backgrounds: 1,
+        sounds: 0,
+        stories: 1,
+        messages: 2,
+        llmDebugTraces: 0,
+        storySaves: 1,
+        presets: 0,
+        swarmPrompts: 0
+      },
+      userSettings: 1,
+      total: 24
+    },
+    movesAdministrator: true,
+    fingerprint: 'preview-fingerprint'
+  }
+  let reassignmentBody: Record<string, unknown> | null = null
+  await page.route('**/api/access', route => route.fulfill({ json: accessSession }))
+  await page.route('**/api/access/reassign/preview', async (route) => {
+    const body = route.request().postDataJSON() as typeof preview
+    expect(body.source).toEqual(preview.source)
+    expect(body.destination).toEqual(preview.destination)
+    await route.fulfill({ json: preview })
+  })
+  await page.route('**/api/access/reassign', async (route) => {
+    reassignmentBody = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({
+      json: {
+        auditId: 'audit-172',
+        completedAt: Date.now(),
+        preview
+      }
+    })
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/settings#usuarios')
+  const panel = page.getByTestId('identity-reassignment')
+  await expect(panel).toBeVisible()
+  await expect(panel).toContainText('Recuperación del administrador')
+  await page.getByLabel('Sub anterior').fill(preview.source.id)
+  await page.getByLabel('Email anterior').fill(preview.source.email)
+  await page.getByRole('button', { name: 'Previsualizar' }).click()
+
+  const summary = page.getByTestId('identity-reassignment-preview')
+  await expect(summary).toContainText('24 registros afectados')
+  await expect(summary).toContainText('2 personajes')
+  await expect(summary).toContainText('1 partidas')
+  await expect(summary).toContainText('administración de la instancia')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+  await page.setViewportSize({ width: 320, height: 800 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+  await page.getByRole('button', { name: 'Confirmar reasignación' }).click()
+  const dialog = page.getByRole('alertdialog', { name: 'Reasignar identidad Access' })
+  await expect(dialog).toContainText('old-admin-sub')
+  await dialog.getByRole('button', { name: 'Reasignar' }).click()
+  await expect(panel.getByRole('status')).toContainText('audit-172')
+  expect(reassignmentBody).toMatchObject({
+    source: preview.source,
+    destination: preview.destination,
+    fingerprint: preview.fingerprint
+  })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+})
+
 for (const width of [320, 390]) {
   test(`oculta navegación global al bajar y muestra solo iconos al subir a ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 640 })

@@ -7,7 +7,7 @@ import {
   rmSync,
   statSync
 } from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
@@ -16,6 +16,11 @@ import type {
   AccessIdentity,
   DatabaseBackup,
   DatabaseBackupKind,
+  IdentityReassignmentCounts,
+  IdentityReassignmentPreview,
+  IdentityReassignmentRequest,
+  IdentityReassignmentResource,
+  IdentityReassignmentResult,
   LlmDebugTrace,
   Message,
   Story,
@@ -99,7 +104,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 36
+const SCHEMA_VERSION = 37
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 const OWNED_TABLES = [
@@ -115,6 +120,19 @@ const OWNED_TABLES = [
   'presets',
   'swarm_prompts'
 ] as const
+const IDENTITY_RESOURCE_TABLES = [
+  ['characters', 'characters'],
+  ['image_blobs', 'imageBlobs'],
+  ['images', 'images'],
+  ['backgrounds', 'backgrounds'],
+  ['sounds', 'sounds'],
+  ['stories', 'stories'],
+  ['messages', 'messages'],
+  ['llm_debug_traces', 'llmDebugTraces'],
+  ['story_saves', 'storySaves'],
+  ['presets', 'presets'],
+  ['swarm_prompts', 'swarmPrompts']
+] as const satisfies ReadonlyArray<readonly [typeof OWNED_TABLES[number], IdentityReassignmentResource]>
 const PERSONAL_SETTING_KEYS = [
   'theme',
   'responseSpeed',
@@ -151,6 +169,21 @@ function text(value: unknown, fallback = '') {
 
 function integer(value: unknown, fallback = 0) {
   return Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : fallback
+}
+
+function cleanIdentity(identity: AccessIdentity): AccessIdentity {
+  const id = text(identity.id).trim()
+  const email = text(identity.email).trim()
+  if (!id || !email) {
+    throw Object.assign(new Error('Sub y email son obligatorios para ambas identidades'), {
+      code: 'ERR_IDENTITY_INVALID'
+    })
+  }
+  return { id, email }
+}
+
+function identityError(code: string, message: string) {
+  return Object.assign(new Error(message), { code })
 }
 
 function sameBinary(left: Uint8Array, right: Uint8Array) {
@@ -951,6 +984,30 @@ export class MisHistoriasStorage {
           value_json TEXT NOT NULL DEFAULT '{}',
           updated_at INTEGER NOT NULL
         ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS access_identities (
+          owner_id TEXT PRIMARY KEY,
+          email TEXT NOT NULL,
+          first_seen_at INTEGER NOT NULL,
+          last_seen_at INTEGER NOT NULL
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS access_identities_by_email
+          ON access_identities(email COLLATE NOCASE);
+
+        CREATE TABLE IF NOT EXISTS identity_reassignments (
+          id TEXT PRIMARY KEY,
+          source_owner_id TEXT NOT NULL,
+          source_email TEXT NOT NULL,
+          destination_owner_id TEXT NOT NULL,
+          destination_email TEXT NOT NULL,
+          actor_owner_id TEXT NOT NULL,
+          actor_email TEXT NOT NULL,
+          affected_json TEXT NOT NULL,
+          moved_administrator INTEGER NOT NULL CHECK (moved_administrator IN (0, 1)),
+          created_at INTEGER NOT NULL
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS identity_reassignments_by_created_at
+          ON identity_reassignments(created_at DESC);
       `)
 
       if (version.user_version < 2) {
@@ -1452,6 +1509,45 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 37) {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS access_identities (
+            owner_id TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            first_seen_at INTEGER NOT NULL,
+            last_seen_at INTEGER NOT NULL
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS access_identities_by_email
+            ON access_identities(email COLLATE NOCASE);
+
+          CREATE TABLE IF NOT EXISTS identity_reassignments (
+            id TEXT PRIMARY KEY,
+            source_owner_id TEXT NOT NULL,
+            source_email TEXT NOT NULL,
+            destination_owner_id TEXT NOT NULL,
+            destination_email TEXT NOT NULL,
+            actor_owner_id TEXT NOT NULL,
+            actor_email TEXT NOT NULL,
+            affected_json TEXT NOT NULL,
+            moved_administrator INTEGER NOT NULL CHECK (moved_administrator IN (0, 1)),
+            created_at INTEGER NOT NULL
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS identity_reassignments_by_created_at
+            ON identity_reassignments(created_at DESC);
+
+          INSERT INTO access_identities(owner_id, email, first_seen_at, last_seen_at)
+          SELECT owner_id, email, updated_at, updated_at FROM user_settings WHERE 1
+          ON CONFLICT(owner_id) DO UPDATE SET
+            email = excluded.email,
+            last_seen_at = MAX(access_identities.last_seen_at, excluded.last_seen_at);
+
+          INSERT INTO access_identities(owner_id, email, first_seen_at, last_seen_at)
+          SELECT admin_owner_id, admin_email, 0, 0 FROM settings
+          WHERE key = 'app' AND admin_owner_id IS NOT NULL AND admin_email IS NOT NULL
+          ON CONFLICT(owner_id) DO UPDATE SET email = excluded.email;
+        `)
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -1530,6 +1626,8 @@ export class MisHistoriasStorage {
 
   activateMultiUser(identity: AccessIdentity) {
     return this.transaction(() => {
+      identity = cleanIdentity(identity)
+      this.rememberAccessIdentity(identity)
       const current = this.readAccessState()
       if (current.multiUserEnabled) return { state: current, claimed: {} as Record<string, number> }
 
@@ -1582,6 +1680,8 @@ export class MisHistoriasStorage {
   }
 
   writeUserSettings(identity: AccessIdentity, patchValue: unknown) {
+    identity = cleanIdentity(identity)
+    this.rememberAccessIdentity(identity)
     const patch = record(patchValue)
     const current = this.readUserSettings(identity.id)
     const next = { ...current }
@@ -1597,6 +1697,215 @@ export class MisHistoriasStorage {
         updated_at = excluded.updated_at
     `).run(identity.id, identity.email, json(next), Date.now())
     return next
+  }
+
+  rememberAccessIdentity(rawIdentity: AccessIdentity, seenAt = Date.now()) {
+    const identity = cleanIdentity(rawIdentity)
+    const previous = this.database.prepare(`
+      SELECT email, last_seen_at FROM access_identities WHERE owner_id = ?
+    `).get(identity.id) as { email: string; last_seen_at: number } | undefined
+    if (
+      previous &&
+      previous.email === identity.email &&
+      previous.last_seen_at > seenAt - 60 * 60 * 1000
+    ) {
+      return identity
+    }
+    this.database.prepare(`
+      INSERT INTO access_identities(owner_id, email, first_seen_at, last_seen_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(owner_id) DO UPDATE SET
+        email = excluded.email,
+        last_seen_at = excluded.last_seen_at
+    `).run(identity.id, identity.email, seenAt, seenAt)
+    return identity
+  }
+
+  private knownIdentityEmail(ownerId: string) {
+    const observed = this.database.prepare(
+      'SELECT email FROM access_identities WHERE owner_id = ?'
+    ).get(ownerId) as { email: string } | undefined
+    if (observed?.email) return observed.email
+
+    const settings = this.database.prepare(
+      'SELECT email FROM user_settings WHERE owner_id = ?'
+    ).get(ownerId) as { email: string } | undefined
+    if (settings?.email) return settings.email
+
+    const administrator = this.database.prepare(`
+      SELECT admin_email AS email FROM settings
+      WHERE key = 'app' AND admin_owner_id = ?
+    `).get(ownerId) as { email: string | null } | undefined
+    return administrator?.email ?? null
+  }
+
+  private identityCounts(ownerId: string): IdentityReassignmentCounts {
+    const scopeCounts = (scope: DataScope) => Object.fromEntries(
+      IDENTITY_RESOURCE_TABLES.map(([table, resource]) => {
+        const row = this.database.prepare(
+          `SELECT COUNT(*) AS total FROM ${table} WHERE owner_id = ? AND scope = ?`
+        ).get(ownerId, scope) as { total: number }
+        return [resource, Number(row.total)]
+      })
+    ) as Record<IdentityReassignmentResource, number>
+    const normal = scopeCounts('normal')
+    const privateScope = scopeCounts('private')
+    const userSettings = Number((this.database.prepare(
+      'SELECT COUNT(*) AS total FROM user_settings WHERE owner_id = ?'
+    ).get(ownerId) as { total: number }).total)
+    const total = [...Object.values(normal), ...Object.values(privateScope), userSettings]
+      .reduce((sum, count) => sum + count, 0)
+    return { normal, private: privateScope, userSettings, total }
+  }
+
+  private identityPreviewFingerprint(
+    source: AccessIdentity,
+    destination: AccessIdentity,
+    affected: IdentityReassignmentCounts,
+    movesAdministrator: boolean
+  ) {
+    return createHash('sha256').update(json({
+      source,
+      destination,
+      affected,
+      movesAdministrator
+    })).digest('hex')
+  }
+
+  private buildIdentityReassignmentPreview(
+    rawRequest: IdentityReassignmentRequest
+  ): IdentityReassignmentPreview {
+    let source = cleanIdentity(rawRequest.source)
+    let destination = cleanIdentity(rawRequest.destination)
+    if (source.id === destination.id) {
+      throw identityError('ERR_IDENTITY_SAME', 'Origen y destino tienen el mismo sub')
+    }
+
+    const sourceEmail = this.knownIdentityEmail(source.id)
+    if (sourceEmail && sourceEmail.localeCompare(source.email, undefined, { sensitivity: 'accent' }) !== 0) {
+      throw identityError(
+        'ERR_IDENTITY_EMAIL_MISMATCH',
+        'El email no coincide con la identidad de origen registrada'
+      )
+    }
+    const destinationEmail = this.knownIdentityEmail(destination.id)
+    if (!destinationEmail) {
+      throw identityError(
+        'ERR_IDENTITY_DESTINATION_UNKNOWN',
+        'La identidad de destino debe entrar en la aplicación al menos una vez'
+      )
+    }
+    if (destinationEmail.localeCompare(destination.email, undefined, { sensitivity: 'accent' }) !== 0) {
+      throw identityError(
+        'ERR_IDENTITY_EMAIL_MISMATCH',
+        'El email no coincide con la identidad de destino registrada'
+      )
+    }
+    source = { ...source, email: sourceEmail ?? source.email }
+    destination = { ...destination, email: destinationEmail }
+
+    const affected = this.identityCounts(source.id)
+    const accessState = this.readAccessState()
+    const movesAdministrator = accessState.adminOwnerId === source.id
+    if (affected.total === 0 && !movesAdministrator) {
+      throw identityError(
+        'ERR_IDENTITY_SOURCE_EMPTY',
+        'La identidad de origen no tiene datos que reasignar'
+      )
+    }
+    if (this.identityCounts(destination.id).total > 0) {
+      throw identityError(
+        'ERR_IDENTITY_DESTINATION_CONFLICT',
+        'La identidad de destino ya tiene datos; no se pueden mezclar propietarios'
+      )
+    }
+
+    return {
+      source,
+      destination,
+      affected,
+      movesAdministrator,
+      fingerprint: this.identityPreviewFingerprint(
+        source,
+        destination,
+        affected,
+        movesAdministrator
+      )
+    }
+  }
+
+  previewIdentityReassignment(request: IdentityReassignmentRequest) {
+    return this.transaction(() => this.buildIdentityReassignmentPreview(request))
+  }
+
+  reassignIdentity(
+    request: IdentityReassignmentRequest,
+    rawActor: AccessIdentity,
+    expectedFingerprint: string
+  ): IdentityReassignmentResult {
+    const actor = cleanIdentity(rawActor)
+    return this.transaction(() => {
+      const preview = this.buildIdentityReassignmentPreview(request)
+      if (!expectedFingerprint || preview.fingerprint !== expectedFingerprint) {
+        throw identityError(
+          'ERR_IDENTITY_PREVIEW_STALE',
+          'Los datos cambiaron desde la previsualización; vuelve a revisarla'
+        )
+      }
+
+      for (const [table, resource] of IDENTITY_RESOURCE_TABLES) {
+        const moved = Number(this.database.prepare(
+          `UPDATE ${table} SET owner_id = ? WHERE owner_id = ?`
+        ).run(preview.destination.id, preview.source.id).changes)
+        const expected = preview.affected.normal[resource] + preview.affected.private[resource]
+        if (moved !== expected) {
+          throw identityError(
+            'ERR_IDENTITY_PREVIEW_STALE',
+            'Los datos cambiaron durante la reasignación; no se aplicó ningún cambio'
+          )
+        }
+      }
+
+      const movedSettings = Number(this.database.prepare(`
+        UPDATE user_settings SET owner_id = ?, email = ?, updated_at = ?
+        WHERE owner_id = ?
+      `).run(preview.destination.id, preview.destination.email, Date.now(), preview.source.id).changes)
+      if (movedSettings !== preview.affected.userSettings) {
+        throw identityError(
+          'ERR_IDENTITY_PREVIEW_STALE',
+          'Los ajustes cambiaron durante la reasignación; no se aplicó ningún cambio'
+        )
+      }
+
+      if (preview.movesAdministrator) {
+        this.database.prepare(`
+          UPDATE settings SET admin_owner_id = ?, admin_email = ?
+          WHERE key = 'app' AND admin_owner_id = ?
+        `).run(preview.destination.id, preview.destination.email, preview.source.id)
+      }
+
+      const auditId = randomUUID()
+      const completedAt = Date.now()
+      this.database.prepare(`
+        INSERT INTO identity_reassignments(
+          id, source_owner_id, source_email, destination_owner_id, destination_email,
+          actor_owner_id, actor_email, affected_json, moved_administrator, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        auditId,
+        preview.source.id,
+        preview.source.email,
+        preview.destination.id,
+        preview.destination.email,
+        actor.id,
+        actor.email,
+        json(preview.affected),
+        bool(preview.movesAdministrator),
+        completedAt
+      )
+
+      return { auditId, completedAt, preview }
+    })
   }
 
   private withReadOnly<T>(value: T, row: SqliteRow, access?: StorageAccess): T {
