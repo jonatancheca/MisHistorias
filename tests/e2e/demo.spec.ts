@@ -19,6 +19,7 @@ test.describe('modo demo', () => {
     await expect(page).toHaveURL('/characters')
     await expect(page.getByText(visible.name, { exact: true })).toBeVisible()
     await expect(page.getByText(hidden.name, { exact: true })).toHaveCount(0)
+    await expect(page.getByText('Visible en demo', { exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Salir del modo privado' })).toHaveCount(0)
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 800 })

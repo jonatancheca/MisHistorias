@@ -1,5 +1,9 @@
 import type { ErrorTraceSource } from '../../../shared/types/index.ts'
 import { requireAccessAdmin } from '../../utils/access'
+import {
+  readConfiguredOperationalSecrets,
+  sanitizeOperationalErrorTrace
+} from '../../utils/errorTraces'
 import { getStorage, type DataScope } from '../../utils/storage'
 
 const SOURCES = new Set<ErrorTraceSource>([
@@ -15,11 +19,16 @@ export default defineEventHandler((event) => {
   const scope = query.scope === 'normal' || query.scope === 'private'
     ? query.scope as DataScope
     : undefined
-  return getStorage().listErrorTraces({
+  const result = getStorage().listErrorTraces({
     source,
     scope,
     owner: typeof query.owner === 'string' ? query.owner : undefined,
     limit: Number(query.limit),
     offset: Number(query.offset)
   })
+  const secrets = readConfiguredOperationalSecrets()
+  return {
+    ...result,
+    items: result.items.map(trace => sanitizeOperationalErrorTrace(trace, secrets))
+  }
 })

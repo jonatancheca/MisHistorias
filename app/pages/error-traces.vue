@@ -113,7 +113,7 @@ onMounted(load)
         </NuxtLink>
         <h1 class="mt-2 text-3xl font-bold tracking-tight">Trazas de error</h1>
         <p class="mt-2 max-w-3xl text-sm text-[var(--color-fg-muted)]">
-          Registro operativo de fallos. Las llamadas y respuestas se guardan sin sanear y pueden contener contenido privado o secretos.
+          Registro operativo de fallos. Las llamadas y respuestas pueden contener contenido privado; las credenciales reconocibles se ocultan.
         </p>
       </div>
       <button

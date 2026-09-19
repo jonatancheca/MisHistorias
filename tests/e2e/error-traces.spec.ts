@@ -8,11 +8,6 @@ test('registra y consulta trazas persistentes desde Ajustes', async ({ page }, t
   const originalSettings = originalSettingsText
     ? JSON.parse(originalSettingsText) as { baseUrl?: string }
     : {}
-  const originalKeyResponse = await page.request.post('/api/settings/api-key')
-  const originalKeyText = await originalKeyResponse.text()
-  const originalKey = originalKeyText
-    ? (JSON.parse(originalKeyText) as { apiKey?: string }).apiKey ?? ''
-    : ''
   const upstreamSecret = 'upstream-secret-in-header'
   await expect(await page.request.patch('/api/settings', {
     data: { baseUrl: 'http://127.0.0.1:1', apiKey: upstreamSecret }
@@ -27,14 +22,14 @@ test('registra y consulta trazas persistentes desde Ajustes', async ({ page }, t
   })
   expect(failedLlm.status()).toBe(502)
   await expect(await page.request.patch('/api/settings', {
-    data: { baseUrl: originalSettings.baseUrl ?? 'http://localhost:1234', apiKey: originalKey }
+    data: { baseUrl: originalSettings.baseUrl ?? 'http://localhost:1234', apiKey: '' }
   })).toBeOK()
 
   const automaticResponse = await page.request.get('/api/error-traces?source=llm&scope=normal')
   const automatic = await automaticResponse.json() as ErrorTraceListResponse
   const automaticTrace = automatic.items.find(item => item.operation === 'test.llm.automatic')
   expect(automaticTrace).toBeDefined()
-  expect(JSON.stringify(automaticTrace?.request)).toContain(`Bearer ${upstreamSecret}`)
+  expect(JSON.stringify(automaticTrace?.request)).not.toContain(upstreamSecret)
   expect(automaticTrace?.requestSent).toBeNull()
   expect(automaticTrace?.response).toBeNull()
 
@@ -51,7 +46,7 @@ test('registra y consulta trazas persistentes desde Ajustes', async ({ page }, t
         authorization: `Bearer ${secret}`,
         image: 'data:image/png;base64,AAAA'
       },
-      response: { error: secret }
+      response: { apiKey: secret, detail: 'Fallo recibido' }
     }
   })
   await expect(created).toBeOK()
@@ -60,8 +55,9 @@ test('registra y consulta trazas persistentes desde Ajustes', async ({ page }, t
   await expect(storedResponse).toBeOK()
   const stored = await storedResponse.json() as ErrorTraceListResponse
   expect(stored.total).toBe(1)
-  expect(JSON.stringify(stored.items[0]?.request)).toContain(secret)
-  expect(JSON.stringify(stored.items[0]?.response)).toContain(secret)
+  expect(JSON.stringify(stored.items[0]?.request)).not.toContain(secret)
+  expect(JSON.stringify(stored.items[0]?.response)).not.toContain(secret)
+  expect(JSON.stringify(stored.items[0]?.response)).toContain('Fallo recibido')
   expect(JSON.stringify(stored.items[0]?.request)).not.toContain('data:image/png;base64')
   expect(stored.items[0]?.request).toMatchObject({
     image: { omitted: 'data-url', mimeType: 'image/png', sizeBytes: 3 }
@@ -69,7 +65,7 @@ test('registra y consulta trazas persistentes desde Ajustes', async ({ page }, t
 
   await page.goto('/settings#datos')
   const card = page.getByTestId('error-traces-settings-card')
-  await expect(card).toContainText('contenido privado y secretos sin sanear')
+  await expect(card).toContainText('las credenciales reconocibles se ocultan')
   await card.getByRole('link', { name: 'Abrir trazas' }).click()
   await expect(page).toHaveURL('/error-traces')
   await expect(page.getByRole('heading', { name: 'Trazas de error' })).toBeVisible()
@@ -78,7 +74,8 @@ test('registra y consulta trazas persistentes desde Ajustes', async ({ page }, t
   await page.getByTestId('error-trace-list').getByRole('button')
     .filter({ hasText: 'Fallo LLM de prueba' }).click()
   const detail = page.getByRole('dialog', { name: 'Detalle de traza' })
-  await expect(detail).toContainText(secret)
+  await expect(detail).not.toContainText(secret)
+  await expect(detail).toContainText('Fallo recibido')
   await expect(detail).toContainText('data-url')
   await expect(detail).not.toContainText('data:image/png;base64')
   await page.screenshot({ path: testInfo.outputPath('error-traces-desktop.png'), fullPage: true })

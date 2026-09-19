@@ -258,7 +258,7 @@ function cancelImport() {
         </div>
         <div class="min-w-0">
           <span
-            v-if="character.visibleInDemo"
+            v-if="!privacy.isDemo && character.visibleInDemo"
             class="inline-flex rounded-full bg-brand-500/15 px-2 py-0.5 text-xs font-semibold text-brand-600"
           >
             Visible en demo

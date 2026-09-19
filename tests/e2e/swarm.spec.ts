@@ -31,8 +31,7 @@ test('configura SwarmUI, muestra catálogo y genera una vista temporal', async (
   const storedSettings = await publicSettings.json() as AppSettings
   expect(storedSettings.swarmAuthToken).toBe('')
   expect(storedSettings.swarmAuthConfigured).toBe(true)
-  const secret = await page.request.post('/api/settings/swarm-token')
-  expect(await secret.json()).toEqual({ swarmAuthToken: 'token-prueba' })
+  expect((await page.request.post('/api/settings/swarm-token')).status()).toBe(404)
 
   await swarm.getByRole('button', { name: 'Probar conexión', exact: true }).click()
   await expect(swarm.getByText(/SwarmUI test-1\.0: 2 modelos, 1 LoRAs y 2 presets/)).toBeVisible()

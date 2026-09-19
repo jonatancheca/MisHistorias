@@ -61,7 +61,7 @@ test('muestra en Ajustes un error al comprobar actualizaciones', async ({ page }
     .toContainText('GitHub no disponible para la prueba.')
 })
 
-test('agrupa LLM y unifica controles de conexión y tokens', async ({ page, data }) => {
+test('protege tokens configurados y conserva sus controles de conexión', async ({ page, data }) => {
   await data.patchSettings({ apiKey: 'lm-token', swarmAuthToken: 'swarm-token', swarmBaseUrl: 'http://localhost:7801' })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/settings')
@@ -76,15 +76,17 @@ test('agrupa LLM y unifica controles de conexión y tokens', async ({ page, data
   expect(await swarmTest.locator('path').getAttribute('d'))
     .toBe(await llmTest.locator('path').getAttribute('d'))
 
-  const tokenInput = page.getByLabel('Token de SwarmUI (opcional)')
-  const showToken = page.getByRole('button', { name: 'Mostrar token SwarmUI' })
-  const removeToken = page.getByRole('button', { name: 'Quitar token SwarmUI' })
-  await expect(showToken).toBeVisible()
-  await expect(removeToken).toBeVisible()
-  expect(await showToken.evaluate((element) => element.getBoundingClientRect().left))
-    .toBeGreaterThan(await tokenInput.evaluate((element) => element.getBoundingClientRect().left))
-  expect(await removeToken.evaluate((element) => element.getBoundingClientRect().left))
-    .toBeGreaterThan(await showToken.evaluate((element) => element.getBoundingClientRect().left))
+  const llmTokenInput = page.getByLabel('Token de acceso (opcional)')
+  const swarmTokenInput = page.getByLabel('Token de SwarmUI (opcional)')
+  await expect(llmTokenInput).toHaveValue('')
+  await expect(llmTokenInput).toHaveAttribute('placeholder', '****')
+  await expect(swarmTokenInput).toHaveValue('')
+  await expect(swarmTokenInput).toHaveAttribute('placeholder', '****')
+  await expect(page.getByRole('button', { name: /Mostrar token/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Quitar token', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Quitar token SwarmUI', exact: true })).toBeVisible()
+  expect((await page.request.post('/api/settings/api-key')).status()).toBe(404)
+  expect((await page.request.post('/api/settings/swarm-token')).status()).toBe(404)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 
   await page.setViewportSize({ width: 320, height: 800 })
@@ -447,15 +449,16 @@ test('personaliza LMStudio en privado y vuelve a heredar al desactivarlo', async
 
   await customize.check()
   await expect(baseUrl).toBeEnabled()
-  const copiedToken = await page.request.post('/api/settings/api-key?scope=private')
-  expect(await copiedToken.json()).toEqual({ apiKey: 'normal-secret' })
+  const tokenInput = page.getByLabel('Token de acceso (opcional)')
+  await expect(tokenInput).toHaveValue('')
+  await expect(tokenInput).toHaveAttribute('placeholder', '****')
 
   await baseUrl.fill('http://private.test')
   await model.fill('private-model')
   await page.getByLabel('Temperatura').fill('1.2')
   await page.getByLabel('Máx. tokens').fill('1200')
   await page.getByLabel('Historial (caracteres)').fill('7000')
-  await page.getByLabel('Token de acceso (opcional)').fill('private-secret')
+  await tokenInput.fill('private-secret')
   await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
 
   let modelsScope = ''
@@ -470,16 +473,20 @@ test('personaliza LMStudio en privado y vuelve a heredar al desactivarlo', async
   const stored = await page.request.get('/api/settings')
   expect(await stored.json()).toMatchObject({
     baseUrl: 'http://normal.test',
+    apiKey: '',
+    apiKeyConfigured: true,
     model: 'normal-model',
     privateLlmSettingsEnabled: true,
     privateBaseUrl: 'http://private.test',
+    privateApiKey: '',
+    privateApiKeyConfigured: true,
     privateModel: 'private-model',
     privateTemperature: 1.2,
     privateMaxTokens: 1200,
     privateHistoryBudget: 7000
   })
-  const privateToken = await page.request.post('/api/settings/api-key?scope=private')
-  expect(await privateToken.json()).toEqual({ apiKey: 'private-secret' })
+  await expect(tokenInput).toHaveValue('')
+  await expect(tokenInput).toHaveAttribute('placeholder', '****')
 
   await customize.uncheck()
   await expect(baseUrl).toBeDisabled()
@@ -488,8 +495,8 @@ test('personaliza LMStudio en privado y vuelve a heredar al desactivarlo', async
     const response = await page.request.get('/api/settings')
     return ((await response.json()) as AppSettings).privateLlmSettingsEnabled
   }).toBe(false)
-  const inheritedToken = await page.request.post('/api/settings/api-key?scope=private')
-  expect(await inheritedToken.json()).toEqual({ apiKey: 'normal-secret' })
+  await expect(tokenInput).toHaveValue('')
+  await expect(tokenInput).toHaveAttribute('placeholder', '****')
 })
 
 test('no activa Chrome AI cuando navegador es incompatible', async ({ page, data }) => {

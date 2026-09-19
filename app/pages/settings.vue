@@ -16,8 +16,6 @@ import {
   databaseBackupDownloadUrl,
   listDatabaseBackups,
   previewIdentityReassignment,
-  readApiKey,
-  readSwarmAuthToken,
   reassignIdentity,
   restoreDatabaseBackup,
   uploadDatabaseBackup
@@ -146,12 +144,6 @@ const backupMessage = ref<string | null>(null)
 const backupError = ref<string | null>(null)
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const saveError = ref<string | null>(null)
-const apiKeyVisible = ref(false)
-const apiKeyLoading = ref(false)
-const apiKeyError = ref<string | null>(null)
-const swarmAuthTokenVisible = ref(false)
-const swarmAuthTokenLoading = ref(false)
-const swarmAuthTokenError = ref<string | null>(null)
 const swarmCatalog = ref<SwarmCatalog | null>(null)
 const swarmTesting = ref(false)
 const swarmTestMessage = ref<string | null>(null)
@@ -173,10 +165,8 @@ let savePending = false
 let saveRevision = 0
 let saveQueue: Promise<void> = Promise.resolve()
 let apiKeyDirty = false
-let revealingApiKey = false
 let switchingPrivateLlmSettings = false
 let swarmAuthTokenDirty = false
-let revealingSwarmAuthToken = false
 let privateUserNameDirty: boolean = false
 let privateProtagonistPreferencesDirty: boolean = false
 let narrativePromptDirty = false
@@ -477,8 +467,14 @@ function enqueueSave(revision: number) {
     try {
       await settings.save(patch)
       if (revision === saveRevision) {
-        if ('apiKey' in patch || 'privateApiKey' in patch) apiKeyDirty = false
-        if ('swarmAuthToken' in patch) swarmAuthTokenDirty = false
+        if ('apiKey' in patch || 'privateApiKey' in patch) {
+          apiKeyDirty = false
+          form.apiKey = ''
+        }
+        if ('swarmAuthToken' in patch) {
+          swarmAuthTokenDirty = false
+          form.swarmAuthToken = ''
+        }
         if ('privateUserName' in patch) privateUserNameDirty = false
         if ('privateProtagonistPreferences' in patch) privateProtagonistPreferencesDirty = false
         if ('narrativePrompt' in patch) narrativePromptDirty = false
@@ -507,12 +503,10 @@ function enqueueSave(revision: number) {
 
 function onApiKeyInput() {
   apiKeyDirty = true
-  apiKeyError.value = null
 }
 
 function onSwarmAuthTokenInput() {
   swarmAuthTokenDirty = true
-  swarmAuthTokenError.value = null
 }
 
 function markPrivateUserNameDirty() {
@@ -551,35 +545,8 @@ function revertCharacterReferencePrompt() {
 
 function clearApiKey() {
   form.apiKey = ''
-  apiKeyVisible.value = false
-  apiKeyError.value = null
   apiKeyDirty = true
   scheduleSave()
-}
-
-async function toggleApiKeyVisibility() {
-  if (apiKeyVisible.value) {
-    apiKeyVisible.value = false
-    return
-  }
-  apiKeyError.value = null
-  if (!form.apiKey && form.apiKeyConfigured) {
-    apiKeyLoading.value = true
-    try {
-      const result = await readApiKey()
-      revealingApiKey = true
-      form.apiKey = result.apiKey
-      await nextTick()
-      apiKeyDirty = false
-    } catch (caught) {
-      apiKeyError.value = (caught as Error).message || 'No se pudo mostrar el token.'
-      return
-    } finally {
-      revealingApiKey = false
-      apiKeyLoading.value = false
-    }
-  }
-  apiKeyVisible.value = true
 }
 
 async function setPrivateLlmSettingsEnabled(enabled: boolean) {
@@ -594,7 +561,6 @@ async function setPrivateLlmSettingsEnabled(enabled: boolean) {
     form.maxTokens = settings.settings.maxTokens
     form.historyBudget = settings.settings.historyBudget
     form.apiKey = ''
-    apiKeyVisible.value = false
     apiKeyDirty = false
     if (enabled) {
       await settings.save({
@@ -631,39 +597,12 @@ async function setPrivateLlmSettingsEnabled(enabled: boolean) {
 
 function clearSwarmAuthToken() {
   form.swarmAuthToken = ''
-  swarmAuthTokenVisible.value = false
-  swarmAuthTokenError.value = null
   swarmAuthTokenDirty = true
   scheduleSave()
 }
 
-async function toggleSwarmAuthTokenVisibility() {
-  if (swarmAuthTokenVisible.value) {
-    swarmAuthTokenVisible.value = false
-    return
-  }
-  swarmAuthTokenError.value = null
-  if (!form.swarmAuthToken && form.swarmAuthConfigured) {
-    swarmAuthTokenLoading.value = true
-    try {
-      const result = await readSwarmAuthToken()
-      revealingSwarmAuthToken = true
-      form.swarmAuthToken = result.swarmAuthToken
-      await nextTick()
-      swarmAuthTokenDirty = false
-    } catch (caught) {
-      swarmAuthTokenError.value = (caught as Error).message || 'No se pudo mostrar el token.'
-      return
-    } finally {
-      revealingSwarmAuthToken = false
-      swarmAuthTokenLoading.value = false
-    }
-  }
-  swarmAuthTokenVisible.value = true
-}
-
 function scheduleSave() {
-  if (revealingApiKey || revealingSwarmAuthToken || switchingPrivateLlmSettings) return
+  if (switchingPrivateLlmSettings) return
   saveRevision += 1
   savePending = true
   if (saveTimer) clearTimeout(saveTimer)
@@ -1509,29 +1448,12 @@ onBeforeRouteLeave(async () => {
             id="apiKey"
             v-model="form.apiKey"
             :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
-            :type="apiKeyVisible ? 'text' : 'password'"
+            type="password"
             autocomplete="off"
             class="field min-w-0 flex-1"
-            :placeholder="form.apiKeyConfigured ? 'Token configurado; escribe para cambiarlo' : 'Solo si LMStudio pide API key'"
+            :placeholder="form.apiKeyConfigured ? '****' : 'Solo si LMStudio pide API key'"
             @input="onApiKeyInput"
           >
-          <button
-            v-if="form.apiKeyConfigured || form.apiKey"
-            type="button"
-            class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
-            :disabled="apiKeyLoading || (privacy.isPrivate && !privateLlmSettingsEnabled)"
-            :aria-label="apiKeyVisible ? 'Ocultar token' : 'Mostrar token'"
-            :title="apiKeyVisible ? 'Ocultar token' : 'Mostrar token'"
-            @click="toggleApiKeyVisibility"
-          >
-            <svg v-if="apiKeyVisible" aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 4.2A10.7 10.7 0 0 1 12 4c5.5 0 9 5.5 9 5.5a16.8 16.8 0 0 1-2.1 2.7M6.6 6.6C4.3 8 3 10 3 10s3.5 5.5 9 5.5c1 0 2-.2 2.8-.5" />
-            </svg>
-            <svg v-else aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-          </button>
           <button
             v-if="form.apiKeyConfigured"
             type="button"
@@ -1547,9 +1469,8 @@ onBeforeRouteLeave(async () => {
           </button>
         </div>
         <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-          Se guarda en SQLite sin cifrar. Solo se muestra en este navegador al pulsar el botón.
+          Se guarda en SQLite sin cifrar. Mis Historias solo indica si existe; escribe otro para reemplazarlo.
         </p>
-        <p v-if="apiKeyError" class="mt-1 text-xs text-red-500" role="alert">{{ apiKeyError }}</p>
       </div>
 
       <div>
@@ -1743,29 +1664,12 @@ onBeforeRouteLeave(async () => {
               <input
                 id="swarmAuthToken"
                 v-model="form.swarmAuthToken"
-                :type="swarmAuthTokenVisible ? 'text' : 'password'"
+                type="password"
                 autocomplete="off"
                 class="field min-w-0 flex-1"
-                :placeholder="form.swarmAuthConfigured ? 'Token configurado; escribe para cambiarlo' : 'swarm_token'"
+                :placeholder="form.swarmAuthConfigured ? '****' : 'swarm_token'"
                 @input="onSwarmAuthTokenInput"
               >
-              <button
-                v-if="form.swarmAuthConfigured || form.swarmAuthToken"
-                type="button"
-                class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
-                :disabled="swarmAuthTokenLoading"
-                :aria-label="swarmAuthTokenVisible ? 'Ocultar token SwarmUI' : 'Mostrar token SwarmUI'"
-                :title="swarmAuthTokenVisible ? 'Ocultar token SwarmUI' : 'Mostrar token SwarmUI'"
-                @click="toggleSwarmAuthTokenVisibility"
-              >
-                <svg v-if="swarmAuthTokenVisible" aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 4.2A10.7 10.7 0 0 1 12 4c5.5 0 9 5.5 9 5.5a16.8 16.8 0 0 1-2.1 2.7M6.6 6.6C4.3 8 3 10 3 10s3.5 5.5 9 5.5c1 0 2-.2 2.8-.5" />
-                </svg>
-                <svg v-else aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-              </button>
               <button
                 v-if="form.swarmAuthConfigured"
                 type="button"
@@ -1780,10 +1684,7 @@ onBeforeRouteLeave(async () => {
               </button>
             </div>
             <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-              Se guarda separado en SQLite y se envía como cookie <code>swarm_token</code>.
-            </p>
-            <p v-if="swarmAuthTokenError" class="mt-1 text-xs text-red-500" role="alert">
-              {{ swarmAuthTokenError }}
+              Se guarda separado en SQLite y se envía como cookie <code>swarm_token</code>. Solo se indica si existe.
             </p>
           </div>
 
@@ -1975,7 +1876,7 @@ onBeforeRouteLeave(async () => {
         <div>
           <h3 class="font-semibold">Trazas de error</h3>
           <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-            Consulta fallos operativos persistentes. Pueden incluir contenido privado y secretos sin sanear.
+            Consulta fallos operativos persistentes. Pueden incluir contenido privado; las credenciales reconocibles se ocultan.
           </p>
         </div>
         <NuxtLink to="/error-traces" class="btn-ghost shrink-0">Abrir trazas</NuxtLink>

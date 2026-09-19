@@ -36,6 +36,10 @@ _Evitar_: Público, compartido
 Copia completa y restaurable de colección normal, colección privada, ajustes y secretos de una instalación de Mis Historias.
 _Evitar_: Exportación JSON, copia parcial
 
+**Secreto operativo**:
+Credencial de LLM o SwarmUI que el servidor conserva para realizar llamadas salientes. La API de ajustes solo permite crear, reemplazar o borrar su valor y consultar si está configurado; nunca devuelve el valor guardado. Las trazas ocultan campos, patrones y valores de credenciales reconocibles. Los backups SQLite completos constituyen una excepción administrativa y sí conservan los secretos.
+_Evitar_: Ajuste público, token visible, valor recuperable
+
 **Usuario Access**:
 Persona autenticada por Cloudflare Access cuya identidad separa sus colecciones y preferencias de las del resto.
 _Evitar_: Usuario local, cuenta de Mis Historias
@@ -45,11 +49,11 @@ Usuario Access al que pertenece un recurso normal o privado y que puede modifica
 _Evitar_: Autor, administrador
 
 **Administrador de la instancia**:
-Primer Usuario Access que activa el modo multiusuario y conserva las operaciones globales de configuración y backup sin obtener acceso ordinario al contenido ajeno. Puede consultar el contenido textual íntegro y truncado de las trazas de error operativas de cualquier usuario, incluidos posibles secretos, para diagnosticar fallos.
+Primer Usuario Access que activa el modo multiusuario y conserva las operaciones globales de configuración y backup sin obtener acceso ordinario al contenido ajeno. Puede consultar el contenido textual truncado de las trazas de error operativas de cualquier usuario para diagnosticar fallos, con las credenciales reconocibles ocultas.
 _Evitar_: Propietario global, superusuario de contenido
 
 **Traza de error operativa**:
-Registro persistente de un fallo del LLM, de una integración externa o de la operación interna de la instancia, consultable por el administrador o en modo de usuario único. Incluye la llamada y respuesta textuales sin sanear, sujetas a truncado y omisión de binarios y data URLs, pero no errores esperados de validación ni cancelaciones.
+Registro persistente de un fallo del LLM, de una integración externa o de la operación interna de la instancia, consultable por el administrador o en modo de usuario único. Incluye la llamada y respuesta textuales, con campos, patrones y valores de credenciales reconocibles ocultos, además de truncado y omisión de binarios y data URLs; no incluye errores esperados de validación ni cancelaciones.
 _Evitar_: Traza LLM de historia, historial de actividad, auditoría de usuario
 
 **Recurso demo compartido**:

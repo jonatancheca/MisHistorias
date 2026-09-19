@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import type { H3Event } from 'h3'
 import type { ErrorTrace, ErrorTraceSource } from '../../shared/types/index.ts'
+import { sanitizeSwarmDiagnostic } from '../../shared/utils/swarmError.ts'
 import { readAccessSession } from './access.ts'
 import { getStorage, type DataScope } from './storage.ts'
 
@@ -65,9 +66,9 @@ function truncateUtf8(value: string, maxBytes: number) {
   return bytes.subarray(0, maxBytes).toString('utf8').replace(/\uFFFD$/u, '')
 }
 
-function preparePayload(value: unknown) {
+function preparePayload(value: unknown, secrets: string[] = []) {
   if (value === undefined) return { value: null, truncated: false, serialized: 'null' }
-  const normalized = normalizePayload(value)
+  const normalized = sanitizeSwarmDiagnostic(normalizePayload(value), secrets)
   let serialized: string
   try {
     serialized = JSON.stringify(normalized)
@@ -86,13 +87,44 @@ function preparePayload(value: unknown) {
   }
 }
 
+export function readConfiguredOperationalSecrets() {
+  const settings = getStorage().readSettings()
+  return [settings?.apiKey ?? '', settings?.privateApiKey ?? '', settings?.swarmAuthToken ?? '']
+    .filter(Boolean)
+}
+
+function sanitizeText(value: string, secrets: string[]) {
+  return String(sanitizeSwarmDiagnostic(value, secrets))
+}
+
+/** Oculta credenciales reconocibles también al servir trazas antiguas. */
+export function sanitizeOperationalErrorTrace(
+  trace: ErrorTrace,
+  secrets = readConfiguredOperationalSecrets()
+): ErrorTrace {
+  return {
+    ...trace,
+    message: sanitizeText(trace.message, secrets),
+    request: preparePayload(trace.request, secrets).value,
+    response: preparePayload(trace.response, secrets).value,
+    stack: trace.stack ? sanitizeText(trace.stack, secrets) : null
+  }
+}
+
 export function recordOperationalError(event: H3Event | undefined, input: OperationalErrorInput) {
   try {
+    const storage = getStorage()
+    const secrets = readConfiguredOperationalSecrets()
     const session = event ? readAccessSession(event, true) : null
-    const request = preparePayload(input.request)
-    const response = preparePayload(input.response)
-    const message = truncateUtf8(input.message || 'Error sin mensaje', MAX_TEXT_BYTES)
-    const stack = input.stack ? truncateUtf8(input.stack, MAX_TEXT_BYTES) : null
+    const request = preparePayload(input.request, secrets)
+    const response = preparePayload(input.response, secrets)
+    const message = truncateUtf8(
+      sanitizeText(input.message || 'Error sin mensaje', secrets),
+      MAX_TEXT_BYTES
+    )
+    const stack = input.stack
+      ? truncateUtf8(sanitizeText(input.stack, secrets), MAX_TEXT_BYTES)
+      : null
     const trace: ErrorTrace = {
       id: randomUUID(),
       ownerId: session?.identity?.id ?? null,
@@ -119,7 +151,7 @@ export function recordOperationalError(event: H3Event | undefined, input: Operat
         session?.identity?.email ?? ''
       ].join(''))
     }
-    return getStorage().writeErrorTrace(trace)
+    return storage.writeErrorTrace(trace)
   } catch (caught) {
     console.error('No se pudo guardar la traza de error operativa', caught)
     return null
