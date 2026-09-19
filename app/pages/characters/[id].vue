@@ -181,14 +181,39 @@ onBeforeRouteLeave(flushSave)
 
 <template>
   <div class="page-shell">
-    <header class="mb-7 flex items-end justify-between gap-4">
+    <header class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
         <p class="page-kicker">Ficha de personaje</p>
         <h1 class="page-title">
           {{ copiedCharacter ? 'Copiar personaje' : isNew ? 'Nuevo personaje' : name || 'Personaje' }}
         </h1>
       </div>
-      <NuxtLink to="/characters" class="btn-ghost">Volver</NuxtLink>
+      <div class="ml-auto flex items-center gap-3">
+        <label
+          v-if="privacy.isPrivateMode"
+          class="inline-flex items-center gap-2 text-sm font-medium"
+          :class="existing?.readOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'"
+        >
+          <span>Visible en demo</span>
+          <input
+            v-model="visibleInDemo"
+            type="checkbox"
+            role="switch"
+            class="peer sr-only"
+            :disabled="existing?.readOnly"
+          >
+          <span
+            aria-hidden="true"
+            class="flex h-6 w-11 shrink-0 items-center rounded-full bg-[var(--color-border-soft)] p-0.5 transition-colors peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[var(--color-surface)]"
+          >
+            <span
+              class="h-5 w-5 rounded-full bg-white shadow-sm transition-transform"
+              :class="visibleInDemo ? 'translate-x-5' : 'translate-x-0'"
+            />
+          </span>
+        </label>
+        <NuxtLink to="/characters" class="btn-ghost">Volver</NuxtLink>
+      </div>
     </header>
 
     <p v-if="!isNew && !existing" class="card text-sm">Personaje no encontrado.</p>
@@ -246,19 +271,6 @@ onBeforeRouteLeave(flushSave)
           </p>
         </div>
         <CharacterAppearanceEditor v-model="imageGenerationPromptPrefix" />
-        <label v-if="privacy.isPrivateMode" class="flex items-start gap-2 text-sm">
-          <input
-            v-model="visibleInDemo"
-            type="checkbox"
-            class="mt-0.5 h-4 w-4 accent-[var(--color-brand-500)]"
-          >
-          <span>
-            <span class="block font-medium">Visible en modo demo</span>
-            <span class="block text-xs text-[var(--color-fg-muted)]">
-              Permite mostrar este personaje en el catálogo demo.
-            </span>
-          </span>
-        </label>
         <div class="flex min-h-10 items-center gap-3">
           <button v-if="isNew" type="submit" class="btn-primary" :disabled="!name.trim() || saving">
             Guardar

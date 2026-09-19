@@ -314,6 +314,12 @@ function cancelImport() {
           <p class="text-xs text-[var(--color-fg-muted)]">
             {{ characters.imagesFor(character.id).length }} imágenes
           </p>
+          <span
+            v-if="character.visibleInDemo"
+            class="mt-1 inline-flex rounded-full bg-brand-500/15 px-2 py-0.5 text-xs font-semibold text-brand-600"
+          >
+            Visible en demo
+          </span>
           <p v-if="character.readOnly" class="mt-1 text-xs font-semibold text-brand-600">
             Demo compartido · solo lectura
           </p>

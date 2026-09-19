@@ -155,6 +155,66 @@ test.describe('personajes', () => {
       .toBe(updatedPrompt)
   })
 
+  test('muestra visibilidad demo como toggle y badge en modo privado', async ({ page, data }) => {
+    const character = await data.createCharacter({
+      name: data.unique('Demo-visible'),
+      visibleInDemo: false,
+      scope: 'private'
+    })
+    await data.createImage(character, ['retrato'], 'private')
+
+    await page.goto('/settings')
+    const privateTrigger = page.getByRole('button', { name: 'Activar modo privado', exact: true })
+    await privateTrigger.click()
+    await privateTrigger.click()
+    await privateTrigger.click()
+    await page.getByRole('link', { name: 'Personajes', exact: true }).click()
+    await page.getByRole('link', { name: character.name, exact: true }).click()
+
+    const demoToggle = page.getByRole('switch', { name: 'Visible en demo' })
+    const backLink = page.getByRole('link', { name: 'Volver' })
+    await expect(demoToggle).not.toBeChecked()
+    await expect(backLink).toBeVisible()
+    const headerLayout = await page.locator('header').first().evaluate((header) => {
+      const toggle = header.querySelector('[role="switch"]')!.closest('label')!.getBoundingClientRect()
+      const back = header.querySelector('a')!.getBoundingClientRect()
+      return { toggleRight: toggle.right, backLeft: back.left }
+    })
+    expect(headerLayout.toggleRight).toBeLessThanOrEqual(headerLayout.backLeft)
+
+    await page.getByText('Visible en demo', { exact: true }).click()
+    await expect(demoToggle).toBeChecked()
+    await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
+    await expect.poll(async () => (
+      await data.get<Character>('characters', character.id, 'private')
+    ).visibleInDemo).toBe(true)
+
+    await backLink.click()
+    const card = page.locator('li').filter({ hasText: character.name })
+    const imageCount = card.getByText('1 imágenes', { exact: true })
+    const demoBadge = card.getByText('Visible en demo', { exact: true })
+    await expect(demoBadge).toBeVisible()
+    const badgeLayout = await card.evaluate((element) => {
+      const count = Array.from(element.querySelectorAll('p'))
+        .find((item) => item.textContent?.trim() === '1 imágenes')!
+        .getBoundingClientRect()
+      const badge = Array.from(element.querySelectorAll('span'))
+        .find((item) => item.textContent?.trim() === 'Visible en demo')!
+        .getBoundingClientRect()
+      return { countBottom: count.bottom, badgeTop: badge.top }
+    })
+    expect(await imageCount.isVisible()).toBe(true)
+    expect(badgeLayout.badgeTop).toBeGreaterThanOrEqual(badgeLayout.countBottom)
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 })
+      await card.getByRole('link', { name: character.name, exact: true }).click()
+      await expect(page.getByRole('switch', { name: 'Visible en demo' })).toBeChecked()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      await page.getByRole('link', { name: 'Volver' }).click()
+    }
+  })
+
   test('previsualiza una imagen y prioriza añadir originales', async ({ page, data }) => {
     const character = await data.createCharacter()
     const singleTag = data.unique('subida-individual')
