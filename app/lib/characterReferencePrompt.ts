@@ -1,5 +1,6 @@
 import type { DataScope } from './db.ts'
 import { cleanCharacterImagePrompt } from './characterImagePrompt.ts'
+import { reportClientErrorTrace } from './errorTraces.ts'
 import { fetchLlmChat, type LlmMessage } from './llm.ts'
 
 export const CHARACTER_REFERENCE_IMAGE_TYPES = [
@@ -99,6 +100,7 @@ export async function generateCharacterReferencePrompt(
     result = await provider.chat({
       model,
       messages,
+      operation: 'character.reference-photo',
       temperature: options.temperature,
       maxTokens: options.maxTokens,
       scope: options.scope,
@@ -117,6 +119,17 @@ export async function generateCharacterReferencePrompt(
   }
   const prompt = cleanCharacterReferencePrompt(result.content)
   if (!prompt) {
+    if (result.content.trim()) {
+      void reportClientErrorTrace({
+        source: 'llm',
+        operation: 'character.reference-photo',
+        message: 'El modelo no devolvió un prompt visual.',
+        scope: options.scope,
+        requestSent: true,
+        request: { messages, options },
+        response
+      })
+    }
     throw Object.assign(new Error('El modelo no devolvió un prompt visual.'), { messages, response })
   }
   return prompt

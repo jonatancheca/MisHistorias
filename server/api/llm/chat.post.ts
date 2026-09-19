@@ -1,4 +1,5 @@
 import { fetchProxyChat, type LlmMessageContent, type LlmProxyError } from '../../utils/llm'
+import { recordOperationalError } from '../../utils/errorTraces'
 import { getStorage } from '../../utils/storage'
 
 function numberInRange(value: unknown, fallback: number, min: number, max: number) {
@@ -38,8 +39,26 @@ export default defineEventHandler(async (event) => {
         .map((message) => ({ role: message.role, content: message.content }))
     : []
   const settings = getStorage().readSettings()
+  const scope = value.scope === 'private' ? 'private' : 'normal'
   const usePrivate =
-    value.scope === 'private' && settings?.value.privateLlmSettingsEnabled === true
+    scope === 'private' && settings?.value.privateLlmSettingsEnabled === true
+  const proxySettings = {
+    baseUrl: String(
+      usePrivate
+        ? (settings?.value.privateBaseUrl ?? settings?.value.baseUrl ?? 'http://localhost:1234')
+        : (settings?.value.baseUrl ?? 'http://localhost:1234')
+    ),
+    apiKey: usePrivate ? settings?.privateApiKey ?? '' : settings?.apiKey ?? ''
+  }
+  const proxyRequest = {
+    model: typeof value.model === 'string' ? value.model : '',
+    messages,
+    temperature: numberInRange(value.temperature, 0.8, 0, 2),
+    maxTokens: numberInRange(value.maxTokens, 10000, 1, 100000)
+  }
+  const operation = typeof value.operation === 'string' && value.operation.trim()
+    ? value.operation.slice(0, 200)
+    : 'llm.chat'
   const abortController = new AbortController()
   const abort = () => abortController.abort()
   const abortIfResponseClosed = () => {
@@ -49,26 +68,46 @@ export default defineEventHandler(async (event) => {
   event.node.res.once('close', abortIfResponseClosed)
 
   try {
-    return await fetchProxyChat(
-      {
-        baseUrl: String(
-          usePrivate
-            ? (settings?.value.privateBaseUrl ?? settings?.value.baseUrl ?? 'http://localhost:1234')
-            : (settings?.value.baseUrl ?? 'http://localhost:1234')
-        ),
-        apiKey: usePrivate ? settings?.privateApiKey ?? '' : settings?.apiKey ?? ''
-      },
-      {
-        model: typeof value.model === 'string' ? value.model : '',
-        messages,
-        temperature: numberInRange(value.temperature, 0.8, 0, 2),
-        maxTokens: numberInRange(value.maxTokens, 10000, 1, 100000),
-        signal: abortController.signal
-      }
-    )
+    const result = await fetchProxyChat(proxySettings, {
+      ...proxyRequest,
+      signal: abortController.signal
+    })
+    if (!result.content.trim() || result.finishReason === 'length') {
+      recordOperationalError(event, {
+        source: 'llm',
+        operation,
+        message: result.finishReason === 'length'
+          ? 'La respuesta del modelo quedó truncada.'
+          : 'El modelo no devolvió contenido visible.',
+        scope,
+        status: result.diagnostic.response?.status ?? 200,
+        requestSent: result.diagnostic.requestSent,
+        request: result.diagnostic.request,
+        response: result.diagnostic.response
+      })
+      event.context.errorTraceRecorded = true
+    }
+    return { content: result.content, finishReason: result.finishReason }
   } catch (caught) {
     if ((caught as Error)?.name === 'AbortError') throw caught
     const error = caught as LlmProxyError
+    const diagnostic = error.diagnostic ?? {
+      request: { settings: proxySettings, body: proxyRequest },
+      requestSent: false,
+      response: null
+    }
+    recordOperationalError(event, {
+      source: 'llm',
+      operation,
+      message: error.message,
+      scope,
+      status: error.status ?? null,
+      requestSent: diagnostic.requestSent,
+      request: diagnostic.request,
+      response: diagnostic.response,
+      stack: error.stack
+    })
+    event.context.errorTraceRecorded = true
     throw createError({
       statusCode: error.status && error.status >= 400 ? error.status : 502,
       message: error.message,

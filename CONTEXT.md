@@ -45,8 +45,12 @@ Usuario Access al que pertenece un recurso normal o privado y que puede modifica
 _Evitar_: Autor, administrador
 
 **Administrador de la instancia**:
-Primer Usuario Access que activa el modo multiusuario y conserva las operaciones globales de configuración y backup sin obtener acceso ordinario al contenido ajeno.
+Primer Usuario Access que activa el modo multiusuario y conserva las operaciones globales de configuración y backup sin obtener acceso ordinario al contenido ajeno. Puede consultar el contenido textual íntegro y truncado de las trazas de error operativas de cualquier usuario, incluidos posibles secretos, para diagnosticar fallos.
 _Evitar_: Propietario global, superusuario de contenido
+
+**Traza de error operativa**:
+Registro persistente de un fallo del LLM, de una integración externa o de la operación interna de la instancia, consultable por el administrador o en modo de usuario único. Incluye la llamada y respuesta textuales sin sanear, sujetas a truncado y omisión de binarios y data URLs, pero no errores esperados de validación ni cancelaciones.
+_Evitar_: Traza LLM de historia, historial de actividad, auditoría de usuario
 
 **Recurso demo compartido**:
 Historia, personaje o fondo privado visible para otros Usuarios Access en modo privado o demo, junto con las imágenes y sonidos necesarios para consultarlo, sin conceder propiedad ni permiso de edición.

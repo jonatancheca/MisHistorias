@@ -1,5 +1,6 @@
 import type { Character } from '../../shared/types/index.ts'
 import { fetchChromeLlmChat } from './chromeLlm.ts'
+import { reportClientErrorTrace } from './errorTraces.ts'
 import { fetchLlmChat } from './llm.ts'
 
 interface PromptInput {
@@ -65,17 +66,28 @@ export async function generateCharacterImagePrompt(
 ) {
   const messages = buildCharacterImagePromptMessages(input)
   const result = settings.useChromeLlm
-    ? await providers.chrome({ messages, signal })
+    ? await providers.chrome({ messages, operation: 'character.image-prompt', signal })
     : settings.model
       ? await providers.lmStudio({
           model: settings.model,
           messages,
+          operation: 'character.image-prompt',
           temperature: settings.temperature,
           maxTokens: settings.maxTokens,
           signal
         })
       : (() => { throw new Error('Configura primero el modelo en Ajustes.') })()
   const prompt = cleanCharacterImagePrompt(result.content)
-  if (!prompt) throw new Error('El modelo no devolvió un prompt de imagen.')
+  if (!prompt) {
+    void reportClientErrorTrace({
+      source: 'llm',
+      operation: 'character.image-prompt',
+      message: 'El modelo no devolvió un prompt de imagen.',
+      requestSent: true,
+      request: { messages, settings },
+      response: result
+    })
+    throw new Error('El modelo no devolvió un prompt de imagen.')
+  }
   return prompt
 }

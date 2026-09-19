@@ -1969,6 +1969,20 @@ onBeforeRouteLeave(async () => {
 
       <div
         v-if="canManageGlobal"
+        class="settings-subpanel mt-6 flex flex-col gap-3 rounded-2xl border border-[var(--color-border-soft)] p-4 sm:flex-row sm:items-center sm:justify-between"
+        data-testid="error-traces-settings-card"
+      >
+        <div>
+          <h3 class="font-semibold">Trazas de error</h3>
+          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+            Consulta fallos operativos persistentes. Pueden incluir contenido privado y secretos sin sanear.
+          </p>
+        </div>
+        <NuxtLink to="/error-traces" class="btn-ghost shrink-0">Abrir trazas</NuxtLink>
+      </div>
+
+      <div
+        v-if="canManageGlobal"
         class="settings-subpanel mt-6 rounded-2xl border border-[var(--color-border-soft)] p-4"
       >
         <div class="flex flex-wrap items-start justify-between gap-3">

@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { reportClientErrorTrace } from './errorTraces.ts'
 import { fetchLlmChat, type LlmMessage } from './llm.ts'
 
 export const LORA_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
@@ -92,7 +93,7 @@ export async function generateLoraCaption(
   const messages = buildLoraCaptionMessages(await fileDataUrl(file))
   let result: Awaited<ReturnType<typeof fetchLlmChat>>
   try {
-    result = await fetchLlmChat({ ...options, messages })
+    result = await fetchLlmChat({ ...options, messages, operation: 'lora.caption' })
   } catch (caught) {
     const source = caught as Error
     const error = Object.assign(source instanceof Error ? source : new Error(String(caught)), {
@@ -103,7 +104,19 @@ export async function generateLoraCaption(
   }
   const caption = cleanLoraCaption(result.content)
   const response = { content: result.content, finishReason: result.finishReason }
-  if (!caption) throw Object.assign(new Error('El modelo no devolvió una descripción.'), { messages, response })
+  if (!caption) {
+    if (result.content.trim()) {
+      void reportClientErrorTrace({
+        source: 'llm',
+        operation: 'lora.caption',
+        message: 'El modelo no devolvió una descripción.',
+        requestSent: true,
+        request: { messages, options },
+        response
+      })
+    }
+    throw Object.assign(new Error('El modelo no devolvió una descripción.'), { messages, response })
+  }
   if (result.finishReason === 'length') throw Object.assign(new Error('La respuesta del modelo quedó truncada.'), { messages, response })
   return { caption, finishReason: result.finishReason, messages, response }
 }

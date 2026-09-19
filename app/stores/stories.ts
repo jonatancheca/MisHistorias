@@ -883,10 +883,15 @@ export const useStoriesStore = defineStore('stories', () => {
 
     try {
       const result = options.useChromeLlm
-        ? await fetchChromeLlmChat({ messages: compactionMessages, signal: options.signal })
+        ? await fetchChromeLlmChat({
+            messages: compactionMessages,
+            operation: 'story.compaction',
+            signal: options.signal
+          })
         : await fetchLlmChat({
             model: options.model,
             messages: compactionMessages,
+            operation: 'story.compaction',
             temperature: options.temperature,
             maxTokens: options.maxTokens,
             signal: options.signal
@@ -1456,11 +1461,13 @@ export const useStoriesStore = defineStore('stories', () => {
         const result = useChromeLlm
           ? await fetchChromeLlmChat({
               messages: payload,
+              operation: 'story.chat',
               signal: requestController.signal
             })
           : await fetchLlmChat({
               model,
               messages: payload,
+              operation: 'story.chat',
               temperature,
               maxTokens,
               signal: requestController.signal

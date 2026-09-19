@@ -16,6 +16,9 @@ import type {
   AccessIdentity,
   DatabaseBackup,
   DatabaseBackupKind,
+  ErrorTrace,
+  ErrorTraceListResponse,
+  ErrorTraceSource,
   IdentityReassignmentCounts,
   IdentityReassignmentPreview,
   IdentityReassignmentRequest,
@@ -58,6 +61,14 @@ type JsonResource = Exclude<DataResource, 'images' | 'backgrounds' | 'sounds'>
 export interface ResourceQuery {
   storyId?: string
   characterId?: string
+}
+
+export interface ErrorTraceQuery {
+  source?: ErrorTraceSource
+  owner?: string
+  scope?: DataScope
+  limit?: number
+  offset?: number
 }
 
 export interface StorageAccess {
@@ -104,9 +115,12 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 37
+const SCHEMA_VERSION = 38
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
+const ERROR_TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
+const ERROR_TRACE_MAX_COUNT = 5000
+const ERROR_TRACE_MAX_BYTES = 512 * 1024 * 1024
 const OWNED_TABLES = [
   'characters',
   'image_blobs',
@@ -437,6 +451,29 @@ function rowToTrace(row: SqliteRow) {
   }
 }
 
+function rowToErrorTrace(row: Record<string, unknown>): ErrorTrace {
+  return {
+    id: text(row.id),
+    ownerId: typeof row.owner_id === 'string' ? row.owner_id : null,
+    ownerEmail: typeof row.owner_email === 'string' ? row.owner_email : null,
+    scope: row.scope === 'normal' || row.scope === 'private' ? row.scope : null,
+    source: text(row.source, 'server') as ErrorTraceSource,
+    operation: text(row.operation),
+    message: text(row.message),
+    status: row.status === null || row.status === undefined ? null : integer(row.status),
+    requestSent: row.request_sent === null || row.request_sent === undefined
+      ? null
+      : integer(row.request_sent) === 1,
+    request: parseJson(row.request_json, null),
+    response: parseJson(row.response_json, null),
+    requestTruncated: integer(row.request_truncated) === 1,
+    responseTruncated: integer(row.response_truncated) === 1,
+    stack: typeof row.stack === 'string' ? row.stack : null,
+    createdAt: integer(row.created_at),
+    sizeBytes: integer(row.size_bytes)
+  }
+}
+
 function rowToStorySave(row: SqliteRow) {
   return {
     id: row.id,
@@ -564,7 +601,8 @@ export class MisHistoriasStorage {
           FROM sqlite_schema
           WHERE type = 'table' AND name IN (
             'characters', 'image_blobs', 'images', 'backgrounds', 'sounds', 'stories',
-            'messages', 'llm_debug_traces', 'story_saves', 'presets', 'settings', 'swarm_prompts'
+            'messages', 'llm_debug_traces', 'story_saves', 'presets', 'settings', 'swarm_prompts',
+            'error_traces'
           )
         `)
         .get() as { total: number }
@@ -1008,6 +1046,31 @@ export class MisHistoriasStorage {
         ) STRICT;
         CREATE INDEX IF NOT EXISTS identity_reassignments_by_created_at
           ON identity_reassignments(created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS error_traces (
+          id TEXT PRIMARY KEY,
+          owner_id TEXT,
+          owner_email TEXT,
+          scope TEXT CHECK (scope IS NULL OR scope IN ('normal', 'private')),
+          source TEXT NOT NULL,
+          operation TEXT NOT NULL,
+          message TEXT NOT NULL,
+          status INTEGER,
+          request_sent INTEGER CHECK (request_sent IS NULL OR request_sent IN (0, 1)),
+          request_json TEXT NOT NULL,
+          response_json TEXT NOT NULL,
+          request_truncated INTEGER NOT NULL CHECK (request_truncated IN (0, 1)),
+          response_truncated INTEGER NOT NULL CHECK (response_truncated IN (0, 1)),
+          stack TEXT,
+          created_at INTEGER NOT NULL,
+          size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0)
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS error_traces_by_created_at
+          ON error_traces(created_at DESC);
+        CREATE INDEX IF NOT EXISTS error_traces_by_source
+          ON error_traces(source, created_at DESC);
+        CREATE INDEX IF NOT EXISTS error_traces_by_owner
+          ON error_traces(owner_id, created_at DESC);
       `)
 
       if (version.user_version < 2) {
@@ -3427,6 +3490,112 @@ export class MisHistoriasStorage {
         }
       }
     })
+  }
+
+  private pruneErrorTracesInTransaction(now: number) {
+    this.database.prepare('DELETE FROM error_traces WHERE created_at < ?')
+      .run(now - ERROR_TRACE_RETENTION_MS)
+    this.database.exec(`
+      DELETE FROM error_traces
+      WHERE id IN (
+        SELECT id FROM error_traces
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT -1 OFFSET ${ERROR_TRACE_MAX_COUNT}
+      )
+    `)
+    let total = Number((this.database.prepare(
+      'SELECT COALESCE(SUM(size_bytes), 0) AS total FROM error_traces'
+    ).get() as { total: number }).total)
+    if (total <= ERROR_TRACE_MAX_BYTES) return
+    const oldest = this.database.prepare(
+      'SELECT id, size_bytes FROM error_traces ORDER BY created_at, rowid'
+    ).all() as Array<{ id: string; size_bytes: number }>
+    const remove = this.database.prepare('DELETE FROM error_traces WHERE id = ?')
+    for (const trace of oldest) {
+      if (total <= ERROR_TRACE_MAX_BYTES) break
+      remove.run(trace.id)
+      total -= Number(trace.size_bytes)
+    }
+  }
+
+  pruneErrorTraces(now = Date.now()) {
+    this.transaction(() => this.pruneErrorTracesInTransaction(now))
+  }
+
+  writeErrorTrace(trace: ErrorTrace) {
+    this.transaction(() => {
+      this.database.prepare(`
+        INSERT INTO error_traces(
+          id, owner_id, owner_email, scope, source, operation, message, status,
+          request_sent, request_json, response_json, request_truncated,
+          response_truncated, stack, created_at, size_bytes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        trace.id,
+        trace.ownerId,
+        trace.ownerEmail,
+        trace.scope,
+        trace.source,
+        trace.operation,
+        trace.message,
+        trace.status,
+        trace.requestSent === null ? null : bool(trace.requestSent),
+        json(trace.request),
+        json(trace.response),
+        bool(trace.requestTruncated),
+        bool(trace.responseTruncated),
+        trace.stack,
+        trace.createdAt,
+        trace.sizeBytes
+      )
+      this.pruneErrorTracesInTransaction(trace.createdAt)
+    })
+    return trace
+  }
+
+  listErrorTraces(query: ErrorTraceQuery = {}): ErrorTraceListResponse {
+    this.pruneErrorTraces()
+    const conditions: string[] = []
+    const args: Array<string> = []
+    if (query.source) {
+      conditions.push('source = ?')
+      args.push(query.source)
+    }
+    if (query.scope) {
+      conditions.push('scope = ?')
+      args.push(query.scope)
+    }
+    if (query.owner === '__single__') {
+      conditions.push('owner_id IS NULL')
+    } else if (query.owner) {
+      conditions.push('owner_id = ?')
+      args.push(query.owner)
+    }
+    const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : ''
+    const limit = Math.max(1, Math.min(100, integer(query.limit, 50)))
+    const offset = Math.max(0, integer(query.offset, 0))
+    const total = Number((this.database.prepare(
+      `SELECT COUNT(*) AS total FROM error_traces${where}`
+    ).get(...args) as { total: number }).total)
+    const items = (this.database.prepare(`
+      SELECT * FROM error_traces${where}
+      ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?
+    `).all(...args, limit, offset) as Array<Record<string, unknown>>).map(rowToErrorTrace)
+    const sources = (this.database.prepare(
+      'SELECT DISTINCT source FROM error_traces ORDER BY source'
+    ).all() as Array<{ source: ErrorTraceSource }>).map(row => row.source)
+    const users = (this.database.prepare(`
+      SELECT owner_id, MAX(owner_email) AS owner_email
+      FROM error_traces GROUP BY owner_id ORDER BY owner_email COLLATE NOCASE, owner_id
+    `).all() as Array<{ owner_id: string | null; owner_email: string | null }>).map(row => ({
+      ownerId: row.owner_id,
+      ownerEmail: row.owner_email
+    }))
+    return { items, total, limit, offset, sources, users }
+  }
+
+  clearErrorTraces() {
+    return Number(this.database.prepare('DELETE FROM error_traces').run().changes)
   }
 
   readSettings(ownerId?: string): SettingsRow | null {

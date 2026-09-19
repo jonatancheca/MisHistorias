@@ -9,6 +9,7 @@ import type {
 } from '../../utils/storage'
 import { getStorage } from '../../utils/storage'
 import { storageAccessFor } from '../../utils/access'
+import { recordOperationalError } from '../../utils/errorTraces'
 
 const RESOURCES = new Set<DataResource>([
   'characters',
@@ -379,7 +380,7 @@ async function readCharacterImport(event: H3Event) {
   return { targetId, payload }
 }
 
-function mapStorageError(caught: unknown): never {
+function mapStorageError(caught: unknown, event: H3Event): never {
   if (caught && typeof caught === 'object' && 'statusCode' in caught) throw caught
   const error = caught as { code?: string; errcode?: number; message?: string }
   if (error.code === 'ERR_READ_ONLY_RESOURCE') {
@@ -412,6 +413,17 @@ function mapStorageError(caught: unknown): never {
     throw createError({ statusCode: 409, message: 'El registro entra en conflicto con otro' })
   }
   console.error('SQLite data API error', error)
+  recordOperationalError(event, {
+    source: 'sqlite',
+    operation: `${event.method} /api/data/${getRouterParam(event, 'path') ?? ''}`,
+    message: error.message || 'No se pudieron guardar los datos',
+    status: 500,
+    requestSent: false,
+    request: { query: getQuery(event) },
+    response: error,
+    stack: (caught as Error).stack
+  })
+  event.context.errorTraceRecorded = true
   throw createError({ statusCode: 500, message: 'No se pudieron guardar los datos' })
 }
 
@@ -604,6 +616,6 @@ export default defineEventHandler(async (event) => {
 
     throw createError({ statusCode: 405, message: 'Método no permitido' })
   } catch (caught) {
-    mapStorageError(caught)
+    mapStorageError(caught, event)
   }
 })

@@ -1,4 +1,5 @@
 import { generateSwarmImage, type SwarmProxyError } from '../../utils/swarm'
+import { recordOperationalError } from '../../utils/errorTraces'
 import { getStorage } from '../../utils/storage'
 import { sanitizeSwarmDiagnostic } from '../../../shared/utils/swarmError'
 
@@ -71,6 +72,25 @@ export default defineEventHandler(async (event) => {
   } catch (caught) {
     if ((caught as Error)?.name === 'AbortError') throw caught
     const error = caught as SwarmProxyError
+    recordOperationalError(event, {
+      source: 'swarmui',
+      operation: 'swarm.generate',
+      message: error.message,
+      scope: body.scope === 'private' ? 'private' : 'normal',
+      status: error.status ?? null,
+      requestSent: error.diagnostic?.requestSent ?? null,
+      request: {
+        settings: {
+          baseUrl: settings?.value.swarmBaseUrl ?? '',
+          authToken: settings?.swarmAuthToken ?? ''
+        },
+        body,
+        diagnostic: error.diagnostic?.request ?? null
+      },
+      response: error.diagnostic?.response ?? { detail: error.detail },
+      stack: error.stack
+    })
+    event.context.errorTraceRecorded = true
     throw createError({
       statusCode: error.status && error.status >= 400 ? error.status : 502,
       message: error.message,

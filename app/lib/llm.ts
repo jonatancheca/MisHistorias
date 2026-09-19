@@ -8,6 +8,7 @@ export interface LlmCallError extends Error {
 export interface LlmChatRequest {
   model: string
   messages: LlmMessage[]
+  operation?: string
   temperature?: number
   maxTokens?: number
   scope?: DataScope
@@ -71,7 +72,8 @@ export async function fetchLlmChat(request: LlmChatRequest) {
         messages: request.messages,
         temperature: request.temperature ?? 0.8,
         maxTokens: request.maxTokens ?? 800,
-        scope: request.scope ?? getActiveDataScope()
+        scope: request.scope ?? getActiveDataScope(),
+        operation: request.operation
       },
       signal: request.signal
     })

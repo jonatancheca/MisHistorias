@@ -1,5 +1,7 @@
 /// <reference types="dom-chromium-ai" />
 
+import { reportClientErrorTrace } from './errorTraces.ts'
+
 export type ChromeLlmAvailability = Availability
 
 export interface ChromeLlmMessage {
@@ -9,6 +11,7 @@ export interface ChromeLlmMessage {
 
 export interface ChromeLlmRequest {
   messages: ChromeLlmMessage[]
+  operation?: string
   signal?: AbortSignal
   onDownloadProgress?: (percent: number) => void
 }
@@ -96,7 +99,19 @@ export async function getChromeLlmAvailability(): Promise<ChromeLlmAvailability>
   try {
     return await api.availability(LANGUAGE_MODEL_OPTIONS)
   } catch (caught) {
-    throw normalizeChromeError(caught)
+    const error = normalizeChromeError(caught)
+    if (error.name !== 'AbortError') {
+      void reportClientErrorTrace({
+        source: 'llm',
+        operation: 'chrome.availability',
+        message: error.message,
+        requestSent: false,
+        request: LANGUAGE_MODEL_OPTIONS,
+        response: caught,
+        stack: error.stack
+      })
+    }
+    throw error
   }
 }
 
@@ -106,14 +121,26 @@ export async function prepareChromeLlm(options: {
 } = {}) {
   const api = getLanguageModelApi()
   if (!api || await getChromeLlmAvailability() === 'unavailable') {
-    throw chromeError('La IA local de Chrome no está disponible en este navegador o equipo.')
+    const error = chromeError('La IA local de Chrome no está disponible en este navegador o equipo.')
+    void reportClientErrorTrace({
+      source: 'llm', operation: 'chrome.prepare', message: error.message,
+      requestSent: false, request: LANGUAGE_MODEL_OPTIONS, response: null, stack: error.stack
+    })
+    throw error
   }
 
   let session: LanguageModel | null = null
   try {
     session = await api.create(createOptions(options.signal, options.onDownloadProgress))
   } catch (caught) {
-    throw normalizeChromeError(caught)
+    const error = normalizeChromeError(caught)
+    if (error.name !== 'AbortError') {
+      void reportClientErrorTrace({
+        source: 'llm', operation: 'chrome.prepare', message: error.message,
+        requestSent: false, request: LANGUAGE_MODEL_OPTIONS, response: caught, stack: error.stack
+      })
+    }
+    throw error
   } finally {
     session?.destroy()
   }
@@ -121,8 +148,14 @@ export async function prepareChromeLlm(options: {
 
 export async function fetchChromeLlmChat(request: ChromeLlmRequest) {
   const api = getLanguageModelApi()
+  const operation = request.operation || 'chrome.chat'
   if (!api || await getChromeLlmAvailability() === 'unavailable') {
-    throw chromeError('La IA local de Chrome no está disponible en este navegador o equipo.')
+    const error = chromeError('La IA local de Chrome no está disponible en este navegador o equipo.')
+    void reportClientErrorTrace({
+      source: 'llm', operation, message: error.message, requestSent: false,
+      request: { messages: request.messages }, response: null, stack: error.stack
+    })
+    throw error
   }
 
   let session: LanguageModel | null = null
@@ -130,9 +163,22 @@ export async function fetchChromeLlmChat(request: ChromeLlmRequest) {
     session = await api.create(createOptions(request.signal, request.onDownloadProgress))
     const prompt = normalizeChromeMessages(request.messages) as unknown as LanguageModelPrompt
     const content = await session.prompt(prompt, { signal: request.signal })
+    if (!content.trim()) {
+      void reportClientErrorTrace({
+        source: 'llm', operation, message: 'El modelo no devolvió contenido visible.',
+        requestSent: true, request: { messages: request.messages }, response: { content }
+      })
+    }
     return { content, finishReason: null }
   } catch (caught) {
-    throw normalizeChromeError(caught)
+    const error = normalizeChromeError(caught)
+    if (error.name !== 'AbortError') {
+      void reportClientErrorTrace({
+        source: 'llm', operation, message: error.message, requestSent: null,
+        request: { messages: request.messages }, response: caught, stack: error.stack
+      })
+    }
+    throw error
   } finally {
     session?.destroy()
   }

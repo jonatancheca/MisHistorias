@@ -1,0 +1,3 @@
+# Registro global de errores operativos separado de las trazas narrativas
+
+Mis Historias conserva un registro administrativo global de fallos del LLM, integraciones externas y operaciones internas inesperadas, separado de las trazas LLM ligadas a cada historia para que estas mantengan su comportamiento actual y el registro operativo sobreviva al borrado del contenido que originó el fallo. El registro guarda llamadas y respuestas textuales sin sanear, que pueden contener secretos, identifica usuario y ámbito, omite binarios y data URLs, trunca petición y respuesta a 256 KiB cada una y elimina las trazas más antiguas al superar 90 días, 5.000 filas o 512 MiB; aparece en los backups SQLite y queda fuera de exportaciones JSON, historias y partidas guardadas.

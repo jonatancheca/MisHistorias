@@ -305,6 +305,43 @@ export interface LlmDebugTrace {
   createdAt: number
 }
 
+export type ErrorTraceSource =
+  | 'llm'
+  | 'swarmui'
+  | 'backup'
+  | 'update'
+  | 'sqlite'
+  | 'server'
+  | 'client'
+
+export interface ErrorTrace {
+  id: string
+  ownerId: string | null
+  ownerEmail: string | null
+  scope: 'normal' | 'private' | null
+  source: ErrorTraceSource
+  operation: string
+  message: string
+  status: number | null
+  requestSent: boolean | null
+  request: unknown | null
+  response: unknown | null
+  requestTruncated: boolean
+  responseTruncated: boolean
+  stack: string | null
+  createdAt: number
+  sizeBytes: number
+}
+
+export interface ErrorTraceListResponse {
+  items: ErrorTrace[]
+  total: number
+  limit: number
+  offset: number
+  sources: ErrorTraceSource[]
+  users: Array<{ ownerId: string | null; ownerEmail: string | null }>
+}
+
 export interface StorySaveSlot {
   id: string
   storyId: string
