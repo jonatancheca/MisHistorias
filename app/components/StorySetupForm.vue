@@ -49,7 +49,9 @@ const editingCustomization = computed(() =>
   editingCharacterId.value ? customizationsById.value.get(editingCharacterId.value) ?? null : null
 )
 const characterTagSuggestions = computed(() =>
-  characters.characters.flatMap((character) => character.tags ?? [])
+  characters.characters
+    .filter((character) => !privacy.isDemo || character.visibleInDemo)
+    .flatMap((character) => character.tags ?? [])
 )
 const preferencesSummary = computed(() => {
   const hasOwn = Boolean(protagonistPreferences.value.trim())

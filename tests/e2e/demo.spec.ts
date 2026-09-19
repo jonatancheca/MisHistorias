@@ -46,6 +46,49 @@ test.describe('modo demo', () => {
     await expect(page.locator('html')).toHaveClass(/demo-scope/)
   })
 
+  test('limita las etiquetas disponibles a los personajes demo', async ({ page, data }) => {
+    const visibleCharacterTag = data.unique('rasgo-visible')
+    const hiddenCharacterTag = data.unique('rasgo-privado')
+    const visibleImageTag = data.unique('imagen-visible')
+    const hiddenImageTag = data.unique('imagen-privada')
+    const visible = await data.createCharacter({
+      name: data.unique('Visible-etiquetas'),
+      tags: [visibleCharacterTag],
+      visibleInDemo: true,
+      scope: 'private'
+    })
+    const hidden = await data.createCharacter({
+      name: data.unique('Oculto-etiquetas'),
+      tags: [hiddenCharacterTag],
+      scope: 'private'
+    })
+    await data.createImage(visible, [visibleImageTag], 'private')
+    await data.createImage(hidden, [hiddenImageTag], 'private')
+
+    await page.goto(`/characters/${visible.id}`)
+    await page.locator('main').press('Control+Alt+d')
+    await expect(page.locator('html')).toHaveClass(/demo-scope/)
+
+    await expect(page.getByRole('button', { name: visibleCharacterTag, exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: hiddenCharacterTag, exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: visibleImageTag, exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: hiddenImageTag, exact: true })).toHaveCount(0)
+
+    await page.getByRole('link', { name: 'Historias', exact: true }).click()
+    await page.getByRole('link', { name: 'Nueva historia', exact: true }).click()
+    await page.getByRole('button', { name: `Añadir ${visible.name} al elenco` }).click()
+    await page.getByRole('button', { name: `Editar ${visible.name}` }).click()
+    const characterDialog = page.getByRole('dialog', { name: `Editar ${visible.name}` })
+    await expect(characterDialog.getByRole('button', {
+      name: visibleCharacterTag,
+      exact: true
+    })).toBeVisible()
+    await expect(characterDialog.getByRole('button', {
+      name: hiddenCharacterTag,
+      exact: true
+    })).toHaveCount(0)
+  })
+
   test('muestra recursos archivados marcados y dependencias contextuales de una historia demo', async ({ page, data }) => {
     const archivedVisible = await data.createCharacter({
       name: data.unique('Archivado-visible'),

@@ -49,7 +49,9 @@ const color = ref(
 )
 const visibleInDemo = ref(existing.value?.visibleInDemo ?? false)
 const characterTagSuggestions = computed(() =>
-  characters.characters.flatMap((character) => character.tags ?? [])
+  characters.characters
+    .filter((character) => !privacy.isDemo || character.visibleInDemo)
+    .flatMap((character) => character.tags ?? [])
 )
 const saving = ref(false)
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')

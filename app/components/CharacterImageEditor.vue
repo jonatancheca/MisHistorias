@@ -18,6 +18,7 @@ const imageGenerationPromptPrefix = defineModel<string>('imageGenerationPromptPr
 const imageGenerationModel = defineModel<string>('imageGenerationModel', { required: true })
 
 const characters = useCharactersStore()
+const privacy = usePrivacyStore()
 const settings = useSettingsStore()
 const swarmPrompts = useSwarmPromptsStore()
 const confirmDialog = useConfirmStore()
@@ -85,7 +86,9 @@ const galleryItems = computed(() => {
 })
 const metadataOpenId = ref<string | null>(null)
 const imageTagSuggestions = computed(() =>
-  characters.images.flatMap((image) => visibleImageTags(image.tags))
+  characters.images
+    .filter((image) => !privacy.isDemo || characters.byId(image.characterId)?.visibleInDemo)
+    .flatMap((image) => visibleImageTags(image.tags))
 )
 const pendingFile = computed(() => pendingFiles.value[0] ?? null)
 
