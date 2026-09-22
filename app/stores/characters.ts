@@ -12,6 +12,7 @@ import {
   newId,
   putCharacter,
   putImage,
+  reorderCharacterImages,
   restoreImage as restoreStoredImage,
   type StoredImage
 } from '~/lib/db'
@@ -65,7 +66,7 @@ export const useCharactersStore = defineStore('characters', () => {
     ])
     if (scope !== getActiveDataScope() || revision !== loadRevision) return
     characters.value = chars
-    images.value = imgs.sort((a, b) => a.createdAt - b.createdAt)
+    images.value = imgs
     syncUrls()
     loaded.value = true
   }
@@ -81,7 +82,13 @@ export const useCharactersStore = defineStore('characters', () => {
   }
 
   function imagesFor(characterId: string) {
-    return images.value.filter((image) => image.characterId === characterId)
+    return images.value
+      .filter((image) => image.characterId === characterId)
+      .sort((left, right) =>
+        left.position - right.position ||
+        left.createdAt - right.createdAt ||
+        left.id.localeCompare(right.id)
+      )
   }
 
   function defaultImage(characterId: string) {
@@ -229,12 +236,14 @@ export const useCharactersStore = defineStore('characters', () => {
   async function addImage(characterId: string, file: Blob, tags: string[], originalFile?: Blob,
     options: { scope?: DataScope; generation?: ImageGenerationMetadata; signal?: AbortSignal } = {}) {
     const scope = options.scope ?? getActiveDataScope()
-    const isFirst = imagesFor(characterId).length === 0
+    const ownImages = imagesFor(characterId)
+    const isFirst = ownImages.length === 0
     const { blob, mimeType } = await normalizeImage(file)
     options.signal?.throwIfAborted()
     const image: StoredImage = {
       id: newId(),
       characterId,
+      position: ownImages.reduce((maximum, image) => Math.max(maximum, image.position), -1) + 1,
       tags: sanitizeTags(tags, undefined, 'neutral'),
       isDefault: isFirst,
       mimeType,
@@ -276,6 +285,42 @@ export const useCharactersStore = defineStore('characters', () => {
     await putImage(updated)
     images.value = images.value.map((image) => (image.id === id ? updated : image))
     if (updated.isDefault) applyDefaultLocally(updated)
+  }
+
+  async function reorderImages(characterId: string, imageIds: string[]) {
+    const current = imagesFor(characterId)
+    const currentIds = current.map((image) => image.id)
+    if (
+      imageIds.length !== currentIds.length ||
+      new Set(imageIds).size !== imageIds.length ||
+      imageIds.some((id) => !currentIds.includes(id))
+    ) {
+      throw new Error('El orden de imágenes no es válido.')
+    }
+
+    const previousPositions = new Map(current.map((image) => [image.id, image.position]))
+    const nextPositions = new Map(imageIds.map((id, position) => [id, position]))
+    images.value = images.value.map((image) =>
+      image.characterId === characterId
+        ? { ...image, position: nextPositions.get(image.id) ?? image.position }
+        : image
+    )
+
+    try {
+      const stored = await reorderCharacterImages(characterId, imageIds)
+      const storedById = new Map(stored.map((image) => [image.id, image]))
+      images.value = images.value.map((image) => {
+        const metadata = storedById.get(image.id)
+        return metadata ? { ...image, ...metadata } : image
+      })
+    } catch (caught) {
+      images.value = images.value.map((image) =>
+        image.characterId === characterId
+          ? { ...image, position: previousPositions.get(image.id) ?? image.position }
+          : image
+      )
+      throw caught
+    }
   }
 
   async function removeImage(id: string) {
@@ -323,6 +368,7 @@ export const useCharactersStore = defineStore('characters', () => {
     setDemoVisibility,
     addImage,
     updateImage,
+    reorderImages,
     cropImage,
     restoreImage,
     removeImage,

@@ -146,6 +146,7 @@ function resourceUrl(
 export const test = base.extend<{ data: TestDataFactory }>({
   data: async ({ request }, use) => {
     let sequence = 0
+    let imagePosition = 0
     const prefix = `pw-${randomUUID().slice(0, 8)}`
     const unique = (label: string) => `${prefix}-${label}-${++sequence}`
 
@@ -231,6 +232,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
         const image: CharacterImage = {
           id: unique('image'),
           characterId: character.id,
+          position: imagePosition++,
           tags,
           isDefault: true,
           mimeType: 'image/png',

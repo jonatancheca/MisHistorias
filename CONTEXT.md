@@ -16,6 +16,10 @@ _Evitar_: Prompt del personaje, prefijo del prompt
 Descripción de pose, emoción y situación deseadas para una imagen concreta.
 _Evitar_: Prompt visual base
 
+**Orden de imágenes del personaje**:
+Secuencia persistente de las imágenes de un personaje, compartida por el editor, los visores y los selectores. Es independiente de la imagen predeterminada, se conserva al copiar o transferir el personaje y coloca las imágenes nuevas al final.
+_Evitar_: Orden de creación, imagen predeterminada
+
 **Foto de referencia**:
 Imagen temporal usada para deducir un prompt visual base, distinta de una imagen de galería del personaje.
 _Evitar_: Imagen del personaje, imagen predeterminada

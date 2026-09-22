@@ -364,7 +364,7 @@ export async function importBundle(raw: string) {
     importedCharacters.push(character)
     await putCharacter(character)
 
-    for (const image of item.images ?? []) {
+    for (const [position, image] of (item.images ?? []).entries()) {
       if (typeof image.dataUrl !== 'string' || image.dataUrl.length > MAX_IMAGE_BYTES * 1.4) continue
       const blob = await dataUrlToBlob(image.dataUrl)
       if (blob.size > MAX_IMAGE_BYTES) continue
@@ -381,6 +381,7 @@ export async function importBundle(raw: string) {
       const stored: StoredImage = {
         id: newId(),
         characterId: character.id,
+        position,
         tags: sanitizeTags(image.tags, image.tag, 'neutral'),
         isDefault: Boolean(image.isDefault),
         generation: readImageGeneration(image.generation),

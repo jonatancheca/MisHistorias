@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import JSZip from 'jszip'
+import type { Locator, Page } from '@playwright/test'
 import type { Background, Character, CharacterImage, Sound } from '../../shared/types'
 import { createPng, expect, PNG_BYTES, test } from './fixtures'
 
@@ -26,6 +27,80 @@ async function uploadCharacterZip(page: import('@playwright/test').Page, buffer:
     mimeType: 'application/zip',
     buffer
   })
+}
+
+async function dragImageWithMouse(page: Page, source: Locator, target: Locator) {
+  await target.scrollIntoViewIfNeeded()
+  await source.scrollIntoViewIfNeeded()
+  const sourceBox = await source.boundingBox()
+  const targetBox = await target.boundingBox()
+  expect(sourceBox).not.toBeNull()
+  expect(targetBox).not.toBeNull()
+  await page.mouse.move(
+    sourceBox!.x + sourceBox!.width / 2,
+    sourceBox!.y + sourceBox!.height / 2
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    targetBox!.x + targetBox!.width / 2,
+    targetBox!.y + targetBox!.height / 2,
+    { steps: 8 }
+  )
+  await page.mouse.up()
+}
+
+async function dragImageWithTouchToBottom(page: Page, source: Locator) {
+  await source.scrollIntoViewIfNeeded()
+  const sourceBox = await source.boundingBox()
+  expect(sourceBox).not.toBeNull()
+  const start = {
+    x: sourceBox!.x + sourceBox!.width / 2,
+    y: sourceBox!.y + sourceBox!.height / 2
+  }
+  const end = {
+    x: start.x,
+    y: (page.viewportSize()?.height ?? 844) - 60
+  }
+  await source.dispatchEvent('pointerdown', {
+    pointerId: 91,
+    pointerType: 'touch',
+    button: 0,
+    clientX: start.x,
+    clientY: start.y
+  })
+  await page.evaluate(({ x, y }) => {
+    for (let step = 0; step < 160; step += 1) {
+      window.dispatchEvent(new PointerEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 91,
+        pointerType: 'touch',
+        clientX: x,
+        clientY: y
+      }))
+    }
+    const list = document.querySelector('[data-testid="character-image-card"]')?.parentElement
+    const bounds = list?.getBoundingClientRect()
+    const releaseY = bounds
+      ? Math.max(bounds.top + 2, Math.min(y, bounds.bottom - 2))
+      : y
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 91,
+      pointerType: 'touch',
+      clientX: x,
+      clientY: releaseY
+    }))
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 91,
+      pointerType: 'touch',
+      clientX: x,
+      clientY: releaseY
+    }))
+  }, end)
 }
 
 test.describe('personajes', () => {
@@ -294,6 +369,107 @@ test.describe('personajes', () => {
     ).map((image) => image.tags)).toEqual([[singleTag], [batchTag], [batchTag]])
     expect((await data.list<CharacterImage>('images', 'normal', { characterId: character.id }))
       .filter((image) => image.isDefault)).toHaveLength(1)
+  })
+
+  test('reordena imágenes con ratón y touch, persiste el orden y conserva la predeterminada', async ({ page, data }) => {
+    const character = await data.createCharacter()
+    const first = await data.createImage(character, ['primera'])
+    const second = await data.createImage(character, ['segunda'])
+    const third = await data.createImage(character, ['tercera'])
+    await page.setViewportSize({ width: 1280, height: 1100 })
+    await page.goto(`/characters/${character.id}`)
+
+    let cards = page.getByTestId('character-image-card')
+    await dragImageWithMouse(
+      page,
+      cards.nth(0).getByTestId('character-image-drag-handle'),
+      cards.nth(2)
+    )
+    await expect.poll(async () => (
+      await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
+    ).map((image) => image.id)).toEqual([second.id, third.id, first.id])
+    expect((await data.get<CharacterImage>('images', third.id)).isDefault).toBe(true)
+    await expect(page.getByText('Orden guardado', { exact: true })).toHaveCount(0)
+
+    await page.reload()
+    cards = page.getByTestId('character-image-card')
+    await expect(cards).toHaveCount(3)
+    await expect(cards.nth(0)).toHaveAttribute('data-character-image-id', second.id)
+    await expect(cards.nth(2)).toHaveAttribute('data-character-image-id', first.id)
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    await dragImageWithTouchToBottom(
+      page,
+      cards.nth(0).getByTestId('character-image-drag-handle')
+    )
+    await expect.poll(async () => (
+      await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
+    ).map((image) => image.id)).toEqual([third.id, first.id, second.id])
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+    await cards.nth(0).getByRole('button', { name: 'Ampliar imagen' }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await page.keyboard.press('Escape')
+
+    await cards.nth(0).getByRole('button', { name: 'Borrar', exact: true }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar' }).click()
+    await expect.poll(async () => (
+      await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
+    ).map((image) => ({ id: image.id, isDefault: image.isDefault }))).toEqual([
+      { id: first.id, isDefault: true },
+      { id: second.id, isDefault: false }
+    ])
+
+    const appended = await data.createImage(character, ['última'])
+    await page.reload()
+    cards = page.getByTestId('character-image-card')
+    await expect(cards.last()).toHaveAttribute('data-character-image-id', appended.id)
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    }
+
+    await page.goto('/characters')
+    const carousel = page.getByTestId('character-image-carousel').filter({
+      has: page.locator(`[data-character-image-id="${first.id}"]`)
+    })
+    await expect(carousel.locator('[data-character-image-id]').first())
+      .toHaveAttribute('data-character-image-id', first.id)
+  })
+
+  test('restaura el orden y solo muestra error cuando falla el guardado', async ({ page, data }) => {
+    const character = await data.createCharacter()
+    const first = await data.createImage(character, ['primera-error'])
+    const second = await data.createImage(character, ['segunda-error'])
+    let reorderRequests = 0
+    await page.route('**/api/data/**', async (route) => {
+      if (new URL(route.request().url()).pathname.endsWith('/images/reorder')) {
+        reorderRequests += 1
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Fallo simulado' })
+        })
+        return
+      }
+      await route.continue()
+    })
+    await page.setViewportSize({ width: 900, height: 900 })
+    await page.goto(`/characters/${character.id}`)
+
+    const cards = page.getByTestId('character-image-card')
+    await dragImageWithMouse(
+      page,
+      cards.nth(0).getByTestId('character-image-drag-handle'),
+      cards.nth(1)
+    )
+    await expect.poll(() => reorderRequests).toBe(1)
+    await expect(page.getByRole('alert')).toHaveText('No se pudo guardar el orden de las imágenes.')
+    await expect(cards.nth(0)).toHaveAttribute('data-character-image-id', first.id)
+    await expect(cards.nth(1)).toHaveAttribute('data-character-image-id', second.id)
+    expect((await data.list<CharacterImage>('images', 'normal', { characterId: character.id }))
+      .map((image) => image.id)).toEqual([first.id, second.id])
+    await expect(page.getByText('Orden guardado', { exact: true })).toHaveCount(0)
   })
 
   test('recorta imágenes guardadas y restaura siempre la primera original', async ({ page, data }) => {

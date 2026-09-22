@@ -211,6 +211,20 @@ export async function putImage(image: StoredImage, scope: DataScope = activeData
   return { ...metadata, blob: image.blob }
 }
 
+export async function reorderCharacterImages(
+  characterId: string,
+  imageIds: string[],
+  scope: DataScope = activeDataScope.value
+) {
+  return $fetch<CharacterImage[]>(
+    dataUrl(`characters/${encodeURIComponent(characterId)}/images/reorder`, scope),
+    {
+      method: 'POST',
+      body: { imageIds: [...imageIds] }
+    }
+  )
+}
+
 export async function getOriginalImageBlob(id: string) {
   const response = await fetch(dataUrl(`images/${encodeURIComponent(id)}/original`))
   if (!response.ok) throw new Error('No se pudo cargar la imagen original')

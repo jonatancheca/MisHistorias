@@ -87,9 +87,24 @@ let failedCount = 0
 let skippedCount = 0
 
 const images = computed(() => characters.imagesFor(props.characterId))
+const imageList = ref<HTMLElement | null>(null)
+const previewImageIds = ref<string[] | null>(null)
+const draggingImageId = ref<string | null>(null)
+const reorderBusy = ref(false)
+const reorderError = ref<string | null>(null)
+const displayedImages = computed(() => {
+  const preview = previewImageIds.value
+  if (!preview || preview.length !== images.value.length) return images.value
+  const byId = new Map(images.value.map((image) => [image.id, image]))
+  const ordered = preview.flatMap((id) => {
+    const image = byId.get(id)
+    return image ? [image] : []
+  })
+  return ordered.length === images.value.length ? ordered : images.value
+})
 const galleryItems = computed(() => {
   const characterName = characters.byId(props.characterId)?.name ?? 'Personaje'
-  return images.value.map((image) => ({
+  return displayedImages.value.map((image) => ({
     id: image.id,
     src: characters.urlFor(image.id)!,
     alt: characterName,
@@ -98,6 +113,173 @@ const galleryItems = computed(() => {
     generation: image.generation
   }))
 })
+
+const IMAGE_DRAG_THRESHOLD = 6
+interface ImageDragState {
+  pointerId: number
+  imageId: string
+  startX: number
+  startY: number
+  active: boolean
+  handle: HTMLElement
+  scrollContainer: HTMLElement | null
+  originalIds: string[]
+  slots: Array<{ x: number; y: number }>
+}
+let imageDrag: ImageDragState | null = null
+
+function removeImageDragListeners() {
+  window.removeEventListener('pointermove', onImageDragMove)
+  window.removeEventListener('pointerup', onImageDragEnd)
+  window.removeEventListener('pointercancel', cancelImageDrag)
+}
+
+function resetImageDrag() {
+  try {
+    if (imageDrag?.handle.hasPointerCapture(imageDrag.pointerId)) {
+      imageDrag.handle.releasePointerCapture(imageDrag.pointerId)
+    }
+  } catch {
+    // La captura puede haberse liberado al finalizar el puntero.
+  }
+  removeImageDragListeners()
+  imageDrag = null
+  draggingImageId.value = null
+  previewImageIds.value = null
+}
+
+function cancelImageDrag(event?: PointerEvent) {
+  if (event && imageDrag && event.pointerId !== imageDrag.pointerId) return
+  resetImageDrag()
+}
+
+function pointInsideImageList(clientX: number, clientY: number) {
+  const rect = imageList.value?.getBoundingClientRect()
+  return Boolean(
+    rect &&
+    clientX >= rect.left && clientX <= rect.right &&
+    clientY >= rect.top && clientY <= rect.bottom
+  )
+}
+
+function autoScrollImageList(clientY: number, scrollContainer: HTMLElement | null) {
+  const margin = 72
+  const maximumSpeed = 18
+  const bounds = scrollContainer?.getBoundingClientRect()
+  const top = bounds?.top ?? 0
+  const bottom = bounds?.bottom ?? window.innerHeight
+  let offset = 0
+  if (clientY < top + margin) {
+    offset = -maximumSpeed
+  } else if (clientY > bottom - margin) {
+    offset = maximumSpeed
+  }
+  if (!offset) return
+  if (scrollContainer) scrollContainer.scrollBy({ top: offset, behavior: 'auto' })
+  else window.scrollBy({ top: offset, behavior: 'auto' })
+}
+
+function onImageDragStart(event: PointerEvent, imageId: string) {
+  if (
+    reorderBusy.value ||
+    images.value.length < 2 ||
+    (event.pointerType === 'mouse' && event.button !== 0)
+  ) return
+
+  cancelImageDrag()
+  reorderError.value = null
+  const handle = event.currentTarget as HTMLElement
+  const scrollContainer = imageList.value?.closest<HTMLElement>('main') ?? null
+  const scrollX = scrollContainer?.scrollLeft ?? window.scrollX
+  const scrollY = scrollContainer?.scrollTop ?? window.scrollY
+  const cards = Array.from(
+    imageList.value?.querySelectorAll<HTMLElement>('[data-character-image-id]') ?? []
+  )
+  imageDrag = {
+    pointerId: event.pointerId,
+    imageId,
+    startX: event.clientX,
+    startY: event.clientY,
+    active: false,
+    handle,
+    scrollContainer,
+    originalIds: images.value.map((image) => image.id),
+    slots: cards.map((card) => {
+      const rect = card.getBoundingClientRect()
+      return {
+        x: rect.left + rect.width / 2 + scrollX,
+        y: rect.top + rect.height / 2 + scrollY
+      }
+    })
+  }
+  previewImageIds.value = [...imageDrag.originalIds]
+  window.addEventListener('pointermove', onImageDragMove, { passive: false })
+  window.addEventListener('pointerup', onImageDragEnd)
+  window.addEventListener('pointercancel', cancelImageDrag)
+  event.preventDefault()
+}
+
+function onImageDragMove(event: PointerEvent) {
+  const drag = imageDrag
+  if (!drag || event.pointerId !== drag.pointerId) return
+  if (!drag.active) {
+    if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < IMAGE_DRAG_THRESHOLD) {
+      return
+    }
+    drag.active = true
+    draggingImageId.value = drag.imageId
+    try {
+      drag.handle.setPointerCapture(drag.pointerId)
+    } catch {
+      // El listener global mantiene el arrastre si el navegador no admite captura.
+    }
+  }
+
+  event.preventDefault()
+  autoScrollImageList(event.clientY, drag.scrollContainer)
+  if (!pointInsideImageList(event.clientX, event.clientY)) return
+  const pointer = {
+    x: event.clientX + (drag.scrollContainer?.scrollLeft ?? window.scrollX),
+    y: event.clientY + (drag.scrollContainer?.scrollTop ?? window.scrollY)
+  }
+  let targetIndex = 0
+  let shortestDistance = Number.POSITIVE_INFINITY
+  drag.slots.forEach((slot, index) => {
+    const distance = (slot.x - pointer.x) ** 2 + (slot.y - pointer.y) ** 2
+    if (distance < shortestDistance) {
+      shortestDistance = distance
+      targetIndex = index
+    }
+  })
+  const reordered = drag.originalIds.filter((id) => id !== drag.imageId)
+  reordered.splice(targetIndex, 0, drag.imageId)
+  previewImageIds.value = reordered
+}
+
+async function persistImageOrder(imageIds: string[]) {
+  reorderBusy.value = true
+  reorderError.value = null
+  try {
+    await characters.reorderImages(props.characterId, imageIds)
+  } catch {
+    reorderError.value = 'No se pudo guardar el orden de las imágenes.'
+  } finally {
+    reorderBusy.value = false
+  }
+}
+
+function onImageDragEnd(event: PointerEvent) {
+  const drag = imageDrag
+  if (!drag || event.pointerId !== drag.pointerId) return
+  const nextIds = previewImageIds.value ? [...previewImageIds.value] : [...drag.originalIds]
+  const shouldSave = drag.active &&
+    pointInsideImageList(event.clientX, event.clientY) &&
+    nextIds.some((id, index) => id !== drag.originalIds[index])
+  resetImageDrag()
+  if (shouldSave) void persistImageOrder(nextIds)
+}
+
+onBeforeUnmount(resetImageDrag)
 const metadataOpenId = ref<string | null>(null)
 function generationMetadataId(imageId: string) {
   return `character-image-generation-metadata-${imageId}`
@@ -711,17 +893,49 @@ function removeFromLightbox(item: { id?: string }) {
       Sin imágenes todavía.
     </p>
 
-    <ul v-if="props.manageImages" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <p v-if="reorderError" class="mb-4 text-sm text-red-500" role="alert">
+      {{ reorderError }}
+    </p>
+
+    <ul
+      v-if="props.manageImages"
+      ref="imageList"
+      class="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+    >
       <li
-        v-for="image in images"
+        v-for="image in displayedImages"
         :key="image.id"
-        class="card flex min-w-0 flex-col gap-4"
+        class="card flex min-w-0 flex-col gap-4 transition-[transform,opacity,box-shadow,border-color] duration-150"
+        :data-character-image-id="image.id"
         :class="{
           'border-amber-400 bg-amber-50/70 ring-2 ring-amber-300/60 dark:bg-amber-950/20':
-            visibleImageTags(image.tags).length === 0 && !image.isDefault
+            visibleImageTags(image.tags).length === 0 && !image.isDefault,
+          'border-brand-500 opacity-75 ring-2 ring-brand-500/40': draggingImageId === image.id
         }"
         data-testid="character-image-card"
       >
+        <div v-if="images.length > 1" class="flex min-h-11 items-center justify-end">
+          <span
+            class="inline-flex min-h-11 touch-none select-none items-center gap-2 rounded-lg border border-[var(--color-border-soft)] px-3 text-sm font-semibold text-[var(--color-fg-muted)]"
+            :class="[
+              reorderBusy ? 'cursor-wait opacity-50' : 'cursor-grab',
+              draggingImageId === image.id ? 'cursor-grabbing border-brand-500 text-brand-600' : ''
+            ]"
+            title="Arrastrar para reordenar"
+            data-testid="character-image-drag-handle"
+            @pointerdown="onImageDragStart($event, image.id)"
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" class="h-5 w-5 fill-current">
+              <circle cx="6" cy="5" r="1.5" />
+              <circle cx="14" cy="5" r="1.5" />
+              <circle cx="6" cy="10" r="1.5" />
+              <circle cx="14" cy="10" r="1.5" />
+              <circle cx="6" cy="15" r="1.5" />
+              <circle cx="14" cy="15" r="1.5" />
+            </svg>
+            Mover
+          </span>
+        </div>
         <div class="relative">
           <ImageLightbox
             :src="characters.urlFor(image.id)!"

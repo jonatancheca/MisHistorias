@@ -162,6 +162,7 @@ async function seedNormalData() {
     {
       id: 'test-image-alicia-neutral',
       characterId: TEST_DATA_IDS.characterAlicia,
+      position: 0,
       tags: ['neutral'],
       isDefault: true,
       mimeType: 'image/svg+xml',
@@ -171,6 +172,7 @@ async function seedNormalData() {
     {
       id: 'test-image-alicia-happy',
       characterId: TEST_DATA_IDS.characterAlicia,
+      position: 1,
       tags: ['feliz', 'sonrisa'],
       isDefault: false,
       mimeType: 'image/svg+xml',
@@ -180,6 +182,7 @@ async function seedNormalData() {
     {
       id: 'test-image-bruno-neutral',
       characterId: TEST_DATA_IDS.characterBruno,
+      position: 0,
       tags: ['neutral'],
       isDefault: true,
       mimeType: 'image/svg+xml',
@@ -189,6 +192,7 @@ async function seedNormalData() {
     {
       id: 'test-image-bruno-serious',
       characterId: TEST_DATA_IDS.characterBruno,
+      position: 1,
       tags: ['serio', 'alerta'],
       isDefault: false,
       mimeType: 'image/svg+xml',

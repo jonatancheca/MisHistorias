@@ -186,6 +186,11 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
       validateGeneration(value.generation)
       valid =
         hasString(value, 'characterId') &&
+        (value.position === undefined || (
+          typeof value.position === 'number' &&
+          Number.isInteger(value.position) &&
+          value.position >= 0
+        )) &&
         hasStringArray(value, 'tags') &&
         typeof value.isDefault === 'boolean' &&
         hasString(value, 'mimeType') &&
@@ -400,6 +405,9 @@ function mapStorageError(caught: unknown, event: H3Event): never {
       data: { stories }
     })
   }
+  if (error.code === 'ERR_IMAGE_ORDER_INVALID') {
+    throw createError({ statusCode: 400, message: 'El orden de imágenes no es válido' })
+  }
   if (error.errcode === 787 || error.message?.includes('FOREIGN KEY constraint failed')) {
     throw createError({ statusCode: 400, message: 'Referencia de datos no válida' })
   }
@@ -439,6 +447,30 @@ export default defineEventHandler(async (event) => {
     if (segments[0] === 'clear' && event.method === 'POST') {
       storage.clear(scope, access)
       return { ok: true }
+    }
+
+    if (
+      segments[0] === 'characters' &&
+      segments[1] &&
+      segments[2] === 'images' &&
+      segments[3] === 'reorder' &&
+      event.method === 'POST'
+    ) {
+      const body = asRecord(await readBody(event))
+      if (
+        !Array.isArray(body.imageIds) ||
+        !body.imageIds.every((id) => typeof id === 'string' && Boolean(id))
+      ) {
+        throw createError({ statusCode: 400, message: 'El orden de imágenes no es válido' })
+      }
+      const reordered = storage.reorderImages(
+        scope,
+        asId(segments[1]),
+        body.imageIds as string[],
+        access
+      )
+      if (!reordered) throw createError({ statusCode: 404, statusMessage: 'Personaje no encontrado' })
+      return reordered
     }
 
     if (

@@ -8,13 +8,7 @@ const characters = useCharactersStore()
 const track = ref<HTMLElement | null>(null)
 const activeIndex = ref(0)
 
-const images = computed(() => {
-  const own = characters.imagesFor(props.characterId)
-  const preferred = characters.defaultImage(props.characterId)
-  return preferred
-    ? [preferred, ...own.filter((image) => image.id !== preferred.id)]
-    : own
-})
+const images = computed(() => characters.imagesFor(props.characterId))
 const galleryItems = computed(() => images.value.flatMap((image) => {
   const src = characters.urlFor(image.id)
   return src ? [{ id: image.id, src, alt: props.alt, tags: [...image.tags] }] : []
@@ -57,7 +51,12 @@ watch(images, () => {
       :aria-label="`Imágenes de ${alt}`"
       @scroll.passive="onScroll"
     >
-      <div v-for="image in images" :key="image.id" class="h-full min-w-full snap-center">
+      <div
+        v-for="image in images"
+        :key="image.id"
+        class="h-full min-w-full snap-center"
+        :data-character-image-id="image.id"
+      >
         <ImageLightbox
           :src="characters.urlFor(image.id)!"
           :alt="alt"

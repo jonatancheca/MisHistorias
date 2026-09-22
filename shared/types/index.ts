@@ -22,6 +22,8 @@ export interface SwarmPrompt {
 export interface CharacterImage {
   id: string
   characterId: string
+  /** Posición persistente dentro de la galería del personaje. */
+  position: number
   /** Etiquetas cortas que el modelo usa en el prefijo, ej. `feliz` */
   tags: string[]
   isDefault: boolean

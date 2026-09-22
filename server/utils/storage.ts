@@ -116,7 +116,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 39
+const SCHEMA_VERSION = 40
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 const ERROR_TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
@@ -342,6 +342,7 @@ function rowToImage(row: SqliteRow) {
   return {
     id: row.id,
     characterId: text(row.character_id),
+    position: integer(row.position),
     tags: parseJson<string[]>(row.tags_json, []),
     isDefault: Boolean(row.is_default),
     mimeType: text(row.mime_type, 'application/octet-stream'),
@@ -895,6 +896,7 @@ export class MisHistoriasStorage {
           owner_id TEXT,
           id TEXT NOT NULL,
           character_id TEXT NOT NULL,
+          position INTEGER NOT NULL DEFAULT 0,
           tags_json TEXT NOT NULL,
           is_default INTEGER NOT NULL CHECK (is_default IN (0, 1)),
           mime_type TEXT NOT NULL,
@@ -1694,6 +1696,40 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 40) {
+        const imageColumns = this.database
+          .prepare('PRAGMA table_info(images)')
+          .all() as Array<{ name: string }>
+        if (!imageColumns.some((item) => item.name === 'position')) {
+          this.database.exec('ALTER TABLE images ADD COLUMN position INTEGER NOT NULL DEFAULT 0')
+          const rows = this.database.prepare(`
+            SELECT scope, owner_id, character_id, id
+            FROM images
+            ORDER BY scope, owner_id, character_id, created_at, id
+          `).all() as Array<{
+            scope: string
+            owner_id: string | null
+            character_id: string
+            id: string
+          }>
+          const positions = new Map<string, number>()
+          const updatePosition = this.database.prepare(
+            'UPDATE images SET position = ? WHERE scope = ? AND id = ?'
+          )
+          for (const row of rows) {
+            const key = JSON.stringify([row.scope, row.owner_id, row.character_id])
+            const position = positions.get(key) ?? 0
+            updatePosition.run(position, row.scope, row.id)
+            positions.set(key, position + 1)
+          }
+        }
+        this.database.exec(`
+          DROP INDEX IF EXISTS images_by_character;
+          CREATE INDEX images_by_character
+            ON images(scope, character_id, owner_id, position, created_at, id);
+        `)
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -2242,12 +2278,12 @@ export class MisHistoriasStorage {
         const rows = query.characterId
           ? this.database
               .prepare(
-                `SELECT scope, owner_id, id, character_id, tags_json, is_default, mime_type, created_at, generation_json, original_data IS NOT NULL AS has_original FROM images WHERE scope = ? AND character_id = ?${filter.sql} ORDER BY created_at`
+                `SELECT scope, owner_id, id, character_id, position, tags_json, is_default, mime_type, created_at, generation_json, original_data IS NOT NULL AS has_original FROM images WHERE scope = ? AND character_id = ?${filter.sql} ORDER BY position, created_at, id`
               )
               .all(scope, query.characterId, ...filter.args)
           : this.database
               .prepare(
-                `SELECT scope, owner_id, id, character_id, tags_json, is_default, mime_type, created_at, generation_json, original_data IS NOT NULL AS has_original FROM images WHERE scope = ?${filter.sql} ORDER BY created_at`
+                `SELECT scope, owner_id, id, character_id, position, tags_json, is_default, mime_type, created_at, generation_json, original_data IS NOT NULL AS has_original FROM images WHERE scope = ?${filter.sql} ORDER BY character_id, position, created_at, id`
               )
               .all(scope, ...filter.args)
         return (rows as SqliteRow[])
@@ -2395,6 +2431,46 @@ export class MisHistoriasStorage {
     }, access)
   }
 
+  reorderImages(
+    scope: DataScope,
+    characterId: string,
+    imageIds: string[],
+    access?: StorageAccess
+  ) {
+    const ownAccess = access ? { ownerId: access.ownerId } : undefined
+    if (!this.get('characters', scope, characterId, ownAccess)) return null
+
+    return this.transaction(() => {
+      this.assertWritable('characters', scope, characterId, access)
+      const ownerId = access?.ownerId ?? null
+      const rows = this.database.prepare(`
+        SELECT id FROM images
+        WHERE scope = ? AND owner_id IS ? AND character_id = ?
+        ORDER BY position, created_at, id
+      `).all(scope, ownerId, characterId) as Array<{ id: string }>
+      const currentIds = rows.map((row) => row.id)
+      const requestedIds = new Set(imageIds)
+      if (
+        imageIds.length !== currentIds.length ||
+        requestedIds.size !== imageIds.length ||
+        currentIds.some((id) => !requestedIds.has(id))
+      ) {
+        throw Object.assign(new Error('El orden debe contener todas las imágenes del personaje'), {
+          code: 'ERR_IMAGE_ORDER_INVALID'
+        })
+      }
+
+      const update = this.database.prepare(`
+        UPDATE images SET position = ?
+        WHERE scope = ? AND owner_id IS ? AND character_id = ? AND id = ?
+      `)
+      imageIds.forEach((id, position) => {
+        update.run(position, scope, ownerId, characterId, id)
+      })
+      return this.list('images', scope, { characterId }, ownAccess)
+    })
+  }
+
   copyCharacter(
     scope: DataScope,
     sourceId: string,
@@ -2441,16 +2517,17 @@ export class MisHistoriasStorage {
       }, access)
       const sourceImages = this.database
         .prepare(`
-          SELECT images.tags_json, images.is_default, images.mime_type, images.created_at,
+          SELECT images.position, images.tags_json, images.is_default, images.mime_type, images.created_at,
             image_blobs.data, images.original_data, images.original_mime_type,
             images.generation_json
           FROM images
           INNER JOIN image_blobs
             ON image_blobs.scope = images.scope AND image_blobs.id = images.blob_id
           WHERE images.scope = ? AND images.character_id = ?
-          ORDER BY images.created_at, images.id
+          ORDER BY images.position, images.created_at, images.id
         `)
         .all(scope, sourceId) as Array<{
+        position: number
         tags_json: string
         is_default: number
         mime_type: string
@@ -2465,9 +2542,9 @@ export class MisHistoriasStorage {
       `)
       const insertImage = this.database.prepare(`
         INSERT INTO images(
-          scope, owner_id, id, character_id, tags_json, is_default,
+          scope, owner_id, id, character_id, position, tags_json, is_default,
           mime_type, created_at, blob_id, original_data, original_mime_type, generation_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const image of sourceImages) {
         const imageId = randomUUID()
@@ -2477,6 +2554,7 @@ export class MisHistoriasStorage {
           access?.ownerId ?? null,
           imageId,
           characterId,
+          image.position,
           image.tags_json,
           image.is_default,
           image.mime_type,
@@ -2807,16 +2885,16 @@ export class MisHistoriasStorage {
       `)
       const insertImage = this.database.prepare(`
         INSERT INTO images(
-          scope, owner_id, id, character_id, tags_json, is_default, mime_type, created_at,
+          scope, owner_id, id, character_id, position, tags_json, is_default, mime_type, created_at,
           blob_id, original_data, original_mime_type, generation_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const row of selectedImages) {
         const id = imageIdMap.get(row.id)!
         insertBlob.run(scope, access.ownerId, id, row.blob_data)
         insertImage.run(
-          scope, access.ownerId, id, characterIdMap.get(text(row.character_id)), row.tags_json,
-          row.is_default, row.mime_type, row.created_at, id, row.original_data,
+          scope, access.ownerId, id, characterIdMap.get(text(row.character_id)), integer(row.position),
+          row.tags_json, row.is_default, row.mime_type, row.created_at, id, row.original_data,
           row.original_mime_type, row.generation_json
         )
       }
@@ -2933,9 +3011,9 @@ export class MisHistoriasStorage {
       )
       const insertImage = this.database.prepare(`
         INSERT INTO images(
-          scope, owner_id, id, character_id, tags_json, is_default,
+          scope, owner_id, id, character_id, position, tags_json, is_default,
           mime_type, created_at, blob_id, original_data, original_mime_type, generation_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const [index, image] of payload.images.entries()) {
         const imageId = randomUUID()
@@ -2947,6 +3025,7 @@ export class MisHistoriasStorage {
           access?.ownerId ?? null,
           imageId,
           characterId,
+          index,
           json(imageTags),
           bool(image.metadata.isDefault),
           text(image.metadata.mimeType),
@@ -3289,16 +3368,25 @@ export class MisHistoriasStorage {
         const isDefault = Boolean(value.isDefault)
         const current = this.database
           .prepare(`
-            SELECT images.blob_id, images.mime_type, images.original_data, images.original_mime_type, image_blobs.data
+            SELECT images.position, images.blob_id, images.mime_type, images.original_data,
+              images.original_mime_type, image_blobs.data
             FROM images
             INNER JOIN image_blobs
               ON image_blobs.scope = images.scope AND image_blobs.id = images.blob_id
             WHERE images.scope = ? AND images.id = ?
           `)
           .get(scope, id) as {
-            blob_id: string; data: Uint8Array; mime_type: string
+            position: number; blob_id: string; data: Uint8Array; mime_type: string
             original_data: Uint8Array | null; original_mime_type: string | null
           } | undefined
+        const nextPosition = this.database.prepare(`
+          SELECT COALESCE(MAX(position), -1) + 1 AS position
+          FROM images
+          WHERE scope = ? AND owner_id IS ? AND character_id = ?
+        `).get(scope, ownerId, characterId) as { position: number }
+        const position = value.position === undefined
+          ? current?.position ?? nextPosition.position
+          : Math.max(0, integer(value.position))
         const blobId = current && sameBinary(current.data, payload.data)
           ? current.blob_id
           : current
@@ -3323,11 +3411,12 @@ export class MisHistoriasStorage {
         this.database
           .prepare(`
             INSERT INTO images(
-              scope, owner_id, id, character_id, tags_json, is_default,
+              scope, owner_id, id, character_id, position, tags_json, is_default,
               mime_type, created_at, blob_id, original_data, original_mime_type, generation_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               character_id = excluded.character_id,
+              position = excluded.position,
               tags_json = excluded.tags_json,
               is_default = excluded.is_default,
               mime_type = excluded.mime_type,
@@ -3342,6 +3431,7 @@ export class MisHistoriasStorage {
             ownerId,
             id,
             characterId,
+            position,
             json(tags(value.tags)),
             bool(isDefault),
             text(value.mimeType, 'application/octet-stream'),
