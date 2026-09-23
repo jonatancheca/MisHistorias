@@ -298,6 +298,12 @@ async function submit() {
   await stories.generate('normal', { consumePendingImageInstructions: true })
 }
 
+function onSubmitShortcut(event: KeyboardEvent) {
+  if (event.repeat || event.isComposing) return
+  event.preventDefault()
+  void submit()
+}
+
 async function generateOpening() {
   if (stories.activeStory?.readOnly) return
   void sounds.unlock()
@@ -1489,6 +1495,7 @@ onBeforeRouteLeave(() => {
             rows="2"
             placeholder="Escribe lo que haces o dices…"
             @keydown.enter.exact.prevent="submit"
+            @keydown.ctrl.enter.exact="onSubmitShortcut"
           />
           <div class="grid shrink-0 grid-cols-3 gap-2 sm:w-72">
             <button
@@ -1504,6 +1511,8 @@ onBeforeRouteLeave(() => {
               class="btn-primary"
               :class="stories.activeStory.visualMode && stories.generating ? 'sm:hidden' : ''"
               :disabled="stories.generating"
+              aria-keyshortcuts="Control+Enter"
+              title="Enviar (Ctrl+Enter)"
             >
               Enviar
             </button>
