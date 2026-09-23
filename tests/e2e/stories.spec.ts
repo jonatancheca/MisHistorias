@@ -1064,6 +1064,7 @@ test.describe('chat', () => {
         }
         return {
           view: bounds('[data-testid="visual-novel-view"]'),
+          stage: bounds('[data-testid="visual-novel-stage"]'),
           dialogue: bounds('[data-testid="visual-novel-dialogue"]'),
           footer: bounds('footer'),
           input: bounds('textarea[placeholder="Escribe lo que haces o dices…"]')
@@ -1077,7 +1078,7 @@ test.describe('chat', () => {
           await expect(page.getByTestId('visual-message-actions').getByRole('button', { name: 'Editar mensaje' })).toHaveCount(0)
           await expect(page.getByTestId('visual-message-actions').getByRole('button', { name: 'Borrar mensaje' })).toHaveCount(0)
         }
-        for (const width of [1280, 320, 390]) {
+        for (const width of [1280, 640, 320, 390]) {
           await page.setViewportSize({ width, height: 900 })
           await expect(indicator).toBeVisible()
           await expect(indicator).toHaveText('Creando historia…')
@@ -1089,6 +1090,13 @@ test.describe('chat', () => {
           expect(await indicator.evaluate(element => getComputedStyle(element).position)).toBe(
             visualMode && width >= 640 ? 'absolute' : 'static'
           )
+          if (visualMode && width >= 640) {
+            const stageBounds = await page.getByTestId('visual-novel-stage').boundingBox()
+            const dialogueBounds = await page.getByTestId('visual-novel-dialogue').boundingBox()
+            expect(statusBounds!.y).toBeGreaterThanOrEqual(stageBounds!.y)
+            expect(statusBounds!.y + statusBounds!.height).toBeLessThanOrEqual(stageBounds!.y + stageBounds!.height - 64)
+            expect(statusBounds!.y + statusBounds!.height).toBeLessThan(dialogueBounds!.y)
+          }
           if (visualMode && width === 1280) {
             expect(await readVisualGeometry()).toEqual(visualGeometryBefore)
             await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toHaveCount(0)
@@ -1102,6 +1110,54 @@ test.describe('chat', () => {
       await expect(indicator).toHaveCount(0)
     })
   }
+
+  test('el aviso de creación no tapa las fichas ni las acciones de novela visual', async ({ page, data }) => {
+    const { story, character, image } = await createStoryFixture(data, true)
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Alicia aparece.',
+      segments: [{
+        type: 'dialogue',
+        characterId: character.id,
+        tag: 'seria',
+        tags: ['seria'],
+        imageId: image.id,
+        text: 'Alicia aparece.'
+      }]
+    })
+    await data.patchSettings({ mockMode: false, model: 'test-model', useChromeLlm: false, privateUseChromeLlm: null, responseSpeed: 'instant' })
+    let releaseResponse!: () => void
+    const responseReady = new Promise<void>((resolve) => { releaseResponse = resolve })
+    await page.route('**/api/llm/chat', async (route) => {
+      await responseReady
+      await route.fulfill({ json: { content: 'La espera termina.', finishReason: 'stop' } })
+    })
+    await page.setViewportSize({ width: 640, height: 900 })
+    await page.goto(`/stories/${story.id}`)
+    await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Comienza.')
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+
+    try {
+      const indicator = page.getByTestId('thinking-indicator')
+      await expect(indicator).toBeVisible()
+      const figure = page.getByTestId('visual-novel-stage').locator('figure').first()
+      await figure.hover()
+      const details = figure.getByTestId('visual-novel-image-details')
+      await expect(details).toHaveCSS('opacity', '1')
+      const indicatorBounds = await indicator.boundingBox()
+      const detailsBounds = await details.boundingBox()
+      expect(indicatorBounds!.y + indicatorBounds!.height).toBeLessThan(detailsBounds!.y)
+
+      const actions = page.getByTestId('visual-message-actions')
+      if (await actions.isVisible()) {
+        const actionsBounds = await actions.boundingBox()
+        expect(indicatorBounds!.y + indicatorBounds!.height).toBeLessThan(actionsBounds!.y)
+      }
+    } finally {
+      releaseResponse()
+    }
+  })
 
   test('PageUp y PageDown navegan mensajes desde el cuadro de escritura', async ({ page, data }) => {
     const { story } = await createStoryFixture(data)

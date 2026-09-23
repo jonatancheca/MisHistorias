@@ -1395,13 +1395,14 @@ onBeforeRouteLeave(() => {
         v-if="!stories.activeStory.readOnly"
         class="relative border-t border-[var(--color-border-soft)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4"
       >
+        <!-- El diálogo visual mide 120px; 4.5rem separan el aviso de las fichas y acciones de la escena. -->
         <div
           v-if="stories.waitingForResponse"
           data-testid="thinking-indicator"
           class="mb-2 flex min-w-0 items-center justify-center text-sm text-[var(--color-fg-muted)] sm:-translate-x-9"
           :class="
             stories.activeStory.visualMode
-              ? 'sm:pointer-events-none sm:absolute sm:inset-x-0 sm:bottom-full sm:z-20'
+              ? 'sm:pointer-events-none sm:absolute sm:inset-x-0 sm:bottom-[calc(100%+120px+4.5rem)] sm:mb-0 sm:z-20'
               : 'lg:!translate-x-[5.75rem]'
           "
           role="status"
