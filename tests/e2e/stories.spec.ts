@@ -1041,6 +1041,149 @@ test.describe('historias', () => {
 })
 
 test.describe('chat', () => {
+  test('cambia de modo mientras espera la respuesta sin interrumpir la creación', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data)
+    const response = await prepareVisualResponse(page, data, 'Vera: La historia continúa.', false)
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('continue-button').click()
+    await response.requested
+    const toggle = page.getByTestId('visual-mode-toggle')
+    for (const width of [320, 390, 1280]) {
+      await page.setViewportSize({ width, height: 900 })
+      await toggle.click()
+      await expect(page.getByTestId('visual-novel-view')).toBeVisible()
+      await expect(page.getByTestId('thinking-indicator')).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      await toggle.click()
+      await expect(page.getByTestId('story-scroller')).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    }
+    await toggle.click()
+    await expect(page.getByTestId('visual-novel-view')).toBeVisible()
+    response.release()
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('La historia continúa.', { timeout: 15_000 })
+    expect((await data.get<Story>('stories', story.id)).visualMode).toBe(true)
+    await page.reload()
+    await expect(page.getByTestId('visual-novel-view')).toBeVisible()
+  })
+
+  test('adapta el revelado y libera la pausa manual al pasar de Novela a Chat', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data)
+    const firstLine = 'Vera: Primera intervención suficientemente larga para ver el cambio de modo.'
+    const secondLine = 'Vera: Segunda intervención completa.'
+    const response = await prepareVisualResponse(page, data, `${firstLine}\n${secondLine}`)
+
+    await page.goto(`/stories/${story.id}`)
+    await pauseVisualClock(page)
+    await page.getByTestId('continue-button').click()
+    await response.requested
+    response.release()
+    await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
+    await page.clock.runFor(500)
+    await page.getByTestId('visual-mode-toggle').click()
+    const frame = page.getByTestId('visual-novel-frame')
+    await expect(frame).toBeVisible()
+    await expect(frame).not.toContainText('Segunda intervención completa.')
+    await page.clock.runFor(15_000)
+    await expect(frame).toContainText('Primera intervención suficientemente larga')
+    await expect(frame).not.toContainText('Segunda intervención completa.')
+    await page.getByTestId('visual-mode-toggle').click()
+    await expect(page.getByTestId('visual-mode-toggle')).toHaveAttribute('aria-pressed', 'false')
+    await page.clock.runFor(10_000)
+    await expect(page.getByTestId('story-scroller')).toContainText('Segunda intervención completa.')
+    await expect(page.getByRole('button', { name: 'Parar', exact: true })).toHaveCount(0)
+    await page.getByTestId('visual-mode-toggle').click()
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('Segunda intervención completa.')
+  })
+
+  test('no repite un sonido generado al alternar modos', async ({ page, data }) => {
+    const { story, character } = await createStoryFixture(data)
+    const sound = await data.createSound(character, [data.unique('campana-cambio')])
+    const response = await prepareVisualResponse(
+      page,
+      data,
+      `Vera: Antes del sonido.\nSonido [${sound.tags[0]}]:`,
+      false
+    )
+    await page.addInitScript(() => {
+      const state = window as typeof window & { __soundPlays: number }
+      state.__soundPlays = 0
+      HTMLMediaElement.prototype.play = function () {
+        state.__soundPlays += 1
+        return Promise.resolve()
+      }
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await pauseVisualClock(page)
+    await page.getByTestId('continue-button').click()
+    await response.requested
+    response.release()
+    await page.clock.runFor(10_000)
+    const soundPlays = () => page.evaluate(() => (
+      window as typeof window & { __soundPlays: number }
+    ).__soundPlays)
+    await expect.poll(soundPlays).toBe(1)
+    const toggle = page.getByTestId('visual-mode-toggle')
+    await toggle.click()
+    await expect(page.getByTestId('visual-novel-sound')).toBeVisible()
+    expect(await soundPlays()).toBe(1)
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await toggle.click()
+    await expect(page.getByTestId('visual-novel-sound')).toBeVisible()
+    expect(await soundPlays()).toBe(1)
+  })
+
+  test('cambia de modo mientras se crean imágenes sin perder la respuesta', async ({ page, data }) => {
+    const character = await data.createCharacter({
+      imageGenerationPreset: 'Retrato',
+      imageGenerationModel: 'model-a'
+    })
+    await data.createImage(character, ['neutral'])
+    const story = await data.createStory({ characters: [character], autoGenerateImages: true })
+    await data.patchSettings({
+      mockMode: false,
+      model: 'test-model',
+      useChromeLlm: false,
+      privateUseChromeLlm: null,
+      responseSpeed: 'instant',
+      swarmBaseUrl: 'http://localhost:7801'
+    })
+    await page.route('**/api/llm/chat', (route) => route.fulfill({
+      json: {
+        content: `Imagen ${character.name} [nueva]: standing in a forest\n${character.name} [nueva]: Llegó la imagen.`,
+        finishReason: 'stop'
+      }
+    }))
+    let releaseImages!: () => void
+    const imagesReady = new Promise<void>((resolve) => { releaseImages = resolve })
+    await page.route('**/api/swarm/generate', async (route) => {
+      await imagesReady
+      await route.fulfill({ contentType: 'image/png', body: PNG_BYTES })
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('continue-button').click()
+    try {
+      await expect(page.getByTestId('image-generation-status')).toBeVisible()
+      const toggle = page.getByTestId('visual-mode-toggle')
+      await toggle.click()
+      await expect(page.getByTestId('visual-novel-view')).toBeVisible()
+      await toggle.click()
+      await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+      await toggle.click()
+      await expect(page.getByTestId('visual-novel-view')).toBeVisible()
+    } finally {
+      releaseImages()
+    }
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('Llegó la imagen.')
+    await expect.poll(async () => (await data.get<Story>('stories', story.id)).visualMode).toBe(true)
+    await expect.poll(async () => (await data.list<CharacterImage>('images', 'normal'))
+      .filter((image) => image.generation).length).toBeGreaterThan(0)
+  })
+
   for (const visualMode of [false, true]) {
     test(`muestra pensando sobre escritura en ${visualMode ? 'Visual Novel' : 'chat'}`, async ({ page, data }) => {
       const { story } = await createStoryFixture(data, visualMode)

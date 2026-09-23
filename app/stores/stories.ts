@@ -148,14 +148,15 @@ function validPendingImageInstructions(
 function playNewSounds(
   segments: Message['segments'],
   played: Set<string>,
-  sounds: ReturnType<typeof useSoundsStore>
+  sounds: ReturnType<typeof useSoundsStore>,
+  audible = true
 ) {
   segments.forEach((segment, index) => {
     if (segment.type !== 'sound' || !segment.soundId) return
     const key = `${index}:${segment.soundId}`
     if (played.has(key)) return
     played.add(key)
-    sounds.play(segment.soundId)
+    if (audible) sounds.play(segment.soundId)
   })
 }
 
@@ -221,6 +222,7 @@ export const useStoriesStore = defineStore('stories', () => {
   let completeRevealLine: (() => boolean) | null = null
   let setRevealNavigationPaused: ((paused: boolean) => boolean) | null = null
   let setRevealManualAdvance: ((enabled: boolean) => boolean) | null = null
+  let setRevealVisualMode: ((enabled: boolean) => void) | null = null
   let startNextRevealLine: (() => boolean) | null = null
   let animationDraft: Message | null = null
   let generationModeInProgress: GenerationMode | null = null
@@ -1019,6 +1021,7 @@ export const useStoriesStore = defineStore('stories', () => {
     await putStory(updated)
     activeStory.value = updated
     stories.value = stories.value.map((story) => (story.id === updated.id ? updated : story))
+    setRevealVisualMode?.(visualMode)
   }
 
   function cancelAnimation() {
@@ -1027,6 +1030,7 @@ export const useStoriesStore = defineStore('stories', () => {
     completeRevealLine = null
     setRevealNavigationPaused = null
     setRevealManualAdvance = null
+    setRevealVisualMode = null
     startNextRevealLine = null
     visualRevealWaitingForAdvance.value = false
     const finish = finishAnimation
@@ -1098,15 +1102,16 @@ export const useStoriesStore = defineStore('stories', () => {
     initialManualAdvance: boolean
   ) {
     const graphemes = splitGraphemes(raw)
-    const visualMode = activeStory.value?.visualMode === true
-    const charactersPerSecond = responseCharactersPerSecond(
+    let visualMode = activeStory.value?.visualMode === true
+    let charactersPerSecond = responseCharactersPerSecond(
       speed,
       visualMode
     )
     let startedAt = performance.now()
     let startCount = 0
     let visibleCount = 0
-    let manualAdvance = visualMode && initialManualAdvance
+    let manualAdvancePreference = initialManualAdvance
+    let manualAdvance = visualMode && manualAdvancePreference
     const soundsStore = useSoundsStore()
     const playedSounds = new Set<string>()
     const pauseReasons = new Set<'manual' | 'navigation'>(
@@ -1122,6 +1127,7 @@ export const useStoriesStore = defineStore('stories', () => {
         completeRevealLine = null
         setRevealNavigationPaused = null
         setRevealManualAdvance = null
+        setRevealVisualMode = null
         startNextRevealLine = null
         visualRevealWaitingForAdvance.value = false
       }
@@ -1135,9 +1141,7 @@ export const useStoriesStore = defineStore('stories', () => {
         resolve(true)
       }
 
-      const applyVisibleCount = (nextCount: number) => {
-        if (nextCount <= visibleCount) return
-        visibleCount = Math.min(nextCount, graphemes.length)
+      const renderVisible = () => {
         const visibleRaw = graphemes.slice(0, visibleCount).join('')
         const parseableRaw = visualMode
           ? hideIncompleteVisualDirectivePrefix(
@@ -1156,12 +1160,18 @@ export const useStoriesStore = defineStore('stories', () => {
           assistantMessage.id,
           storySounds
         )
-        if (!visualMode) playNewSounds(segments, playedSounds, soundsStore)
+        playNewSounds(segments, playedSounds, soundsStore, !visualMode)
         replaceDraft({
           ...assistantMessage,
           raw: visibleRaw,
           segments
         })
+      }
+
+      const applyVisibleCount = (nextCount: number) => {
+        if (nextCount <= visibleCount) return
+        visibleCount = Math.min(nextCount, graphemes.length)
+        renderVisible()
       }
 
       const visibleTextSignature = () => JSON.stringify(
@@ -1226,6 +1236,7 @@ export const useStoriesStore = defineStore('stories', () => {
       }
 
       setRevealManualAdvance = (enabled) => {
+        manualAdvancePreference = enabled
         manualAdvance = visualMode && enabled
         if (!manualAdvance) {
           pauseReasons.delete('manual')
@@ -1233,6 +1244,23 @@ export const useStoriesStore = defineStore('stories', () => {
           requestRevealFrame()
         }
         return true
+      }
+
+      setRevealVisualMode = (enabled) => {
+        if (visualMode === enabled) return
+        visualMode = enabled
+        charactersPerSecond = responseCharactersPerSecond(speed, visualMode)
+        manualAdvance = visualMode && manualAdvancePreference
+        if (!visualMode) {
+          pauseReasons.delete('manual')
+          pauseReasons.delete('navigation')
+          visualRevealWaitingForAdvance.value = false
+          visualRevealNavigationPaused.value = false
+        }
+        renderVisible()
+        if (animationFrame !== null) cancelAnimationFrame(animationFrame)
+        animationFrame = null
+        requestRevealFrame()
       }
 
       startNextRevealLine = () => {
@@ -1599,7 +1627,7 @@ export const useStoriesStore = defineStore('stories', () => {
           )
           if (!completed) return
         }
-        if (settings.responseSpeed === 'instant' && !story.visualMode) {
+        if (settings.responseSpeed === 'instant' && !activeStory.value?.visualMode) {
           playNewSounds(segments, new Set<string>(), soundsStore)
         }
         await persist(completedMessage)

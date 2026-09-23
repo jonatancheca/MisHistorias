@@ -40,6 +40,10 @@ _Evitar_: Colección global, colección compartida, acceso público
 Historia conservada fuera del catálogo activo sin quedar finalizada ni bloqueada. Mantiene todo su contenido, puede abrirse, editarse y continuarse, y su condición archivada forma parte de ella.
 _Evitar_: Historia eliminada, historia finalizada, historia de solo lectura
 
+**Modo de visualización de la historia**:
+Preferencia de cada historia para presentar el mismo contenido como Chat o Novela Visual, incluso durante su creación.
+_Evitar_: Tipo de historia, modo de generación
+
 **Modo demo**:
 Vista de presentación de una selección de la colección privada. No es una colección independiente ni un acceso público; una historia visible concede dentro de ella acceso contextual a los recursos que utiliza.
 _Evitar_: Colección demo, modo público

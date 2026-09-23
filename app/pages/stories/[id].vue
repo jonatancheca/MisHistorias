@@ -252,12 +252,13 @@ async function resumeFollowingBottom() {
 }
 
 async function toggleVisualMode() {
-  if (!stories.activeStory || stories.activeStory.readOnly || stories.generating) return
+  if (!stories.activeStory || stories.activeStory.readOnly) return
   const visualMode = !stories.activeStory.visualMode
   await stories.setVisualMode(visualMode)
   if (visualMode) {
     visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
     followingVisualReveal.value = true
+    stories.resumeVisualReveal()
   } else {
     stories.resumeVisualReveal()
     await resumeFollowingBottom()
@@ -657,14 +658,15 @@ const visualSpeaker = computed(() => {
 })
 
 watch(
-  () => activeVisualFrame.value?.id,
-  async () => {
-    if (activeVisualFrame.value?.kind !== 'sound') return
+  [() => activeVisualFrame.value?.id, () => stories.activeStory?.visualMode],
+  async ([, visualMode], [, previousMode]) => {
+    if (!visualMode || previousMode === false || activeVisualFrame.value?.kind !== 'sound') return
     await nextTick()
     if (!visualSoundPlayer.value) return
     visualSoundPlayer.value.currentTime = 0
     void visualSoundPlayer.value.play().catch(() => undefined)
-  }
+  },
+  { immediate: true }
 )
 
 const thumbnailCharacterUrls = computed(() => {
@@ -1120,7 +1122,6 @@ onBeforeRouteLeave(() => {
             :aria-label="stories.activeStory.visualMode ? 'Desactivar modo novela visual' : 'Activar modo novela visual'"
             :title="stories.activeStory.visualMode ? 'Desactivar modo novela visual' : 'Activar modo novela visual'"
             :aria-pressed="stories.activeStory.visualMode"
-            :disabled="stories.generating"
             @click="toggleVisualMode"
           >
             <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1236,7 +1237,6 @@ onBeforeRouteLeave(() => {
                       :key="activeVisualFrame.id"
                       :src="visualSoundUrl"
                       controls
-                      autoplay
                       preload="metadata"
                       class="min-w-0 flex-1"
                     />
