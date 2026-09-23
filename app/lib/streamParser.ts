@@ -150,11 +150,6 @@ export function parseSegments(
       }
     }
 
-    const last = segments[segments.length - 1]
-    if (last && last.type === 'narration') {
-      last.text = `${last.text}\n${trimmed}`
-      continue
-    }
     segments.push({ type: 'narration', characterId: null, tag: null, text: trimmed })
   }
 

@@ -118,7 +118,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 41
+const SCHEMA_VERSION = 42
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 const ERROR_TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
@@ -405,6 +405,12 @@ function rowToStory(row: SqliteRow) {
     protagonistPreferences: text(row.protagonist_preferences),
     protagonistPreferencesMode:
       row.protagonist_preferences_mode === 'replace' ? 'replace' : 'append',
+    dialogueStyle: row.dialogue_style === 'few' || row.dialogue_style === 'many'
+      ? row.dialogue_style
+      : 'unspecified',
+    narrationStyle: row.narration_style === 'few' || row.narration_style === 'many'
+      ? row.narration_style
+      : 'unspecified',
     characterIds: parseJson<string[]>(row.character_ids_json, []),
     characterCustomizations: parseJson<Story['characterCustomizations']>(row.character_customizations_json, []),
     initialBackgroundId:
@@ -965,6 +971,8 @@ export class MisHistoriasStorage {
           visible_in_demo INTEGER NOT NULL DEFAULT 0 CHECK (visible_in_demo IN (0, 1)),
           protagonist_preferences TEXT NOT NULL,
           protagonist_preferences_mode TEXT NOT NULL CHECK (protagonist_preferences_mode IN ('append', 'replace')),
+          dialogue_style TEXT NOT NULL DEFAULT 'unspecified' CHECK (dialogue_style IN ('unspecified', 'few', 'many')),
+          narration_style TEXT NOT NULL DEFAULT 'unspecified' CHECK (narration_style IN ('unspecified', 'few', 'many')),
           character_ids_json TEXT NOT NULL,
           character_customizations_json TEXT NOT NULL,
           initial_background_id TEXT,
@@ -1748,6 +1756,22 @@ export class MisHistoriasStorage {
         if (!characterColumns.some((column) => column.name === 'image_generation_prompt')) {
           this.database.exec(
             "ALTER TABLE characters ADD COLUMN image_generation_prompt TEXT NOT NULL DEFAULT ''"
+          )
+        }
+      }
+
+      if (version.user_version < 42) {
+        const storyColumns = this.database
+          .prepare('PRAGMA table_info(stories)')
+          .all() as Array<{ name: string }>
+        if (!storyColumns.some((column) => column.name === 'dialogue_style')) {
+          this.database.exec(
+            "ALTER TABLE stories ADD COLUMN dialogue_style TEXT NOT NULL DEFAULT 'unspecified' CHECK (dialogue_style IN ('unspecified', 'few', 'many'))"
+          )
+        }
+        if (!storyColumns.some((column) => column.name === 'narration_style')) {
+          this.database.exec(
+            "ALTER TABLE stories ADD COLUMN narration_style TEXT NOT NULL DEFAULT 'unspecified' CHECK (narration_style IN ('unspecified', 'few', 'many'))"
           )
         }
       }
@@ -2965,16 +2989,19 @@ export class MisHistoriasStorage {
         INSERT INTO stories(
           scope, owner_id, id, title, premise, visual_mode, auto_generate_images,
           archived, visible_in_demo, protagonist_preferences, protagonist_preferences_mode,
+          dialogue_style, narration_style,
           character_ids_json, character_customizations_json, initial_background_id,
           background_style, preset_id, image_catalog_snapshot_json,
           pending_image_instructions_json, context_summary,
           context_summary_through_message_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         scope, access.ownerId, copiedStory.id, copiedStory.title, copiedStory.premise,
         bool(copiedStory.visualMode), bool(copiedStory.autoGenerateImages), bool(copiedStory.archived),
         bool(copiedStory.visibleInDemo), copiedStory.protagonistPreferences,
-        copiedStory.protagonistPreferencesMode, json(copiedStory.characterIds),
+        copiedStory.protagonistPreferencesMode,
+        copiedStory.dialogueStyle ?? 'unspecified', copiedStory.narrationStyle ?? 'unspecified',
+        json(copiedStory.characterIds),
         json(copiedStory.characterCustomizations), copiedStory.initialBackgroundId,
         copiedStory.backgroundStyle ?? null, copiedStory.presetId ?? null,
         copiedStory.imageCatalogSnapshot === undefined ? null : json(copiedStory.imageCatalogSnapshot),
@@ -3213,10 +3240,11 @@ export class MisHistoriasStorage {
             INSERT INTO stories(
               scope, owner_id, id, title, premise, visual_mode, auto_generate_images, archived, visible_in_demo, protagonist_preferences,
               protagonist_preferences_mode, character_ids_json, character_customizations_json,
+              dialogue_style, narration_style,
               initial_background_id, background_style, preset_id, image_catalog_snapshot_json,
               pending_image_instructions_json, context_summary,
               context_summary_through_message_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
@@ -3226,6 +3254,8 @@ export class MisHistoriasStorage {
               visible_in_demo = excluded.visible_in_demo,
               protagonist_preferences = excluded.protagonist_preferences,
               protagonist_preferences_mode = excluded.protagonist_preferences_mode,
+              dialogue_style = excluded.dialogue_style,
+              narration_style = excluded.narration_style,
               character_ids_json = excluded.character_ids_json,
               character_customizations_json = excluded.character_customizations_json,
               initial_background_id = excluded.initial_background_id,
@@ -3252,6 +3282,12 @@ export class MisHistoriasStorage {
             value.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
             json(stringArray(value.characterIds)),
             json(value.characterCustomizations),
+            value.dialogueStyle === 'few' || value.dialogueStyle === 'many'
+              ? value.dialogueStyle
+              : 'unspecified',
+            value.narrationStyle === 'few' || value.narrationStyle === 'many'
+              ? value.narrationStyle
+              : 'unspecified',
             typeof value.initialBackgroundId === 'string' ? value.initialBackgroundId : null,
             text(value.backgroundStyle).trim() || null,
             typeof value.presetId === 'string' ? value.presetId : null,

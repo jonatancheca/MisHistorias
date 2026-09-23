@@ -138,6 +138,10 @@ export interface Story {
   protagonistPreferences: string
   /** Anade las preferencias globales o las reemplaza para esta historia */
   protagonistPreferencesMode: ProtagonistPreferencesMode
+  /** Número orientativo de cuadros de diálogo por respuesta del narrador. */
+  dialogueStyle?: ResponseStyleAmount
+  /** Número orientativo de cuadros narrativos por respuesta del narrador. */
+  narrationStyle?: ResponseStyleAmount
   characterIds: string[]
   /** Personalizaciones recordadas, incluidas las de personajes fuera del elenco activo. */
   characterCustomizations: StoryCharacterCustomization[]
@@ -222,6 +226,7 @@ export type MessageRole = 'user' | 'assistant'
 export type Theme = 'system' | 'light' | 'dark'
 export type ResponseSpeed = 'slow' | 'medium' | 'high' | 'instant'
 export type ProtagonistPreferencesMode = 'append' | 'replace'
+export type ResponseStyleAmount = 'unspecified' | 'few' | 'many'
 export type GenerationMode = 'normal' | 'continue' | 'auto'
 
 export type SegmentType =

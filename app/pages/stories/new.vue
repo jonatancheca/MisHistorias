@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { StoryCharacterCustomization } from '#shared/types'
+import type { ResponseStyleAmount, StoryCharacterCustomization } from '#shared/types'
 
 const route = useRoute()
 const stories = useStoriesStore()
@@ -52,6 +52,8 @@ const protagonistPreferences = ref(copiedStory?.protagonistPreferences ?? '')
 const protagonistPreferencesMode = ref<'append' | 'replace'>(
   copiedStory?.protagonistPreferencesMode ?? 'append'
 )
+const dialogueStyle = ref<ResponseStyleAmount>(copiedStory?.dialogueStyle ?? 'unspecified')
+const narrationStyle = ref<ResponseStyleAmount>(copiedStory?.narrationStyle ?? 'unspecified')
 const selected = ref<string[]>(
   copiedStory?.characterIds.filter((characterId) => {
     const character = characters.byId(characterId)
@@ -85,6 +87,8 @@ async function submit() {
       autoGenerateImages: autoGenerateImages.value,
       protagonistPreferences: protagonistPreferences.value,
       protagonistPreferencesMode: protagonistPreferencesMode.value,
+      dialogueStyle: dialogueStyle.value,
+      narrationStyle: narrationStyle.value,
       characterIds: selected.value,
       characterCustomizations: characterCustomizations.value.map((customization) => ({
         ...customization,
@@ -118,6 +122,8 @@ async function submit() {
         v-model:auto-generate-images="autoGenerateImages"
         v-model:protagonist-preferences="protagonistPreferences"
         v-model:protagonist-preferences-mode="protagonistPreferencesMode"
+        v-model:dialogue-style="dialogueStyle"
+        v-model:narration-style="narrationStyle"
         v-model:character-ids="selected"
         v-model:character-customizations="characterCustomizations"
         v-model:initial-background-id="initialBackgroundId"

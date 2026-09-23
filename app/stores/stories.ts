@@ -9,6 +9,7 @@ import type {
   Message,
   Sound,
   ProtagonistPreferencesMode,
+  ResponseStyleAmount,
   ResponseSpeed,
   Story,
   StorySaveSlot,
@@ -494,6 +495,8 @@ export const useStoriesStore = defineStore('stories', () => {
     autoGenerateImages?: boolean
     protagonistPreferences: string
     protagonistPreferencesMode: ProtagonistPreferencesMode
+    dialogueStyle: ResponseStyleAmount
+    narrationStyle: ResponseStyleAmount
     characterIds: string[]
     characterCustomizations: StoryCharacterCustomization[]
     initialBackgroundId: string | null
@@ -512,6 +515,8 @@ export const useStoriesStore = defineStore('stories', () => {
       autoGenerateImages: input.autoGenerateImages === true,
       protagonistPreferences: input.protagonistPreferences.trim(),
       protagonistPreferencesMode: input.protagonistPreferencesMode,
+      dialogueStyle: input.dialogueStyle,
+      narrationStyle: input.narrationStyle,
       characterIds: [...input.characterIds],
       characterCustomizations: normalizeCharacterCustomizations(
         input.characterIds,
@@ -980,6 +985,8 @@ export const useStoriesStore = defineStore('stories', () => {
     autoGenerateImages: boolean,
     protagonistPreferences: string,
     protagonistPreferencesMode: ProtagonistPreferencesMode,
+    dialogueStyle: ResponseStyleAmount,
+    narrationStyle: ResponseStyleAmount,
     characterIds: string[],
     characterCustomizations: StoryCharacterCustomization[],
     initialBackgroundId: string | null,
@@ -998,6 +1005,8 @@ export const useStoriesStore = defineStore('stories', () => {
       visibleInDemo: visibleInDemo ?? activeStory.value.visibleInDemo,
       protagonistPreferences: protagonistPreferences.trim(),
       protagonistPreferencesMode,
+      dialogueStyle,
+      narrationStyle,
       characterIds: [...characterIds],
       characterCustomizations: normalizeCharacterCustomizations(
         characterIds,

@@ -150,6 +150,27 @@ function soundSheet(sounds: Sound[], characters: Character[], backgrounds: Backg
   ].join('\n')
 }
 
+function responseStyleInstructions(story: Story) {
+  const dialogue = story.dialogueStyle === 'few'
+    ? 'Si la respuesta incluye diálogo, escribe 1 o 2 intervenciones de diálogo en total.'
+    : story.dialogueStyle === 'many'
+      ? 'Si la respuesta incluye diálogo, procura escribir 3 o más intervenciones de diálogo en total.'
+      : null
+  const narration = story.narrationStyle === 'few'
+    ? 'Si la respuesta incluye narración, escribe 1 o 2 líneas independientes de narración en total.'
+    : story.narrationStyle === 'many'
+      ? 'Si la respuesta incluye narración, haz mucha narración repartida en varias líneas independientes.'
+      : null
+  if (!dialogue && !narration) return []
+  return [
+    '',
+    '## ESTILO DE RESPUESTA DE ESTA HISTORIA',
+    ...(dialogue ? [dialogue] : []),
+    ...(narration ? [narration] : []),
+    'Cada línea independiente forma una intervención. Puedes omitir el diálogo o la narración cuando la escena no lo necesite.'
+  ]
+}
+
 export function buildSystemPrompt(options: {
   presetContent: string
   story: Story
@@ -177,6 +198,7 @@ export function buildSystemPrompt(options: {
   )
   return [
     presetContent.trim(),
+    ...responseStyleInstructions(story),
     ...(story.autoGenerateImages
       ? [
           '',

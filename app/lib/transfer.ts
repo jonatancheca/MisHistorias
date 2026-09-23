@@ -5,6 +5,7 @@ import type {
   ImageGenerationMetadata,
   SwarmPrompt,
   Message,
+  ResponseStyleAmount,
   Story,
   StoryCharacterCustomization,
   StorySaveSlot
@@ -55,6 +56,10 @@ import {
 const EXPORT_VERSION = 25
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_SOUND_BYTES = 10 * 1024 * 1024
+
+function responseStyleAmount(value: unknown): ResponseStyleAmount {
+  return value === 'few' || value === 'many' ? value : 'unspecified'
+}
 
 interface ExportedImage {
   id?: string
@@ -112,6 +117,8 @@ interface ExportedStory {
   autoGenerateImages?: boolean
   protagonistPreferences?: string
   protagonistPreferencesMode?: 'append' | 'replace'
+  dialogueStyle?: ResponseStyleAmount
+  narrationStyle?: ResponseStyleAmount
   characterIds: string[]
   characterCustomizations?: StoryCharacterCustomization[]
   pendingImageInstructions?: Story['pendingImageInstructions']
@@ -249,6 +256,8 @@ export async function exportBundle(
       autoGenerateImages: story.autoGenerateImages === true,
       protagonistPreferences: story.protagonistPreferences ?? '',
       protagonistPreferencesMode: story.protagonistPreferencesMode ?? 'append',
+      dialogueStyle: responseStyleAmount(story.dialogueStyle),
+      narrationStyle: responseStyleAmount(story.narrationStyle),
       characterIds: story.characterIds,
       characterCustomizations: exportCharacterCustomizations(story),
       pendingImageInstructions: story.pendingImageInstructions ?? [],
@@ -538,6 +547,8 @@ export async function importBundle(raw: string) {
       protagonistPreferences: String(item.protagonistPreferences ?? ''),
       protagonistPreferencesMode:
         item.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
+      dialogueStyle: responseStyleAmount(item.dialogueStyle),
+      narrationStyle: responseStyleAmount(item.narrationStyle),
       characterIds: storyCharacterIds,
       characterCustomizations,
       pendingImageInstructions: (item.pendingImageInstructions ?? []).flatMap((instruction) => {
@@ -634,6 +645,8 @@ export async function importBundle(raw: string) {
         protagonistPreferences: String(save.story.protagonistPreferences ?? ''),
         protagonistPreferencesMode:
           save.story.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
+        dialogueStyle: responseStyleAmount(save.story.dialogueStyle),
+        narrationStyle: responseStyleAmount(save.story.narrationStyle),
         characterIds: savedCharacterIds,
         characterCustomizations: storyCustomizationIds(
           (save.story.characterIds ?? []).map((sourceId) => String(sourceId)),

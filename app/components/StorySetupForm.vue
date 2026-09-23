@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { StoryCharacterCustomization } from '#shared/types'
+import type { ResponseStyleAmount, StoryCharacterCustomization } from '#shared/types'
 import {
   availableBackgroundStyles,
   matchesBackgroundStyle,
@@ -23,6 +23,8 @@ const visualMode = defineModel<boolean>('visualMode', { required: true })
 const autoGenerateImages = defineModel<boolean>('autoGenerateImages', { required: true })
 const protagonistPreferences = defineModel<string>('protagonistPreferences', { required: true })
 const protagonistPreferencesMode = defineModel<'append' | 'replace'>('protagonistPreferencesMode', { required: true })
+const dialogueStyle = defineModel<ResponseStyleAmount>('dialogueStyle', { required: true })
+const narrationStyle = defineModel<ResponseStyleAmount>('narrationStyle', { required: true })
 const characterIds = defineModel<string[]>('characterIds', { required: true })
 const characterCustomizations = defineModel<StoryCharacterCustomization[]>('characterCustomizations', { required: true })
 const initialBackgroundId = defineModel<string | null>('initialBackgroundId', { required: true })
@@ -37,6 +39,7 @@ const editingCharacterId = ref<string | null>(null)
 const characterPickerOpen = ref(false)
 const backgroundPickerOpen = ref(false)
 const preferencesOpen = ref(false)
+const responseStyleOpen = ref(false)
 
 const customizationsById = computed(() => new Map(
   characterCustomizations.value.map((customization) => [customization.characterId, customization])
@@ -88,6 +91,15 @@ const preferencesSummary = computed(() => {
   const hasOwn = Boolean(protagonistPreferences.value.trim())
   if (protagonistPreferencesMode.value === 'replace') return hasOwn ? 'Solo propias' : 'Sin preferencias'
   return hasOwn ? 'Globales + propias' : 'Globales'
+})
+const responseStyleSummary = computed(() => {
+  const dialogueLabel = dialogueStyle.value === 'few'
+    ? '1–2 cuadros'
+    : dialogueStyle.value === 'many' ? '3+ cuadros' : 'sin indicar'
+  const narrationLabel = narrationStyle.value === 'few'
+    ? '1–2 cuadros'
+    : narrationStyle.value === 'many' ? 'mucha' : 'sin indicar'
+  return `Diálogo: ${dialogueLabel} · Narración: ${narrationLabel}`
 })
 
 function customizationFor(characterId: string) {
@@ -167,6 +179,12 @@ function savePreferences(value: { preferences: string; mode: 'append' | 'replace
   protagonistPreferences.value = value.preferences
   protagonistPreferencesMode.value = value.mode
   preferencesOpen.value = false
+}
+
+function saveResponseStyle(value: { dialogue: ResponseStyleAmount; narration: ResponseStyleAmount }) {
+  dialogueStyle.value = value.dialogue
+  narrationStyle.value = value.narration
+  responseStyleOpen.value = false
 }
 
 function characterLabel(characterId: string) {
@@ -266,7 +284,7 @@ watch(characterIds, (ids) => {
       </label>
     </section>
 
-    <section class="grid gap-3 rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3">
+    <section class="grid gap-3 rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4">
       <button
         type="button"
         class="rounded-xl border border-[var(--color-border-soft)] p-4 text-left transition hover:border-brand-400"
@@ -275,6 +293,16 @@ watch(characterIds, (ids) => {
         <span class="block text-xs font-medium uppercase tracking-wide text-[var(--color-fg-muted)]">Preferencias del protagonista</span>
         <span class="mt-1 block font-semibold">{{ preferencesSummary }}</span>
         <span class="mt-1 block text-xs text-[var(--color-fg-muted)]">Pulsa para configurarlas.</span>
+      </button>
+
+      <button
+        type="button"
+        class="rounded-xl border border-[var(--color-border-soft)] p-4 text-left transition hover:border-brand-400"
+        @click="responseStyleOpen = true"
+      >
+        <span class="block text-xs font-medium uppercase tracking-wide text-[var(--color-fg-muted)]">Estilo respuesta</span>
+        <span class="mt-1 block font-semibold">{{ responseStyleSummary }}</span>
+        <span class="mt-1 block text-xs text-[var(--color-fg-muted)]">Pulsa para configurarlo.</span>
       </button>
 
       <label class="rounded-xl border border-[var(--color-border-soft)] p-4">
@@ -425,6 +453,13 @@ watch(characterIds, (ids) => {
       :mode="protagonistPreferencesMode"
       @close="preferencesOpen = false"
       @save="savePreferences"
+    />
+    <StoryResponseStyleDialog
+      :open="responseStyleOpen"
+      :dialogue="dialogueStyle"
+      :narration="narrationStyle"
+      @close="responseStyleOpen = false"
+      @save="saveResponseStyle"
     />
   </div>
 </template>

@@ -121,6 +121,10 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'protagonistPreferences') &&
         (value.protagonistPreferencesMode === 'append' ||
           value.protagonistPreferencesMode === 'replace') &&
+        (value.dialogueStyle === undefined || value.dialogueStyle === 'unspecified' ||
+          value.dialogueStyle === 'few' || value.dialogueStyle === 'many') &&
+        (value.narrationStyle === undefined || value.narrationStyle === 'unspecified' ||
+          value.narrationStyle === 'few' || value.narrationStyle === 'many') &&
         hasStringArray(value, 'characterIds') &&
         hasCharacterCustomizations(value) &&
         (value.initialBackgroundId === null || typeof value.initialBackgroundId === 'string') &&

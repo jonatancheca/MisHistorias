@@ -44,6 +44,14 @@ _Evitar_: Historia eliminada, historia finalizada, historia de solo lectura
 Preferencia de cada historia para presentar el mismo contenido como Chat o Novela Visual, incluso durante su creación.
 _Evitar_: Tipo de historia, modo de generación
 
+**Cuadro de respuesta**:
+Intervención independiente de diálogo o narración producida por el narrador. Se muestra como cuadro en Novela Visual y como intervención separada en Chat; las directivas de fondo y sonido no cuentan como cuadros de estos tipos.
+_Evitar_: Línea visual, párrafo de pantalla
+
+**Estilo de respuesta**:
+Preferencia de una historia que orienta cuántos cuadros de diálogo y de narración aparecen en cada respuesta del narrador. Cada tipo puede quedar sin indicación y no obliga a incluirlo cuando la escena no lo pide.
+_Evitar_: Modo de visualización, límite de texto
+
 **Modo demo**:
 Vista de presentación de una selección de la colección privada. No es una colección independiente ni un acceso público; una historia visible concede dentro de ella acceso contextual a los recursos que utiliza.
 _Evitar_: Colección demo, modo público

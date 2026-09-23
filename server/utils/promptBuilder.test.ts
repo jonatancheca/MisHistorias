@@ -60,6 +60,46 @@ const story: Story = {
   updatedAt: 1
 }
 
+test('estilo de respuesta orienta cuadros por tipo y omite opciones sin indicar', () => {
+  const options = {
+    presetContent: 'Narra.',
+    characters: [character],
+    images: [],
+    backgrounds: [],
+    sounds: [],
+    userName: 'Usuario',
+    protagonistPreferences: '',
+    generationMode: 'normal' as const
+  }
+  const defaultPrompt = buildSystemPrompt({ ...options, story })
+  assert.doesNotMatch(defaultPrompt, /ESTILO DE RESPUESTA DE ESTA HISTORIA/)
+
+  const shortPrompt = buildSystemPrompt({
+    ...options,
+    story: { ...story, dialogueStyle: 'few', narrationStyle: 'few' }
+  })
+  assert.match(shortPrompt, /1 o 2 intervenciones de diálogo en total/)
+  assert.match(shortPrompt, /1 o 2 líneas independientes de narración en total/)
+  assert.match(shortPrompt, /Puedes omitir el diálogo o la narración/)
+
+  const longPrompt = buildSystemPrompt({
+    ...options,
+    story: { ...story, dialogueStyle: 'many', narrationStyle: 'many' }
+  })
+  assert.match(longPrompt, /3 o más intervenciones de diálogo en total/)
+  assert.match(longPrompt, /mucha narración repartida en varias líneas independientes/)
+  assert.doesNotMatch(longPrompt, /3 o más.*narración/)
+
+  const instruction = buildChatMessages({
+    ...options,
+    story: { ...story, dialogueStyle: 'few' },
+    messages: [{ id: 'instruction', storyId: story.id, role: 'user',
+      raw: 'IA: Extiende este diálogo.', segments: [], createdAt: 1 }],
+    historyBudget: 0
+  })[0]!.content
+  assert.ok(instruction.indexOf('1 o 2 intervenciones') < instruction.indexOf('Extiende este diálogo.'))
+})
+
 test('excluye diagnósticos de historial y compactación sin consumir instrucciones pendientes', () => {
   const instruction: Message = { id: 'instruction', storyId: story.id, role: 'user',
     raw: 'IA: Cambia el tono.', segments: [], createdAt: 1 }

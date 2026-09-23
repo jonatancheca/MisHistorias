@@ -3,6 +3,7 @@ import type {
   GenerationMode,
   LlmDebugTrace,
   Message,
+  ResponseStyleAmount,
   StoryCharacterCustomization
 } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
@@ -87,6 +88,8 @@ const storyVisualMode = ref(false)
 const autoGenerateImages = ref(false)
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
+const dialogueStyle = ref<ResponseStyleAmount>('unspecified')
+const narrationStyle = ref<ResponseStyleAmount>('unspecified')
 const storyInitialBackgroundId = ref<string | null>(null)
 const storyBackgroundStyle = ref<string | null>(null)
 const storyVisibleInDemo = ref(false)
@@ -415,6 +418,8 @@ function openStoryPreferences() {
   autoGenerateImages.value = stories.activeStory.autoGenerateImages === true
   storyPreferences.value = stories.activeStory.protagonistPreferences ?? ''
   storyPreferencesMode.value = stories.activeStory.protagonistPreferencesMode ?? 'append'
+  dialogueStyle.value = stories.activeStory.dialogueStyle ?? 'unspecified'
+  narrationStyle.value = stories.activeStory.narrationStyle ?? 'unspecified'
   storyInitialBackgroundId.value = stories.activeStory.initialBackgroundId ?? null
   storyBackgroundStyle.value = stories.activeStory.backgroundStyle ?? null
   storyVisibleInDemo.value = stories.activeStory.visibleInDemo
@@ -433,6 +438,8 @@ async function saveStoryPreferences() {
     autoGenerateImages.value,
     storyPreferences.value,
     storyPreferencesMode.value,
+    dialogueStyle.value,
+    narrationStyle.value,
     storyCharacterIds.value,
     storyCharacterCustomizations.value.map((item) => ({ ...item, tags: [...item.tags] })),
     storyInitialBackgroundId.value,
@@ -1610,6 +1617,8 @@ onBeforeRouteLeave(() => {
             v-model:auto-generate-images="autoGenerateImages"
             v-model:protagonist-preferences="storyPreferences"
             v-model:protagonist-preferences-mode="storyPreferencesMode"
+            v-model:dialogue-style="dialogueStyle"
+            v-model:narration-style="narrationStyle"
             v-model:character-ids="storyCharacterIds"
             v-model:character-customizations="storyCharacterCustomizations"
             v-model:initial-background-id="storyInitialBackgroundId"

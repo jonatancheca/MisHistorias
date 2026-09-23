@@ -134,6 +134,19 @@ describe('parser de etiquetas visuales', () => {
     assert.equal(serializeSegments(segments, customized), 'Lia [feliz]: Hola.')
   })
 
+  it('convierte cada línea narrativa en un cuadro independiente', () => {
+    const raw = 'La puerta se abre.\nLa sala está a oscuras.\nAlicia [feliz]: Hola.'
+    const segments = parseSegments(raw, characters, [], '', images, 'narration-frames')
+
+    assert.deepEqual(segments.map((segment) => segment.type), [
+      'narration', 'narration', 'dialogue'
+    ])
+    assert.deepEqual(segments.slice(0, 2).map((segment) => segment.text), [
+      'La puerta se abre.', 'La sala está a oscuras.'
+    ])
+    assert.equal(serializeSegments(segments, characters), raw)
+  })
+
   it('mantiene formato antiguo de una etiqueta y fondos sin cambios', () => {
     const segments = parseSegments(
       'Fondo [bosque]:\nAlicia [neutral]: Hola.',
