@@ -64,6 +64,8 @@ interface CharacterInput {
   imageGenerationLora?: string
   imageGenerationSeed?: string
   imageGenerationPromptPrefix?: string
+  imageGenerationNotes?: string
+  imageGenerationPrompt?: string
   imageGenerationModel?: string
   visibleInDemo?: boolean
   archived?: boolean
@@ -197,6 +199,8 @@ export const test = base.extend<{ data: TestDataFactory }>({
           imageGenerationLora: input.imageGenerationLora ?? '',
           imageGenerationSeed: input.imageGenerationSeed ?? '',
           imageGenerationPromptPrefix: input.imageGenerationPromptPrefix ?? '',
+          imageGenerationNotes: input.imageGenerationNotes ?? '',
+          imageGenerationPrompt: input.imageGenerationPrompt ?? '',
           imageGenerationModel: input.imageGenerationModel ?? '',
           archived: input.archived ?? false,
           visibleInDemo: input.visibleInDemo ?? false,

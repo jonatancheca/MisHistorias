@@ -640,6 +640,35 @@ test('detiene lotes al fallar, cancelar o salir sin borrar éxitos', async ({ pa
   expect(await data.list<CharacterImage>('images', 'normal', { characterId: character.id })).toHaveLength(1)
 })
 
+test('recuerda las notas y el prompt de imagen por personaje sin generar imágenes', async ({ page, data }) => {
+  const first = await data.createCharacter()
+  const second = await data.createCharacter()
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  await page.route('**/api/swarm/catalog', (route) => route.fulfill({ json: CATALOG }))
+
+  await page.goto(`/characters/${first.id}`)
+  await page.getByRole('button', { name: 'Crear imagen con SwarmUI' }).click()
+  await page.getByLabel('Notas para el prompt').fill('Capa roja.')
+  await page.getByLabel('Prompt de imagen (inglés y editable)').fill('Red cape.')
+  await expect.poll(async () => {
+    const stored = await data.get<Character>('characters', first.id)
+    return [stored.imageGenerationNotes, stored.imageGenerationPrompt]
+  }).toEqual(['Capa roja.', 'Red cape.'])
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Crear imagen con SwarmUI' }).click()
+  await expect(page.getByLabel('Notas para el prompt')).toHaveValue('Capa roja.')
+  await expect(page.getByLabel('Prompt de imagen (inglés y editable)')).toHaveValue('Red cape.')
+  await page.getByLabel('Notas para el prompt').fill('')
+  await expect.poll(async () => (await data.get<Character>('characters', first.id)).imageGenerationNotes).toBe('')
+
+  await page.goto(`/characters/${second.id}`)
+  await page.getByRole('button', { name: 'Crear imagen con SwarmUI' }).click()
+  await expect(page.getByLabel('Notas para el prompt')).toHaveValue('')
+  await expect(page.getByLabel('Prompt de imagen (inglés y editable)')).toHaveValue('')
+  expect(await data.list<CharacterImage>('images', 'normal', { characterId: first.id })).toHaveLength(0)
+})
+
 test('crea prompt editable y guarda la imagen generada en WebP', async ({ page, data }) => {
   const character = await data.createCharacter({
     imageGenerationPreset: '',
@@ -698,6 +727,8 @@ test('crea prompt editable y guarda la imagen generada en WebP', async ({ page, 
       lora: stored.imageGenerationLora,
       seed: stored.imageGenerationSeed,
       prefix: stored.imageGenerationPromptPrefix,
+      notes: stored.imageGenerationNotes,
+      prompt: stored.imageGenerationPrompt,
       model: stored.imageGenerationModel
     }
   }).toEqual({
@@ -705,6 +736,8 @@ test('crea prompt editable y guarda la imagen generada en WebP', async ({ page, 
     lora: 'detail-lora',
     seed: '9243353',
     prefix: promptPrefix,
+    notes: 'Capa roja y gesto decidido.',
+    prompt: editedPrompt,
     model: 'model-b'
   })
   const images = await data.list<CharacterImage>('images', 'normal', {

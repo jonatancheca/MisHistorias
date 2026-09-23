@@ -102,6 +102,8 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         hasString(value, 'imageGenerationLora') &&
         hasString(value, 'imageGenerationSeed') &&
         hasString(value, 'imageGenerationPromptPrefix') &&
+        (value.imageGenerationNotes === undefined || hasString(value, 'imageGenerationNotes')) &&
+        (value.imageGenerationPrompt === undefined || hasString(value, 'imageGenerationPrompt')) &&
         (value.imageGenerationModel === undefined || hasString(value, 'imageGenerationModel')) &&
         typeof value.archived === 'boolean' &&
         typeof value.visibleInDemo === 'boolean' &&
@@ -237,6 +239,8 @@ function validateCharacterCopy(rawValue: unknown) {
     !hasString(value, 'imageGenerationLora') ||
     !hasString(value, 'imageGenerationSeed') ||
     !hasString(value, 'imageGenerationPromptPrefix') ||
+    (value.imageGenerationNotes !== undefined && !hasString(value, 'imageGenerationNotes')) ||
+    (value.imageGenerationPrompt !== undefined && !hasString(value, 'imageGenerationPrompt')) ||
     (value.imageGenerationModel !== undefined && !hasString(value, 'imageGenerationModel')) ||
     typeof value.visibleInDemo !== 'boolean'
   ) {
@@ -361,6 +365,8 @@ async function readCharacterImport(event: H3Event) {
     !hasString(character, 'imageGenerationLora') ||
     !hasString(character, 'imageGenerationSeed') ||
     !hasString(character, 'imageGenerationPromptPrefix') ||
+    (character.imageGenerationNotes !== undefined && !hasString(character, 'imageGenerationNotes')) ||
+    (character.imageGenerationPrompt !== undefined && !hasString(character, 'imageGenerationPrompt')) ||
     (character.imageGenerationModel !== undefined && !hasString(character, 'imageGenerationModel'))
   ) {
     throw createError({ statusCode: 400, message: 'Personaje no válido' })
@@ -375,6 +381,12 @@ async function readCharacterImport(event: H3Event) {
     imageGenerationLora: String(character.imageGenerationLora),
     imageGenerationSeed: String(character.imageGenerationSeed),
     imageGenerationPromptPrefix: String(character.imageGenerationPromptPrefix),
+    imageGenerationNotes: typeof character.imageGenerationNotes === 'string'
+      ? character.imageGenerationNotes
+      : '',
+    imageGenerationPrompt: typeof character.imageGenerationPrompt === 'string'
+      ? character.imageGenerationPrompt
+      : '',
     imageGenerationModel: typeof character.imageGenerationModel === 'string'
       ? character.imageGenerationModel
       : '',

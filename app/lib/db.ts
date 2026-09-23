@@ -130,7 +130,7 @@ export async function putCharacter(character: Character) {
 
 export async function copyCharacter(
   sourceId: string,
-  input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel' | 'visibleInDemo'>
+  input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationNotes' | 'imageGenerationPrompt' | 'imageGenerationModel' | 'visibleInDemo'>
 ) {
   return $fetch<{ character: Character; images: CharacterImage[] }>(
     dataUrl(`characters/${encodeURIComponent(sourceId)}/copy`),
@@ -145,7 +145,7 @@ export async function importCharacterArchive(input: {
   mode: 'new' | 'replace'
   targetId?: string
   name: string
-  character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel' | 'visibleInDemo'>
+  character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationNotes' | 'imageGenerationPrompt' | 'imageGenerationModel' | 'visibleInDemo'>
   images: Array<Pick<StoredImage, 'tags' | 'isDefault' | 'mimeType' | 'blob' | 'originalBlob' | 'generation'>>
   sounds: Array<Pick<StoredSound, 'tags' | 'mimeType' | 'blob'>>
 }) {

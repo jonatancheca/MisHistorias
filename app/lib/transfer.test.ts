@@ -4,12 +4,14 @@ import {
   exportCharacterTransferFields,
   importImageGenerationLora,
   importImageGenerationModel,
+  importImageGenerationNotes,
+  importImageGenerationPrompt,
   importImageGenerationPromptPrefix,
   importImageGenerationPreset,
   importImageGenerationSeed
 } from './characterTransfer.ts'
 
-test('transferencia conserva preset y LoRA SwarmUI y acepta personajes anteriores', () => {
+test('transferencia conserva configuración y últimos prompts y acepta personajes anteriores', () => {
   const exported = exportCharacterTransferFields({
     id: 'character-1',
     name: 'Alicia',
@@ -20,6 +22,8 @@ test('transferencia conserva preset y LoRA SwarmUI y acepta personajes anteriore
     imageGenerationLora: 'Detalle',
     imageGenerationSeed: '9243353',
     imageGenerationPromptPrefix: 'masterpiece',
+    imageGenerationNotes: 'Capa roja.',
+    imageGenerationPrompt: 'Red cape.',
     imageGenerationModel: 'model-a',
     archived: true,
     visibleInDemo: true,
@@ -30,6 +34,8 @@ test('transferencia conserva preset y LoRA SwarmUI y acepta personajes anteriore
   assert.equal(exported.imageGenerationLora, 'Detalle')
   assert.equal(exported.imageGenerationSeed, '9243353')
   assert.equal(exported.imageGenerationPromptPrefix, 'masterpiece')
+  assert.equal(exported.imageGenerationNotes, 'Capa roja.')
+  assert.equal(exported.imageGenerationPrompt, 'Red cape.')
   assert.equal(exported.imageGenerationModel, 'model-a')
   assert.equal(exported.archived, true)
   assert.equal(exported.visibleInDemo, true)
@@ -41,6 +47,10 @@ test('transferencia conserva preset y LoRA SwarmUI y acepta personajes anteriore
   assert.equal(importImageGenerationSeed(undefined), '')
   assert.equal(importImageGenerationPromptPrefix(exported.imageGenerationPromptPrefix), 'masterpiece')
   assert.equal(importImageGenerationPromptPrefix(undefined), '')
+  assert.equal(importImageGenerationNotes(exported.imageGenerationNotes), 'Capa roja.')
+  assert.equal(importImageGenerationNotes(undefined), '')
+  assert.equal(importImageGenerationPrompt(exported.imageGenerationPrompt), 'Red cape.')
+  assert.equal(importImageGenerationPrompt(undefined), '')
   assert.equal(importImageGenerationModel(exported.imageGenerationModel), 'model-a')
   assert.equal(importImageGenerationModel(undefined), '')
 })

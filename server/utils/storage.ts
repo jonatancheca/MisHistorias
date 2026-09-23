@@ -98,6 +98,8 @@ export interface CharacterImportPayload {
   imageGenerationLora: string
   imageGenerationSeed: string
   imageGenerationPromptPrefix: string
+  imageGenerationNotes: string
+  imageGenerationPrompt: string
   imageGenerationModel?: string
   visibleInDemo?: boolean
   images: BinaryPayload[]
@@ -116,7 +118,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 40
+const SCHEMA_VERSION = 41
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 const ERROR_TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
@@ -319,6 +321,8 @@ function rowToCharacter(row: SqliteRow) {
     imageGenerationLora: text(row.image_generation_lora),
     imageGenerationSeed: text(row.image_generation_seed),
     imageGenerationPromptPrefix: text(row.image_generation_prompt_prefix),
+    imageGenerationNotes: text(row.image_generation_notes),
+    imageGenerationPrompt: text(row.image_generation_prompt),
     imageGenerationModel: text(row.image_generation_model),
     archived: integer(row.archived) === 1,
     visibleInDemo: integer(row.visible_in_demo) === 1,
@@ -875,6 +879,8 @@ export class MisHistoriasStorage {
           image_generation_lora TEXT NOT NULL DEFAULT '',
           image_generation_seed TEXT NOT NULL DEFAULT '',
           image_generation_prompt_prefix TEXT NOT NULL DEFAULT '',
+          image_generation_notes TEXT NOT NULL DEFAULT '',
+          image_generation_prompt TEXT NOT NULL DEFAULT '',
           image_generation_model TEXT NOT NULL DEFAULT '',
           archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
           visible_in_demo INTEGER NOT NULL DEFAULT 0 CHECK (visible_in_demo IN (0, 1)),
@@ -1730,6 +1736,22 @@ export class MisHistoriasStorage {
         `)
       }
 
+      if (version.user_version < 41) {
+        const characterColumns = this.database
+          .prepare('PRAGMA table_info(characters)')
+          .all() as Array<{ name: string }>
+        if (!characterColumns.some((column) => column.name === 'image_generation_notes')) {
+          this.database.exec(
+            "ALTER TABLE characters ADD COLUMN image_generation_notes TEXT NOT NULL DEFAULT ''"
+          )
+        }
+        if (!characterColumns.some((column) => column.name === 'image_generation_prompt')) {
+          this.database.exec(
+            "ALTER TABLE characters ADD COLUMN image_generation_prompt TEXT NOT NULL DEFAULT ''"
+          )
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -2506,6 +2528,14 @@ export class MisHistoriasStorage {
           typeof value.imageGenerationPromptPrefix === 'string'
             ? value.imageGenerationPromptPrefix
             : source.imageGenerationPromptPrefix,
+        imageGenerationNotes:
+          typeof value.imageGenerationNotes === 'string'
+            ? value.imageGenerationNotes
+            : source.imageGenerationNotes,
+        imageGenerationPrompt:
+          typeof value.imageGenerationPrompt === 'string'
+            ? value.imageGenerationPrompt
+            : source.imageGenerationPrompt,
         imageGenerationModel:
           typeof value.imageGenerationModel === 'string'
             ? value.imageGenerationModel
@@ -2868,14 +2898,16 @@ export class MisHistoriasStorage {
         INSERT INTO characters(
           scope, owner_id, id, name, prompt, tags_json, color, image_generation_preset,
           image_generation_lora, image_generation_seed, image_generation_prompt_prefix,
-          image_generation_model, archived, visible_in_demo, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+          image_generation_notes, image_generation_prompt, image_generation_model,
+          archived, visible_in_demo, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
       `)
       for (const row of selectedCharacters) {
         insertCharacter.run(
           scope, access.ownerId, characterIdMap.get(row.id), row.name, row.prompt, row.tags_json,
           row.color, row.image_generation_preset, row.image_generation_lora,
-          row.image_generation_seed, row.image_generation_prompt_prefix, row.image_generation_model,
+          row.image_generation_seed, row.image_generation_prompt_prefix,
+          row.image_generation_notes, row.image_generation_prompt, row.image_generation_model,
           row.archived, row.created_at, row.updated_at
         )
       }
@@ -2999,6 +3031,8 @@ export class MisHistoriasStorage {
         imageGenerationLora: payload.imageGenerationLora,
         imageGenerationSeed: payload.imageGenerationSeed,
         imageGenerationPromptPrefix: payload.imageGenerationPromptPrefix,
+        imageGenerationNotes: payload.imageGenerationNotes,
+        imageGenerationPrompt: payload.imageGenerationPrompt,
         imageGenerationModel: payload.imageGenerationModel,
         archived: existing?.archived ?? false,
         visibleInDemo: existing?.visibleInDemo ?? payload.visibleInDemo,
@@ -3131,9 +3165,10 @@ export class MisHistoriasStorage {
             INSERT INTO characters(
               scope, owner_id, id, name, prompt, tags_json, color, image_generation_preset,
               image_generation_lora, image_generation_seed, image_generation_prompt_prefix,
-              image_generation_model, archived, visible_in_demo,
+              image_generation_notes, image_generation_prompt, image_generation_model,
+              archived, visible_in_demo,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               name = excluded.name,
               prompt = excluded.prompt,
@@ -3143,6 +3178,8 @@ export class MisHistoriasStorage {
               image_generation_lora = excluded.image_generation_lora,
               image_generation_seed = excluded.image_generation_seed,
               image_generation_prompt_prefix = excluded.image_generation_prompt_prefix,
+              image_generation_notes = excluded.image_generation_notes,
+              image_generation_prompt = excluded.image_generation_prompt,
               image_generation_model = excluded.image_generation_model,
               archived = excluded.archived,
               visible_in_demo = excluded.visible_in_demo,
@@ -3161,6 +3198,8 @@ export class MisHistoriasStorage {
             text(value.imageGenerationLora),
             text(value.imageGenerationSeed),
             text(value.imageGenerationPromptPrefix),
+            text(value.imageGenerationNotes),
+            text(value.imageGenerationPrompt),
             text(value.imageGenerationModel),
             bool(value.archived),
             bool(value.visibleInDemo),

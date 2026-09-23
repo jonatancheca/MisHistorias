@@ -20,6 +20,8 @@ const character: Character = {
   imageGenerationLora: 'Detalle',
   imageGenerationSeed: '9243353',
   imageGenerationPromptPrefix: 'masterpiece, detailed portrait',
+  imageGenerationNotes: 'Capa roja y gesto decidido.',
+  imageGenerationPrompt: 'A red cape and a determined expression.',
   imageGenerationModel: 'test-model',
   archived: false,
   visibleInDemo: false,
@@ -60,6 +62,8 @@ test('crea y lee ZIP de personaje con imágenes y sonidos', async () => {
     imageGenerationLora: character.imageGenerationLora,
     imageGenerationSeed: character.imageGenerationSeed,
     imageGenerationPromptPrefix: character.imageGenerationPromptPrefix,
+    imageGenerationNotes: character.imageGenerationNotes,
+    imageGenerationPrompt: character.imageGenerationPrompt,
     imageGenerationModel: character.imageGenerationModel,
     visibleInDemo: false
   })
@@ -78,6 +82,23 @@ test('crea y lee ZIP de personaje con imágenes y sonidos', async () => {
     Array.from(new Uint8Array(await imported.sounds[0]!.blob.arrayBuffer())),
     [4, 5, 6]
   )
+})
+
+test('ZIP anterior restaura ambos borradores vacíos', async () => {
+  const legacy = new JSZip()
+  legacy.file('character.json', JSON.stringify({
+    version: 8,
+    character: {
+      name: 'Ana', prompt: '', tags: [], color: '#123456', imageGenerationPreset: ''
+    },
+    images: [],
+    sounds: []
+  }))
+  const imported = await readCharacterArchive(
+    new Blob([await legacy.generateAsync({ type: 'arraybuffer' })])
+  )
+  assert.equal(imported.character.imageGenerationNotes, '')
+  assert.equal(imported.character.imageGenerationPrompt, '')
 })
 
 test('conserva el recorte y la original al exportar e importar ZIP', async () => {

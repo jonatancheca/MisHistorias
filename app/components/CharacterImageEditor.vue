@@ -24,6 +24,8 @@ const imageGenerationSeed = defineModel<string>('imageGenerationSeed', { require
 const imageGenerationPromptPrefix = defineModel<string>('imageGenerationPromptPrefix', {
   required: true
 })
+const generationNotes = defineModel<string>('imageGenerationNotes', { required: true })
+const generationPrompt = defineModel<string>('imageGenerationPrompt', { required: true })
 const imageGenerationModel = defineModel<string>('imageGenerationModel', { required: true })
 
 const characters = useCharactersStore()
@@ -45,8 +47,6 @@ const notice = ref<string | null>(null)
 const swarmCatalog = ref<SwarmCatalog | null>(null)
 const catalogLoading = ref(false)
 const generationTags = ref<string[]>([])
-const generationNotes = ref('')
-const generationPrompt = ref('')
 const generationCount = ref('1')
 const selectedSwarmPromptIds = ref<string[]>([])
 const generationCompleted = ref(0)

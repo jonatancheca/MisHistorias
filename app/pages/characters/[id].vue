@@ -38,6 +38,12 @@ const imageGenerationSeed = ref(
 const imageGenerationPromptPrefix = ref(
   existing.value?.imageGenerationPromptPrefix ?? copiedCharacter?.imageGenerationPromptPrefix ?? ''
 )
+const imageGenerationNotes = ref(
+  existing.value?.imageGenerationNotes ?? copiedCharacter?.imageGenerationNotes ?? ''
+)
+const imageGenerationPrompt = ref(
+  existing.value?.imageGenerationPrompt ?? copiedCharacter?.imageGenerationPrompt ?? ''
+)
 const imageGenerationModel = ref(
   existing.value?.imageGenerationModel ?? copiedCharacter?.imageGenerationModel ?? ''
 )
@@ -73,6 +79,8 @@ function enqueueSave(revision: number, navigateAfterCreate = false) {
     imageGenerationLora: imageGenerationLora.value,
     imageGenerationSeed: imageGenerationSeed.value,
     imageGenerationPromptPrefix: imageGenerationPromptPrefix.value,
+    imageGenerationNotes: imageGenerationNotes.value,
+    imageGenerationPrompt: imageGenerationPrompt.value,
     imageGenerationModel: imageGenerationModel.value,
     visibleInDemo: visibleInDemo.value
   }
@@ -163,6 +171,8 @@ watch(
     imageGenerationLora.value,
     imageGenerationSeed.value,
     imageGenerationPromptPrefix.value,
+    imageGenerationNotes.value,
+    imageGenerationPrompt.value,
     imageGenerationModel.value,
     visibleInDemo.value
   ],
@@ -288,6 +298,8 @@ onBeforeRouteLeave(flushSave)
         v-model:image-generation-lora="imageGenerationLora"
         v-model:image-generation-seed="imageGenerationSeed"
         v-model:image-generation-prompt-prefix="imageGenerationPromptPrefix"
+        v-model:image-generation-notes="imageGenerationNotes"
+        v-model:image-generation-prompt="imageGenerationPrompt"
         v-model:image-generation-model="imageGenerationModel"
         :character-id="characterId"
         :manage-images="Boolean(!isNew && existing && !existing.readOnly)"

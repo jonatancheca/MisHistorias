@@ -45,12 +45,14 @@ import {
   exportCharacterTransferFields,
   importImageGenerationLora,
   importImageGenerationModel,
+  importImageGenerationNotes,
+  importImageGenerationPrompt,
   importImageGenerationPromptPrefix,
   importImageGenerationPreset,
   importImageGenerationSeed
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 24
+const EXPORT_VERSION = 25
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_SOUND_BYTES = 10 * 1024 * 1024
 
@@ -74,6 +76,8 @@ interface ExportedCharacter {
   imageGenerationLora?: string
   imageGenerationSeed?: string
   imageGenerationPromptPrefix?: string
+  imageGenerationNotes?: string
+  imageGenerationPrompt?: string
   imageGenerationModel?: string
   archived?: boolean
   visibleInDemo?: boolean
@@ -308,7 +312,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (bundle.swarmPrompts !== undefined && (!Array.isArray(bundle.swarmPrompts) || bundle.swarmPrompts.some((item) =>
@@ -354,6 +358,8 @@ export async function importBundle(raw: string) {
       imageGenerationPromptPrefix: importImageGenerationPromptPrefix(
         item.imageGenerationPromptPrefix
       ),
+      imageGenerationNotes: importImageGenerationNotes(item.imageGenerationNotes),
+      imageGenerationPrompt: importImageGenerationPrompt(item.imageGenerationPrompt),
       imageGenerationModel: importImageGenerationModel(item.imageGenerationModel),
       archived: item.archived === true,
       visibleInDemo: item.visibleInDemo === true,

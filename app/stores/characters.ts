@@ -133,6 +133,8 @@ export const useCharactersStore = defineStore('characters', () => {
     imageGenerationLora?: string
     imageGenerationSeed?: string
     imageGenerationPromptPrefix?: string
+    imageGenerationNotes?: string
+    imageGenerationPrompt?: string
     imageGenerationModel?: string
     visibleInDemo?: boolean
   }) {
@@ -155,6 +157,10 @@ export const useCharactersStore = defineStore('characters', () => {
         input.imageGenerationSeed ?? existing?.imageGenerationSeed ?? '',
       imageGenerationPromptPrefix:
         input.imageGenerationPromptPrefix ?? existing?.imageGenerationPromptPrefix ?? '',
+      imageGenerationNotes:
+        input.imageGenerationNotes ?? existing?.imageGenerationNotes ?? '',
+      imageGenerationPrompt:
+        input.imageGenerationPrompt ?? existing?.imageGenerationPrompt ?? '',
       imageGenerationModel:
         input.imageGenerationModel ?? existing?.imageGenerationModel ?? '',
       archived: existing?.archived ?? false,
@@ -173,7 +179,7 @@ export const useCharactersStore = defineStore('characters', () => {
 
   async function copyCharacter(
     sourceId: string,
-    input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel'>
+    input: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationNotes' | 'imageGenerationPrompt' | 'imageGenerationModel'>
   ) {
     const source = byId(sourceId)
     const { character } = await copyStoredCharacter(sourceId, {

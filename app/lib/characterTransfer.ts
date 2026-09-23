@@ -11,6 +11,8 @@ export function exportCharacterTransferFields(character: Character) {
     imageGenerationLora: character.imageGenerationLora,
     imageGenerationSeed: character.imageGenerationSeed,
     imageGenerationPromptPrefix: character.imageGenerationPromptPrefix,
+    imageGenerationNotes: character.imageGenerationNotes ?? '',
+    imageGenerationPrompt: character.imageGenerationPrompt ?? '',
     imageGenerationModel: character.imageGenerationModel,
     archived: character.archived,
     visibleInDemo: character.visibleInDemo
@@ -30,6 +32,14 @@ export function importImageGenerationSeed(value: unknown) {
 }
 
 export function importImageGenerationPromptPrefix(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+export function importImageGenerationNotes(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+export function importImageGenerationPrompt(value: unknown) {
   return typeof value === 'string' ? value : ''
 }
 

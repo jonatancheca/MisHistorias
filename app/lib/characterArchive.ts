@@ -3,7 +3,7 @@ import JSZip from 'jszip'
 import type { Character, ImageGenerationMetadata } from '../../shared/types/index.ts'
 import type { StoredImage, StoredSound } from './db.ts'
 
-export const CHARACTER_ARCHIVE_VERSION = 8
+export const CHARACTER_ARCHIVE_VERSION = 9
 export const MAX_CHARACTER_IMAGE_BYTES = 5 * 1024 * 1024
 export const MAX_CHARACTER_SOUND_BYTES = 10 * 1024 * 1024
 
@@ -28,6 +28,8 @@ interface CharacterArchiveManifest {
     imageGenerationLora?: string
     imageGenerationSeed?: string
     imageGenerationPromptPrefix?: string
+    imageGenerationNotes?: string
+    imageGenerationPrompt?: string
     imageGenerationModel?: string
     visibleInDemo?: boolean
   }
@@ -36,7 +38,7 @@ interface CharacterArchiveManifest {
 }
 
 export interface ImportedCharacterArchive {
-  character: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationModel' | 'visibleInDemo'>
+  character: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationNotes' | 'imageGenerationPrompt' | 'imageGenerationModel' | 'visibleInDemo'>
   images: Array<Omit<ArchiveImage, 'path' | 'original'> & { blob: Blob; originalBlob?: Blob }>
   sounds: Array<Omit<ArchiveAsset, 'path'> & { blob: Blob }>
 }
@@ -86,6 +88,7 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
     manifest.version !== 5 &&
     manifest.version !== 6 &&
     manifest.version !== 7 &&
+    manifest.version !== 8 &&
     manifest.version !== CHARACTER_ARCHIVE_VERSION
   ) {
     throw new Error('Versión de personaje no compatible.')
@@ -103,6 +106,8 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
     (character.imageGenerationLora !== undefined && typeof character.imageGenerationLora !== 'string') ||
     (character.imageGenerationSeed !== undefined && typeof character.imageGenerationSeed !== 'string') ||
     (character.imageGenerationPromptPrefix !== undefined && typeof character.imageGenerationPromptPrefix !== 'string') ||
+    (character.imageGenerationNotes !== undefined && typeof character.imageGenerationNotes !== 'string') ||
+    (character.imageGenerationPrompt !== undefined && typeof character.imageGenerationPrompt !== 'string') ||
     (character.imageGenerationModel !== undefined && typeof character.imageGenerationModel !== 'string') ||
     (character.visibleInDemo !== undefined && typeof character.visibleInDemo !== 'boolean') ||
     !Array.isArray(manifest.images) ||
@@ -184,6 +189,8 @@ export async function createCharacterArchive(
       imageGenerationLora: character.imageGenerationLora,
       imageGenerationSeed: character.imageGenerationSeed,
       imageGenerationPromptPrefix: character.imageGenerationPromptPrefix,
+      imageGenerationNotes: character.imageGenerationNotes ?? '',
+      imageGenerationPrompt: character.imageGenerationPrompt ?? '',
       imageGenerationModel: character.imageGenerationModel,
       visibleInDemo: character.visibleInDemo
     },
@@ -242,6 +249,8 @@ export async function readCharacterArchive(file: Blob): Promise<ImportedCharacte
       imageGenerationLora: manifest.character.imageGenerationLora ?? '',
       imageGenerationSeed: manifest.character.imageGenerationSeed ?? '',
       imageGenerationPromptPrefix: manifest.character.imageGenerationPromptPrefix ?? '',
+      imageGenerationNotes: manifest.character.imageGenerationNotes ?? '',
+      imageGenerationPrompt: manifest.character.imageGenerationPrompt ?? '',
       imageGenerationModel: manifest.character.imageGenerationModel ?? '',
       visibleInDemo: manifest.character.visibleInDemo === true
     },

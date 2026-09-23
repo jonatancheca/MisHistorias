@@ -724,7 +724,9 @@ test.describe('personajes', () => {
       imageGenerationPreset: 'Retrato',
       imageGenerationLora: 'Detalle',
       imageGenerationSeed: '12345',
-      imageGenerationPromptPrefix: 'masterpiece'
+      imageGenerationPromptPrefix: 'masterpiece',
+      imageGenerationNotes: 'Capa roja.',
+      imageGenerationPrompt: 'Red cape.'
     })
     const sourceImage = await data.createImage(source, ['feliz'])
     const copiedName = data.unique('Copia')
@@ -742,6 +744,8 @@ test.describe('personajes', () => {
     expect(copied?.imageGenerationLora).toBe('Detalle')
     expect(copied?.imageGenerationSeed).toBe('12345')
     expect(copied?.imageGenerationPromptPrefix).toBe('masterpiece')
+    expect(copied?.imageGenerationNotes).toBe('Capa roja.')
+    expect(copied?.imageGenerationPrompt).toBe('Red cape.')
     const copiedImages = await data.list<CharacterImage>('images', 'normal', {
       characterId: copied!.id
     })

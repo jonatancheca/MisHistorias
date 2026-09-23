@@ -53,6 +53,10 @@ export interface Character {
   imageGenerationSeed: string
   /** Texto antepuesto al prompt enviado a SwarmUI. */
   imageGenerationPromptPrefix: string
+  /** Últimas notas usadas para preparar el prompt de imagen manual. */
+  imageGenerationNotes?: string
+  /** Último prompt de imagen manual en inglés. */
+  imageGenerationPrompt?: string
   /** Modelo de SwarmUI usado para generar imágenes automáticamente. */
   imageGenerationModel?: string
   /** Oculta el personaje de catálogos y selectores sin romper historias existentes. */
