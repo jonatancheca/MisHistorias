@@ -112,7 +112,7 @@ const rows = computed<FlowRow[]>(() => {
         sound: true,
         narration: false,
         text: stripBracketedText(segment.text),
-        name: 'Sonido',
+        name: sound?.isBackground === true ? 'Sonido de fondo' : 'Sonido',
         color: '',
         tag: sound?.tags[0] ?? segment.tag,
         imageTags: [],
@@ -263,7 +263,7 @@ function confirmEdit() {
               class="rounded-xl border border-[var(--color-border-soft)] p-3"
             >
               <span class="mb-2 block text-xs font-medium text-[var(--color-fg-muted)]">
-                Sonido
+                {{ row.name }}
               </span>
               <audio v-if="row.soundUrl" :src="row.soundUrl" controls preload="metadata" class="w-full" />
               <span v-else class="text-sm text-[var(--color-fg-muted)]">Sonido no disponible</span>

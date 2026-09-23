@@ -147,7 +147,7 @@ export async function importCharacterArchive(input: {
   name: string
   character: Pick<Character, 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationNotes' | 'imageGenerationPrompt' | 'imageGenerationModel' | 'visibleInDemo'>
   images: Array<Pick<StoredImage, 'tags' | 'isDefault' | 'mimeType' | 'blob' | 'originalBlob' | 'generation'>>
-  sounds: Array<Pick<StoredSound, 'tags' | 'mimeType' | 'blob'>>
+  sounds: Array<Pick<StoredSound, 'tags' | 'mimeType' | 'blob' | 'isBackground'>>
 }) {
   const form = new FormData()
   const images = input.images.map((image, index) => {
@@ -165,7 +165,7 @@ export async function importCharacterArchive(input: {
   const sounds = input.sounds.map((sound, index) => {
     const field = `sound-${index}`
     form.append(field, sound.blob, field)
-    return { field, tags: sound.tags, mimeType: sound.mimeType }
+    return { field, tags: sound.tags, mimeType: sound.mimeType, isBackground: sound.isBackground === true }
   })
   form.append('metadata', JSON.stringify({
     mode: input.mode,

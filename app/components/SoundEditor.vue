@@ -12,6 +12,7 @@ const confirmDialog = useConfirmStore()
 await sounds.load()
 
 const tags = ref<string[]>([])
+const isBackground = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const busy = ref(false)
 const error = ref<string | null>(null)
@@ -33,10 +34,12 @@ async function add(event: Event) {
     await sounds.addSound({
       file,
       tags: tags.value,
+      isBackground: isBackground.value,
       characterId: props.characterId,
       backgroundId: props.backgroundId
     })
     tags.value = []
+    isBackground.value = false
   } catch (caught) {
     error.value = (caught as Error).message || 'No se pudo guardar el sonido.'
   } finally {
@@ -44,10 +47,10 @@ async function add(event: Event) {
   }
 }
 
-async function update(sound: StoredSound, nextTags: string[]) {
+async function update(sound: StoredSound, nextTags: string[], background = sound.isBackground === true) {
   error.value = null
   try {
-    await sounds.updateSound(sound.id, nextTags)
+    await sounds.updateSound(sound.id, nextTags, background)
   } catch (caught) {
     error.value = (caught as Error).message || 'No se pudo guardar el sonido.'
   }
@@ -69,6 +72,10 @@ async function remove(sound: StoredSound) {
       <div>
         <label class="label">Etiquetas del sonido</label>
         <TagInput v-model="tags" placeholder="puerta, pasos" />
+        <label class="mt-2 flex items-center gap-2 text-sm">
+          <input v-model="isBackground" type="checkbox" >
+          Sonido de fondo
+        </label>
       </div>
       <div>
         <input
@@ -105,12 +112,23 @@ async function remove(sound: StoredSound) {
           preload="metadata"
           class="col-span-2 w-full min-w-0 sm:col-span-1"
         />
-        <TagInput
-          :model-value="sound.tags"
-          aria-label="Etiquetas del sonido"
-          placeholder="puerta"
-          @update:model-value="update(sound, $event)"
-        />
+        <div class="min-w-0">
+          <label class="mb-1 flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              :checked="sound.isBackground === true"
+              :aria-label="`Sonido de fondo: ${sound.tags[0]}`"
+              @change="update(sound, sound.tags, ($event.target as HTMLInputElement).checked)"
+            >
+            Sonido de fondo
+          </label>
+          <TagInput
+            :model-value="sound.tags"
+            aria-label="Etiquetas del sonido"
+            placeholder="puerta"
+            @update:model-value="update(sound, $event)"
+          />
+        </div>
         <button type="button" class="btn-danger justify-self-end" @click="remove(sound)">Borrar</button>
       </li>
     </ul>

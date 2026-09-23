@@ -96,6 +96,8 @@ export interface Sound {
   id: string
   /** Etiquetas únicas que el modelo usa en `Sonido [etiqueta]:` */
   tags: string[]
+  /** Se reproduce como ambiente hasta terminar, detenerse o ser sustituido. */
+  isBackground?: boolean
   /** Asociación opcional y exclusiva; ambos null indican un sonido suelto. */
   characterId: string | null
   backgroundId: string | null

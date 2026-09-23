@@ -140,6 +140,15 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
         backgroundId: null,
         mimeType: 'audio/ogg',
         createdAt: 1
+      },
+      {
+        id: 'sound-2',
+        tags: ['lluvia'],
+        isBackground: true,
+        characterId: null,
+        backgroundId: null,
+        mimeType: 'audio/ogg',
+        createdAt: 2
       }
     ],
     userName: 'Usuario',
@@ -157,7 +166,8 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
   assert.doesNotMatch(prompt, /\[feliz\] \/ \[armadura\]/)
   assert.doesNotMatch(prompt, /DESCRIPCIÓN LEGACY NO ENVIADA/)
   assert.match(prompt, /Sonido \[etiqueta\]:/)
-  assert.match(prompt, /\[campana\] \(personaje Alicia\)/)
+  assert.match(prompt, /\[campana\] \(personaje Alicia; efecto de sonido\)/)
+  assert.match(prompt, /\[lluvia\] \(suelto; sonido de fondo\)/)
 })
 
 test('envía combinaciones de etiquetas únicas por personaje y fondo, sin descripciones de imágenes', () => {
@@ -502,7 +512,7 @@ test('combina todos los mensajes system para Qwen sin perder catálogo ni orden'
   assert.match(systemContent, /Prompt exclusivo de la historia/)
   assert.match(systemContent, /Etiquetas descriptivas[^\n]*misteriosa/)
   assert.match(systemContent, /\[feliz\] \[armadura\]/)
-  assert.match(systemContent, /\[campana\] \(personaje Alicia\)/)
+  assert.match(systemContent, /\[campana\] \(personaje Alicia; efecto de sonido\)/)
 
   const instructionIndex = systemContent.indexOf('Habla en susurros.')
   const catalogIndex = systemContent.indexOf('Catálogo actualizado.')

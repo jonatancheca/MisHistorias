@@ -118,7 +118,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 42
+const SCHEMA_VERSION = 43
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 const ERROR_TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
@@ -386,6 +386,7 @@ function rowToSound(row: SqliteRow) {
   return {
     id: row.id,
     tags: parseJson<string[]>(row.tags_json, []),
+    isBackground: row.is_background === 1,
     characterId: typeof row.character_id === 'string' ? row.character_id : null,
     backgroundId: typeof row.background_id === 'string' ? row.background_id : null,
     mimeType: text(row.mime_type, 'application/octet-stream'),
@@ -944,6 +945,7 @@ export class MisHistoriasStorage {
           owner_id TEXT,
           id TEXT NOT NULL,
           tags_json TEXT NOT NULL,
+          is_background INTEGER NOT NULL DEFAULT 0 CHECK (is_background IN (0, 1)),
           character_id TEXT,
           background_id TEXT,
           mime_type TEXT NOT NULL,
@@ -1776,6 +1778,17 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 43) {
+        const soundColumns = this.database
+          .prepare('PRAGMA table_info(sounds)')
+          .all() as Array<{ name: string }>
+        if (!soundColumns.some((column) => column.name === 'is_background')) {
+          this.database.exec(
+            'ALTER TABLE sounds ADD COLUMN is_background INTEGER NOT NULL DEFAULT 0 CHECK (is_background IN (0, 1))'
+          )
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -2345,7 +2358,7 @@ export class MisHistoriasStorage {
       case 'sounds': {
         const filter = this.accessFilter(resource, 'sounds', access)
         return (this.database.prepare(
-          `SELECT scope, owner_id, id, tags_json, character_id, background_id, mime_type, created_at FROM sounds WHERE scope = ?${filter.sql} ORDER BY created_at`
+          `SELECT scope, owner_id, id, tags_json, is_background, character_id, background_id, mime_type, created_at FROM sounds WHERE scope = ?${filter.sql} ORDER BY created_at`
         ).all(scope, ...filter.args) as SqliteRow[])
           .map((row) => this.withReadOnly(rowToSound(row), row, access))
       }
@@ -2971,14 +2984,15 @@ export class MisHistoriasStorage {
       const insertSound = this.database.prepare(`
         INSERT INTO sounds(
           scope, owner_id, id, tags_json, character_id, background_id,
-          mime_type, created_at, data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          is_background, mime_type, created_at, data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const row of selectedSounds) {
         insertSound.run(
           scope, access.ownerId, soundIdMap.get(row.id), json(soundTagsForCopy.get(row.id)),
           typeof row.character_id === 'string' ? characterIdMap.get(row.character_id) ?? null : null,
           typeof row.background_id === 'string' ? backgroundIdMap.get(row.background_id) ?? null : null,
+          row.is_background,
           row.mime_type, row.created_at, row.data
         )
       }
@@ -3105,8 +3119,8 @@ export class MisHistoriasStorage {
       )
       const insertSound = this.database.prepare(`
         INSERT INTO sounds(
-          scope, owner_id, id, tags_json, character_id, background_id, mime_type, created_at, data
-        ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)
+          scope, owner_id, id, tags_json, character_id, background_id, is_background, mime_type, created_at, data
+        ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
       `)
       for (const [index, sound] of payload.sounds.entries()) {
         const soundTags = tags(sound.metadata.tags).map((base) => {
@@ -3120,6 +3134,7 @@ export class MisHistoriasStorage {
           randomUUID(),
           json(soundTags),
           characterId,
+          bool(sound.metadata.isBackground),
           text(sound.metadata.mimeType),
           now + index,
           sound.data
@@ -3591,12 +3606,13 @@ export class MisHistoriasStorage {
       this.database
         .prepare(`
           INSERT INTO sounds(
-            scope, owner_id, id, tags_json, character_id, background_id, mime_type, created_at, data
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            scope, owner_id, id, tags_json, character_id, background_id, is_background, mime_type, created_at, data
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(scope, id) DO UPDATE SET
             tags_json = excluded.tags_json,
             character_id = excluded.character_id,
             background_id = excluded.background_id,
+            is_background = excluded.is_background,
             mime_type = excluded.mime_type,
             created_at = excluded.created_at,
             data = excluded.data
@@ -3608,6 +3624,7 @@ export class MisHistoriasStorage {
           json(preparedTags),
           characterId,
           backgroundId,
+          bool(value.isBackground),
           text(value.mimeType, 'application/octet-stream'),
           integer(value.createdAt),
           payload.data

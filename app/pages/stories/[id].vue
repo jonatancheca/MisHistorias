@@ -654,6 +654,7 @@ const visualSoundUrl = computed(() =>
     : null
 )
 const visualSoundPlayer = ref<HTMLAudioElement | null>(null)
+let visualSoundWatcherInitialized = false
 const visualSpeaker = computed(() => {
   const frame = activeVisualFrame.value
   if (!frame || frame.kind === 'narration' || frame.kind === 'sound') return null
@@ -673,7 +674,14 @@ const visualSpeaker = computed(() => {
 watch(
   [() => activeVisualFrame.value?.id, () => stories.activeStory?.visualMode],
   async ([, visualMode], [, previousMode]) => {
+    const initialRun = !visualSoundWatcherInitialized
+    visualSoundWatcherInitialized = true
     if (!visualMode || previousMode === false || activeVisualFrame.value?.kind !== 'sound') return
+    const sound = sounds.byId(activeVisualFrame.value.soundId)
+    if (sound?.isBackground === true) {
+      if (!initialRun) sounds.playBackground(sound.id)
+      return
+    }
     await nextTick()
     if (!visualSoundPlayer.value) return
     visualSoundPlayer.value.currentTime = 0
@@ -950,6 +958,7 @@ function onVisualNovelKeydown(event: KeyboardEvent) {
 
 onBeforeUnmount(() => {
   stories.cancelImageGeneration({ abandonResponse: true })
+  sounds.stopBackground()
   timelineContent.value?.removeEventListener('load', onTimelineAssetLoad, true)
   timelineResizeObserver?.disconnect()
   window.removeEventListener('keydown', onVisualNovelKeydown)
@@ -961,6 +970,7 @@ onBeforeUnmount(() => {
 
 onBeforeRouteLeave(() => {
   stories.cancelImageGeneration({ abandonResponse: true })
+  sounds.stopBackground()
 })
 </script>
 
@@ -1191,6 +1201,15 @@ onBeforeRouteLeave(() => {
               @resend="resendFrom(activeVisualMessage.id)"
             />
 
+            <button
+              v-if="sounds.backgroundPlaying"
+              type="button"
+              class="absolute right-3 bottom-16 z-20 rounded-xl border border-white/15 bg-slate-950/80 px-3 py-2 text-sm text-white shadow-lg backdrop-blur-sm"
+              data-testid="stop-background-sound"
+              aria-label="Detener sonido de fondo"
+              @click="sounds.stopBackground()"
+            >Stop</button>
+
             <div
               v-if="isEmpty"
               class="absolute inset-x-0 top-4 z-10 px-4 text-center text-sm text-slate-200"
@@ -1242,7 +1261,7 @@ onBeforeRouteLeave(() => {
                     @click.stop
                   >
                     <span class="shrink-0 text-xs font-medium text-slate-300">
-                      Sonido
+                      {{ sounds.byId(activeVisualFrame.soundId)?.isBackground ? 'Sonido de fondo' : 'Sonido' }}
                     </span>
                     <audio
                       v-if="visualSoundUrl"
@@ -1402,6 +1421,14 @@ onBeforeRouteLeave(() => {
           </p>
           </div>
         </div>
+        <button
+          v-if="!stories.activeStory.visualMode && sounds.backgroundPlaying"
+          type="button"
+          class="absolute right-3 bottom-3 z-20 rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] px-3 py-2 text-sm shadow-lg"
+          data-testid="stop-background-sound"
+          aria-label="Detener sonido de fondo"
+          @click="sounds.stopBackground()"
+        >Stop</button>
       </div>
 
       <footer

@@ -217,6 +217,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
       valid =
         hasStringArray(value, 'tags') &&
         value.tags.length > 0 &&
+        (value.isBackground === undefined || typeof value.isBackground === 'boolean') &&
         (value.characterId === null || typeof value.characterId === 'string') &&
         (value.backgroundId === null || typeof value.backgroundId === 'string') &&
         !(typeof value.characterId === 'string' && typeof value.backgroundId === 'string') &&
@@ -317,6 +318,9 @@ function importAssets(
     }
     if (kind === 'sounds' && asset.tags.length === 0) {
       throw createError({ statusCode: 400, message: 'Cada sonido necesita etiquetas' })
+    }
+    if (kind === 'sounds' && asset.isBackground !== undefined && typeof asset.isBackground !== 'boolean') {
+      throw createError({ statusCode: 400, message: 'Sonido no válido' })
     }
     if (
       kind === 'images' &&

@@ -141,12 +141,14 @@ function soundSheet(sounds: Sound[], characters: Character[], backgrounds: Backg
         : sound.backgroundId
           ? `fondo ${backgroundTags.get(sound.backgroundId) ?? 'no disponible'}`
           : 'suelto'
-      return `- ${sound.tags.map((tag) => `[${tag}]`).join(' / ')} (${association})`
+      const kind = sound.isBackground === true ? 'sonido de fondo' : 'efecto de sonido'
+      return `- ${sound.tags.map((tag) => `[${tag}]`).join(' / ')} (${association}; ${kind})`
     })
     .join('\n')
   return [
     catalog,
-    'Reproduce solo cuando encaje con la escena. Escribe una línea independiente exacta: `Sonido [etiqueta]:`.'
+    'Usa efectos de sonido para sucesos puntuales. Usa sonidos de fondo para ambientar una escena; empiezan al aparecer y suenan una vez, hasta terminar o hasta que empiece otro sonido de fondo. No repitas una directiva de fondo mientras el mismo ambiente siga sonando.',
+    'Reproduce solo cuando encaje con la escena. Para ambos tipos escribe una línea independiente exacta: `Sonido [etiqueta]:`.'
   ].join('\n')
 }
 

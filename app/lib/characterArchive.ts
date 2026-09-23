@@ -3,7 +3,7 @@ import JSZip from 'jszip'
 import type { Character, ImageGenerationMetadata } from '../../shared/types/index.ts'
 import type { StoredImage, StoredSound } from './db.ts'
 
-export const CHARACTER_ARCHIVE_VERSION = 9
+export const CHARACTER_ARCHIVE_VERSION = 10
 export const MAX_CHARACTER_IMAGE_BYTES = 5 * 1024 * 1024
 export const MAX_CHARACTER_SOUND_BYTES = 10 * 1024 * 1024
 
@@ -14,6 +14,10 @@ interface ArchiveAsset {
   path: string
   tags: string[]
   mimeType: string
+}
+
+interface ArchiveSound extends ArchiveAsset {
+  isBackground?: boolean
 }
 
 interface ArchiveImage extends ArchiveAsset {
@@ -34,13 +38,13 @@ interface CharacterArchiveManifest {
     visibleInDemo?: boolean
   }
   images: ArchiveImage[]
-  sounds: ArchiveAsset[]
+  sounds: ArchiveSound[]
 }
 
 export interface ImportedCharacterArchive {
   character: Pick<Character, 'name' | 'prompt' | 'tags' | 'color' | 'imageGenerationPreset' | 'imageGenerationLora' | 'imageGenerationSeed' | 'imageGenerationPromptPrefix' | 'imageGenerationNotes' | 'imageGenerationPrompt' | 'imageGenerationModel' | 'visibleInDemo'>
   images: Array<Omit<ArchiveImage, 'path' | 'original'> & { blob: Blob; originalBlob?: Blob }>
-  sounds: Array<Omit<ArchiveAsset, 'path'> & { blob: Blob }>
+  sounds: Array<Omit<ArchiveSound, 'path'> & { blob: Blob }>
 }
 
 function extensionFor(mimeType: string) {
@@ -89,6 +93,7 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
     manifest.version !== 6 &&
     manifest.version !== 7 &&
     manifest.version !== 8 &&
+    manifest.version !== 9 &&
     manifest.version !== CHARACTER_ARCHIVE_VERSION
   ) {
     throw new Error('Versión de personaje no compatible.')
@@ -124,7 +129,11 @@ function assertManifest(value: unknown): asserts value is CharacterArchiveManife
   })) {
     throw new Error('El ZIP contiene imágenes no válidas.')
   }
-  if (!manifest.sounds.every((item) => isAsset(item, 'sounds/'))) {
+  if (!manifest.sounds.every((item) => {
+    if (!isAsset(item, 'sounds/')) return false
+    const sound = item as ArchiveSound
+    return sound.isBackground === undefined || typeof sound.isBackground === 'boolean'
+  })) {
     throw new Error('El ZIP contiene sonidos no válidos.')
   }
   if (manifest.images.filter((item) => item.isDefault).length > 1) {
@@ -211,6 +220,7 @@ export async function createCharacterArchive(
     sounds: sounds.map((sound, index) => ({
       path: `sounds/${index + 1}.${extensionFor(sound.mimeType)}`,
       tags: [...sound.tags],
+      isBackground: sound.isBackground === true,
       mimeType: sound.mimeType
     }))
   }
@@ -266,6 +276,7 @@ export async function readCharacterArchive(file: Blob): Promise<ImportedCharacte
     }))),
     sounds: await Promise.all(manifest.sounds.map(async (sound) => ({
       tags: [...sound.tags],
+      isBackground: sound.isBackground === true,
       mimeType: sound.mimeType,
       blob: await archiveBlob(zip, sound, SOUND_TYPES, MAX_CHARACTER_SOUND_BYTES, 'Un sonido')
     })))

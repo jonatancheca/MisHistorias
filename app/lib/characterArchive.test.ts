@@ -42,6 +42,7 @@ const image: StoredImage = {
 const sound: StoredSound = {
   id: 'sound-1',
   tags: ['saludo'],
+  isBackground: true,
   characterId: character.id,
   backgroundId: null,
   mimeType: 'audio/ogg',
@@ -78,6 +79,7 @@ test('crea y lee ZIP de personaje con imágenes y sonidos', async () => {
     [1, 2, 3]
   )
   assert.deepEqual(imported.sounds[0]!.tags, ['saludo'])
+  assert.equal(imported.sounds[0]!.isBackground, true)
   assert.deepEqual(
     Array.from(new Uint8Array(await imported.sounds[0]!.blob.arrayBuffer())),
     [4, 5, 6]

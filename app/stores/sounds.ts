@@ -33,6 +33,17 @@ export const useSoundsStore = defineStore('sounds', () => {
   let audioContext: AudioContext | null = null
   const decoded = new Map<string, AudioBuffer>()
   const activePlayers = new Set<HTMLAudioElement>()
+  const backgroundPlaying = ref(false)
+  let backgroundPlayer: HTMLAudioElement | null = null
+
+  function stopBackground() {
+    const player = backgroundPlayer
+    backgroundPlayer = null
+    backgroundPlaying.value = false
+    if (!player) return
+    player.pause()
+    player.currentTime = 0
+  }
 
   function syncUrls() {
     const next: Record<string, string> = {}
@@ -46,6 +57,7 @@ export const useSoundsStore = defineStore('sounds', () => {
   }
 
   function resetForScope() {
+    stopBackground()
     loadRevision += 1
     sounds.value = []
     loaded.value = false
@@ -176,6 +188,7 @@ export const useSoundsStore = defineStore('sounds', () => {
   async function addSound(input: {
     file: File | Blob
     tags: string[]
+    isBackground?: boolean
     characterId?: string | null
     backgroundId?: string | null
   }) {
@@ -185,6 +198,7 @@ export const useSoundsStore = defineStore('sounds', () => {
     const sound: StoredSound = {
       id: newId(),
       tags: prepareTags(input.tags),
+      isBackground: input.isBackground === true,
       characterId: input.characterId ?? null,
       backgroundId: input.backgroundId ?? null,
       mimeType,
@@ -197,17 +211,23 @@ export const useSoundsStore = defineStore('sounds', () => {
     return sound
   }
 
-  async function updateSound(id: string, tags: string[]) {
+  async function updateSound(id: string, tags: string[], isBackground?: boolean) {
     const current = byId(id)
     if (!current) return null
-    const updated = { ...current, tags: prepareTags(tags, id) }
+    const updated = {
+      ...current,
+      tags: prepareTags(tags, id),
+      isBackground: isBackground ?? (current.isBackground === true)
+    }
     await putSound(updated)
     sounds.value = sounds.value.map((sound) => (sound.id === id ? updated : sound))
+    if (!updated.isBackground && backgroundPlayer?.dataset.soundId === id) stopBackground()
     return updated
   }
 
   async function removeSound(id: string) {
     await deleteSound(id)
+    if (backgroundPlayer?.dataset.soundId === id) stopBackground()
     sounds.value = sounds.value.filter((sound) => sound.id !== id)
     syncUrls()
   }
@@ -221,6 +241,10 @@ export const useSoundsStore = defineStore('sounds', () => {
   async function play(id: string | null | undefined) {
     const sound = byId(id)
     if (!sound) return
+    if (sound.isBackground === true) {
+      playBackground(sound.id)
+      return
+    }
     try {
       if (audioContext?.state === 'running') {
         let buffer = decoded.get(sound.id)
@@ -247,9 +271,29 @@ export const useSoundsStore = defineStore('sounds', () => {
     void audio.play().catch(release)
   }
 
+  function playBackground(id: string) {
+    const sound = byId(id)
+    const url = urlFor(id)
+    if (!sound || !url || typeof Audio === 'undefined') return
+    stopBackground()
+    const audio = new Audio(url)
+    audio.dataset.soundId = id
+    backgroundPlayer = audio
+    backgroundPlaying.value = true
+    const release = () => {
+      if (backgroundPlayer !== audio) return
+      backgroundPlayer = null
+      backgroundPlaying.value = false
+    }
+    audio.addEventListener('ended', release, { once: true })
+    audio.addEventListener('error', release, { once: true })
+    void audio.play().catch(release)
+  }
+
   return {
     sounds,
     loaded,
+    backgroundPlaying,
     load,
     byId,
     byTag,
@@ -262,6 +306,8 @@ export const useSoundsStore = defineStore('sounds', () => {
     removeSound,
     unlock,
     play,
+    playBackground,
+    stopBackground,
     resetForScope
   }
 })
