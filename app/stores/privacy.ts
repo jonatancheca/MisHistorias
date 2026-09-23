@@ -6,6 +6,7 @@ export type PrivacyMode = 'normal' | 'private' | 'demo'
 export const usePrivacyStore = defineStore('privacy', () => {
   const mode = ref<PrivacyMode>('normal')
   const switching = ref(false)
+  const beforeModeChange = new Set<() => Promise<boolean | undefined> | boolean | undefined>()
   const isPrivate = computed(() => mode.value !== 'normal')
   const isPrivateMode = computed(() => mode.value === 'private')
   const isDemo = computed(() => mode.value === 'demo')
@@ -38,6 +39,9 @@ export const usePrivacyStore = defineStore('privacy', () => {
     const swarmPrompts = useSwarmPromptsStore()
 
     try {
+      for (const listener of beforeModeChange) {
+        if (await listener() === false) return
+      }
       await stories.stop()
       const nextScope = scopeFor(nextMode)
       const scopeChanged = getActiveDataScope() !== nextScope
@@ -102,12 +106,18 @@ export const usePrivacyStore = defineStore('privacy', () => {
     return switchMode('normal')
   }
 
+  function registerBeforeModeChange(listener: () => Promise<boolean | undefined> | boolean | undefined) {
+    beforeModeChange.add(listener)
+    return () => beforeModeChange.delete(listener)
+  }
+
   return {
     mode,
     isPrivate,
     isPrivateMode,
     isDemo,
     switching,
+    registerBeforeModeChange,
     activate,
     activateDemo,
     toggleDemo,

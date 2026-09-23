@@ -413,6 +413,74 @@ test('autoguarda apariencia, modo prueba y velocidad', async ({ page, data }) =>
   await expect(page.locator('html')).toHaveClass(/dark/)
 })
 
+test('guarda cambios del protagonista en el modo de origen sin pisar valores del otro', async ({ page, data }) => {
+  const normalName = data.unique('Nombre normal')
+  const normalDescription = data.unique('Descripción normal')
+  const privateName = data.unique('Nombre privado')
+  const privateDescription = data.unique('Descripción privada')
+  await data.patchSettings({
+    userName: 'Nombre inicial',
+    protagonistPreferences: 'Descripción inicial',
+    privateUserName: privateName,
+    privateProtagonistPreferences: privateDescription
+  })
+
+  await page.goto('/settings#protagonista')
+  await page.locator('#userName').fill(normalName)
+  await page.locator('#protagonistPreferences').fill(normalDescription)
+  await page.locator('main').press('Control+Alt+p')
+
+  await expect(page.locator('html')).toHaveClass(/private-scope/)
+  await expect(page.getByRole('button', { name: 'Alternar modo demo' })).toBeEnabled()
+  await expect(page.locator('#userName')).toHaveValue(privateName)
+  await expect(page.locator('#protagonistPreferences')).toHaveValue(privateDescription)
+  let saved = await (await page.request.get('/api/settings')).json() as AppSettings
+  expect(saved).toMatchObject({
+    userName: normalName,
+    protagonistPreferences: normalDescription,
+    privateUserName: privateName,
+    privateProtagonistPreferences: privateDescription
+  })
+
+  const changedPrivateName = data.unique('Nuevo nombre privado')
+  const changedPrivateDescription = data.unique('Nueva descripción privada')
+  await page.locator('#userName').fill(changedPrivateName)
+  await page.locator('#protagonistPreferences').fill(changedPrivateDescription)
+  await page.locator('main').press('Control+Alt+p')
+
+  await expect(page.locator('html')).not.toHaveClass(/private-scope/)
+  await expect(page.locator('#userName')).toHaveValue(normalName)
+  await expect(page.locator('#protagonistPreferences')).toHaveValue(normalDescription)
+  saved = await (await page.request.get('/api/settings')).json() as AppSettings
+  expect(saved).toMatchObject({
+    userName: normalName,
+    protagonistPreferences: normalDescription,
+    privateUserName: changedPrivateName,
+    privateProtagonistPreferences: changedPrivateDescription
+  })
+})
+
+test('cada campo privado sin valor propio hereda el normal actualizado', async ({ page, data }) => {
+  const normalName = data.unique('Nombre heredado')
+  const privateDescription = data.unique('Descripción propia')
+  await data.patchSettings({
+    userName: 'Nombre inicial',
+    protagonistPreferences: 'Descripción inicial',
+    privateUserName: null,
+    privateProtagonistPreferences: privateDescription
+  })
+
+  await page.goto('/settings#protagonista')
+  await page.locator('#userName').fill(normalName)
+  await page.locator('main').press('Control+Alt+p')
+
+  await expect(page.locator('#userName')).toHaveValue(normalName)
+  await expect(page.locator('#protagonistPreferences')).toHaveValue(privateDescription)
+  const saved = await (await page.request.get('/api/settings')).json() as AppSettings
+  expect(saved.privateUserName).toBeNull()
+  expect(saved.privateProtagonistPreferences).toBe(privateDescription)
+})
+
 test('alterna modo privado con Ctrl+Alt+P sin cambiar URL ni interrumpir inputs', async ({ page }) => {
   await page.goto('/settings')
 

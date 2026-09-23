@@ -136,19 +136,30 @@ const characterReferencePromptCustomized = ref(
 const privateLlmSettingsEnabled = ref(
   privacy.isPrivate && settings.settings.privateLlmSettingsEnabled
 )
-if (privacy.isPrivate) {
-  if (privateLlmSettingsEnabled.value) {
-    form.baseUrl = settings.settings.privateBaseUrl ?? settings.settings.baseUrl
-    form.model = settings.settings.privateModel ?? settings.settings.model
-    form.temperature = settings.settings.privateTemperature ?? settings.settings.temperature
-    form.maxTokens = settings.settings.privateMaxTokens ?? settings.settings.maxTokens
-    form.historyBudget = settings.settings.privateHistoryBudget ?? settings.settings.historyBudget
-    form.apiKeyConfigured = settings.settings.privateApiKeyConfigured
-  }
-  form.userName = settings.settings.privateUserName ?? settings.settings.userName
-  form.protagonistPreferences =
-    settings.settings.privateProtagonistPreferences ?? settings.settings.protagonistPreferences
+function syncScopedForm() {
+  const values = settings.settings
+  privateLlmSettingsEnabled.value = privacy.isPrivate && values.privateLlmSettingsEnabled
+  form.baseUrl = privateLlmSettingsEnabled.value ? (values.privateBaseUrl ?? values.baseUrl) : values.baseUrl
+  form.model = privateLlmSettingsEnabled.value ? (values.privateModel ?? values.model) : values.model
+  form.temperature = privateLlmSettingsEnabled.value
+    ? (values.privateTemperature ?? values.temperature)
+    : values.temperature
+  form.maxTokens = privateLlmSettingsEnabled.value
+    ? (values.privateMaxTokens ?? values.maxTokens)
+    : values.maxTokens
+  form.historyBudget = privateLlmSettingsEnabled.value
+    ? (values.privateHistoryBudget ?? values.historyBudget)
+    : values.historyBudget
+  form.apiKey = ''
+  form.apiKeyConfigured = privateLlmSettingsEnabled.value
+    ? values.privateApiKeyConfigured
+    : values.apiKeyConfigured
+  form.userName = privacy.isPrivate ? (values.privateUserName ?? values.userName) : values.userName
+  form.protagonistPreferences = privacy.isPrivate
+    ? (values.privateProtagonistPreferences ?? values.protagonistPreferences)
+    : values.protagonistPreferences
 }
+syncScopedForm()
 const models = ref<string[]>([])
 const testing = ref(false)
 const testMessage = ref<string | null>(null)
@@ -206,6 +217,8 @@ let switchingPrivateLlmSettings = false
 let swarmAuthTokenDirty = false
 let privateUserNameDirty: boolean = false
 let privateProtagonistPreferencesDirty: boolean = false
+let syncingScope = false
+let unregisterBeforeModeChange: (() => void) | null = null
 let narrativePromptDirty = false
 let characterReferencePromptDirty = false
 let privateClickCount = 0
@@ -721,11 +734,11 @@ function onSwarmAuthTokenInput() {
 }
 
 function markPrivateUserNameDirty() {
-  privateUserNameDirty = true
+  if (privacy.isPrivate) privateUserNameDirty = true
 }
 
 function markPrivateProtagonistPreferencesDirty() {
-  privateProtagonistPreferencesDirty = true
+  if (privacy.isPrivate) privateProtagonistPreferencesDirty = true
 }
 
 function onNarrativePromptInput() {
@@ -813,7 +826,7 @@ function clearSwarmAuthToken() {
 }
 
 function scheduleSave() {
-  if (switchingPrivateLlmSettings) return
+  if (switchingPrivateLlmSettings || syncingScope) return
   saveRevision += 1
   savePending = true
   if (saveTimer) clearTimeout(saveTimer)
@@ -879,6 +892,12 @@ watch(
   ],
   scheduleSave
 )
+
+watch(() => privacy.mode, () => {
+  syncingScope = true
+  syncScopedForm()
+  void nextTick(() => { syncingScope = false })
+}, { flush: 'sync' })
 
 async function testSwarmConnection() {
   swarmTesting.value = true
@@ -1174,6 +1193,7 @@ async function onDemoTrigger() {
 }
 
 onBeforeUnmount(() => {
+  unregisterBeforeModeChange?.()
   if (privateClickTimer) clearTimeout(privateClickTimer)
   if (demoClickTimer) clearTimeout(demoClickTimer)
   if (savedTimer) clearTimeout(savedTimer)
@@ -1187,6 +1207,10 @@ onBeforeUnmount(() => {
 })
 
 onMounted(() => {
+  unregisterBeforeModeChange = privacy.registerBeforeModeChange(async () => {
+    await flushSave()
+    return saveStatus.value !== 'error'
+  })
   pageScrollContainer = settingsPageRef.value?.closest('main') ?? null
   pageScrollContainer?.addEventListener('scroll', queueSectionUpdate, { passive: true })
   window.addEventListener('resize', queueSectionUpdate)
