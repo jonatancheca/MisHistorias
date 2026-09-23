@@ -72,6 +72,10 @@ _Evitar_: Ajuste público, token visible, valor recuperable
 Identificador del modelo elegido en ajustes para generar texto en el ámbito normal o privado. Elegirlo no implica que esté cargado en LM Studio.
 _Evitar_: Modelo cargado, primer modelo disponible
 
+**Ajustes privados**:
+Preferencias que pueden tener un valor propio en la colección privada. Cuando no existe un valor propio, heredan el ajuste normal; otras preferencias se comparten entre ámbitos.
+_Evitar_: Configuración privada independiente
+
 **Instancia LM Studio cargada**:
 Modelo residente en memoria del servidor LM Studio configurado, que puede ser utilizado por otras aplicaciones o usuarios. Descargarla libera memoria sin borrar el archivo del modelo.
 _Evitar_: Modelo instalado, descarga del archivo

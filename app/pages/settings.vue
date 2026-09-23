@@ -218,6 +218,7 @@ let swarmAuthTokenDirty = false
 let privateUserNameDirty: boolean = false
 let privateProtagonistPreferencesDirty: boolean = false
 let syncingScope = false
+let scopeRevision = 0
 let unregisterBeforeModeChange: (() => void) | null = null
 let narrativePromptDirty = false
 let characterReferencePromptDirty = false
@@ -437,12 +438,15 @@ watch(
 )
 
 async function testConnection() {
+  const revision = scopeRevision
   testing.value = true
   testError.value = null
   testMessage.value = null
   try {
     await flushSave()
+    if (revision !== scopeRevision) return
     const availableModels = await fetchLlmModels()
+    if (revision !== scopeRevision) return
     models.value = availableModels
     testMessage.value = `${availableModels.length} modelos disponibles`
     if (!form.model && availableModels[0]) form.model = availableModels[0]
@@ -450,6 +454,7 @@ async function testConnection() {
       testError.value = 'El modelo configurado no está disponible. Selecciona uno de la lista.'
     }
   } catch (caught) {
+    if (revision !== scopeRevision) return
     const detail = caught as {
       data?: { message?: string; statusMessage?: string }
       statusMessage?: string
@@ -458,26 +463,31 @@ async function testConnection() {
     testError.value = detail.data?.message || detail.data?.statusMessage || detail.statusMessage ||
       detail.message || 'No se pudo conectar'
   } finally {
-    testing.value = false
+    if (revision === scopeRevision) testing.value = false
   }
 }
 
 async function preloadModel() {
   if (modelAction.value || !form.model.trim()) return
+  const revision = scopeRevision
   modelAction.value = 'load'
   modelActionMessage.value = null
   modelActionError.value = null
   try {
     await flushSave()
+    if (revision !== scopeRevision) return
     if (saveStatus.value === 'error') throw new Error('No se pudieron guardar los ajustes de LM Studio.')
     const result = await preloadLlmModel()
+    if (revision !== scopeRevision) return
     modelActionMessage.value = result.status === 'already-loaded'
       ? 'El modelo configurado ya está cargado en LM Studio.'
       : 'Modelo cargado en LM Studio.'
   } catch (caught) {
-    modelActionError.value = (caught as Error).message || 'No se pudo cargar el modelo.'
+    if (revision === scopeRevision) {
+      modelActionError.value = (caught as Error).message || 'No se pudo cargar el modelo.'
+    }
   } finally {
-    modelAction.value = null
+    if (revision === scopeRevision) modelAction.value = null
   }
 }
 
@@ -489,13 +499,16 @@ async function unloadAllModels() {
     confirmLabel: 'Descargar todos'
   })
   if (!accepted) return
+  const revision = scopeRevision
   modelAction.value = 'unload-all'
   modelActionMessage.value = null
   modelActionError.value = null
   try {
     await flushSave()
+    if (revision !== scopeRevision) return
     if (saveStatus.value === 'error') throw new Error('No se pudieron guardar los ajustes de LM Studio.')
     const result = await unloadAllLlmModels()
+    if (revision !== scopeRevision) return
     modelActionMessage.value = result.total === 0
       ? 'No hay modelos cargados en LM Studio.'
       : `${result.unloaded} de ${result.total} instancias descargadas de memoria.`
@@ -503,9 +516,11 @@ async function unloadAllModels() {
       modelActionError.value = `Fallaron: ${result.failed.map(item => item.instanceId).join(', ')}.`
     }
   } catch (caught) {
-    modelActionError.value = (caught as Error).message || 'No se pudieron descargar los modelos.'
+    if (revision === scopeRevision) {
+      modelActionError.value = (caught as Error).message || 'No se pudieron descargar los modelos.'
+    }
   } finally {
-    modelAction.value = null
+    if (revision === scopeRevision) modelAction.value = null
   }
 }
 
@@ -894,8 +909,20 @@ watch(
 )
 
 watch(() => privacy.mode, () => {
+  scopeRevision += 1
   syncingScope = true
   syncScopedForm()
+  chromeLlmEnabled.value = settings.activeUseChromeLlm
+  models.value = []
+  testing.value = false
+  modelAction.value = null
+  testMessage.value = null
+  testError.value = null
+  modelActionMessage.value = null
+  modelActionError.value = null
+  chromeLlmError.value = null
+  chromeLlmPreparing.value = false
+  chromeLlmProgress.value = null
   void nextTick(() => { syncingScope = false })
 }, { flush: 'sync' })
 
@@ -974,6 +1001,7 @@ async function refreshChromeLlmAvailability() {
 
 async function setChromeLlmEnabled(enabled: boolean) {
   if (chromeLlmPreparing.value) return
+  const revision = scopeRevision
   chromeLlmError.value = null
   chromeLlmEnabled.value = enabled
 
@@ -984,10 +1012,12 @@ async function setChromeLlmEnabled(enabled: boolean) {
   if (!enabled) {
     try {
       await settings.save(patch)
-      chromeLlmEnabled.value = false
+      if (revision === scopeRevision) chromeLlmEnabled.value = false
     } catch (caught) {
-      chromeLlmEnabled.value = settings.activeUseChromeLlm
-      chromeLlmError.value = (caught as Error).message || 'No se pudo guardar el ajuste.'
+      if (revision === scopeRevision) {
+        chromeLlmEnabled.value = settings.activeUseChromeLlm
+        chromeLlmError.value = (caught as Error).message || 'No se pudo guardar el ajuste.'
+      }
     }
     return
   }
@@ -996,24 +1026,30 @@ async function setChromeLlmEnabled(enabled: boolean) {
   chromeLlmProgress.value = null
   try {
     const availability = await getChromeLlmAvailability()
+    if (revision !== scopeRevision) return
     chromeLlmAvailability.value = availability
     if (availability === 'unavailable') {
       throw new Error('La IA local de Chrome no está disponible en este navegador o equipo.')
     }
     await prepareChromeLlm({
       onDownloadProgress(percent) {
+        if (revision !== scopeRevision) return
         chromeLlmProgress.value = percent
         chromeLlmAvailability.value = percent >= 100 ? 'available' : 'downloading'
       }
     })
+    if (revision !== scopeRevision) return
     await settings.save(patch)
+    if (revision !== scopeRevision) return
     chromeLlmEnabled.value = true
     chromeLlmAvailability.value = 'available'
   } catch (caught) {
-    chromeLlmEnabled.value = settings.activeUseChromeLlm
-    chromeLlmError.value = (caught as Error).message || 'No se pudo preparar la IA local de Chrome.'
+    if (revision === scopeRevision) {
+      chromeLlmEnabled.value = settings.activeUseChromeLlm
+      chromeLlmError.value = (caught as Error).message || 'No se pudo preparar la IA local de Chrome.'
+    }
   } finally {
-    chromeLlmPreparing.value = false
+    if (revision === scopeRevision) chromeLlmPreparing.value = false
   }
 }
 
@@ -1209,7 +1245,23 @@ onBeforeUnmount(() => {
 onMounted(() => {
   unregisterBeforeModeChange = privacy.registerBeforeModeChange(async () => {
     await flushSave()
-    return saveStatus.value !== 'error'
+    if (saveStatus.value === 'error') return false
+    const dialog = activeSettingsDialog.value
+    if (!dialog) return true
+    settingsDialogBusy.value = true
+    try {
+      if (!await flushSettingsDialog(dialog)) return false
+      const scrollTop = pageScrollContainer?.scrollTop
+      activeSettingsDialog.value = null
+      await router.replace({ path: route.path, query: route.query, hash: '#swarmui' })
+      await nextTick()
+      requestAnimationFrame(() => {
+        if (scrollTop !== undefined && pageScrollContainer) pageScrollContainer.scrollTop = scrollTop
+      })
+      return true
+    } finally {
+      settingsDialogBusy.value = false
+    }
   })
   pageScrollContainer = settingsPageRef.value?.closest('main') ?? null
   pageScrollContainer?.addEventListener('scroll', queueSectionUpdate, { passive: true })
@@ -1728,7 +1780,7 @@ onBeforeRouteLeave(async () => {
           <input
             id="baseUrl"
             v-model="form.baseUrl"
-            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
+            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
             autocomplete="off"
             class="field min-w-0 flex-1"
             placeholder="http://localhost:1234"
@@ -1768,7 +1820,7 @@ onBeforeRouteLeave(async () => {
           <input
             id="apiKey"
             v-model="form.apiKey"
-            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
+            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
             type="password"
             autocomplete="off"
             class="field min-w-0 flex-1"
@@ -1781,7 +1833,7 @@ onBeforeRouteLeave(async () => {
             class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
             aria-label="Quitar token"
             title="Quitar token"
-            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
+            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
             @click="clearApiKey"
           >
             <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1801,7 +1853,7 @@ onBeforeRouteLeave(async () => {
           id="model"
           v-model="form.model"
           class="field"
-          :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
+          :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
         >
           <option v-if="form.model && !models.includes(form.model)" :value="form.model" disabled>
             {{ form.model }} (no disponible)
@@ -1812,7 +1864,7 @@ onBeforeRouteLeave(async () => {
           v-else
           id="model"
           v-model="form.model"
-          :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
+          :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
           autocomplete="off"
           class="field"
           placeholder="nombre-del-modelo"
@@ -1855,7 +1907,7 @@ onBeforeRouteLeave(async () => {
           <input
             id="temperature"
             v-model.number="form.temperature"
-            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
+            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
             type="number"
             autocomplete="off"
             step="0.1"
@@ -1869,7 +1921,7 @@ onBeforeRouteLeave(async () => {
           <input
             id="maxTokens"
             v-model.number="form.maxTokens"
-            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
+            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
             type="number"
             autocomplete="off"
             min="64"
@@ -1881,7 +1933,7 @@ onBeforeRouteLeave(async () => {
           <input
             id="historyBudget"
             v-model.number="form.historyBudget"
-            :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
+            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
             type="number"
             autocomplete="off"
             min="0"

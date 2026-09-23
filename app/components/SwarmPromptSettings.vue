@@ -4,6 +4,7 @@ import { tagKey } from '~/lib/tags'
 const settings = useSettingsStore()
 const catalog = useSwarmPromptsStore()
 const characters = useCharactersStore()
+const privacy = usePrivacyStore()
 const confirmDialog = useConfirmStore()
 defineExpose({ flushSave })
 await Promise.all([settings.load(), catalog.load(), characters.load()])
@@ -171,6 +172,8 @@ watch(
   () => [selectedId.value, name.value, prompt.value, JSON.stringify(tags.value)],
   scheduleSave
 )
+
+watch(() => privacy.mode, () => applySelection(null), { flush: 'sync' })
 
 onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)

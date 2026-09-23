@@ -512,6 +512,99 @@ test('alterna modo privado con Ctrl+Alt+P sin cambiar URL ni interrumpir inputs'
   await expect(privateTrigger).toBeEnabled()
 })
 
+test('sincroniza ajustes y resultados de LM Studio en cada cambio de modo', async ({ page, data }) => {
+  await data.patchSettings({
+    useChromeLlm: false,
+    privateUseChromeLlm: true,
+    baseUrl: 'http://normal.test',
+    model: 'normal-model',
+    privateLlmSettingsEnabled: true,
+    privateBaseUrl: 'http://private.test',
+    privateModel: 'private-model'
+  })
+  await page.route('**/api/llm/models?**', async (route) => {
+    await route.fulfill({ json: ['normal-only-model'] })
+  })
+
+  await page.goto('/settings#llm')
+  const main = page.locator('main')
+  const chrome = page.getByRole('checkbox', { name: /Usar IA local de Chrome/ })
+  await expect(chrome).not.toBeChecked()
+  await expect(page.locator('#baseUrl')).toHaveValue('http://normal.test')
+  await page.getByTestId('llm-settings').getByRole('button', { name: 'Probar conexión' }).click()
+  await expect(page.getByText('1 modelos disponibles')).toBeVisible()
+  await expect(page.locator('select#model')).toBeVisible()
+
+  await main.press('Control+Alt+p')
+  await expect(page).toHaveURL('/settings#llm')
+  await expect(chrome).toBeChecked()
+  await expect(page.locator('#baseUrl')).toHaveValue('http://private.test')
+  await expect(page.locator('#model')).toHaveValue('private-model')
+  await expect(page.getByText('1 modelos disponibles')).toHaveCount(0)
+  await expect(page.locator('input#model')).toBeVisible()
+
+  await expect(page.getByRole('button', { name: 'Alternar modo demo' })).toBeEnabled()
+  await main.press('Control+Alt+d')
+  await expect(page.locator('html')).toHaveClass(/demo-scope/)
+  await expect(chrome).toBeChecked()
+  await expect(page.getByRole('button', { name: 'Alternar modo demo' })).toBeEnabled()
+  await main.press('Control+Alt+d')
+  await expect(page.locator('html')).not.toHaveClass(/private-scope|demo-scope/)
+  await expect(chrome).not.toBeChecked()
+  await expect(page.locator('#baseUrl')).toHaveValue('http://normal.test')
+})
+
+test('guarda y cierra Prompts SwarmUI al cambiar de modo', async ({ page, data }) => {
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  await page.goto('/settings#prompts-swarmui')
+  const dialog = page.getByRole('dialog', { name: 'Prompts SwarmUI' })
+  const promptSettings = page.getByTestId('swarm-prompt-settings')
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Nuevo prompt', exact: true }).click()
+  const name = data.unique('Prompt al cambiar de modo')
+  await promptSettings.getByLabel('Nombre', { exact: true }).fill(name)
+  await promptSettings.getByLabel('Prompt', { exact: true }).fill('Escena del modo normal')
+  const scrollTop = await page.locator('main').evaluate(element => element.scrollTop)
+
+  await dialog.getByRole('button', { name: 'Cerrar diálogo' }).focus()
+  await page.keyboard.press('Control+Alt+p')
+  await expect(page.locator('html')).toHaveClass(/private-scope/)
+  await expect(dialog).toBeHidden()
+  await expect(page).toHaveURL('/settings#swarmui')
+  await expect.poll(() => page.locator('main').evaluate(element => element.scrollTop)).toBe(scrollTop)
+  expect((await data.list<{ name: string }>('swarmPrompts', 'normal'))
+    .some(prompt => prompt.name === name)).toBe(true)
+
+  await page.getByRole('button', { name: 'Prompts SwarmUI', exact: true }).click()
+  await expect(dialog).toBeVisible()
+  await expect(promptSettings.getByLabel('Nombre', { exact: true })).toHaveValue('')
+})
+
+test('mantiene el modo y el diálogo si falla el guardado antes del cambio', async ({ page, data }) => {
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  await page.goto('/settings#prompts-swarmui')
+  const dialog = page.getByRole('dialog', { name: 'Prompts SwarmUI' })
+  await expect(dialog).toBeVisible()
+  await page.route('**/api/data/swarmPrompts/**', async (route) => {
+    if (route.request().method() === 'PUT') {
+      await route.fulfill({ status: 500, body: 'Fallo de prueba' })
+    } else {
+      await route.continue()
+    }
+  })
+  await dialog.getByRole('button', { name: 'Nuevo prompt', exact: true }).click()
+  const promptSettings = page.getByTestId('swarm-prompt-settings')
+  await promptSettings.getByLabel('Nombre', { exact: true }).fill(data.unique('Prompt fallido'))
+  await promptSettings.getByLabel('Prompt', { exact: true }).fill('Este prompt no debe guardarse')
+  await dialog.getByRole('button', { name: 'Cerrar diálogo' }).focus()
+  await page.keyboard.press('Control+Alt+p')
+
+  await expect(page.locator('html')).not.toHaveClass(/private-scope/)
+  await expect(dialog).toBeVisible()
+  await expect(page).toHaveURL('/settings#prompts-swarmui')
+  await expect(promptSettings.getByRole('alert')).toBeVisible()
+})
+
 test('prepara Chrome AI y guarda override privado', async ({ page, data }) => {
   await data.patchSettings({ useChromeLlm: false, privateUseChromeLlm: null })
   await page.addInitScript(() => {
