@@ -73,8 +73,24 @@ test('oculta funciones sin URL y permite configurar sin valor por defecto', asyn
   await expect(page.getByLabel('Token de SwarmUI (opcional)')).toHaveCount(0)
   await expect(page.getByTestId('app-navigation-links')
     .getByRole('link', { name: 'Prompts SwarmUI', exact: true })).toHaveCount(0)
+  const actions = page.getByTestId('swarm-dialog-actions')
+  await expect(actions.getByRole('button', { name: 'Generar imagen de prueba' })).toHaveCount(0)
+  await expect(actions.getByRole('button', { name: 'Prompt de referencia', exact: true })).toBeVisible()
+  await expect(actions.getByRole('button', { name: 'Prompts SwarmUI', exact: true })).toBeVisible()
+  await actions.getByRole('button', { name: 'Prompts SwarmUI', exact: true }).click()
   await expect(page.getByTestId('swarm-prompt-settings'))
     .toContainText('Indica primero la URL de SwarmUI.')
+  await page.getByRole('dialog', { name: 'Prompts SwarmUI' })
+    .getByRole('button', { name: 'Cerrar diálogo' })
+    .click()
+  await expect(page).toHaveURL(/\/settings#swarmui$/)
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 800 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    const actionBox = await actions.boundingBox()
+    expect(actionBox).not.toBeNull()
+    expect(actionBox!.x + actionBox!.width).toBeLessThanOrEqual(width)
+  }
   await page.goto(`/characters/${character.id}`)
   const toggle = page.getByTestId('character-swarm-toggle')
   await expect(toggle).toBeVisible()
@@ -86,6 +102,22 @@ test('oculta funciones sin URL y permite configurar sin valor por defecto', asyn
   const response = await page.request.get('/api/swarm/catalog')
   expect(response.ok()).toBe(false)
   expect(await response.text()).toContain('Falta la URL de SwarmUI')
+})
+
+test('conserva borrador incompleto al cerrar y reabrir Prompts SwarmUI', async ({ page, data }) => {
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  await page.goto('/settings#prompts-swarmui')
+  const dialog = page.getByRole('dialog', { name: 'Prompts SwarmUI' })
+  const promptSettings = page.getByTestId('swarm-prompt-settings')
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Nuevo prompt', exact: true }).click()
+  await promptSettings.getByLabel('Nombre', { exact: true }).fill('Borrador sin prompt')
+  await dialog.getByRole('button', { name: 'Cerrar diálogo' }).click()
+  await expect(page).toHaveURL(/\/settings#swarmui$/)
+
+  await page.getByRole('button', { name: 'Prompts SwarmUI', exact: true }).click()
+  await expect(promptSettings.getByLabel('Nombre', { exact: true })).toHaveValue('Borrador sin prompt')
+  await expect(promptSettings.getByLabel('Prompt', { exact: true })).toHaveValue('')
 })
 
 test('desplaza a los metadatos de IA al abrirlos en mobile', async ({ page, data }) => {
@@ -368,6 +400,8 @@ test('muestra progreso, prompt actual y última imagen al generar un lote', asyn
 
 test('edita y borra prompts sin mezclar catálogo normal y privado', async ({ page, data }) => {
   await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  const initialPrivatePromptIds = (await data.list<SwarmPrompt>('swarmPrompts', 'private'))
+    .map(item => item.id)
   const prompt = { id: data.unique('prompt'), name: 'Prompt normal', prompt: 'portrait', tags: [], createdAt: 1, updatedAt: 1 }
   await expect(await page.request.put(`/api/data/swarmPrompts/${prompt.id}?scope=normal`, { data: prompt })).toBeOK()
   await expect(await page.request.put(`/api/data/swarmPrompts/${prompt.id}?scope=private`, { data: { ...prompt, name: 'Prompt privado' } })).toBeOK()
@@ -381,13 +415,15 @@ test('edita y borra prompts sin mezclar catálogo normal y privado', async ({ pa
   await trigger.click(); await trigger.click(); await trigger.click()
   await expect(page).toHaveURL('/settings')
   await page.getByTestId('settings-section-nav')
-    .locator('[data-settings-section="prompts-swarmui"]')
+    .locator('[data-settings-section="swarmui"]')
     .click()
+  await page.getByRole('button', { name: 'Prompts SwarmUI', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Normal editado', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Prompt privado', exact: true }).click()
   await page.getByRole('button', { name: 'Borrar', exact: true }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar', exact: true }).click()
-  await expect.poll(async () => (await data.list<SwarmPrompt>('swarmPrompts', 'private')).length).toBe(0)
+  await expect.poll(async () => (await data.list<SwarmPrompt>('swarmPrompts', 'private'))
+    .map(item => item.id)).toEqual(initialPrivatePromptIds)
   expect((await data.list<SwarmPrompt>('swarmPrompts'))[0]!.name).toBe('Normal editado')
 })
 

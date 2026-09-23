@@ -5,6 +5,7 @@ const settings = useSettingsStore()
 const catalog = useSwarmPromptsStore()
 const characters = useCharactersStore()
 const confirmDialog = useConfirmStore()
+defineExpose({ flushSave })
 await Promise.all([settings.load(), catalog.load(), characters.load()])
 
 const selectedId = ref<string | null>(null)
@@ -132,6 +133,7 @@ async function flushSave() {
   } else {
     await saveQueue
   }
+  return saveStatus.value !== 'error'
 }
 
 async function reload() {

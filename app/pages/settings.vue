@@ -92,17 +92,22 @@ const settingsSections = [
   { id: 'usuarios', label: 'Usuarios' },
   { id: 'llm', label: 'LLM' },
   { id: 'prompt-narrativo', label: 'Prompt narrativo' },
-  { id: 'prompt-referencia-personaje', label: 'Prompt de referencia de personaje' },
   { id: 'swarmui', label: 'SwarmUI' },
-  { id: 'prompts-swarmui', label: 'Prompts SwarmUI' },
   { id: 'actualizaciones', label: 'Actualizaciones' },
   { id: 'datos', label: 'Datos' }
 ] as const
 type SettingsSectionId = typeof settingsSections[number]['id']
+type SettingsDialogId = 'prompt-referencia-personaje' | 'prompts-swarmui'
+interface SwarmPromptSettingsHandle {
+  flushSave: () => Promise<boolean>
+}
 
 const settingsPageRef = ref<HTMLElement | null>(null)
 const settingsNavRef = ref<HTMLElement | null>(null)
 const activeSectionId = ref<SettingsSectionId>('apariencia')
+const activeSettingsDialog = ref<SettingsDialogId | null>(null)
+const settingsDialogBusy = ref(false)
+const swarmPromptSettingsRef = ref<SwarmPromptSettingsHandle | null>(null)
 const settingsNavDragging = ref(false)
 let pageScrollContainer: HTMLElement | null = null
 let sectionUpdateFrame: number | null = null
@@ -198,6 +203,11 @@ function sectionIdFromHash(hash: string): SettingsSectionId | null {
     : null
 }
 
+function settingsDialogIdFromHash(hash: string): SettingsDialogId | null {
+  const id = hash.startsWith('#') ? hash.slice(1) : hash
+  return id === 'prompt-referencia-personaje' || id === 'prompts-swarmui' ? id : null
+}
+
 function sectionElement(id: SettingsSectionId) {
   return settingsPageRef.value?.querySelector<HTMLElement>(`#${id}`) ?? null
 }
@@ -291,6 +301,11 @@ function navigateToSettingsSection(id: SettingsSectionId) {
   void router.push({ path: route.path, query: route.query, hash })
 }
 
+function openSettingsDialog(id: SettingsDialogId) {
+  pendingHashBehavior = preferredScrollBehavior()
+  void router.push({ path: route.path, query: route.query, hash: `#${id}` })
+}
+
 function startSettingsNavDrag(event: PointerEvent) {
   const nav = settingsNavRef.value
   if (
@@ -358,9 +373,33 @@ function onSettingsNavClick(event: MouseEvent, id: SettingsSectionId) {
 watch(
   () => route.hash,
   async (hash) => {
+    const nextDialog = settingsDialogIdFromHash(hash)
     const id = sectionIdFromHash(hash)
     const behavior = pendingHashBehavior ?? 'auto'
     pendingHashBehavior = null
+
+    if (activeSettingsDialog.value && nextDialog !== activeSettingsDialog.value) {
+      settingsDialogBusy.value = true
+      const previousDialog = activeSettingsDialog.value
+      const saved = await flushSettingsDialog(previousDialog)
+      settingsDialogBusy.value = false
+      if (!saved) {
+        await router.replace({
+          path: route.path,
+          query: route.query,
+          hash: `#${previousDialog}`
+        })
+        return
+      }
+      activeSettingsDialog.value = null
+    }
+
+    if (nextDialog) {
+      activeSettingsDialog.value = nextDialog
+      await nextTick()
+      requestAnimationFrame(() => scrollToSettingsSection('swarmui', behavior))
+      return
+    }
     if (!id) return
     await nextTick()
     requestAnimationFrame(() => scrollToSettingsSection(id, behavior))
@@ -732,6 +771,30 @@ async function flushSave() {
   }
 }
 
+async function flushSettingsDialog(id: SettingsDialogId) {
+  if (id === 'prompts-swarmui') {
+    return await swarmPromptSettingsRef.value?.flushSave() ?? true
+  }
+  await flushSave()
+  return saveStatus.value !== 'error'
+}
+
+async function closeSettingsDialog() {
+  const id = activeSettingsDialog.value
+  if (!id || settingsDialogBusy.value) return
+
+  settingsDialogBusy.value = true
+  const saved = await flushSettingsDialog(id)
+  if (!saved) {
+    settingsDialogBusy.value = false
+    return
+  }
+
+  activeSettingsDialog.value = null
+  await router.replace({ path: route.path, query: route.query, hash: '#swarmui' })
+  settingsDialogBusy.value = false
+}
+
 watch(
   () => [
     form.baseUrl,
@@ -1061,8 +1124,12 @@ onMounted(() => {
   pageScrollContainer?.addEventListener('scroll', queueSectionUpdate, { passive: true })
   window.addEventListener('resize', queueSectionUpdate)
   requestAnimationFrame(() => {
+    const initialDialog = settingsDialogIdFromHash(route.hash)
     const initialSection = sectionIdFromHash(route.hash)
-    if (initialSection) scrollToSettingsSection(initialSection, 'auto')
+    if (initialDialog) {
+      activeSettingsDialog.value = initialDialog
+      scrollToSettingsSection('swarmui', 'auto')
+    } else if (initialSection) scrollToSettingsSection(initialSection, 'auto')
     else updateActiveSection()
   })
   void refreshChromeLlmAvailability()
@@ -1075,6 +1142,11 @@ onMounted(() => {
 
 onBeforeRouteLeave(async () => {
   await flushSave()
+  if (saveStatus.value === 'error') return false
+  if (
+    activeSettingsDialog.value === 'prompts-swarmui'
+    && !await flushSettingsDialog('prompts-swarmui')
+  ) return false
 })
 </script>
 
@@ -1733,46 +1805,9 @@ onBeforeRouteLeave(async () => {
     </section>
 
     <section
-      id="prompt-referencia-personaje"
-      class="settings-panel"
-      :class="[
-        { 'settings-panel-active': activeSectionId === 'prompt-referencia-personaje' },
-        { 'opacity-60': !canManageGlobal }
-      ]"
-      :inert="!canManageGlobal"
-      :aria-disabled="!canManageGlobal"
-      data-testid="character-reference-prompt-settings"
-    >
-      <h2>Prompt de referencia de personaje</h2>
-      <p>
-        Instrucción enviada al modelo visual para deducir un prompt visual base desde una foto.
-        Si no la personalizas, se usa la integrada en el código.
-      </p>
-      <textarea
-        v-model="characterReferencePrompt"
-        class="field min-h-64 w-full font-mono text-sm"
-        aria-label="Prompt de referencia de personaje integrado"
-        @input="onCharacterReferencePromptInput"
-      />
-      <button
-        v-if="characterReferencePromptCustomized"
-        type="button"
-        class="btn mt-3"
-        @click="revertCharacterReferencePrompt"
-      >
-        Revertir prompt de referencia por defecto
-      </button>
-    </section>
-
-    <section
       id="swarmui"
       class="settings-panel"
-      :class="[
-        { 'settings-panel-active': activeSectionId === 'swarmui' },
-        { 'opacity-60': !canManageGlobal }
-      ]"
-      :inert="!canManageGlobal"
-      :aria-disabled="!canManageGlobal"
+      :class="{ 'settings-panel-active': activeSectionId === 'swarmui' }"
       data-testid="swarm-settings"
     >
       <h2>SwarmUI</h2>
@@ -1780,147 +1815,154 @@ onBeforeRouteLeave(async () => {
         Generación manual de imágenes. No se usa durante las historias.
       </p>
       <div class="settings-panel-content grid min-w-0 gap-4">
-        <div>
-          <label class="label" for="swarmBaseUrl">URL de SwarmUI</label>
-          <div class="flex min-w-0 gap-2">
-            <input
-              id="swarmBaseUrl"
-              v-model="form.swarmBaseUrl"
-              autocomplete="off"
-              class="field min-w-0 flex-1"
-              placeholder="http://localhost:7801"
-            >
-            <button
-              v-if="form.swarmBaseUrl.trim()"
-              type="button"
-              class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center gap-2 px-0 sm:w-auto sm:px-3"
-              :aria-label="swarmTesting ? 'Probando conexión' : 'Probar conexión'"
-              :title="swarmTesting ? 'Probando conexión' : 'Probar conexión'"
-              :disabled="swarmTesting"
-              @click="testSwarmConnection"
-            >
-              <svg
-                aria-hidden="true"
-                class="h-4 w-4"
-                :class="{ 'animate-pulse': swarmTesting }"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M8 4v5M16 4v5M7 9h10v1a5 5 0 0 1-10 0V9Zm5 6v5" />
-              </svg>
-              <span class="hidden sm:inline">{{ swarmTesting ? 'Probando…' : 'Probar conexión' }}</span>
-            </button>
-          </div>
-        </div>
-
-        <template v-if="form.swarmBaseUrl.trim()">
+        <div
+          class="grid min-w-0 gap-4"
+          :class="{ 'opacity-60': !canManageGlobal }"
+          :inert="!canManageGlobal"
+          :aria-disabled="!canManageGlobal"
+        >
           <div>
-            <label class="label" for="swarmAuthToken">Token de SwarmUI (opcional)</label>
+            <label class="label" for="swarmBaseUrl">URL de SwarmUI</label>
             <div class="flex min-w-0 gap-2">
               <input
-                id="swarmAuthToken"
-                v-model="form.swarmAuthToken"
-                type="password"
+                id="swarmBaseUrl"
+                v-model="form.swarmBaseUrl"
                 autocomplete="off"
                 class="field min-w-0 flex-1"
-                :placeholder="form.swarmAuthConfigured ? '****' : 'swarm_token'"
-                @input="onSwarmAuthTokenInput"
+                placeholder="http://localhost:7801"
               >
               <button
-                v-if="form.swarmAuthConfigured"
+                v-if="form.swarmBaseUrl.trim()"
                 type="button"
-                class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
-                aria-label="Quitar token SwarmUI"
-                title="Quitar token SwarmUI"
-                @click="clearSwarmAuthToken"
+                class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center gap-2 px-0 sm:w-auto sm:px-3"
+                :aria-label="swarmTesting ? 'Probando conexión' : 'Probar conexión'"
+                :title="swarmTesting ? 'Probando conexión' : 'Probar conexión'"
+                :disabled="swarmTesting"
+                @click="testSwarmConnection"
               >
-                <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" />
+                <svg
+                  aria-hidden="true"
+                  class="h-4 w-4"
+                  :class="{ 'animate-pulse': swarmTesting }"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M8 4v5M16 4v5M7 9h10v1a5 5 0 0 1-10 0V9Zm5 6v5" />
                 </svg>
+                <span class="hidden sm:inline">{{ swarmTesting ? 'Probando…' : 'Probar conexión' }}</span>
               </button>
             </div>
-            <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-              Se guarda separado en SQLite y se envía como cookie <code>swarm_token</code>. Solo se indica si existe.
+          </div>
+
+          <template v-if="form.swarmBaseUrl.trim()">
+            <div>
+              <label class="label" for="swarmAuthToken">Token de SwarmUI (opcional)</label>
+              <div class="flex min-w-0 gap-2">
+                <input
+                  id="swarmAuthToken"
+                  v-model="form.swarmAuthToken"
+                  type="password"
+                  autocomplete="off"
+                  class="field min-w-0 flex-1"
+                  :placeholder="form.swarmAuthConfigured ? '****' : 'swarm_token'"
+                  @input="onSwarmAuthTokenInput"
+                >
+                <button
+                  v-if="form.swarmAuthConfigured"
+                  type="button"
+                  class="btn-ghost flex h-10 w-10 shrink-0 items-center justify-center px-0"
+                  aria-label="Quitar token SwarmUI"
+                  title="Quitar token SwarmUI"
+                  @click="clearSwarmAuthToken"
+                >
+                  <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" />
+                  </svg>
+                </button>
+              </div>
+              <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+                Se guarda separado en SQLite y se envía como cookie <code>swarm_token</code>. Solo se indica si existe.
+              </p>
+            </div>
+
+            <p v-if="swarmTestMessage" class="text-xs text-brand-600" role="status">
+              {{ swarmTestMessage }}
             </p>
-          </div>
+            <p v-if="swarmTestError" class="text-xs text-red-500" role="alert">
+              {{ swarmTestError }}
+            </p>
 
-          <p v-if="swarmTestMessage" class="text-xs text-brand-600" role="status">
-            {{ swarmTestMessage }}
-          </p>
-          <p v-if="swarmTestError" class="text-xs text-red-500" role="alert">
-            {{ swarmTestError }}
-          </p>
+            <div v-if="swarmCatalog" class="grid gap-3 md:grid-cols-3">
+              <div>
+                <label class="label" for="swarmTestPreset">Preset de prueba</label>
+                <select id="swarmTestPreset" v-model="swarmTestPreset" class="field">
+                  <option value="">Sin preset</option>
+                  <option v-for="preset in swarmCatalog.presets" :key="preset" :value="preset">
+                    {{ preset }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="label" for="swarmTestModel">Modelo de prueba</label>
+                <select id="swarmTestModel" v-model="swarmTestModel" class="field">
+                  <option value="">Selecciona un modelo</option>
+                  <option v-for="model in swarmCatalog.models" :key="model" :value="model">
+                    {{ model }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="label" for="swarmTestLora">LoRA de prueba</label>
+                <select id="swarmTestLora" v-model="swarmTestLora" class="field">
+                  <option value="">Sin LoRA</option>
+                  <option v-for="lora in swarmCatalog.loras" :key="lora" :value="lora">
+                    {{ lora }}
+                  </option>
+                </select>
+              </div>
+            </div>
 
-          <div v-if="swarmCatalog" class="grid gap-3 md:grid-cols-3">
             <div>
-              <label class="label" for="swarmTestPreset">Preset de prueba</label>
-              <select id="swarmTestPreset" v-model="swarmTestPreset" class="field">
-                <option value="">Sin preset</option>
-                <option v-for="preset in swarmCatalog.presets" :key="preset" :value="preset">
-                  {{ preset }}
-                </option>
-              </select>
+              <label class="label" for="swarmTestPrompt">Prompt de prueba</label>
+              <textarea
+                id="swarmTestPrompt"
+                v-model="swarmTestPrompt"
+                class="field min-h-24"
+                autocomplete="off"
+              />
             </div>
-            <div>
-              <label class="label" for="swarmTestModel">Modelo de prueba</label>
-              <select id="swarmTestModel" v-model="swarmTestModel" class="field">
-                <option value="">Selecciona un modelo</option>
-                <option v-for="model in swarmCatalog.models" :key="model" :value="model">
-                  {{ model }}
-                </option>
-              </select>
-            </div>
-            <div>
-              <label class="label" for="swarmTestLora">LoRA de prueba</label>
-              <select id="swarmTestLora" v-model="swarmTestLora" class="field">
-                <option value="">Sin LoRA</option>
-                <option v-for="lora in swarmCatalog.loras" :key="lora" :value="lora">
-                  {{ lora }}
-                </option>
-              </select>
-            </div>
-          </div>
+          </template>
+        </div>
 
-          <div>
-            <label class="label" for="swarmTestPrompt">Prompt de prueba</label>
-            <textarea
-              id="swarmTestPrompt"
-              v-model="swarmTestPrompt"
-              class="field min-h-24"
-              autocomplete="off"
-            />
-          </div>
+        <div class="flex flex-wrap items-center gap-2" data-testid="swarm-dialog-actions">
           <button
+            v-if="form.swarmBaseUrl.trim()"
             type="button"
-            class="btn-primary justify-self-start"
-            :disabled="swarmGenerating || !swarmTestPrompt.trim()"
+            class="btn-primary"
+            :disabled="!canManageGlobal || swarmGenerating || !swarmTestPrompt.trim()"
             @click="generateSwarmPreview"
           >
             {{ swarmGenerating ? 'Generando…' : 'Generar imagen de prueba' }}
           </button>
-          <div v-if="swarmPreviewUrl" data-testid="swarm-test-preview">
-            <ImageLightbox
-              :src="swarmPreviewUrl"
-              alt="Resultado temporal de SwarmUI"
-              container-class="w-fit"
-              image-class="max-h-96 max-w-full rounded-lg object-contain"
-            />
-          </div>
-        </template>
-      </div>
-    </section>
+          <button type="button" class="btn-ghost" @click="openSettingsDialog('prompt-referencia-personaje')">
+            Prompt de referencia
+          </button>
+          <button type="button" class="btn-ghost" @click="openSettingsDialog('prompts-swarmui')">
+            Prompts SwarmUI
+          </button>
+        </div>
 
-    <section
-      id="prompts-swarmui"
-      class="settings-panel"
-      :class="{ 'settings-panel-active': activeSectionId === 'prompts-swarmui' }"
-      data-testid="swarm-prompt-settings"
-    >
-      <h2>Prompts SwarmUI</h2>
-      <p>Gestiona los prompts predefinidos usados para crear conjuntos de imágenes.</p>
-      <SwarmPromptSettings />
+        <div v-if="swarmPreviewUrl" data-testid="swarm-test-preview">
+          <ImageLightbox
+            :src="swarmPreviewUrl"
+            alt="Resultado temporal de SwarmUI"
+            container-class="w-fit"
+            image-class="max-h-96 max-w-full rounded-lg object-contain"
+          />
+        </div>
+      </div>
     </section>
 
     <section
@@ -2140,6 +2182,73 @@ onBeforeRouteLeave(async () => {
         Los backups SQLite contienen toda la instancia y solo están disponibles para el administrador.
       </p>
     </section>
+
+    <SettingsDialog
+      :open="activeSettingsDialog === 'prompt-referencia-personaje'"
+      title="Prompt de referencia de personaje"
+      title-id="character-reference-prompt-dialog-title"
+      :busy="settingsDialogBusy"
+      @close="closeSettingsDialog"
+    >
+      <div data-testid="character-reference-prompt-settings">
+        <p class="text-sm text-[var(--color-fg-muted)]">
+          Instrucción enviada al modelo visual para deducir un prompt visual base desde una foto.
+          Si no la personalizas, se usa la integrada en el código.
+        </p>
+        <p
+          v-if="!canManageGlobal"
+          class="mt-3 text-sm font-semibold text-amber-700 dark:text-amber-300"
+        >
+          Solo el administrador puede modificar este prompt.
+        </p>
+        <textarea
+          v-model="characterReferencePrompt"
+          class="field mt-4 min-h-64 w-full font-mono text-sm"
+          aria-label="Prompt de referencia de personaje integrado"
+          :disabled="!canManageGlobal"
+          data-dialog-autofocus
+          @input="onCharacterReferencePromptInput"
+        />
+        <div class="mt-3 flex min-h-10 flex-wrap items-center gap-3">
+          <button
+            v-if="characterReferencePromptCustomized"
+            type="button"
+            class="btn"
+            :disabled="!canManageGlobal"
+            @click="revertCharacterReferencePrompt"
+          >
+            Revertir prompt de referencia por defecto
+          </button>
+          <template v-if="activeSettingsDialog === 'prompt-referencia-personaje'">
+            <span v-if="saveStatus === 'saving'" class="text-xs text-[var(--color-fg-muted)]">
+              Guardando…
+            </span>
+            <span v-else-if="saveStatus === 'saved'" class="text-xs text-[var(--color-fg-muted)]">
+              Guardado
+            </span>
+            <span v-else-if="saveStatus === 'error'" class="text-xs text-red-500" role="alert">
+              {{ saveError || 'Error al guardar' }}
+            </span>
+          </template>
+        </div>
+      </div>
+    </SettingsDialog>
+
+    <SettingsDialog
+      :open="activeSettingsDialog === 'prompts-swarmui'"
+      title="Prompts SwarmUI"
+      title-id="swarm-prompts-dialog-title"
+      size="wide"
+      :busy="settingsDialogBusy"
+      @close="closeSettingsDialog"
+    >
+      <div data-testid="swarm-prompt-settings">
+        <p class="mb-4 text-sm text-[var(--color-fg-muted)]">
+          Gestiona los prompts predefinidos usados para crear conjuntos de imágenes.
+        </p>
+        <SwarmPromptSettings ref="swarmPromptSettingsRef" />
+      </div>
+    </SettingsDialog>
   </div>
 </template>
 

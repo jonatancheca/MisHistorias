@@ -99,7 +99,7 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
 
   const nav = page.getByTestId('settings-section-nav')
   await expect(nav).toBeVisible()
-  await expect(nav.getByRole('link')).toHaveCount(10)
+  await expect(nav.getByRole('link')).toHaveCount(8)
   expect(await nav.getByRole('link').evaluateAll(links =>
     links.map(link => link.getAttribute('data-settings-section'))
   )).toEqual([
@@ -108,9 +108,7 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
     'usuarios',
     'llm',
     'prompt-narrativo',
-    'prompt-referencia-personaje',
     'swarmui',
-    'prompts-swarmui',
     'actualizaciones',
     'datos'
   ])
@@ -122,9 +120,7 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
     'usuarios',
     'llm',
     'prompt-narrativo',
-    'prompt-referencia-personaje',
     'swarmui',
-    'prompts-swarmui',
     'actualizaciones',
     'datos'
   ])
@@ -164,10 +160,21 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
   await expect(page).toHaveURL(/\/settings#swarmui$/)
   await expect(swarmLink).toHaveAttribute('aria-current', 'location')
 
-  const swarmPromptsLink = nav.locator('[data-settings-section="prompts-swarmui"]')
-  await swarmPromptsLink.click()
+  await page.getByRole('button', { name: 'Prompts SwarmUI', exact: true }).click()
   await expect(page).toHaveURL(/\/settings#prompts-swarmui$/)
-  await expect(swarmPromptsLink).toHaveAttribute('aria-current', 'location')
+  await expect(page.getByRole('dialog', { name: 'Prompts SwarmUI' })).toBeVisible()
+  await expect(swarmLink).toHaveAttribute('aria-current', 'location')
+
+  await page.goBack()
+  await expect(page).toHaveURL(/\/settings#swarmui$/)
+  await expect(page.getByRole('dialog', { name: 'Prompts SwarmUI' })).toBeHidden()
+
+  await page.goForward()
+  await expect(page).toHaveURL(/\/settings#prompts-swarmui$/)
+  await expect(page.getByRole('dialog', { name: 'Prompts SwarmUI' })).toBeVisible()
+
+  await page.goBack()
+  await expect(page).toHaveURL(/\/settings#swarmui$/)
 
   const dataLink = nav.locator('[data-settings-section="datos"]')
   await dataLink.click()
@@ -175,9 +182,8 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
   await expect(dataLink).toHaveAttribute('aria-current', 'location')
 
   await page.goBack()
-  await expect(page).toHaveURL(/\/settings#prompts-swarmui$/)
-  await expect(nav.getByRole('link', { name: 'Prompts SwarmUI' }))
-    .toHaveAttribute('aria-current', 'location')
+  await expect(page).toHaveURL(/\/settings#swarmui$/)
+  await expect(swarmLink).toHaveAttribute('aria-current', 'location')
 
   await page.goForward()
   await expect(page).toHaveURL(/\/settings#datos$/)
@@ -657,20 +663,30 @@ test('personaliza y revierte el prompt narrativo integrado', async ({ page, data
 test('personaliza y revierte el prompt de referencia de personaje', async ({ page, data }) => {
   await data.patchSettings({ characterReferencePrompt: null })
   await page.goto('/settings')
-  const prompt = page.getByLabel('Prompt de referencia de personaje integrado')
+  const trigger = page.getByRole('button', { name: 'Prompt de referencia', exact: true })
+  await trigger.click()
+  await expect(page).toHaveURL(/\/settings#prompt-referencia-personaje$/)
+  const dialog = page.getByRole('dialog', { name: 'Prompt de referencia de personaje' })
+  await expect(dialog).toBeVisible()
+  const prompt = dialog.getByLabel('Prompt de referencia de personaje integrado')
   await expect(prompt).toHaveValue(DEFAULT_CHARACTER_REFERENCE_PROMPT)
-  const revert = page.getByRole('button', { name: 'Revertir prompt de referencia por defecto' })
+  const revert = dialog.getByRole('button', { name: 'Revertir prompt de referencia por defecto' })
   await expect(revert).toHaveCount(0)
 
   await prompt.fill('Describe únicamente la identidad visible.')
   await expect(revert).toBeVisible()
-  await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Guardado', { exact: true })).toBeVisible()
   await expect.poll(async () => {
     const response = await page.request.get('/api/settings')
     return ((await response.json()) as AppSettings).characterReferencePrompt
   }).toBe('Describe únicamente la identidad visible.')
 
-  await page.reload()
+  await dialog.getByRole('button', { name: 'Cerrar diálogo' }).click()
+  await expect(page).toHaveURL(/\/settings#swarmui$/)
+  await expect(trigger).toBeFocused()
+
+  await page.goto('/settings#prompt-referencia-personaje')
+  await expect(dialog).toBeVisible()
   await expect(prompt).toHaveValue('Describe únicamente la identidad visible.')
   await revert.click()
   await expect(prompt).toHaveValue(DEFAULT_CHARACTER_REFERENCE_PROMPT)
