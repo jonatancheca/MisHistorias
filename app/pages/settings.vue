@@ -5,7 +5,7 @@ import type {
   IdentityReassignmentPreview,
   IdentityReassignmentResource
 } from '#shared/types'
-import { fetchLlmModels } from '~/lib/llm'
+import { fetchLlmModels, preloadLlmModel, unloadAllLlmModels } from '~/lib/llm'
 import {
   getChromeLlmAvailability,
   prepareChromeLlm,
@@ -153,6 +153,23 @@ const models = ref<string[]>([])
 const testing = ref(false)
 const testMessage = ref<string | null>(null)
 const testError = ref<string | null>(null)
+const modelAction = ref<'load' | 'unload-all' | null>(null)
+const modelActionMessage = ref<string | null>(null)
+const modelActionError = ref<string | null>(null)
+const configuredModelUnavailable = computed(() =>
+  models.value.length > 0 && !!form.model.trim() && !models.value.includes(form.model.trim())
+)
+watch(() => form.baseUrl, () => {
+  models.value = []
+  testMessage.value = null
+  testError.value = null
+})
+watch(() => form.model, () => {
+  if (!configuredModelUnavailable.value &&
+      testError.value === 'El modelo configurado no está disponible. Selecciona uno de la lista.') {
+    testError.value = null
+  }
+})
 const importing = ref(false)
 const importMessage = ref<string | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
@@ -416,6 +433,9 @@ async function testConnection() {
     models.value = availableModels
     testMessage.value = `${availableModels.length} modelos disponibles`
     if (!form.model && availableModels[0]) form.model = availableModels[0]
+    if (configuredModelUnavailable.value) {
+      testError.value = 'El modelo configurado no está disponible. Selecciona uno de la lista.'
+    }
   } catch (caught) {
     const detail = caught as {
       data?: { message?: string; statusMessage?: string }
@@ -426,6 +446,53 @@ async function testConnection() {
       detail.message || 'No se pudo conectar'
   } finally {
     testing.value = false
+  }
+}
+
+async function preloadModel() {
+  if (modelAction.value || !form.model.trim()) return
+  modelAction.value = 'load'
+  modelActionMessage.value = null
+  modelActionError.value = null
+  try {
+    await flushSave()
+    if (saveStatus.value === 'error') throw new Error('No se pudieron guardar los ajustes de LM Studio.')
+    const result = await preloadLlmModel()
+    modelActionMessage.value = result.status === 'already-loaded'
+      ? 'El modelo configurado ya está cargado en LM Studio.'
+      : 'Modelo cargado en LM Studio.'
+  } catch (caught) {
+    modelActionError.value = (caught as Error).message || 'No se pudo cargar el modelo.'
+  } finally {
+    modelAction.value = null
+  }
+}
+
+async function unloadAllModels() {
+  if (modelAction.value) return
+  const accepted = await confirmDialog.ask({
+    title: 'Descargar todos los modelos de memoria',
+    message: 'Se descargarán todas las instancias cargadas en este servidor LM Studio, incluidas las de otras aplicaciones o usuarios. Las generaciones en curso pueden interrumpirse. Los archivos de los modelos no se borrarán.',
+    confirmLabel: 'Descargar todos'
+  })
+  if (!accepted) return
+  modelAction.value = 'unload-all'
+  modelActionMessage.value = null
+  modelActionError.value = null
+  try {
+    await flushSave()
+    if (saveStatus.value === 'error') throw new Error('No se pudieron guardar los ajustes de LM Studio.')
+    const result = await unloadAllLlmModels()
+    modelActionMessage.value = result.total === 0
+      ? 'No hay modelos cargados en LM Studio.'
+      : `${result.unloaded} de ${result.total} instancias descargadas de memoria.`
+    if (result.failed.length) {
+      modelActionError.value = `Fallaron: ${result.failed.map(item => item.instanceId).join(', ')}.`
+    }
+  } catch (caught) {
+    modelActionError.value = (caught as Error).message || 'No se pudieron descargar los modelos.'
+  } finally {
+    modelAction.value = null
   }
 }
 
@@ -1712,6 +1779,9 @@ onBeforeRouteLeave(async () => {
           class="field"
           :disabled="privacy.isPrivate && !privateLlmSettingsEnabled"
         >
+          <option v-if="form.model && !models.includes(form.model)" :value="form.model" disabled>
+            {{ form.model }} (no disponible)
+          </option>
           <option v-for="model in models" :key="model" :value="model">{{ model }}</option>
         </select>
         <input
@@ -1723,6 +1793,36 @@ onBeforeRouteLeave(async () => {
           class="field"
           placeholder="nombre-del-modelo"
         >
+      </div>
+
+      <div class="grid min-w-0 gap-2">
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="btn-ghost"
+            :disabled="testing || modelAction !== null || !form.model.trim() || configuredModelUnavailable"
+            @click="preloadModel"
+          >
+            {{ modelAction === 'load' ? 'Cargando modelo…' : 'Precargar modelo' }}
+          </button>
+          <button
+            type="button"
+            class="btn-ghost"
+            :disabled="testing || modelAction !== null"
+            @click="unloadAllModels"
+          >
+            {{ modelAction === 'unload-all' ? 'Descargando modelos…' : 'Descargar todos de memoria' }}
+          </button>
+        </div>
+        <p class="text-xs text-[var(--color-fg-muted)]">
+          Descarga modelos de la memoria de LM Studio; no borra sus archivos.
+        </p>
+        <p v-if="modelActionMessage" class="text-xs text-brand-600" role="status">
+          {{ modelActionMessage }}
+        </p>
+        <p v-if="modelActionError" class="text-xs text-red-500" role="alert">
+          {{ modelActionError }}
+        </p>
       </div>
 
       <div class="grid gap-4 sm:grid-cols-3">

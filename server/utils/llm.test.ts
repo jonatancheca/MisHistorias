@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import { createServer, type IncomingMessage } from 'node:http'
 import test from 'node:test'
-import { fetchProxyChat, stripThinkingBlocks } from './llm.ts'
+import {
+  fetchProxyChat,
+  loadConfiguredModel,
+  stripThinkingBlocks,
+  unloadAllModels
+} from './llm.ts'
 
 async function readJson(request: IncomingMessage) {
   const chunks: Uint8Array[] = []
@@ -121,5 +126,82 @@ test('proxy propaga cancelación', async () => {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve()))
     )
+  }
+})
+
+test('precarga solo el modelo configurado y evita duplicar una instancia cargada', async () => {
+  let loaded = false
+  const posts: Record<string, unknown>[] = []
+  const server = createServer(async (request, response) => {
+    assert.equal(request.headers.authorization, 'Bearer token')
+    response.setHeader('content-type', 'application/json')
+    if (request.method === 'GET') {
+      response.end(JSON.stringify({ models: [
+        { key: 'modelo', type: 'llm', loaded_instances: loaded ? [{ id: 'modelo' }] : [] }
+      ] }))
+      return
+    }
+    assert.equal(request.url, '/api/v1/models/load')
+    posts.push(await readJson(request))
+    loaded = true
+    response.end(JSON.stringify({ status: 'loaded', instance_id: 'modelo' }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('Puerto de prueba no disponible')
+  const settings = { baseUrl: `http://127.0.0.1:${address.port}`, apiKey: 'token' }
+  try {
+    await assert.rejects(
+      loadConfiguredModel(settings, 'modelo-ausente'),
+      /no está disponible/
+    )
+    assert.deepEqual(await loadConfiguredModel(settings, 'modelo'), {
+      status: 'loaded', instanceId: 'modelo'
+    })
+    assert.deepEqual(await loadConfiguredModel(settings, 'modelo'), {
+      status: 'already-loaded', instanceId: 'modelo'
+    })
+    assert.deepEqual(posts, [{ model: 'modelo' }])
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())))
+  }
+})
+
+test('descarga todas las instancias y continúa si una falla', async () => {
+  const attempted: string[] = []
+  const server = createServer(async (request, response) => {
+    response.setHeader('content-type', 'application/json')
+    if (request.method === 'GET') {
+      response.end(JSON.stringify({ models: [
+        { key: 'llm', type: 'llm', loaded_instances: [{ id: 'uno' }, { id: 'dos' }] },
+        { key: 'embedding', type: 'embedding', loaded_instances: [{ id: 'tres' }] }
+      ] }))
+      return
+    }
+    const body = await readJson(request)
+    const instanceId = String(body.instance_id)
+    attempted.push(instanceId)
+    if (instanceId === 'dos') {
+      response.statusCode = 500
+      response.end(JSON.stringify({ error: 'fallo' }))
+      return
+    }
+    response.end(JSON.stringify({ instance_id: instanceId }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('Puerto de prueba no disponible')
+  try {
+    const result = await unloadAllModels({ baseUrl: `http://127.0.0.1:${address.port}`, apiKey: '' })
+    assert.deepEqual(attempted, ['uno', 'dos', 'tres'])
+    assert.deepEqual(result, {
+      total: 3,
+      unloaded: 2,
+      failed: [{ instanceId: 'dos', message: 'El servidor del modelo respondió 500' }]
+    })
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())))
   }
 })

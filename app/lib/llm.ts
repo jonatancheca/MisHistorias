@@ -63,6 +63,32 @@ export async function fetchLlmModels(scope: DataScope = getActiveDataScope()): P
   }
 }
 
+export async function preloadLlmModel(scope: DataScope = getActiveDataScope()) {
+  try {
+    return await $fetch<{ status: 'loaded' | 'already-loaded'; instanceId: string }>(
+      '/api/llm/model-management',
+      { method: 'POST', body: { action: 'load', scope } }
+    )
+  } catch (caught) {
+    throw normalizeError(caught)
+  }
+}
+
+export async function unloadAllLlmModels(scope: DataScope = getActiveDataScope()) {
+  try {
+    return await $fetch<{
+      total: number
+      unloaded: number
+      failed: Array<{ instanceId: string; message: string }>
+    }>('/api/llm/model-management', {
+      method: 'POST',
+      body: { action: 'unload-all', scope }
+    })
+  } catch (caught) {
+    throw normalizeError(caught)
+  }
+}
+
 export async function fetchLlmChat(request: LlmChatRequest) {
   try {
     return await $fetch<{ content: string; finishReason: string | null }>('/api/llm/chat', {

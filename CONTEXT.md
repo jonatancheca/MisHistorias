@@ -56,6 +56,14 @@ _Evitar_: Exportación JSON, copia parcial
 Credencial de LLM o SwarmUI que el servidor conserva para realizar llamadas salientes. La API de ajustes solo permite crear, reemplazar o borrar su valor y consultar si está configurado; nunca devuelve el valor guardado. Las trazas ocultan campos, patrones y valores de credenciales reconocibles. Los backups SQLite completos constituyen una excepción administrativa y sí conservan los secretos.
 _Evitar_: Ajuste público, token visible, valor recuperable
 
+**Modelo de historias configurado**:
+Identificador del modelo elegido en ajustes para generar texto en el ámbito normal o privado. Elegirlo no implica que esté cargado en LM Studio.
+_Evitar_: Modelo cargado, primer modelo disponible
+
+**Instancia LM Studio cargada**:
+Modelo residente en memoria del servidor LM Studio configurado, que puede ser utilizado por otras aplicaciones o usuarios. Descargarla libera memoria sin borrar el archivo del modelo.
+_Evitar_: Modelo instalado, descarga del archivo
+
 **Usuario Access**:
 Persona autenticada por Cloudflare Access cuya identidad separa sus colecciones y preferencias de las del resto.
 _Evitar_: Usuario local, cuenta de Mis Historias

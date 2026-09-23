@@ -93,6 +93,66 @@ test('protege tokens configurados y conserva sus controles de conexión', async 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
 })
 
+test('precarga el modelo elegido y confirma la descarga global incluso con Chrome activo', async ({ page, data }) => {
+  const initial = (await (await page.request.get('/api/settings')).json()) as AppSettings
+  const actions: string[] = []
+  await data.patchSettings({ model: 'modelo-ausente', useChromeLlm: true })
+  await page.route('**/api/llm/models**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '["modelo-disponible"]' })
+  })
+  await page.route('**/api/llm/model-management', async (route) => {
+    const body = route.request().postDataJSON() as { action: string; scope: string }
+    actions.push(`${body.action}:${body.scope}`)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body.action === 'load'
+        ? { status: 'loaded', instanceId: 'modelo-disponible' }
+        : { total: 2, unloaded: 1, failed: [{ instanceId: 'otro-modelo', message: 'Fallo' }] })
+    })
+  })
+
+  try {
+    await page.setViewportSize({ width: 320, height: 800 })
+    await page.goto('/settings')
+    const llm = page.getByTestId('llm-settings')
+    const preload = llm.getByRole('button', { name: 'Precargar modelo' })
+    const unload = llm.getByRole('button', { name: 'Descargar todos de memoria' })
+    await expect(preload).toBeVisible()
+    await expect(unload).toBeVisible()
+    await llm.getByRole('button', { name: 'Probar conexión' }).click()
+    await expect(llm.getByText('El modelo configurado no está disponible. Selecciona uno de la lista.'))
+      .toBeVisible()
+    await expect(llm.getByLabel('Modelo')).toHaveValue('modelo-ausente')
+    await expect(preload).toBeDisabled()
+
+    await llm.getByLabel('Modelo').selectOption('modelo-disponible')
+    await expect(preload).toBeEnabled()
+    await preload.click()
+    await expect(llm.getByRole('status')).toContainText('Modelo cargado en LM Studio.')
+    expect(actions).toEqual(['load:normal'])
+
+    await unload.click()
+    const confirmation = page.getByRole('alertdialog')
+    await expect(confirmation).toContainText('otras aplicaciones o usuarios')
+    await confirmation.getByRole('button', { name: 'Cancelar' }).click()
+    expect(actions).toEqual(['load:normal'])
+    await unload.click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Descargar todos' }).click()
+    await expect(llm.getByRole('status')).toContainText('1 de 2 instancias descargadas de memoria.')
+    await expect(llm.getByRole('alert')).toContainText('otro-modelo')
+    expect(actions).toEqual(['load:normal', 'unload-all:normal'])
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+    await page.setViewportSize({ width: 390, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+    await page.setViewportSize({ width: 1024, height: 768 })
+    await expect(preload).toBeVisible()
+    await expect(unload).toBeVisible()
+  } finally {
+    await data.patchSettings({ model: initial.model, useChromeLlm: initial.useChromeLlm })
+  }
+})
+
 test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 720 })
   await page.goto('/settings')
