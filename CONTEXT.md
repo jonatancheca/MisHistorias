@@ -20,6 +20,10 @@ _Evitar_: Prompt visual base
 Secuencia persistente de las imágenes de un personaje, compartida por el editor, los visores y los selectores. Es independiente de la imagen predeterminada, se conserva al copiar o transferir el personaje y coloca las imágenes nuevas al final.
 _Evitar_: Orden de creación, imagen predeterminada
 
+**Lote de generación de imágenes**:
+Conjunto de imágenes de un personaje producido por una misma ejecución de generación manual. Cada resultado terminado pertenece al lote al quedar guardado, aunque se borre después o la ejecución se cancele.
+_Evitar_: Galería completa, imagen pendiente
+
 **Foto de referencia**:
 Imagen temporal usada para deducir un prompt visual base, distinta de una imagen de galería del personaje.
 _Evitar_: Imagen del personaje, imagen predeterminada

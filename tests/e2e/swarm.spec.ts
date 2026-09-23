@@ -135,6 +135,7 @@ test('desplaza a los metadatos de IA al abrirlos en mobile', async ({ page, data
   await page.getByLabel('Prompt de imagen (inglés y editable)').fill('Mobile metadata test portrait.')
   await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
   await expect(page.getByText('Imagen generada y guardada en la galería.')).toBeVisible()
+  await page.getByRole('dialog', { name: 'Imágenes generadas' }).getByRole('button', { name: 'Cerrar' }).click()
 
   const main = page.locator('main')
   const metadataToggle = page.getByRole('button', { name: 'Mostrar metadatos de IA' })
@@ -361,7 +362,7 @@ test('permite excluir prompts al crear un conjunto de imágenes', async ({ page,
     .toEqual([['sentada']])
 })
 
-test('muestra progreso, prompt actual y última imagen al generar un lote', async ({ page, data }) => {
+test('muestra progreso, prompt actual y resultados guardados al generar un lote', async ({ page, data }) => {
   await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
   const character = await data.createCharacter()
   let calls = 0
@@ -384,7 +385,7 @@ test('muestra progreso, prompt actual y última imagen al generar un lote', asyn
   await expect(progress).toBeVisible()
   await expect(progress).toContainText('Imagen 1 de 2 completadas.')
   await expect(progress).toContainText('portrait')
-  await expect(progress.getByRole('img', { name: 'Última imagen generada' })).toBeVisible()
+  await expect(progress.getByRole('img', { name: character.name })).toBeVisible()
   await expect(progress.getByRole('button', { name: 'Cancelar generación' })).toBeVisible()
 
   for (const width of [320, 390]) {
@@ -393,9 +394,182 @@ test('muestra progreso, prompt actual y última imagen al generar un lote', asyn
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   }
 
-  await progress.getByRole('button', { name: 'Cancelar generación' }).click()
+  await progress.getByRole('button', { name: `Ampliar ${character.name}` }).click()
+  const viewer = page.getByRole('dialog', { name: character.name })
+  await expect(viewer).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(viewer).toHaveCount(0)
+  await expect(progress).toBeVisible()
+  await page.keyboard.press('Escape')
   release?.()
   await expect(page.getByText(/Generación cancelada/)).toBeVisible()
+  await page.getByRole('dialog', { name: 'Imágenes generadas' }).getByRole('button', { name: 'Cerrar' }).click()
+})
+
+test('navega y edita resultados del lote sin perder selección durante la generación', async ({ page, data }) => {
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  const character = await data.createCharacter()
+  const addedTag = data.unique('lote')
+  let calls = 0
+  let releaseSecond: (() => void) | undefined
+  let releaseThird: (() => void) | undefined
+  await page.route('**/api/swarm/catalog', (route) => route.fulfill({ json: CATALOG }))
+  await page.route('**/api/swarm/generate', async (route) => {
+    calls++
+    if (calls === 2) await new Promise<void>((resolve) => { releaseSecond = resolve })
+    if (calls === 3) await new Promise<void>((resolve) => { releaseThird = resolve })
+    await route.fulfill({ contentType: 'image/png', body: PNG_BYTES }).catch(() => {})
+  })
+
+  await page.goto(`/characters/${character.id}`)
+  await page.getByRole('button', { name: 'Crear imagen con SwarmUI' }).click()
+  await page.getByLabel('Modelo SwarmUI').selectOption('model-a')
+  await page.getByLabel('Prompt de imagen (inglés y editable)').fill('portrait')
+  await page.getByLabel('Número de imágenes').fill('3')
+  await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
+
+  const progress = page.getByTestId('image-generation-progress-dialog')
+  await expect(progress).toContainText('Imagen 1 de 1 del lote')
+  await expect(progress.getByRole('button', { name: 'Imagen anterior' })).toBeDisabled()
+  await expect(progress.getByRole('button', { name: 'Imagen siguiente' })).toBeDisabled()
+  await expect.poll(() => calls).toBe(2)
+  releaseSecond!()
+  await expect(progress).toContainText('Imagen 2 de 2 del lote')
+  await expect.poll(() => calls).toBe(3)
+  await progress.getByRole('button', { name: 'Imagen anterior' }).click()
+  await expect(progress).toContainText('Imagen 1 de 2 del lote')
+  releaseThird!()
+  await expect(progress).toContainText('Imagen 1 de 3 del lote')
+  await expect(progress.getByRole('button', { name: 'Imagen anterior' })).toBeDisabled()
+  await page.keyboard.press('ArrowRight')
+  await expect(progress).toContainText('Imagen 2 de 3 del lote')
+  await page.keyboard.press('ArrowRight')
+  await expect(progress).toContainText('Imagen 3 de 3 del lote')
+  await page.keyboard.press('ArrowRight')
+  await expect(progress).toContainText('Imagen 3 de 3 del lote')
+  await expect(page.getByRole('dialog', { name: 'Imágenes generadas' })).toBeVisible()
+  await progress.getByRole('button', { name: `Ampliar ${character.name}` }).click()
+
+  const viewer = page.getByRole('dialog', { name: character.name })
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 700 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    expect(await progress.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    expect(await viewer.locator('section').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+  await expect(viewer.getByRole('button', { name: 'Imagen siguiente' })).toBeDisabled()
+  await viewer.getByRole('button', { name: 'Imagen anterior' }).click()
+  await expect(progress).toContainText('Imagen 2 de 3 del lote')
+  const tagInput = viewer.getByLabel('Nueva etiqueta de imagen visualizada')
+  await tagInput.fill(addedTag)
+  await tagInput.press('Enter')
+  await tagInput.press('ArrowLeft')
+  await expect(progress).toContainText('Imagen 2 de 3 del lote')
+  const stored = await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
+  await expect.poll(async () => (await data.get<CharacterImage>('images', stored[1]!.id)).tags)
+    .toContain(addedTag)
+
+  await viewer.getByRole('button', { name: 'Cerrar imagen' }).click()
+  await expect(viewer).toHaveCount(0)
+  await expect(progress).toBeVisible()
+  await progress.getByRole('button', { name: `Ampliar ${character.name}` }).click()
+  await page.keyboard.press('Delete')
+  const confirmation = page.getByRole('alertdialog')
+  await expect(confirmation).toContainText('Esta imagen se borrará definitivamente.')
+  await confirmation.getByRole('button', { name: 'Cancelar' }).click()
+  await expect(viewer).toBeVisible()
+  await page.keyboard.press('Delete')
+  await confirmation.getByRole('button', { name: 'Borrar' }).click()
+  await expect(progress).toContainText('Imagen 2 de 2 del lote')
+  await expect(progress).toContainText('Imagen 3 de 3 completadas.')
+  await page.keyboard.press('Escape')
+  await expect(viewer).toHaveCount(0)
+  await expect(progress).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(progress).toHaveCount(0)
+  expect(await data.list<CharacterImage>('images', 'normal', { characterId: character.id })).toHaveLength(2)
+})
+
+test('sigue la siguiente imagen tras borrar la última y espera al salir de etiquetas', async ({ page, data }) => {
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  const character = await data.createCharacter()
+  let calls = 0
+  let releaseSecond: (() => void) | undefined
+  let releaseThird: (() => void) | undefined
+  await page.route('**/api/swarm/catalog', (route) => route.fulfill({ json: CATALOG }))
+  await page.route('**/api/swarm/generate', async (route) => {
+    calls++
+    if (calls === 2) await new Promise<void>((resolve) => { releaseSecond = resolve })
+    if (calls === 3) await new Promise<void>((resolve) => { releaseThird = resolve })
+    await route.fulfill({ contentType: 'image/png', body: PNG_BYTES }).catch(() => {})
+  })
+
+  await page.goto(`/characters/${character.id}`)
+  await page.getByRole('button', { name: 'Crear imagen con SwarmUI' }).click()
+  await page.getByLabel('Modelo SwarmUI').selectOption('model-a')
+  await page.getByLabel('Prompt de imagen (inglés y editable)').fill('portrait')
+  await page.getByLabel('Número de imágenes').fill('3')
+  await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
+
+  const progress = page.getByTestId('image-generation-progress-dialog')
+  await expect(progress).toContainText('Imagen 1 de 1 del lote')
+  await expect.poll(() => calls).toBe(2)
+  await progress.getByRole('button', { name: `Ampliar ${character.name}` }).click()
+  let viewer = page.getByRole('dialog', { name: character.name })
+  await viewer.getByRole('button', { name: 'Borrar', exact: true }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar' }).click()
+  await expect(progress).toContainText('No quedan imágenes guardadas de este lote.')
+  await expect(progress).toContainText('Imagen 1 de 3 completadas.')
+
+  releaseSecond!()
+  await expect(progress).toContainText('Imagen 1 de 1 del lote')
+  await expect.poll(() => calls).toBe(3)
+  await progress.getByRole('button', { name: `Ampliar ${character.name}` }).click()
+  viewer = page.getByRole('dialog', { name: character.name })
+  const tagInput = viewer.getByLabel('Nueva etiqueta de imagen visualizada')
+  await tagInput.focus()
+  releaseThird!()
+  await expect(progress).toContainText('Imagen 1 de 2 del lote')
+  await expect(tagInput).toBeFocused()
+  await viewer.getByRole('button', { name: 'Cerrar imagen' }).click()
+  await expect(progress).toContainText('Imagen 2 de 2 del lote')
+  await expect(page.getByRole('dialog', { name: 'Imágenes generadas' })).toBeVisible()
+  await progress.getByRole('button', { name: 'Cerrar', exact: true }).click()
+})
+
+test('borra la imagen editada aunque llegue otra mientras escribe etiquetas', async ({ page, data }) => {
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  const character = await data.createCharacter()
+  let calls = 0
+  let releaseSecond: (() => void) | undefined
+  await page.route('**/api/swarm/catalog', (route) => route.fulfill({ json: CATALOG }))
+  await page.route('**/api/swarm/generate', async (route) => {
+    calls++
+    if (calls === 2) await new Promise<void>((resolve) => { releaseSecond = resolve })
+    await route.fulfill({ contentType: 'image/png', body: PNG_BYTES }).catch(() => {})
+  })
+
+  await page.goto(`/characters/${character.id}`)
+  await page.getByRole('button', { name: 'Crear imagen con SwarmUI' }).click()
+  await page.getByLabel('Modelo SwarmUI').selectOption('model-a')
+  await page.getByLabel('Prompt de imagen (inglés y editable)').fill('portrait')
+  await page.getByLabel('Número de imágenes').fill('2')
+  await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
+  const progress = page.getByTestId('image-generation-progress-dialog')
+  await expect(progress).toContainText('Imagen 1 de 1 del lote')
+  await expect.poll(() => calls).toBe(2)
+  const firstId = (await data.list<CharacterImage>('images', 'normal', { characterId: character.id }))[0]!.id
+  await progress.getByRole('button', { name: `Ampliar ${character.name}` }).click()
+  const viewer = page.getByRole('dialog', { name: character.name })
+  await viewer.getByLabel('Nueva etiqueta de imagen visualizada').focus()
+  releaseSecond!()
+  await expect(progress).toContainText('Imagen 1 de 2 del lote')
+  await viewer.getByTestId('generation-image-delete').click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar' }).click()
+  await expect(progress).toContainText('Imagen 1 de 1 del lote')
+  const remaining = await data.list<CharacterImage>('images', 'normal', { characterId: character.id })
+  expect(remaining).toHaveLength(1)
+  expect(remaining[0]!.id).not.toBe(firstId)
 })
 
 test('edita y borra prompts sin mezclar catálogo normal y privado', async ({ page, data }) => {
@@ -450,11 +624,13 @@ test('detiene lotes al fallar, cancelar o salir sin borrar éxitos', async ({ pa
   await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Fallo simulado 1 guardadas; 2 pendientes.')
   expect(calls).toBe(2)
+  await page.getByRole('dialog', { name: 'Imágenes generadas' }).getByRole('button', { name: 'Cerrar' }).click()
   await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
   await expect.poll(() => calls).toBe(3)
   await page.getByRole('button', { name: 'Cancelar generación' }).click()
   release!()
   await expect(page.getByText(/Generación cancelada/)).toBeVisible()
+  await page.getByRole('dialog', { name: 'Imágenes generadas' }).getByRole('button', { name: 'Cerrar' }).click()
   await page.getByRole('button', { name: 'Generar imagen', exact: true }).click()
   await expect.poll(() => calls).toBe(4)
   await expect(page.getByRole('dialog', { name: 'Generando imágenes' })).toBeVisible()

@@ -52,17 +52,21 @@ const selectedSwarmPromptIds = ref<string[]>([])
 const generationCompleted = ref(0)
 const generationTotal = ref(0)
 const generationCurrentPrompt = ref('')
-const generationLastImageUrl = ref<string | null>(null)
+const generationImageIds = ref<string[]>([])
+const generationSelectedImageId = ref<string | null>(null)
+const generationEditingTags = ref(false)
+const generationFollowAfterEdit = ref(false)
+const generationImageError = ref<string | null>(null)
+const generationCancelling = ref(false)
 let generationController: AbortController | null = null
 const swarmConfigured = computed(() => Boolean(settings.settings.swarmBaseUrl.trim()))
-function cancelGeneration() { generationController?.abort() }
-function revokeGenerationLastImage() {
-  if (generationLastImageUrl.value) URL.revokeObjectURL(generationLastImageUrl.value)
-  generationLastImageUrl.value = null
+function cancelGeneration() {
+  if (!generationController || generationController.signal.aborted) return
+  generationCancelling.value = true
+  generationController.abort()
 }
 onBeforeUnmount(() => {
   cancelGeneration()
-  revokeGenerationLastImage()
 })
 onBeforeRouteLeave(() => { cancelGeneration() })
 watch(activeDataScope, cancelGeneration, { flush: 'sync' })
@@ -113,6 +117,35 @@ const galleryItems = computed(() => {
     generation: image.generation
   }))
 })
+const generationGalleryItems = computed(() => {
+  const byId = new Map(galleryItems.value.map((item) => [item.id, item]))
+  return generationImageIds.value.flatMap((id) => {
+    const item = byId.get(id)
+    return item ? [item] : []
+  })
+})
+
+function selectGenerationImage(id: string) {
+  if (!generationGalleryItems.value.some((image) => image.id === id)) return
+  generationSelectedImageId.value = id
+  generationEditingTags.value = false
+  generationFollowAfterEdit.value = false
+}
+
+function finishGenerationTagEdit() {
+  generationEditingTags.value = false
+  if (generationFollowAfterEdit.value && generationGalleryItems.value.length) {
+    generationSelectedImageId.value = generationGalleryItems.value.at(-1)!.id
+  }
+  generationFollowAfterEdit.value = false
+}
+
+function closeGenerationProgress() {
+  if (generationBusy.value) return
+  generationProgressOpen.value = false
+  generationEditingTags.value = false
+  generationFollowAfterEdit.value = false
+}
 
 const IMAGE_DRAG_THRESHOLD = 6
 interface ImageDragState {
@@ -374,7 +407,12 @@ async function generateImage(asSet = false) {
   generationCompleted.value = 0
   generationTotal.value = 0
   generationCurrentPrompt.value = ''
-  revokeGenerationLastImage()
+  generationImageIds.value = []
+  generationSelectedImageId.value = null
+  generationEditingTags.value = false
+  generationFollowAfterEdit.value = false
+  generationImageError.value = null
+  generationCancelling.value = false
   const scope = activeDataScope.value
   const characterId = props.characterId
   const controller = new AbortController()
@@ -423,13 +461,18 @@ async function generateImage(asSet = false) {
       signal: controller.signal,
       save: async (generated, job) => {
         generationCurrentPrompt.value = job.prompt
-        await characters.addImage(characterId, generated.blob, job.tags, undefined, {
+        const previousLastId = generationImageIds.value.at(-1) ?? null
+        const followLast = generationSelectedImageId.value === previousLastId
+        const image = await characters.addImage(characterId, generated.blob, job.tags, undefined, {
           scope,
           generation: generated.generation,
           signal: controller.signal
         })
-        if (generationLastImageUrl.value) URL.revokeObjectURL(generationLastImageUrl.value)
-        generationLastImageUrl.value = URL.createObjectURL(generated.blob)
+        generationImageIds.value.push(image.id)
+        if (followLast) {
+          if (generationEditingTags.value) generationFollowAfterEdit.value = true
+          else generationSelectedImageId.value = image.id
+        }
       },
       progress: (completed) => { generationCompleted.value = completed }
     })
@@ -441,9 +484,8 @@ async function generateImage(asSet = false) {
     else generationError.value = `${(caught as Error).message || 'No se pudo generar la imagen.'} ${summary}`
   } finally {
     generationBusy.value = false
-    generationProgressOpen.value = false
     generationController = null
-    revokeGenerationLastImage()
+    generationCancelling.value = false
   }
 }
 
@@ -649,7 +691,45 @@ async function remove(id: string, withConfirmation = true) {
 }
 
 function removeFromLightbox(item: { id?: string }) {
-  if (item.id) void remove(item.id, false)
+  if (item.id) void remove(item.id)
+}
+
+async function updateGeneratedTags(id: string, tags: string[]) {
+  generationImageError.value = null
+  try {
+    await characters.updateImage(id, { tags })
+  } catch (caught) {
+    generationImageError.value = (caught as Error).message || 'No se pudieron guardar las etiquetas.'
+    await characters.load(true)
+  }
+}
+
+async function removeGeneratedImage(id: string) {
+  if (!generationImageIds.value.includes(id)) return
+  const accepted = await confirmDialog.ask({
+    title: 'Borrar imagen',
+    message: 'Esta imagen se borrará definitivamente.'
+  })
+  if (!accepted) {
+    finishGenerationTagEdit()
+    return
+  }
+  generationEditingTags.value = false
+  generationFollowAfterEdit.value = false
+  generationImageError.value = null
+  try {
+    await characters.removeImage(id)
+    const index = generationImageIds.value.indexOf(id)
+    generationImageIds.value = generationImageIds.value.filter((imageId) => imageId !== id)
+    if (generationSelectedImageId.value === id) {
+      const nextIndex = Math.min(index, generationImageIds.value.length - 1)
+      generationSelectedImageId.value = generationImageIds.value[nextIndex] ?? null
+    }
+    generationFollowAfterEdit.value = false
+  } catch (caught) {
+    generationImageError.value = (caught as Error).message || 'No se pudo borrar la imagen.'
+    await characters.load(true)
+  }
 }
 </script>
 
@@ -864,13 +944,25 @@ function removeFromLightbox(item: { id?: string }) {
         :completed="generationCompleted"
         :total="generationTotal"
         :current-prompt="generationCurrentPrompt"
-        :last-image-url="generationLastImageUrl"
+        :images="generationGalleryItems"
+        :selected-image-id="generationSelectedImageId"
+        :tag-suggestions="imageTagSuggestions"
+        :running="generationBusy"
+        :cancelling="generationCancelling"
+        :result-message="generationNotice"
+        :result-error="generationImageError || generationError"
         @cancel="cancelGeneration"
+        @close="closeGenerationProgress"
+        @select="selectGenerationImage"
+        @update-tags="updateGeneratedTags"
+        @delete="removeGeneratedImage"
+        @tag-edit-start="generationEditingTags = true"
+        @tag-edit-end="finishGenerationTagEdit"
       />
-      <p v-if="generationError" class="text-sm text-red-500" role="alert">
+      <p v-if="!generationProgressOpen && generationError" class="text-sm text-red-500" role="alert">
         {{ generationError }}
       </p>
-      <p v-else-if="generationNotice" class="text-sm text-green-600" role="status">
+      <p v-else-if="!generationProgressOpen && generationNotice" class="text-sm text-green-600" role="status">
         {{ generationNotice }}
       </p>
     </div>

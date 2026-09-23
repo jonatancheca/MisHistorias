@@ -19,6 +19,8 @@ const props = withDefaults(
     imageStyle?: Record<string, string>
     downloadName?: string
     galleryItems?: GalleryItem[]
+    activeItemId?: string | null
+    navigationMode?: 'circular' | 'bounded'
     selectable?: boolean
     deletable?: boolean
   }>(),
@@ -29,6 +31,8 @@ const props = withDefaults(
     imageStyle: undefined,
     downloadName: undefined,
     galleryItems: undefined,
+    activeItemId: undefined,
+    navigationMode: 'circular',
     selectable: false,
     deletable: false
   }
@@ -37,6 +41,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   select: []
   delete: [item: GalleryItem]
+  activeChange: [item: GalleryItem]
 }>()
 
 const open = ref(false)
@@ -47,6 +52,8 @@ const MAX_ZOOM = 4
 const ZOOM_STEP = 0.5
 const zoom = ref(MIN_ZOOM)
 const viewport = ref<HTMLElement | null>(null)
+const triggerButton = ref<HTMLButtonElement | null>(null)
+const closeButton = ref<HTMLButtonElement | null>(null)
 const drag = ref<{
   pointerId: number
   x: number
@@ -62,14 +69,26 @@ const items = computed<GalleryItem[]>(() =>
 )
 const activeItem = computed(() => items.value[activeIndex.value] ?? items.value[0]!)
 const canNavigate = computed(() => items.value.length > 1)
+const canMovePrevious = computed(() => canNavigate.value && (
+  props.navigationMode === 'circular' || activeIndex.value > 0
+))
+const canMoveNext = computed(() => canNavigate.value && (
+  props.navigationMode === 'circular' || activeIndex.value < items.value.length - 1
+))
 
 function show() {
-  const index = items.value.findIndex((item) => item.src === props.src)
+  const index = items.value.findIndex((item) =>
+    props.activeItemId ? item.id === props.activeItemId : item.src === props.src
+  )
   activeIndex.value = index >= 0 ? index : 0
   generationMetadataOpen.value = false
   zoom.value = MIN_ZOOM
   open.value = true
-  nextTick(resetViewport)
+  emit('activeChange', activeItem.value)
+  nextTick(() => {
+    resetViewport()
+    closeButton.value?.focus()
+  })
 }
 
 function activate() {
@@ -82,14 +101,52 @@ function close() {
   generationMetadataOpen.value = false
   zoom.value = MIN_ZOOM
   resetViewport()
+  nextTick(() => triggerButton.value?.focus())
 }
 
 function move(offset: number) {
-  if (!canNavigate.value) return
-  activeIndex.value = (activeIndex.value + offset + items.value.length) % items.value.length
+  if (offset < 0 && !canMovePrevious.value) return
+  if (offset > 0 && !canMoveNext.value) return
+  activeIndex.value = props.navigationMode === 'circular'
+    ? (activeIndex.value + offset + items.value.length) % items.value.length
+    : activeIndex.value + offset
+  emit('activeChange', activeItem.value)
   generationMetadataOpen.value = false
   zoom.value = MIN_ZOOM
   nextTick(resetViewport)
+}
+
+watch(() => props.activeItemId, (id) => {
+  if (!open.value || !id) return
+  const index = items.value.findIndex((item) => item.id === id)
+  if (index < 0 || index === activeIndex.value) return
+  activeIndex.value = index
+  generationMetadataOpen.value = false
+  zoom.value = MIN_ZOOM
+  nextTick(resetViewport)
+})
+
+watch(() => items.value.map((item) => item.id ?? item.src), (currentIds, previousIds) => {
+  if (!open.value) return
+  const currentId = previousIds[activeIndex.value]
+  const index = currentIds.indexOf(currentId)
+  activeIndex.value = index >= 0 ? index : Math.max(0, Math.min(activeIndex.value, currentIds.length - 1))
+})
+
+function trapFocus(event: KeyboardEvent) {
+  const dialog = event.currentTarget as HTMLElement
+  const controls = Array.from(dialog.querySelectorAll<HTMLElement>(
+    'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])'
+  ) ?? [])
+  if (!controls.length) return
+  const index = controls.indexOf(document.activeElement as HTMLElement)
+  if (event.shiftKey && index <= 0) {
+    event.preventDefault()
+    controls[controls.length - 1]?.focus()
+  } else if (!event.shiftKey && index === controls.length - 1) {
+    event.preventDefault()
+    controls[0]?.focus()
+  }
 }
 
 function changeZoom(offset: number) {
@@ -144,6 +201,9 @@ function toggleGenerationMetadata() {
 
 function onKeydown(event: KeyboardEvent) {
   if (!open.value) return
+  if (document.querySelector('[role="alertdialog"]')) return
+  if (event.target instanceof HTMLElement &&
+    event.target.closest('input, textarea, select, [contenteditable="true"]')) return
   if (event.key === 'ArrowLeft') {
     event.preventDefault()
     move(-1)
@@ -162,7 +222,6 @@ function onKeydown(event: KeyboardEvent) {
   } else if (event.key === 'Delete' && props.deletable && activeItem.value.id) {
     event.preventDefault()
     emit('delete', activeItem.value)
-    close()
   }
 }
 
@@ -178,6 +237,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 <template>
   <div :class="['relative max-w-full', containerClass]">
     <button
+      ref="triggerButton"
       type="button"
       :class="[
         'block h-full w-full max-w-full rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500',
@@ -211,6 +271,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       aria-modal="true"
       :aria-label="alt || 'Imagen ampliada'"
       @click.self="close"
+      @keydown.tab="trapFocus"
     >
       <section
         class="flex max-h-[calc(100dvh-1rem)] w-full max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl lg:flex-row"
@@ -245,6 +306,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             aria-label="Controles de zoom"
           >
             <button
+              ref="closeButton"
               type="button"
               class="flex h-9 w-9 items-center justify-center rounded-full text-xl hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="Alejar imagen"
@@ -295,11 +357,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             </button>
           </div>
           <button
-            v-if="canNavigate"
+            v-if="canNavigate || navigationMode === 'bounded'"
             type="button"
             class="absolute left-3 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-3xl text-white hover:bg-black/80"
             aria-label="Imagen anterior"
             title="Imagen anterior"
+            :disabled="!canMovePrevious"
+            :class="!canMovePrevious ? 'cursor-not-allowed opacity-40' : ''"
             @click="move(-1)"
           >
             <span aria-hidden="true">‹</span>
@@ -314,11 +378,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             @click.stop="toggleGenerationMetadata"
           >IA</button>
           <button
-            v-if="canNavigate"
+            v-if="canNavigate || navigationMode === 'bounded'"
             type="button"
             class="absolute right-3 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-3xl text-white hover:bg-black/80"
             aria-label="Imagen siguiente"
             title="Imagen siguiente"
+            :disabled="!canMoveNext"
+            :class="!canMoveNext ? 'cursor-not-allowed opacity-40' : ''"
             @click="move(1)"
           >
             <span aria-hidden="true">›</span>

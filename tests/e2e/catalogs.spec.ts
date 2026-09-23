@@ -697,7 +697,7 @@ test.describe('personajes', () => {
     }
   })
 
-  test('borra imagen desde el visor con Supr sin confirmación', async ({ page, data }) => {
+  test('confirma antes de borrar imagen desde el visor con Supr', async ({ page, data }) => {
     const character = await data.createCharacter()
     const image = await data.createImage(character, ['borrar'])
 
@@ -707,7 +707,12 @@ test.describe('personajes', () => {
 
     await page.keyboard.press('Delete')
 
-    await expect(page.getByRole('alertdialog')).toHaveCount(0)
+    const confirmation = page.getByRole('alertdialog')
+    await expect(confirmation).toContainText('Esta imagen se borrará definitivamente.')
+    await confirmation.getByRole('button', { name: 'Cancelar' }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await page.keyboard.press('Delete')
+    await confirmation.getByRole('button', { name: 'Borrar' }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(page.getByTestId('character-image-card')).toHaveCount(0)
     expect((await data.list<CharacterImage>('images', 'normal', { characterId: character.id }))
