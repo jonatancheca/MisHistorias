@@ -47,6 +47,7 @@ if (privacy.isDemo && !stories.activeStory?.visibleInDemo) {
 }
 
 const input = ref('')
+const composerInput = ref<HTMLTextAreaElement | null>(null)
 const scroller = ref<HTMLElement | null>(null)
 const timelineContent = ref<HTMLElement | null>(null)
 const canScrollToTop = ref(false)
@@ -553,7 +554,7 @@ onMounted(async () => {
   if (timelineContent.value) timelineResizeObserver.observe(timelineContent.value)
   if (scroller.value) timelineResizeObserver.observe(scroller.value)
   timelineContent.value?.addEventListener('load', onTimelineAssetLoad, true)
-  window.addEventListener('keydown', onVisualNovelKeydown)
+  window.addEventListener('keydown', onStoryKeydown)
   if (!stories.activeStory?.visualMode) {
     await scrollToBottom()
     const current = scroller.value?.scrollTop ?? 0
@@ -919,13 +920,31 @@ function navigateChatMessage(direction: -1 | 1) {
   return true
 }
 
-function onVisualNovelKeydown(event: KeyboardEvent) {
-  if (!stories.activeStory) return
+function onStoryKeydown(event: KeyboardEvent) {
+  if (!stories.activeStory || event.defaultPrevented) return
   if (
-    event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
     storyPreferencesOpen.value || selectedDebugTrace.value || imagePickerTarget.value || editingVisualMessage.value ||
-    confirmDialog.dialog
+    storySavesOpen.value || confirmDialog.dialog
   ) return
+
+  const target = event.target
+  if (event.key === 'Home' || event.key === 'End') {
+    if (event.altKey || event.metaKey || event.shiftKey) return
+    if (target instanceof HTMLElement && target.closest('[role="dialog"], [role="alertdialog"]')) return
+    if (composerInput.value && target === composerInput.value) {
+      if (!event.ctrlKey) return
+    } else if (
+      target instanceof HTMLElement &&
+      (target.isContentEditable || target.closest('input, textarea, select, [contenteditable="true"]'))
+    ) return
+
+    event.preventDefault()
+    if (event.key === 'Home') void showStoryStart()
+    else void showStoryEnd()
+    return
+  }
+
+  if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
 
   if (event.key === 'PageUp' || event.key === 'PageDown') {
     const handled = stories.activeStory.visualMode
@@ -940,7 +959,6 @@ function onVisualNovelKeydown(event: KeyboardEvent) {
   }
 
   if (!stories.activeStory.visualMode) return
-  const target = event.target
   if (
     target instanceof HTMLElement &&
     (
@@ -961,7 +979,7 @@ onBeforeUnmount(() => {
   sounds.stopBackground()
   timelineContent.value?.removeEventListener('load', onTimelineAssetLoad, true)
   timelineResizeObserver?.disconnect()
-  window.removeEventListener('keydown', onVisualNovelKeydown)
+  window.removeEventListener('keydown', onStoryKeydown)
   if (followScrollFrame !== null) cancelAnimationFrame(followScrollFrame)
   if (followSettleFrame !== null) cancelAnimationFrame(followSettleFrame)
   if (missingStoryPrivateClickTimer) clearTimeout(missingStoryPrivateClickTimer)
@@ -1517,6 +1535,7 @@ onBeforeRouteLeave(() => {
         </div>
         <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="submit">
           <textarea
+            ref="composerInput"
             v-model="input"
             autocomplete="off"
             class="field min-h-12 min-w-0 resize-none"

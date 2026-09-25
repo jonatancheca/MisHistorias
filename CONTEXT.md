@@ -48,6 +48,10 @@ _Evitar_: Tipo de historia, modo de generación
 Intervención independiente de diálogo o narración producida por el narrador. Se muestra como cuadro en Novela Visual y como intervención separada en Chat; las directivas de fondo y sonido no cuentan como cuadros de estos tipos.
 _Evitar_: Línea visual, párrafo de pantalla
 
+**Cuadro de escritura**:
+Campo de una historia donde se prepara la siguiente intervención antes de enviarla. Su borrador no forma parte de la historia y es distinto de los cuadros de respuesta de Novela Visual.
+_Evitar_: Cuadro de respuesta, mensaje enviado
+
 **Efecto de sonido**:
 Audio puntual que acompaña un suceso de la historia y termina por sí mismo.
 _Evitar_: Sonido de fondo

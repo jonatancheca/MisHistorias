@@ -1341,6 +1341,57 @@ test.describe('chat', () => {
     await expect(input).toHaveValue('Texto sin enviar')
   })
 
+  test('Inicio y Fin navegan el chat sin mover el cursor del cuadro de escritura', async ({ page, data }) => {
+    const { story } = await createStoryFixture(data)
+    for (const label of ['Primero', 'Segundo', 'Tercero', 'Cuarto']) {
+      await data.createMessage({ story, role: 'user', raw: `${label}: ${'contenido largo '.repeat(90)}` })
+    }
+
+    await page.goto(`/stories/${story.id}`)
+    const scroller = page.getByTestId('story-scroller')
+    const maximum = await scroller.evaluate((element) => element.scrollHeight - element.clientHeight)
+    expect(maximum).toBeGreaterThan(100)
+    const atTop = () => scroller.evaluate((element) => element.scrollTop <= 1)
+    const atBottom = () => scroller.evaluate((element) =>
+      element.scrollTop >= element.scrollHeight - element.clientHeight - 1)
+
+    const headerButton = page.getByTestId('visual-mode-toggle')
+    await headerButton.focus()
+    await page.keyboard.press('Home')
+    await expect.poll(atTop).toBe(true)
+    await page.keyboard.press('End')
+    await expect.poll(atBottom).toBe(true)
+    await page.keyboard.press('Control+Home')
+    await expect.poll(atTop).toBe(true)
+    await page.keyboard.press('Control+End')
+    await expect.poll(atBottom).toBe(true)
+
+    const input = page.getByPlaceholder('Escribe lo que haces o dices…')
+    await input.fill('Borrador sin enviar')
+    await input.press('Home')
+    await expect.poll(atBottom).toBe(true)
+    await input.press('End')
+    await expect.poll(atBottom).toBe(true)
+    await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(4, 4))
+    await input.press('Control+Home')
+    await expect.poll(atTop).toBe(true)
+    await expect(input).toBeFocused()
+    await expect(input).toHaveValue('Borrador sin enviar')
+    expect(await input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(4)
+    await input.press('Control+End')
+    await expect.poll(atBottom).toBe(true)
+    await expect(input).toBeFocused()
+    expect(await input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(4)
+
+    await page.locator('button[title="Ajustes de la historia"]').click()
+    const dialog = page.getByRole('dialog', { name: 'Ajustes de la historia' })
+    await expect(dialog).toBeVisible()
+    const title = dialog.locator('input').first()
+    await title.focus()
+    await title.press('Control+Home')
+    await expect.poll(atBottom).toBe(true)
+  })
+
   test('envía un único system con catálogo completo para Qwen', async ({ page, data }) => {
     const { story, character, background } = await createStoryFixture(data)
     const narrativePrompt = data.unique('Prompt-narrativo')
@@ -2558,6 +2609,50 @@ test.describe('novela visual y responsive', () => {
     await page.getByTestId('story-end-button').click()
     await expect(page.getByTestId('visual-novel-counter')).toHaveText('3 / 3')
     await expect(page.getByTestId('visual-novel-frame')).toContainText('Última frase.')
+  })
+
+  test('Inicio y Fin navegan la novela sin mover el cursor del cuadro de escritura', async ({ page, data }) => {
+    const { story, character, image } = await createStoryFixture(data, true)
+    await data.createMessage({ story, role: 'user', raw: 'Primera frase.' })
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: 'Narración. Diálogo.',
+      segments: [
+        { type: 'narration', characterId: null, tag: null, text: 'Frase intermedia.' },
+        { type: 'dialogue', characterId: character.id, tag: 'feliz', imageId: image.id, text: 'Última frase.' }
+      ]
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    const counter = page.getByTestId('visual-novel-counter')
+    await expect(counter).toHaveText('3 / 3')
+    await page.getByTestId('visual-mode-toggle').focus()
+    await page.keyboard.press('Home')
+    await expect(counter).toHaveText('1 / 3')
+    await page.keyboard.press('End')
+    await expect(counter).toHaveText('3 / 3')
+    await page.keyboard.press('Control+Home')
+    await expect(counter).toHaveText('1 / 3')
+    await page.keyboard.press('Control+End')
+    await expect(counter).toHaveText('3 / 3')
+
+    const input = page.getByPlaceholder('Escribe lo que haces o dices…')
+    await input.fill('Borrador sin enviar')
+    await input.press('Home')
+    await expect(counter).toHaveText('3 / 3')
+    await input.press('End')
+    await expect(counter).toHaveText('3 / 3')
+    await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(4, 4))
+    await input.press('Control+Home')
+    await expect(counter).toHaveText('1 / 3')
+    await expect(input).toBeFocused()
+    await expect(input).toHaveValue('Borrador sin enviar')
+    expect(await input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(4)
+    await input.press('Control+End')
+    await expect(counter).toHaveText('3 / 3')
+    await expect(input).toBeFocused()
+    expect(await input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(4)
   })
 
   test('no muestra prefijos de imagen mientras pinta una respuesta visual', async ({ page, data }) => {
