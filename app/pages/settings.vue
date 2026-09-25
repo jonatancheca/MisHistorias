@@ -2206,6 +2206,11 @@ onBeforeRouteLeave(async () => {
             </a>
           </div>
         </div>
+        <div class="mt-5 border-t border-[var(--color-border-soft)] pt-4">
+          <NuxtLink to="/changelog" class="btn-ghost">
+            Ver historial de cambios
+          </NuxtLink>
+        </div>
       </div>
     </section>
 

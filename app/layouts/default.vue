@@ -22,7 +22,9 @@ const links = computed(() => [
 ])
 
 function isActive(to: string) {
-  return to === '/' ? route.path === '/' || route.path.startsWith('/stories') : route.path.startsWith(to)
+  if (to === '/') return route.path === '/' || route.path.startsWith('/stories')
+  if (to === '/settings') return route.path.startsWith('/settings') || route.path === '/changelog'
+  return route.path.startsWith(to)
 }
 
 function iconFor(to: string) {
@@ -153,6 +155,7 @@ onBeforeUnmount(() => desktopMedia?.removeEventListener('change', onBreakpointCh
           :to="link.to"
           class="nav-link flex min-w-0 items-center justify-center gap-2.5 rounded-xl px-1 py-2.5 text-xs font-semibold transition-[background-color,color,transform,box-shadow] duration-200 sm:text-sm"
           :aria-label="link.label"
+          :aria-current="isActive(link.to) ? 'page' : undefined"
           :title="link.label"
           :class="[
             isStoryView ? 'sm:px-2' : 'sm:justify-start sm:px-3.5',
