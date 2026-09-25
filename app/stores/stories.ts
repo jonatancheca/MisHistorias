@@ -1495,6 +1495,17 @@ export const useStoriesStore = defineStore('stories', () => {
         }
 
         waitingForResponse.value = true
+        if (!useChromeLlm) {
+          await useLlmModelPreloadStore().waitForStory(
+            story.id,
+            scope,
+            settingsStore.activeBaseUrl,
+            model,
+            requestController.signal
+          )
+          if (!generationStillActive()) return
+        }
+
         const result = useChromeLlm
           ? await fetchChromeLlmChat({
               messages: payload,

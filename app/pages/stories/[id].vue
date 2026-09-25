@@ -24,6 +24,7 @@ const settings = useSettingsStore()
 const privacy = usePrivacyStore()
 const confirmDialog = useConfirmStore()
 const access = useAccessStore()
+const modelPreload = useLlmModelPreloadStore()
 const {
   hidden: mobileChromeHidden,
   hide: hideMobileChrome,
@@ -361,6 +362,10 @@ async function applyImageSelection(selection: { imageId: string; queueForNextRes
 }
 
 const isEmpty = computed(() => timeline.value.length === 0 && !stories.generating)
+const storyModelPreload = computed(() => {
+  const attempt = modelPreload.currentAttempt
+  return attempt?.storyId === stories.activeStory?.id ? attempt : null
+})
 
 watch(timeline, () => scheduleFollowBottom(), { deep: true, flush: 'post' })
 watch(
@@ -1454,9 +1459,19 @@ onBeforeRouteLeave(() => {
         v-if="!stories.activeStory.readOnly"
         class="relative border-t border-[var(--color-border-soft)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4"
       >
+        <p
+          v-if="storyModelPreload && (storyModelPreload.status === 'loading' ||
+            (storyModelPreload.status === 'error' && isEmpty && !stories.error))"
+          data-testid="story-model-preload"
+          class="mb-2 text-center text-sm"
+          :class="storyModelPreload.status === 'error' ? 'text-red-500' : 'text-[var(--color-fg-muted)]'"
+          :role="storyModelPreload.status === 'error' ? 'alert' : 'status'"
+        >
+          {{ storyModelPreload.message }}
+        </p>
         <!-- El diálogo visual mide 120px; 4.5rem separan el aviso de las fichas y acciones de la escena. -->
         <div
-          v-if="stories.waitingForResponse"
+          v-if="stories.waitingForResponse && storyModelPreload?.status !== 'loading'"
           data-testid="thinking-indicator"
           class="mb-2 flex min-w-0 items-center justify-center text-sm text-[var(--color-fg-muted)] sm:-translate-x-9"
           :class="

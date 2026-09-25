@@ -7,6 +7,7 @@ const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
 const settings = useSettingsStore()
 const privacy = usePrivacyStore()
+const modelPreload = useLlmModelPreloadStore()
 
 await Promise.all([
   stories.load(),
@@ -14,6 +15,9 @@ await Promise.all([
   backgrounds.load(),
   settings.load()
 ])
+
+onMounted(() => modelPreload.start())
+watch(() => privacy.mode, () => modelPreload.start())
 
 const copyFromId = Array.isArray(route.query.copyFrom)
   ? route.query.copyFrom[0]
@@ -97,6 +101,7 @@ async function submit() {
       initialBackgroundId: initialBackgroundId.value,
       backgroundStyle: backgroundStyle.value
     })
+    modelPreload.attachStory(story.id)
     await navigateTo(`/stories/${story.id}`)
   } finally {
     saving.value = false
@@ -135,6 +140,15 @@ async function submit() {
         <button type="submit" class="btn-primary" :disabled="!canSubmit">Empezar historia</button>
         <NuxtLink to="/" class="btn-ghost">Cancelar</NuxtLink>
       </div>
+      <p
+        v-if="modelPreload.currentAttempt"
+        data-testid="story-model-preload"
+        class="text-sm"
+        :class="modelPreload.currentAttempt.status === 'error' ? 'text-red-500' : 'text-[var(--color-fg-muted)]'"
+        :role="modelPreload.currentAttempt.status === 'error' ? 'alert' : 'status'"
+      >
+        {{ modelPreload.currentAttempt.message }}
+      </p>
     </form>
   </div>
 </template>
