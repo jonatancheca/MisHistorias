@@ -23,6 +23,7 @@ const props = withDefaults(
     navigationMode?: 'circular' | 'bounded'
     selectable?: boolean
     deletable?: boolean
+    fitToViewport?: boolean
   }>(),
   {
     imageClass: '',
@@ -34,7 +35,8 @@ const props = withDefaults(
     activeItemId: undefined,
     navigationMode: 'circular',
     selectable: false,
-    deletable: false
+    deletable: false,
+    fitToViewport: false
   }
 )
 
@@ -275,6 +277,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     >
       <section
         class="flex max-h-[calc(100dvh-1rem)] w-full max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl lg:flex-row"
+        :class="fitToViewport ? 'h-[calc(100dvh-1rem)]' : ''"
       >
         <div
           class="relative flex min-h-64 min-w-0 flex-1 overflow-hidden bg-black/40 lg:min-h-0"
@@ -296,6 +299,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               :src="activeItem.src"
               :alt="activeItem.alt"
               class="max-h-[calc(100dvh-2rem)] max-w-full shrink-0 rounded-xl object-contain transition-transform duration-200"
+              :class="fitToViewport ? 'h-full w-full' : ''"
               :style="{ transform: `scale(${zoom})` }"
               :draggable="false"
             >

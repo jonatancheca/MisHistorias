@@ -2199,6 +2199,88 @@ test.describe('novela visual y responsive', () => {
     await assertZoom(dialog)
   })
 
+  test('ajusta imágenes pequeñas al visor de la historia sin recortarlas', async ({ page, data }) => {
+    const { story, character, image } = await createStoryFixture(data, true)
+    const imageResponse = await page.request.put(`/api/data/images/${image.id}?scope=normal`, {
+      multipart: {
+        metadata: JSON.stringify(image),
+        file: {
+          name: `${image.id}.png`,
+          mimeType: image.mimeType,
+          buffer: createPng(80, 60)
+        }
+      }
+    })
+    await expect(imageResponse).toBeOK()
+    await data.createMessage({
+      story,
+      role: 'assistant',
+      raw: `${character.name} [feliz]: Hola.`,
+      segments: [{
+        type: 'dialogue',
+        characterId: character.id,
+        tag: 'feliz',
+        tags: ['feliz'],
+        imageId: image.id,
+        text: 'Hola.'
+      }]
+    })
+
+    await page.goto(`/stories/${story.id}`)
+    for (const mode of ['Chat', 'Novela Visual']) {
+      await page.setViewportSize({ width: 1280, height: 720 })
+      const visualMode = await page.getByTestId('visual-mode-toggle').getAttribute('aria-pressed') === 'true'
+      if (visualMode !== (mode === 'Novela Visual')) {
+        await page.getByTestId('visual-mode-toggle').click()
+      }
+      for (const width of [1280, 390, 320]) {
+        await page.setViewportSize({ width, height: 720 })
+        if (mode === 'Chat') {
+          await page.getByRole('button', { name: `Ampliar ${character.name} feliz`, exact: true }).click()
+        } else {
+          await page.getByTestId('visual-novel-stage')
+            .getByRole('button', { name: `Ampliar ${character.name}`, exact: true }).click()
+        }
+
+        const dialog = page.getByRole('dialog')
+        const imageInViewer = dialog.getByTestId('image-lightbox-viewport').locator('img')
+        await expect(dialog.getByTestId('image-lightbox-zoom')).toContainText('100%')
+        await expect(imageInViewer).toHaveJSProperty('naturalWidth', 80)
+        await expect(imageInViewer).toHaveJSProperty('naturalHeight', 60)
+        await expect(imageInViewer).toHaveCSS('object-fit', 'contain')
+        const size = await imageInViewer.evaluate((element) => {
+          const image = element as HTMLImageElement
+          const rect = image.getBoundingClientRect()
+          const fit = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight)
+          return {
+            renderedWidth: image.naturalWidth * fit,
+            renderedHeight: image.naturalHeight * fit
+          }
+        })
+        expect(size.renderedWidth).toBeGreaterThan(80)
+        expect(size.renderedHeight).toBeGreaterThan(60)
+        expect(Math.max(size.renderedWidth / width, size.renderedHeight / 720)).toBeGreaterThan(0.8)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+        await dialog.getByRole('button', { name: 'Cerrar imagen' }).click()
+      }
+      if (mode === 'Chat') {
+        await page.setViewportSize({ width: 1280, height: 720 })
+        await page.getByRole('button', { name: /^Ampliar Fondo inicial/ }).click()
+        const backgroundImage = page.getByRole('dialog').locator('img')
+        await expect(backgroundImage).toHaveJSProperty('naturalWidth', 2)
+        expect((await backgroundImage.boundingBox())!.height).toBeGreaterThan(500)
+        await page.getByRole('button', { name: 'Cerrar imagen' }).click()
+      }
+    }
+
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await page.goto(`/characters/${character.id}`)
+    await page.getByTestId('character-image-card').getByRole('button', { name: 'Ampliar imagen', exact: true }).click()
+    const editorImage = page.getByRole('dialog').locator('img')
+    await expect(editorImage).toHaveJSProperty('naturalWidth', 80)
+    expect((await editorImage.boundingBox())!.width).toBe(80)
+  })
+
   test('muestra etiquetas de imagen y etiquetas pedidas por el LLM al pasar por encima', async ({ page, data }) => {
     const { story, character, image } = await createStoryFixture(data, true)
     await data.createMessage({

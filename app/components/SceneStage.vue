@@ -60,6 +60,7 @@ function galleryItems(characterId: string) {
     <div class="rounded-xl border border-[var(--color-border-soft)] p-2">
       <ImageLightbox
         v-if="currentBackground && backgrounds.urlFor(currentBackground.id)"
+        fit-to-viewport
         :src="backgrounds.urlFor(currentBackground.id)!"
         :alt="`Fondo ${primaryTag(currentBackground) ?? ''}`"
         container-class="w-full"
@@ -86,6 +87,7 @@ function galleryItems(characterId: string) {
     >
       <ImageLightbox
         v-if="imageUrl(character.id)"
+        fit-to-viewport
         :src="imageUrl(character.id)!"
         :alt="characterName(character.id)"
         container-class="w-full"

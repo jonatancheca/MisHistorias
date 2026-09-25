@@ -1317,6 +1317,7 @@ onBeforeRouteLeave(() => {
           >
             <ImageLightbox
               v-if="initialBackground && backgrounds.urlFor(initialBackground.id)"
+              fit-to-viewport
               :src="backgrounds.urlFor(initialBackground.id)!"
               :alt="`Fondo inicial ${primaryTag(initialBackground) ?? ''}`"
               container-class="w-full"

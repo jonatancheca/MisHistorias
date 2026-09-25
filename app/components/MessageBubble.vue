@@ -244,6 +244,7 @@ function confirmEdit() {
             <figure v-if="row.background" class="my-4 max-w-2xl">
               <ImageLightbox
                 v-if="row.imageUrl"
+                fit-to-viewport
                 :src="row.imageUrl"
                 :alt="`Fondo ${row.tag ?? ''}`"
                 image-class="max-h-[28rem] w-full rounded-2xl bg-black/5 object-contain"
@@ -282,6 +283,7 @@ function confirmEdit() {
               </p>
               <figure v-if="row.imageUrl && !visualMode" class="group/image mt-2 mb-3 w-40">
                 <ImageLightbox
+                  fit-to-viewport
                   :src="row.imageUrl"
                   :alt="`${row.name} ${row.tag ?? ''}`"
                   container-class="w-40"

@@ -127,6 +127,7 @@ onBeforeUnmount(() => stageResizeObserver?.disconnect())
           class="relative h-full min-h-0 w-full"
         >
           <ImageLightbox
+            fit-to-viewport
             :src="item.imageUrl"
             :alt="item.character.name"
             container-class="h-full w-full"
