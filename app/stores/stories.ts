@@ -14,7 +14,8 @@ import type {
   Story,
   StorySaveSlot,
   StoryCharacterCustomization,
-  StoryPendingImageInstruction
+  StoryPendingImageInstruction,
+  StoryGenerationAttempt
 } from '#shared/types'
 import {
   deleteMessage as dbDeleteMessage,
@@ -70,6 +71,11 @@ import {
   type CharacterImageJob
 } from '~/lib/storyImageGeneration'
 import { storyCustomizationIds } from '~/lib/storyCharacterCustomizations'
+import {
+  latestStoryGenerationFeedback,
+  storyGenerationErrorMessage,
+  type StoryGenerationFeedback
+} from '~/lib/storyGenerationFeedback'
 import { matchesBackgroundStyle, normalizeBackgroundStyle } from '~/lib/backgroundStyles'
 
 function normalizeCharacterCustomizations(
@@ -210,6 +216,10 @@ export const useStoriesStore = defineStore('stories', () => {
   const visualRevealWaitingForAdvance = ref(false)
   const visualRevealNavigationPaused = ref(false)
   const error = ref<string | null>(null)
+  const transientGenerationFeedback = ref<StoryGenerationFeedback | null>(null)
+  const generationFeedback = computed(() =>
+    transientGenerationFeedback.value ?? latestStoryGenerationFeedback(debugTraces.value, messages.value)
+  )
   const generatingImages = ref(false)
   const imageGenerationCharacter = ref('')
   const imageGenerationTags = ref<string[]>([])
@@ -464,6 +474,7 @@ export const useStoriesStore = defineStore('stories', () => {
     activeStory.value = null
     messages.value = []
     debugTraces.value = []
+    transientGenerationFeedback.value = null
     saveSlots.value = []
     pendingAssistantMessage.value = null
     compacting.value = false
@@ -546,6 +557,7 @@ export const useStoriesStore = defineStore('stories', () => {
       activeStory.value = null
       messages.value = []
       debugTraces.value = []
+      transientGenerationFeedback.value = null
       saveSlots.value = []
     }
   }
@@ -633,6 +645,7 @@ export const useStoriesStore = defineStore('stories', () => {
     if (changed.length) await Promise.all(changed.map((message) => putMessage(message, scope)))
     messages.value = normalizedMessages
     debugTraces.value = storedTraces
+    transientGenerationFeedback.value = null
     saveSlots.value = storedSaves
     error.value = null
   }
@@ -818,9 +831,10 @@ export const useStoriesStore = defineStore('stories', () => {
     else messages.value.push(message)
   }
 
-  async function persistDebugTrace(trace: LlmDebugTrace) {
+  async function persistDebugTrace(trace: LlmDebugTrace, scope = getActiveDataScope()) {
     try {
-      await putLlmDebugTrace(trace)
+      await putLlmDebugTrace(trace, scope)
+      if (scope !== getActiveDataScope() || activeStory.value?.id !== trace.storyId) return true
       const index = debugTraces.value.findIndex((item) => item.id === trace.id)
       if (index >= 0) debugTraces.value[index] = trace
       else debugTraces.value.push(trace)
@@ -1319,7 +1333,7 @@ export const useStoriesStore = defineStore('stories', () => {
     generationMode: GenerationMode = 'normal',
     options: { consumePendingImageInstructions?: boolean } = {}
   ) {
-    if (!activeStory.value || generating.value) return
+    if (!activeStory.value || activeStory.value.readOnly || generating.value) return
     const story = activeStory.value
     const scope = getActiveDataScope()
     const generationLifecycle = imageGenerationLifecycle
@@ -1327,83 +1341,14 @@ export const useStoriesStore = defineStore('stories', () => {
     const charactersStore = useCharactersStore()
     const backgroundsStore = useBackgroundsStore()
     const soundsStore = useSoundsStore()
-
-    await Promise.all([
-      settingsStore.load(),
-      charactersStore.load(),
-      backgroundsStore.load(),
-      soundsStore.load()
-    ])
-
-    const settings = settingsStore.settings
-    const model = settingsStore.activeModel
-    const temperature = settingsStore.activeTemperature
-    const maxTokens = settingsStore.activeMaxTokens
-    const historyBudget = settingsStore.activeHistoryBudget
-    const mock = settings.mockMode
-    const useChromeLlm = settingsStore.activeUseChromeLlm
-    if (!mock && !useChromeLlm && !model) {
-      error.value = 'Configura primero el modelo en Ajustes.'
-      return
+    const previousFeedback = generationFeedback.value
+    const attempt: StoryGenerationAttempt = {
+      mode: generationMode,
+      consumePendingImageInstructions: options.consumePendingImageInstructions === true,
+      historyMessageIds: messages.value.filter((message) => !message.swarmError).map((message) => message.id)
     }
-
-    const storyCharacters = storyCharactersWithCustomNames(story, charactersStore.characters)
-    const privacy = usePrivacyStore()
-    const referencedBackgroundIds = new Set<string>(
-      messages.value.flatMap((message) =>
-        message.segments.flatMap((segment) => segment.backgroundId ? [segment.backgroundId] : [])
-      )
-    )
-    if (story.initialBackgroundId) referencedBackgroundIds.add(story.initialBackgroundId)
-    const matchingBackgrounds = backgroundsStore.backgrounds.filter((background) =>
-      matchesBackgroundStyle(background, story.backgroundStyle) &&
-      (!background.archived || referencedBackgroundIds.has(background.id))
-    )
-    const storyBackgrounds = privacy.isDemo
-      ? matchingBackgrounds.filter(
-          (background) =>
-            background.visibleInDemo || referencedBackgroundIds.has(background.id)
-        )
-      : matchingBackgrounds
-    const pendingForRequest = options.consumePendingImageInstructions
-      ? validPendingImageInstructions(story, charactersStore.images)
-      : []
-    if (
-      options.consumePendingImageInstructions &&
-      pendingForRequest.length !== (story.pendingImageInstructions ?? []).length
-    ) {
-      await persistStoryState({
-        ...story,
-        pendingImageInstructions: pendingForRequest,
-        updatedAt: Date.now()
-      })
-    }
-    const storySounds = soundsStore.sounds.filter(
-      (sound) =>
-        (!privacy.isDemo && !sound.characterId && !sound.backgroundId) ||
-        Boolean(
-          sound.characterId &&
-          story.characterIds.includes(sound.characterId) &&
-          storyCharacters.some((character) => character.id === sound.characterId)
-        ) ||
-        Boolean(
-          sound.backgroundId &&
-          storyBackgrounds.some((background) => background.id === sound.backgroundId)
-        )
-    )
-    const currentImageCatalog = buildStoryImageCatalog(
-      story.characterIds,
-      charactersStore.characters,
-      charactersStore.images
-    )
-    const imageCatalogChange = story.imageCatalogSnapshot
-      ? compareStoryImageCatalogs(story.imageCatalogSnapshot, currentImageCatalog)
-      : null
-    if (!story.imageCatalogSnapshot) {
-      await persistImageCatalogSnapshot(story, currentImageCatalog, scope)
-    }
-
     error.value = null
+    transientGenerationFeedback.value = null
     imageGenerationError.value = null
     generating.value = true
     generationModeInProgress = generationMode
@@ -1429,9 +1374,10 @@ export const useStoriesStore = defineStore('stories', () => {
     let debugRequest: LlmDebugRequest | null = null
     let visibleRaw: string
     let pendingVariantJobs: CharacterImageJob[] = []
-    let imageCharacters = storyCharacters
+    let imageCharacters: Character[] = []
     let imageProgress: ImageGenerationProgress | null = null
     let imageBatchWarnings: string[] = []
+    let responseTraceStored = false
 
     const persistGeneratedImageCatalog = async (
       _image: StoredImage,
@@ -1448,6 +1394,94 @@ export const useStoriesStore = defineStore('stories', () => {
     }
 
     try {
+      if (previousFeedback?.traceId) {
+        const previousTrace = debugTraces.value.find((trace) => trace.id === previousFeedback.traceId)
+        if (previousTrace) {
+          await persistDebugTrace({
+            ...previousTrace,
+            request: {
+              ...previousTrace.request,
+              generation: { ...(previousTrace.request.generation ?? attempt), dismissed: true }
+            }
+          }, scope)
+        }
+      }
+      await Promise.all([
+        settingsStore.load(),
+        charactersStore.load(),
+        backgroundsStore.load(),
+        soundsStore.load()
+      ])
+      if (!generationStillActive()) return
+      const settings = settingsStore.settings
+      const model = settingsStore.activeModel
+      const temperature = settingsStore.activeTemperature
+      const maxTokens = settingsStore.activeMaxTokens
+      const historyBudget = settingsStore.activeHistoryBudget
+      const mock = settings.mockMode
+      const useChromeLlm = settingsStore.activeUseChromeLlm
+      if (!mock && !useChromeLlm && !model) {
+        throw new Error('Configura primero el modelo en Ajustes.')
+      }
+
+      const storyCharacters = storyCharactersWithCustomNames(story, charactersStore.characters)
+      const privacy = usePrivacyStore()
+      const referencedBackgroundIds = new Set<string>(
+        messages.value.flatMap((message) =>
+          message.segments.flatMap((segment) => segment.backgroundId ? [segment.backgroundId] : [])
+        )
+      )
+      if (story.initialBackgroundId) referencedBackgroundIds.add(story.initialBackgroundId)
+      const matchingBackgrounds = backgroundsStore.backgrounds.filter((background) =>
+        matchesBackgroundStyle(background, story.backgroundStyle) &&
+        (!background.archived || referencedBackgroundIds.has(background.id))
+      )
+      const storyBackgrounds = privacy.isDemo
+        ? matchingBackgrounds.filter(
+            (background) =>
+              background.visibleInDemo || referencedBackgroundIds.has(background.id)
+          )
+        : matchingBackgrounds
+      const pendingForRequest = options.consumePendingImageInstructions
+        ? validPendingImageInstructions(story, charactersStore.images)
+        : []
+      if (
+        options.consumePendingImageInstructions &&
+        pendingForRequest.length !== (story.pendingImageInstructions ?? []).length
+      ) {
+        await persistStoryState({
+          ...story,
+          pendingImageInstructions: pendingForRequest,
+          updatedAt: Date.now()
+        })
+      }
+      const storySounds = soundsStore.sounds.filter(
+        (sound) =>
+          (!privacy.isDemo && !sound.characterId && !sound.backgroundId) ||
+          Boolean(
+            sound.characterId &&
+            story.characterIds.includes(sound.characterId) &&
+            storyCharacters.some((character) => character.id === sound.characterId)
+          ) ||
+          Boolean(
+            sound.backgroundId &&
+            storyBackgrounds.some((background) => background.id === sound.backgroundId)
+          )
+      )
+      const currentImageCatalog = buildStoryImageCatalog(
+        story.characterIds,
+        charactersStore.characters,
+        charactersStore.images
+      )
+      const imageCatalogChange = story.imageCatalogSnapshot
+        ? compareStoryImageCatalogs(story.imageCatalogSnapshot, currentImageCatalog)
+        : null
+      if (!story.imageCatalogSnapshot) {
+        await persistImageCatalogSnapshot(story, currentImageCatalog, scope)
+      }
+
+      imageCharacters = storyCharacters
+
       let raw = ''
       let finishReason: string | null = null
 
@@ -1488,6 +1522,7 @@ export const useStoriesStore = defineStore('stories', () => {
         debugRequest = {
           provider: useChromeLlm ? 'chrome' : 'lmstudio',
           purpose: 'chat',
+          generation: attempt,
           model: useChromeLlm ? 'chrome-prompt-api' : model,
           messages: payload,
           temperature,
@@ -1539,6 +1574,7 @@ export const useStoriesStore = defineStore('stories', () => {
 
       }
 
+      if (!generationStillActive()) return
       const parsedImageResponse = parseStoryImageRequests(
         raw,
         storyCharacters,
@@ -1556,7 +1592,8 @@ export const useStoriesStore = defineStore('stories', () => {
           request: debugRequest,
           response: { content: raw, finishReason },
           createdAt: Date.now()
-        })
+        }, scope)
+        responseTraceStored = stored
         if (!stored) error.value = 'La respuesta llegó, pero no se pudo guardar su traza de debug.'
       }
       if (story.autoGenerateImages === true && parsedImageResponse.requests.length) {
@@ -1714,30 +1751,46 @@ export const useStoriesStore = defineStore('stories', () => {
       }
       if (finishReason === 'length' && visibleRaw.trim()) {
         error.value = 'La respuesta alcanzó el máximo de tokens. Se ha conservado el contenido parcial.'
-      } else if (!visibleRaw.trim() && !debugRequest && !imageBatchWarnings.length) {
-        error.value = 'El modelo no devolvió contenido visible.'
+      } else if (!visibleRaw.trim() && !responseTraceStored && !imageBatchWarnings.length) {
+        const message = finishReason === 'length'
+          ? 'El modelo alcanzó el máximo de tokens antes de devolver contenido visible.'
+          : 'El modelo no devolvió contenido visible.'
+        error.value = message
+        transientGenerationFeedback.value = { message, warning: false, retry: attempt }
       }
     } catch (caught) {
-      if ((caught as Error).name !== 'AbortError') {
+      if ((caught as Error).name !== 'AbortError' && generationStillActive()) {
         const callError = caught as LlmCallError
         const message = callError.message || 'Fallo al generar la respuesta'
-        if (debugRequest) {
-          const stored = await persistDebugTrace({
-            id: newId(),
-            storyId: story.id,
-            requestMessageId,
-            status: 'error',
-            request: debugRequest,
-            response: {
-              error: message,
-              status: callError.status,
-              detail: callError.detail
-            },
-            createdAt: Date.now()
-          })
-          if (!stored) error.value = message
-        } else {
+        const responseMessageId = messages.value.some((item) => item.id === assistantMessage.id)
+          ? assistantMessage.id
+          : undefined
+        const stored = await persistDebugTrace({
+          id: newId(),
+          storyId: story.id,
+          requestMessageId,
+          responseMessageId,
+          status: 'error',
+          request: debugRequest ?? {
+            provider: settingsStore.activeUseChromeLlm ? 'chrome' : 'lmstudio',
+            purpose: 'chat',
+            generation: attempt,
+            model: settingsStore.activeModel,
+            messages: [],
+            temperature: settingsStore.activeTemperature,
+            max_tokens: settingsStore.activeMaxTokens,
+            stream: false
+          },
+          response: { error: message, status: callError.status, detail: callError.detail },
+          createdAt: Date.now()
+        }, scope)
+        if (!stored && generationStillActive()) {
           error.value = message
+          transientGenerationFeedback.value = {
+            message: storyGenerationErrorMessage(message, callError.status),
+            warning: false,
+            retry: responseMessageId ? undefined : attempt
+          }
         }
       }
     } finally {
@@ -1751,6 +1804,14 @@ export const useStoriesStore = defineStore('stories', () => {
         controller = null
       }
     }
+  }
+
+  async function retryFailedGeneration() {
+    const attempt = generationFeedback.value?.retry
+    if (!attempt || generating.value || activeStory.value?.readOnly) return
+    await generate(attempt.mode, {
+      consumePendingImageInstructions: attempt.consumePendingImageInstructions
+    })
   }
 
   async function send(text: string) {
@@ -1805,6 +1866,7 @@ export const useStoriesStore = defineStore('stories', () => {
     pendingAssistantMessage,
     visualRevealWaitingForAdvance,
     error,
+    generationFeedback,
     generatingImages,
     imageGenerationCharacter,
     imageGenerationTags,
@@ -1831,6 +1893,7 @@ export const useStoriesStore = defineStore('stories', () => {
     removeMessage,
     send,
     generate,
+    retryFailedGeneration,
     cancelImageGeneration,
     regenerateFrom,
     resendFrom,

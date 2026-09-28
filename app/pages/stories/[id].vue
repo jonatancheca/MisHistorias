@@ -314,6 +314,16 @@ async function generateOpening() {
   await stories.generate()
 }
 
+async function retryFailedGeneration() {
+  if (stories.generating || stories.activeStory?.readOnly) return
+  void sounds.unlock()
+  followingBottom.value = true
+  followingVisualReveal.value = true
+  stories.resumeVisualReveal()
+  scheduleFollowBottom()
+  await stories.retryFailedGeneration()
+}
+
 async function generateContinuation(mode: Exclude<GenerationMode, 'normal'>) {
   if (stories.activeStory?.readOnly) return
   void sounds.unlock()
@@ -1533,6 +1543,25 @@ onBeforeRouteLeave(() => {
         >
           {{ stories.imageGenerationError }}
         </p>
+        <div
+          v-if="stories.activeStory.visualMode && !stories.generating && (stories.generationFeedback || stories.error)"
+          data-testid="visual-generation-feedback"
+          class="mb-2 flex min-w-0 flex-wrap items-center gap-3 rounded-lg px-3 py-2 text-sm"
+          :class="stories.generationFeedback?.warning
+            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+            : 'bg-red-500/10 text-red-600 dark:text-red-400'"
+          role="alert"
+        >
+          <p class="min-w-0 flex-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+            {{ stories.generationFeedback?.message ?? stories.error }}
+          </p>
+          <button
+            v-if="stories.generationFeedback?.retry"
+            type="button"
+            class="btn-ghost shrink-0 px-3 py-2"
+            @click="retryFailedGeneration"
+          >Reintentar</button>
+        </div>
         <div v-if="visiblePendingImageInstructions.length" class="mb-2 flex flex-wrap gap-2" data-testid="pending-image-instructions">
           <span
             v-for="instruction in visiblePendingImageInstructions"

@@ -123,3 +123,7 @@ _Evitar_: Todos los personajes personalizados, catálogo de personajes
 **Personalización recordada**:
 Instantánea de nombre, color, prompt y etiquetas que una historia conserva para un personaje, aunque no pertenezca al elenco activo.
 _Evitar_: Personaje eliminado, personalización global
+
+**Reintento de respuesta**:
+Repetición de la última acción del narrador que falló, ya sea el inicio de la historia, una respuesta a un mensaje, Sigue o Auto. Conserva el historial válido anterior y no duplica el mensaje del usuario.
+_Evitar_: Reenvío de mensaje, regeneración de respuesta

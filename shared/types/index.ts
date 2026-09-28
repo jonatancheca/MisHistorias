@@ -291,11 +291,21 @@ export interface StorySwarmError {
   call: SwarmCallDiagnostic
 }
 
+export interface StoryGenerationAttempt {
+  mode: GenerationMode
+  consumePendingImageInstructions: boolean
+  historyMessageIds: string[]
+  /** La acción se ha sustituido por un nuevo intento, incluso si este se cancela. */
+  dismissed?: boolean
+}
+
 export interface LlmDebugRequest {
   /** Proveedor usado para generar la respuesta; ausente en trazas antiguas. */
   provider?: 'lmstudio' | 'chrome'
   /** Finalidad de la llamada; ausente equivale a una respuesta normal del chat. */
   purpose?: 'chat' | 'compaction'
+  /** Acción narrativa recuperable; ausente en trazas anteriores. */
+  generation?: StoryGenerationAttempt
   model: string
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   temperature: number
