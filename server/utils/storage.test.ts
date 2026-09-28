@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { DatabaseSync } from 'node:sqlite'
 import { MisHistoriasStorage } from './storage.ts'
-import type { CharacterImage, ErrorTrace, SwarmPrompt } from '../../shared/types/index.ts'
+import type { Background, CharacterImage, ErrorTrace, SwarmPrompt } from '../../shared/types/index.ts'
 
 function withStorage(run: (storage: MisHistoriasStorage, path: string) => void) {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-'))
@@ -177,6 +177,7 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
         style: 'Realista',
         description: 'Fondo demo',
         mimeType: 'image/png',
+        archived: true,
         visibleInDemo: true,
         createdAt: 1
       },
@@ -248,7 +249,8 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
       assert.equal(reopened.get('stories', 'normal', 'story-normal')?.visibleInDemo, true)
       assert.equal(reopened.get('stories', 'normal', 'story-normal')?.backgroundStyle, 'Realista')
       assert.equal(reopened.get('stories', 'private', 'story-private')?.archived, false)
-      assert.equal(reopened.health().schemaVersion, 43)
+      assert.equal(reopened.health().schemaVersion, 44)
+      assert.equal(reopened.get('backgrounds', 'normal', 'background-demo')?.archived, true)
       reopened.writeSettings({ narrativePrompt: null, characterReferencePrompt: null })
       assert.equal('narrativePrompt' in (reopened.readSettings()?.value ?? {}), false)
       assert.equal('characterReferencePrompt' in (reopened.readSettings()?.value ?? {}), false)
@@ -282,7 +284,7 @@ test('migra historias v41 con estilo de respuesta sin indicar', () => {
   try {
     const migrated = new MisHistoriasStorage(path)
     try {
-      assert.equal(migrated.health().schemaVersion, 43)
+      assert.equal(migrated.health().schemaVersion, 44)
       assert.equal(migrated.get('stories', 'normal', 'legacy-story')?.dialogueStyle, 'unspecified')
       assert.equal(migrated.get('stories', 'normal', 'legacy-story')?.narrationStyle, 'unspecified')
     } finally {
@@ -319,7 +321,7 @@ test('migra sonidos v42 como efectos y permite marcarlos de fondo', () => {
   try {
     const migrated = new MisHistoriasStorage(path)
     try {
-      assert.equal(migrated.health().schemaVersion, 43)
+      assert.equal(migrated.health().schemaVersion, 44)
       assert.equal(migrated.get('sounds', 'normal', 'legacy-sound')?.isBackground, false)
       assert.deepEqual(Array.from(migrated.getBinary('sounds', 'normal', 'legacy-sound')!.data), [1, 2])
       assert.equal(migrationBackups(path).length, 1)
@@ -408,7 +410,7 @@ test('migra v39 asignando un orden determinista a las imágenes existentes', () 
       const images = migrated.list('images', 'normal', { characterId: 'ordered' })
       assert.deepEqual(images.map((image) => image.id), ['early', 'late'])
       assert.deepEqual(images.map((image) => image.position), [0, 1])
-      assert.equal(migrated.health().schemaVersion, 43)
+      assert.equal(migrated.health().schemaVersion, 44)
       assert.equal(migrationBackups(path).length, 1)
     } finally {
       migrated.close()
@@ -416,7 +418,73 @@ test('migra v39 asignando un orden determinista a las imágenes existentes', () 
   })
 })
 
-test('migra v1 a v43 copiando personajes y dejando modo visual desactivado', () => {
+test('migra v43 conservando fondos antiguos activos y sus imágenes', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'mishistorias-background-archive-'))
+  const path = join(directory, 'legacy.sqlite')
+  const current = new MisHistoriasStorage(path)
+  for (const scope of ['normal', 'private'] as const) {
+    current.putBinary('backgrounds', scope, 'legacy-background', {
+      metadata: {
+        tags: ['bosque'], style: 'Manga', description: 'Bosque antiguo',
+        mimeType: 'image/png', visibleInDemo: true, createdAt: 1
+      },
+      data: new Uint8Array([1, 2, 3])
+    })
+  }
+  current.close()
+  const legacy = new DatabaseSync(path)
+  legacy.exec('ALTER TABLE backgrounds DROP COLUMN archived; PRAGMA user_version = 43')
+  legacy.close()
+  try {
+    const migrated = new MisHistoriasStorage(path)
+    try {
+      assert.equal(migrated.health().schemaVersion, 44)
+      for (const scope of ['normal', 'private'] as const) {
+        assert.equal(migrated.get('backgrounds', scope, 'legacy-background')?.archived, false)
+        assert.equal(migrated.list('backgrounds', scope)[0]?.archived, false)
+        assert.deepEqual(Array.from(migrated.getBinary('backgrounds', scope, 'legacy-background')!.data), [1, 2, 3])
+      }
+      assert.ok(migrationBackups(path).some((name) => name.includes('from-v43-to-v44')))
+    } finally {
+      migrated.close()
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('archiva fondos por ámbito y propietario, reserva etiquetas y crea copias activas', () => {
+  withStorage((storage) => {
+    storage.activateMultiUser({ id: 'owner', email: 'owner@example.com' })
+    const owner = { ownerId: 'owner', includeSharedDemo: true }
+    const visitor = { ownerId: 'visitor', includeSharedDemo: true }
+    const metadata = {
+      id: 'background', tags: ['bosque'], style: 'Manga', description: 'Bosque',
+      mimeType: 'image/png', archived: true, visibleInDemo: true, createdAt: 1
+    }
+    for (const scope of ['normal', 'private'] as const) {
+      storage.putBinary('backgrounds', scope, metadata.id, {
+        metadata: { ...metadata, archived: scope === 'private' }, data: new Uint8Array([1, 2])
+      }, owner)
+      assert.equal(storage.list('backgrounds', scope, {}, owner)[0]?.archived, scope === 'private')
+    }
+    assert.equal((storage.get('backgrounds', 'private', metadata.id, visitor) as Background)?.readOnly, true)
+    assert.throws(() => storage.putBinary('backgrounds', 'private', metadata.id, {
+      metadata: { ...metadata, archived: false }, data: new Uint8Array([1, 2])
+    }, visitor), (caught: unknown) => (caught as { code?: string }).code === 'ERR_READ_ONLY_RESOURCE')
+    assert.throws(() => storage.putBinary('backgrounds', 'private', 'duplicate', {
+      metadata: { ...metadata, id: 'duplicate' }, data: new Uint8Array([3])
+    }, owner), (caught: unknown) => (caught as { code?: string }).code === 'ERR_BACKGROUND_TAG_CONFLICT')
+    const copied = storage.copyBackground('private', metadata.id, visitor) as Background
+    assert.equal(copied.archived, false)
+    assert.equal(copied.visibleInDemo, false)
+    assert.equal(copied.readOnly, undefined)
+    assert.equal(storage.get('backgrounds', 'private', metadata.id, owner)?.archived, true)
+    assert.deepEqual(Array.from(storage.getBinary('backgrounds', 'private', copied.id, visitor)!.data), [1, 2])
+  })
+})
+
+test('migra v1 a v44 copiando personajes y dejando modo visual desactivado', () => {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-v1-'))
   const path = join(directory, 'test.sqlite')
   const legacy = new DatabaseSync(path)
@@ -486,7 +554,7 @@ test('migra v1 a v43 copiando personajes y dejando modo visual desactivado', () 
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.archived, false)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationModel, '')
     assert.equal(
@@ -542,7 +610,7 @@ test('migra v5 añadiendo preset de personaje y secreto Swarm con backup previo'
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationPreset, '')
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationLora, '')
     assert.equal(storage.get('characters', 'normal', 'character-1')?.imageGenerationSeed, '')
@@ -594,7 +662,7 @@ test('migra v6 añadiendo indicaciones de imagen pendientes', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     assert.deepEqual(storage.get('stories', 'normal', 'story-1')?.pendingImageInstructions, [])
     assert.equal(migrationBackups(path).length, 1)
   } finally {
@@ -663,7 +731,7 @@ test('migra v22 eliminando descripciones de imágenes en ambos ámbitos', () => 
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     const columns = storage.database.prepare('PRAGMA table_info(images)').all() as Array<{
       name: string
     }>
@@ -738,7 +806,7 @@ test('migra v23 copiando colores de personajes en historias y partidas', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     assert.equal(
       storage.get('stories', 'normal', normalStory.id)?.characterCustomizations[0]?.color,
       '#123456'
@@ -775,7 +843,7 @@ test('migra v24 añadiendo semilla y prefijo de imagen en ambos ámbitos', () =>
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     for (const scope of ['normal', 'private'] as const) {
       const stored = storage.get('characters', scope, `${scope}-character`)
       assert.equal(stored?.imageGenerationSeed, '')
@@ -806,7 +874,7 @@ test('migra v40 y añade borradores de prompt vacíos en ambos ámbitos', () => 
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     for (const scope of ['normal', 'private'] as const) {
       const stored = storage.get('characters', scope, `${scope}-character`)
       assert.equal(stored?.imageGenerationNotes, '')
@@ -836,7 +904,7 @@ test('migra v25 añadiendo resumen de contexto a las historias', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     const stored = storage.get('stories', 'normal', 'story-normal')
     assert.equal(stored?.contextSummary, '')
     assert.equal(stored?.contextSummaryThroughMessageId, undefined)
@@ -871,7 +939,7 @@ test('migra v19 y separa los ajustes privados de LMStudio', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     assert.equal(storage.readSettings()?.privateApiKey, '')
 
     storage.writeSettings({
@@ -982,7 +1050,7 @@ test('migra imágenes v3 a BLOBs referenciados sin perder contenido', () => {
     } finally {
       backup.close()
     }
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     assert.deepEqual(Array.from(storage.getBinary('images', 'normal', 'image-1')!.data), [7, 8, 9])
     const row = storage.database
       .prepare('SELECT blob_id FROM images WHERE scope = ? AND id = ?')
@@ -1013,7 +1081,7 @@ test('conserva backup y revierte la base original si falla la migración', () =>
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /Falló la migración SQLite v3 a v43\. Backup:/
+      /Falló la migración SQLite v3 a v44\. Backup:/
     )
 
     const backups = migrationBackups(path)
@@ -1054,7 +1122,7 @@ test('no inicia la migración si no puede crear el backup', () => {
   try {
     assert.throws(
       () => new MisHistoriasStorage(path),
-      /No se pudo crear el backup previo de SQLite\. Migración v3 a v43 no iniciada\./
+      /No se pudo crear el backup previo de SQLite\. Migración v3 a v44 no iniciada\./
     )
     const source = new DatabaseSync(path, { readOnly: true })
     try {
@@ -1135,7 +1203,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     const backup = storage.createManualBackup()
     assert.equal(backup.kind, 'manual')
     assert.equal(backup.valid, true)
-    assert.equal(backup.schemaVersion, 43)
+    assert.equal(backup.schemaVersion, 44)
     assert.equal(storage.listBackups().some((item) => item.name === backup.name), true)
     const backupDatabase = new DatabaseSync(join(dirname(path), 'backups', backup.name), {
       readOnly: true
@@ -1206,7 +1274,7 @@ test('importa backups válidos sin sobrescribir y rechaza archivos incompatibles
     assert.equal(imported.kind, 'uploaded')
     assert.equal(imported.name, 'test.uploaded-mi-copia.sqlite')
     assert.equal(imported.valid, true)
-    assert.equal(imported.schemaVersion, 43)
+    assert.equal(imported.schemaVersion, 44)
 
     const duplicate = storage.importBackup(sourcePath, 'mi copia.sqlite')
     assert.equal(duplicate.kind, 'uploaded')
@@ -1228,11 +1296,11 @@ test('importa backups válidos sin sobrescribir y rechaza archivos incompatibles
     )
 
     const future = new DatabaseSync(sourcePath)
-    future.exec('PRAGMA user_version = 44')
+    future.exec('PRAGMA user_version = 45')
     future.close()
     assert.throws(
       () => storage.importBackup(sourcePath, 'future.sqlite'),
-      /usa el esquema v44; esta versión admite hasta v43/
+      /usa el esquema v45; esta versión admite hasta v44/
     )
 
     storage.put('characters', 'normal', 'normal-1', {
@@ -1743,7 +1811,7 @@ test('migra v30, conserva mensajes antiguos y restaura diagnósticos sin mezclar
       assert.deepEqual(reopened.get('messages', 'normal', 'error-146'), saved)
       assert.equal(reopened.get('messages', 'private', 'error-146'), null)
       const schema = new DatabaseSync(path)
-      assert.equal(schema.prepare('PRAGMA user_version').get()?.user_version, 43)
+      assert.equal(schema.prepare('PRAGMA user_version').get()?.user_version, 44)
       schema.close()
     } finally { reopened.close() }
   })
@@ -1792,7 +1860,7 @@ test('migra v31 fijando nombres actuales sin sobrescribir nombres personalizados
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     assert.equal(
       storage.get('stories', 'normal', normalStory.id)?.characterCustomizations[0]?.name,
       'Nombre normal actual'
@@ -1828,7 +1896,7 @@ test('migra v32 añadiendo historias activas por defecto', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     assert.equal(storage.get('stories', 'normal', 'legacy-story')?.archived, false)
     assert.equal(
       (storage.database.prepare('PRAGMA table_info(stories)').all() as Array<{ name: string }>)
@@ -1878,7 +1946,7 @@ test('migra v33 añadiendo visibilidad demo desactivada por defecto', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     assert.equal(storage.get('characters', 'private', 'legacy-character')?.visibleInDemo, false)
     assert.equal(storage.get('backgrounds', 'private', 'legacy-background')?.visibleInDemo, false)
     assert.equal(storage.get('stories', 'private', 'legacy-story')?.visibleInDemo, false)
@@ -1921,7 +1989,7 @@ test('migra v35 añadiendo estilos de fondo opcionales', () => {
 
   const storage = new MisHistoriasStorage(path)
   try {
-    assert.equal(storage.health().schemaVersion, 43)
+    assert.equal(storage.health().schemaVersion, 44)
     assert.equal(storage.get('backgrounds', 'normal', 'legacy-background')?.style, '')
     assert.equal(storage.get('stories', 'normal', 'legacy-story')?.backgroundStyle, null)
     assert.equal(migrationBackups(path).length, 1)
@@ -2229,6 +2297,7 @@ test('activa multiusuario, reclama el legado y aísla propietarios compartiendo 
     const copiedBackground = storage.copyBackground('private', 'demo-background', visitor)!
     assert.notEqual(copiedBackground.id, 'demo-background')
     assert.equal(copiedBackground.readOnly, undefined)
+    assert.equal((copiedBackground as Background).archived, false)
     assert.equal(copiedBackground.visibleInDemo, false)
 
     storage.put('stories', 'private', 'visitor-story', {
@@ -2335,7 +2404,7 @@ test('migra v38 limpiando referencias multimedia de propietarios distintos', () 
       const message = migrated.get(
         'messages', 'private', 'legacy-message', { ownerId: 'visitor-owner' }
       )
-      assert.equal(migrated.health().schemaVersion, 43)
+      assert.equal(migrated.health().schemaVersion, 44)
       assert.equal(message?.raw, 'Texto conservado')
       assert.deepEqual(message?.segments, [{
         type: 'narration', text: 'Texto conservado', backgroundId: null, tag: 'bosque'
@@ -2669,6 +2738,7 @@ test('copia una historia demo ajena completa, autónoma y atómica en la colecci
       'backgrounds', 'private', copied.initialBackgroundId!, destinationAccess
     )!
     assert.equal(copiedBackground.style, 'Manga')
+    assert.equal(copiedBackground.archived, false)
     assert.deepEqual(copiedBackground.tags, ['bosque-2'])
     assert.equal(copiedBackground.visibleInDemo, false)
     assert.deepEqual(
@@ -2977,12 +3047,12 @@ test('migra v36 y recupera identidades conocidas para reasignación', () => {
 
     const migrated = new MisHistoriasStorage(path)
     try {
-      assert.equal(migrated.health().schemaVersion, 43)
+      assert.equal(migrated.health().schemaVersion, 44)
       const identity = migrated.database.prepare(
         'SELECT email FROM access_identities WHERE owner_id = ?'
       ).get('legacy-admin') as { email: string }
       assert.equal(identity.email, 'legacy@example.com')
-      assert.ok(migrationBackups(path).some(name => name.includes('from-v36-to-v43')))
+      assert.ok(migrationBackups(path).some(name => name.includes('from-v36-to-v44')))
     } finally {
       migrated.close()
     }

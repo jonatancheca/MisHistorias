@@ -82,6 +82,7 @@ interface BackgroundInput {
   tags?: string[]
   style?: string
   description?: string
+  archived?: boolean
   visibleInDemo?: boolean
   scope?: DataScope
 }
@@ -227,6 +228,7 @@ export const test = base.extend<{ data: TestDataFactory }>({
           style: input.style ?? '',
           description: input.description ?? 'Fondo creado exclusivamente para esta prueba.',
           mimeType: 'image/png',
+          archived: input.archived ?? false,
           visibleInDemo: input.visibleInDemo ?? false,
           createdAt: Date.now()
         }

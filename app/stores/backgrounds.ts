@@ -105,6 +105,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
       style: normalizeBackgroundStyle(style),
       description: description.trim(),
       mimeType,
+      archived: false,
       visibleInDemo: usePrivacyStore().isDemo,
       createdAt: Date.now(),
       blob
@@ -117,7 +118,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
 
   async function updateBackground(
     id: string,
-    patch: Partial<Pick<StoredBackground, 'tags' | 'style' | 'description' | 'visibleInDemo'>>
+    patch: Partial<Pick<StoredBackground, 'tags' | 'style' | 'description' | 'visibleInDemo' | 'archived'>>
   ) {
     const scope = getActiveDataScope()
     const current = byId(id)
@@ -151,6 +152,12 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     syncUrls()
   }
 
+  async function setArchived(id: string, archived: boolean) {
+    const current = byId(id)
+    if (!current || current.readOnly) return
+    return updateBackground(id, { archived })
+  }
+
   async function copyBackground(id: string) {
     const copied = await copyStoredBackground(id)
     await load(true)
@@ -167,6 +174,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     addBackground,
     updateBackground,
     removeBackground,
+    setArchived,
     copyBackground,
     resetForScope
   }

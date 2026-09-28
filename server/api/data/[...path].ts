@@ -206,6 +206,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
     case 'backgrounds':
       valid =
         hasStringArray(value, 'tags') &&
+        (value.archived === undefined || typeof value.archived === 'boolean') &&
         (value.style === undefined || (typeof value.style === 'string' && value.style.length <= 100)) &&
         hasString(value, 'description') &&
         hasString(value, 'mimeType') &&

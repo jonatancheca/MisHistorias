@@ -208,6 +208,7 @@ async function seedNormalData() {
       style: 'Realista',
       description: 'Bosque verde al amanecer.',
       mimeType: 'image/svg+xml',
+      archived: false,
       createdAt: TEST_TIME + 30,
       blob: svgBlob('Bosque', '#166534')
     },
@@ -217,6 +218,7 @@ async function seedNormalData() {
       style: 'Realista',
       description: 'Taberna cálida iluminada por velas.',
       mimeType: 'image/svg+xml',
+      archived: false,
       createdAt: TEST_TIME + 31,
       blob: svgBlob('Taberna', '#92400e')
     }

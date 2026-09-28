@@ -32,6 +32,7 @@ const background: StoredBackground = {
   tags: ['bosque', 'exterior'],
   description: '',
   mimeType: 'image/png',
+  archived: false,
   createdAt: 1,
   blob: new Blob()
 }

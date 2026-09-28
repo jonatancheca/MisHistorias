@@ -119,7 +119,7 @@ interface SqliteRow extends Record<string, unknown> {
   scope: DataScope
 }
 
-const SCHEMA_VERSION = 43
+const SCHEMA_VERSION = 44
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 const ERROR_TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
@@ -364,6 +364,7 @@ function rowToBackground(row: SqliteRow) {
     style: text(row.style),
     description: text(row.description),
     mimeType: text(row.mime_type, 'application/octet-stream'),
+    archived: integer(row.archived) === 1,
     visibleInDemo: integer(row.visible_in_demo) === 1,
     createdAt: integer(row.created_at)
   }
@@ -898,6 +899,7 @@ export class MisHistoriasStorage {
           style TEXT NOT NULL DEFAULT '',
           description TEXT NOT NULL,
           mime_type TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
           visible_in_demo INTEGER NOT NULL DEFAULT 0 CHECK (visible_in_demo IN (0, 1)),
           created_at INTEGER NOT NULL,
           data BLOB NOT NULL,
@@ -1755,6 +1757,17 @@ export class MisHistoriasStorage {
         }
       }
 
+      if (version.user_version < 44) {
+        const backgroundColumns = this.database
+          .prepare('PRAGMA table_info(backgrounds)')
+          .all() as Array<{ name: string }>
+        if (!backgroundColumns.some((column) => column.name === 'archived')) {
+          this.database.exec(
+            'ALTER TABLE backgrounds ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'
+          )
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -2317,7 +2330,7 @@ export class MisHistoriasStorage {
       case 'backgrounds': {
         const filter = this.accessFilter(resource, 'backgrounds', access)
         return (this.database.prepare(
-          `SELECT scope, owner_id, id, tags_json, style, description, mime_type, visible_in_demo, created_at FROM backgrounds WHERE scope = ?${filter.sql} ORDER BY created_at`
+          `SELECT scope, owner_id, id, tags_json, style, description, mime_type, archived, visible_in_demo, created_at FROM backgrounds WHERE scope = ?${filter.sql} ORDER BY created_at`
         ).all(scope, ...filter.args) as SqliteRow[])
           .map((row) => this.withReadOnly(rowToBackground(row), row, access))
       }
@@ -2628,6 +2641,7 @@ export class MisHistoriasStorage {
         style: source.style,
         description: source.description,
         mimeType: source.mimeType,
+        archived: false,
         visibleInDemo: false,
         createdAt: Date.now()
       },
@@ -2937,8 +2951,8 @@ export class MisHistoriasStorage {
       const insertBackground = this.database.prepare(`
         INSERT INTO backgrounds(
           scope, owner_id, id, tags_json, style, description, mime_type,
-          visible_in_demo, created_at, data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+          archived, visible_in_demo, created_at, data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
       `)
       for (const row of selectedBackgrounds) {
         insertBackground.run(
@@ -3517,13 +3531,14 @@ export class MisHistoriasStorage {
       }
       this.database
         .prepare(`
-          INSERT INTO backgrounds(scope, owner_id, id, tags_json, style, description, mime_type, visible_in_demo, created_at, data)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO backgrounds(scope, owner_id, id, tags_json, style, description, mime_type, archived, visible_in_demo, created_at, data)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(scope, id) DO UPDATE SET
             tags_json = excluded.tags_json,
             style = excluded.style,
             description = excluded.description,
             mime_type = excluded.mime_type,
+            archived = excluded.archived,
             visible_in_demo = excluded.visible_in_demo,
             created_at = excluded.created_at,
             data = excluded.data
@@ -3536,6 +3551,7 @@ export class MisHistoriasStorage {
           text(value.style).trim(),
           text(value.description),
           text(value.mimeType, 'application/octet-stream'),
+          bool(value.archived),
           bool(value.visibleInDemo),
           integer(value.createdAt),
           payload.data

@@ -19,10 +19,13 @@ const error = ref<string | null>(null)
 const refreshing = ref(false)
 const refreshError = ref<string | null>(null)
 const copyingId = ref<string | null>(null)
+const showArchived = ref(false)
+const archivingId = ref<string | null>(null)
 const visibleBackgrounds = computed(() =>
-  privacy.isDemo
-    ? backgrounds.backgrounds.filter((background) => background.visibleInDemo)
-    : backgrounds.backgrounds
+  backgrounds.backgrounds.filter((background) =>
+    background.archived === showArchived.value &&
+    (!privacy.isDemo || background.visibleInDemo)
+  )
 )
 const styleSuggestions = computed(() => availableBackgroundStyles(backgrounds.backgrounds))
 
@@ -65,7 +68,7 @@ async function processFile(file: Blob) {
 
 async function update(
   id: string,
-  patch: Partial<Pick<StoredBackground, 'tags' | 'style' | 'description'>>
+  patch: Partial<Pick<StoredBackground, 'tags' | 'style' | 'description' | 'visibleInDemo'>>
 ) {
   error.value = null
   try {
@@ -96,6 +99,20 @@ async function copyBackground(id: string) {
     copyingId.value = null
   }
 }
+
+async function setArchived(id: string, archived: boolean) {
+  if (archivingId.value) return
+  archivingId.value = id
+  error.value = null
+  try {
+    await backgrounds.setArchived(id, archived)
+  } catch (caught) {
+    error.value = (caught as Error).message || 'No se pudo guardar el archivado del fondo.'
+    await backgrounds.load(true)
+  } finally {
+    archivingId.value = null
+  }
+}
 </script>
 
 <template>
@@ -105,15 +122,20 @@ async function copyBackground(id: string) {
         <p class="page-kicker">Escenografía</p>
         <h1 class="page-title">Fondos</h1>
         <p class="mt-2 max-w-2xl text-sm text-[var(--color-fg-muted)]">
-          Modelo puede elegir fondo usando cualquiera de sus etiquetas. Cada etiqueta debe ser única.
+          El modelo puede elegir fondos activos o ya usados en la historia mediante sus etiquetas. Cada etiqueta debe ser única.
         </p>
       </div>
-      <button type="button" class="btn-ghost" :disabled="refreshing" @click="reload">
-        <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M20 11a8 8 0 0 0-14.7-4L3 9m0 0V4m0 5h5M4 13a8 8 0 0 0 14.7 4L21 15m0 0v5m0-5h-5" />
-        </svg>
-        {{ refreshing ? 'Recargando…' : 'Recargar' }}
-      </button>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn-ghost" :aria-pressed="showArchived" @click="showArchived = !showArchived">
+          {{ showArchived ? 'Ver activos' : 'Ver archivados' }}
+        </button>
+        <button type="button" class="btn-ghost" :disabled="refreshing" @click="reload">
+          <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 11a8 8 0 0 0-14.7-4L3 9m0 0V4m0 5h5M4 13a8 8 0 0 0 14.7 4L21 15m0 0v5m0-5h-5" />
+          </svg>
+          {{ refreshing ? 'Recargando…' : 'Recargar' }}
+        </button>
+      </div>
     </header>
 
     <p v-if="refreshError" class="card mb-4 text-sm text-red-500" role="alert">
@@ -161,7 +183,7 @@ async function copyBackground(id: string) {
     </section>
 
     <p v-if="visibleBackgrounds.length === 0" class="empty-state card py-10 text-sm text-[var(--color-fg-muted)]">
-      Sin fondos todavía.
+      {{ showArchived ? 'No hay fondos archivados.' : 'Sin fondos todavía.' }}
     </p>
 
     <ul class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -233,7 +255,13 @@ async function copyBackground(id: string) {
               >
               Visible en modo demo
             </label>
-            <div class="flex justify-end">
+            <div class="flex justify-end gap-2">
+              <button
+                type="button"
+                class="btn-ghost"
+                :disabled="archivingId !== null"
+                @click="setArchived(background.id, !background.archived)"
+              >{{ background.archived ? 'Desarchivar' : 'Archivar' }}</button>
               <button type="button" class="btn-danger" @click="remove(background.id)">Borrar</button>
             </div>
           </template>

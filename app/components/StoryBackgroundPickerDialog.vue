@@ -79,6 +79,7 @@ useDialogEscape(
                 @click="emit('select', background.id)"
               >
                 <span class="block truncate font-medium">{{ primaryTag(background) }}</span>
+                <span v-if="background.archived" class="block text-xs text-[var(--color-fg-muted)]">Archivado</span>
                 <span v-if="background.style" class="block truncate text-xs font-medium text-brand-600">
                   {{ background.style }}
                 </span>

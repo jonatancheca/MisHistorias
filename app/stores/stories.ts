@@ -1356,7 +1356,8 @@ export const useStoriesStore = defineStore('stories', () => {
     )
     if (story.initialBackgroundId) referencedBackgroundIds.add(story.initialBackgroundId)
     const matchingBackgrounds = backgroundsStore.backgrounds.filter((background) =>
-      matchesBackgroundStyle(background, story.backgroundStyle)
+      matchesBackgroundStyle(background, story.backgroundStyle) &&
+      (!background.archived || referencedBackgroundIds.has(background.id))
     )
     const storyBackgrounds = privacy.isDemo
       ? matchingBackgrounds.filter(

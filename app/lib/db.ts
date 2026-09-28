@@ -247,6 +247,7 @@ export async function listBackgrounds(scope: DataScope = activeDataScope.value) 
   return Promise.all(
     metadata.map(async (background) => ({
       ...background,
+      archived: background.archived === true,
       blob: await fetchBlob('backgrounds', background.id, scope)
     }))
   )

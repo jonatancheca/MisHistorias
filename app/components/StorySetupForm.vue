@@ -65,11 +65,18 @@ const pickerCharacters = computed(() => selectableCharacters.value
     customized: Boolean(customizationFor(character.id))
   })))
 const backgroundStyles = computed(() => availableBackgroundStyles(
-  backgrounds.backgrounds.filter((background) => !background.readOnly)
+  [
+    ...backgrounds.backgrounds.filter((background) =>
+      !background.readOnly && !background.archived &&
+      (!privacy.isDemo || background.visibleInDemo)
+    ),
+    { style: backgroundStyle.value ?? '' }
+  ]
 ))
 const selectableBackgroundIds = computed(() => backgrounds.backgrounds
   .filter((background) =>
     !background.readOnly &&
+    (!background.archived || background.id === initialBackgroundId.value) &&
     (!privacy.isDemo || background.visibleInDemo) &&
     matchesBackgroundStyle(background, backgroundStyle.value)
   )
@@ -337,6 +344,7 @@ watch(characterIds, (ids) => {
         <span class="min-w-0">
           <span class="block text-xs font-medium uppercase tracking-wide text-[var(--color-fg-muted)]">Fondo inicial</span>
           <span class="mt-1 block truncate font-semibold">{{ selectedBackground ? primaryTag(selectedBackground) : 'Que decida el LLM' }}</span>
+          <span v-if="selectedBackground?.archived" class="mt-1 block text-xs text-[var(--color-fg-muted)]">Archivado</span>
           <span class="mt-1 line-clamp-1 block text-xs text-[var(--color-fg-muted)]">
             {{ selectedBackground?.description || (selectedBackground ? 'Sin descripción' : (selectableBackgroundIds.length ? 'Pulsa para elegir un fondo.' : 'No hay fondos de este estilo.')) }}
           </span>

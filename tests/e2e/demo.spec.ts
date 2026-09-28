@@ -272,7 +272,7 @@ test.describe('modo demo', () => {
       swarmPrompts: unknown[]
     }
 
-    expect(bundle.version).toBe(24)
+    expect(bundle.version).toBe(26)
     const characterIds = bundle.characters.map((item) => item.id)
     expect(characterIds).toEqual(expect.arrayContaining([markedCharacter.id, contextualCharacter.id]))
     expect(characterIds).not.toContain(hiddenCharacter.id)

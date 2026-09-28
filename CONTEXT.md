@@ -40,6 +40,10 @@ _Evitar_: Colección global, colección compartida, acceso público
 Historia conservada fuera del catálogo activo sin quedar finalizada ni bloqueada. Mantiene todo su contenido, puede abrirse, editarse y continuarse, y su condición archivada forma parte de ella.
 _Evitar_: Historia eliminada, historia finalizada, historia de solo lectura
 
+**Fondo archivado**:
+Fondo conservado fuera del catálogo activo y de nuevas selecciones, editable y recuperable, que mantiene su imagen, sonidos y etiquetas. Sigue disponible en las historias que ya lo utilizan.
+_Evitar_: Fondo eliminado, fondo de solo lectura, fondo no disponible
+
 **Modo de visualización de la historia**:
 Preferencia de cada historia para presentar el mismo contenido como Chat o Novela Visual, incluso durante su creación.
 _Evitar_: Tipo de historia, modo de generación

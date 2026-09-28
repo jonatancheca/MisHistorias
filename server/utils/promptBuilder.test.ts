@@ -177,7 +177,7 @@ test('envía combinaciones de etiquetas únicas por personaje y fondo, sin descr
   }
   const background = {
     id: 'background', tags: ['bosque', 'noche'], description: 'DESCRIPCIÓN DEL FONDO',
-    mimeType: 'image/png', createdAt: 1, blob: new Blob()
+    mimeType: 'image/png', archived: false, createdAt: 1, blob: new Blob()
   }
   const payload = buildChatMessages({
     presetContent: 'Narra.', story: { ...story, initialBackgroundId: background.id },

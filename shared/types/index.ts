@@ -85,6 +85,8 @@ export interface Background {
   style?: string
   description: string
   mimeType: string
+  /** Oculta el fondo de nuevas selecciones sin romper historias que ya lo usan. */
+  archived: boolean
   /** Permite mostrar el fondo en el catálogo del modo demo. */
   visibleInDemo: boolean
   createdAt: number

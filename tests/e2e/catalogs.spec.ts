@@ -917,7 +917,7 @@ test.describe('personajes', () => {
       characters: Array<{ id: string; name: string; images: Array<{ dataUrl: string; originalDataUrl: string }> }>
       stories: unknown[]; backgrounds: unknown[]; presets: unknown[]; sounds: unknown[]
     }
-    expect(bundle.version).toBe(24)
+    expect(bundle.version).toBe(26)
     const exportedCharacter = bundle.characters.find((item) => item.id === source.id)!
     expect(Buffer.from(exportedCharacter.images[0]!.dataUrl.split(',')[1]!, 'base64')).toEqual(croppedBytes)
     expect(Buffer.from(exportedCharacter.images[0]!.originalDataUrl.split(',')[1]!, 'base64')).toEqual(PNG_BYTES)
@@ -1043,7 +1043,7 @@ test.describe('fondos', () => {
     const soundTag = data.unique('sonido-externo')
 
     await page.goto('/backgrounds')
-    await page.getByLabel('Etiquetas').fill(draftTag)
+    await page.getByLabel('Etiquetas', { exact: true }).fill(draftTag)
     await page.getByLabel('Descripción', { exact: true }).fill(draftDescription)
 
     const external = await data.createBackground({ tags: [externalTag] })
