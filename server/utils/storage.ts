@@ -10,6 +10,7 @@ import {
 import { createHash, randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { inspectBackupDatabase, inspectBackupsInBackground } from './backupInspection.ts'
 import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
 import { readStorySwarmError } from '../../shared/utils/swarmError.ts'
 import type {
@@ -596,46 +597,7 @@ export class MisHistoriasStorage {
   }
 
   private readBackupVersion(path: string) {
-    let backupDatabase: DatabaseSync | undefined
-    try {
-      backupDatabase = new DatabaseSync(path, { readOnly: true })
-      const quickCheck = backupDatabase.prepare('PRAGMA quick_check').all() as Array<{
-        quick_check: string
-      }>
-      const version = backupDatabase.prepare('PRAGMA user_version').get() as {
-        user_version: number
-      }
-      const schema = backupDatabase
-        .prepare("SELECT COUNT(*) AS total FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'")
-        .get() as { total: number }
-      const applicationTables = backupDatabase
-        .prepare(`
-          SELECT COUNT(*) AS total
-          FROM sqlite_schema
-          WHERE type = 'table' AND name IN (
-            'characters', 'image_blobs', 'images', 'backgrounds', 'sounds', 'stories',
-            'messages', 'llm_debug_traces', 'story_saves', 'presets', 'settings', 'swarm_prompts',
-            'error_traces'
-          )
-        `)
-        .get() as { total: number }
-      const schemaVersion = version.user_version
-      return {
-        valid:
-          quickCheck.length === 1 &&
-          quickCheck[0]?.quick_check === 'ok' &&
-          schema.total > 0 &&
-          Number.isInteger(schemaVersion) &&
-          schemaVersion >= 0 &&
-          schemaVersion <= SCHEMA_VERSION,
-        schemaVersion,
-        applicationDatabase: applicationTables.total > 0
-      }
-    } catch {
-      return { valid: false, schemaVersion: null, applicationDatabase: false }
-    } finally {
-      if (backupDatabase?.isOpen) backupDatabase.close()
-    }
+    return inspectBackupDatabase(path, SCHEMA_VERSION, DatabaseSync)
   }
 
   private backupKind(name: string): DatabaseBackupKind {
@@ -675,6 +637,10 @@ export class MisHistoriasStorage {
         return this.inspectBackup(entry.name, path)
       })
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  }
+
+  listBackupsInBackground() {
+    return inspectBackupsInBackground(this.backupDirectory(), this.databaseName(), SCHEMA_VERSION)
   }
 
   private pruneMigrationBackups(backupDirectory: string, databaseName: string) {

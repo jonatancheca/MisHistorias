@@ -108,6 +108,10 @@ const activeSectionId = ref<SettingsSectionId>('apariencia')
 const activeSettingsDialog = ref<SettingsDialogId | null>(null)
 const settingsDialogBusy = ref(false)
 const swarmPromptSettingsRef = ref<SwarmPromptSettingsHandle | null>(null)
+const swarmPromptSettingsMounted = ref(false)
+watch(activeSettingsDialog, (id) => {
+  if (id === 'prompts-swarmui') swarmPromptSettingsMounted.value = true
+})
 const settingsNavDragging = ref(false)
 let pageScrollContainer: HTMLElement | null = null
 let sectionUpdateFrame: number | null = null
@@ -190,6 +194,7 @@ const backupsLoading = ref(false)
 const backupAction = ref<string | null>(null)
 const backupMessage = ref<string | null>(null)
 const backupError = ref<string | null>(null)
+const backupListError = ref<string | null>(null)
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const saveError = ref<string | null>(null)
 const swarmCatalog = ref<SwarmCatalog | null>(null)
@@ -213,7 +218,7 @@ let savePending = false
 let saveRevision = 0
 let saveQueue: Promise<void> = Promise.resolve()
 let apiKeyDirty = false
-let switchingPrivateLlmSettings = false
+const switchingPrivateLlmSettings = ref(false)
 let swarmAuthTokenDirty = false
 let privateUserNameDirty: boolean = false
 let privateProtagonistPreferencesDirty: boolean = false
@@ -299,6 +304,12 @@ function updateActiveSection() {
 function queueSectionUpdate() {
   if (sectionUpdateFrame !== null) return
   sectionUpdateFrame = requestAnimationFrame(updateActiveSection)
+}
+
+function onSettingsResize() {
+  queueSectionUpdate()
+  if (navScrollFrame !== null) cancelAnimationFrame(navScrollFrame)
+  navScrollFrame = requestAnimationFrame(revealActiveNavItem)
 }
 
 function scrollToSettingsSection(id: SettingsSectionId, behavior: ScrollBehavior) {
@@ -789,8 +800,8 @@ function clearApiKey() {
 }
 
 async function setPrivateLlmSettingsEnabled(enabled: boolean) {
-  if (!privacy.isPrivate || switchingPrivateLlmSettings) return
-  switchingPrivateLlmSettings = true
+  if (!privacy.isPrivate || switchingPrivateLlmSettings.value) return
+  switchingPrivateLlmSettings.value = true
   try {
     await flushSave()
     privateLlmSettingsEnabled.value = enabled
@@ -830,7 +841,7 @@ async function setPrivateLlmSettingsEnabled(enabled: boolean) {
     saveStatus.value = 'error'
     saveError.value = (caught as Error).message || 'No se pudieron guardar los ajustes privados.'
   } finally {
-    switchingPrivateLlmSettings = false
+    switchingPrivateLlmSettings.value = false
   }
 }
 
@@ -841,7 +852,7 @@ function clearSwarmAuthToken() {
 }
 
 function scheduleSave() {
-  if (switchingPrivateLlmSettings || syncingScope) return
+  if (switchingPrivateLlmSettings.value || syncingScope) return
   saveRevision += 1
   savePending = true
   if (saveTimer) clearTimeout(saveTimer)
@@ -1064,12 +1075,13 @@ function backupErrorMessage(caught: unknown, fallback: string) {
 }
 
 async function loadBackups() {
+  if (backupsLoading.value) return
   backupsLoading.value = true
-  backupError.value = null
+  backupListError.value = null
   try {
     backups.value = await listDatabaseBackups()
   } catch (caught) {
-    backupError.value = backupErrorMessage(caught, 'No se pudieron cargar los backups.')
+    backupListError.value = backupErrorMessage(caught, 'No se pudieron cargar los backups.')
   } finally {
     backupsLoading.value = false
   }
@@ -1165,8 +1177,6 @@ function formatBackupSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-if (canManageGlobal.value) await loadBackups()
-
 async function onImportFile(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -1238,11 +1248,12 @@ onBeforeUnmount(() => {
   if (navScrollFrame !== null) cancelAnimationFrame(navScrollFrame)
   if (settingsNavClickResetTimer) clearTimeout(settingsNavClickResetTimer)
   pageScrollContainer?.removeEventListener('scroll', queueSectionUpdate)
-  window.removeEventListener('resize', queueSectionUpdate)
+  window.removeEventListener('resize', onSettingsResize)
   void flushSave()
 })
 
 onMounted(() => {
+  if (canManageGlobal.value) void loadBackups()
   unregisterBeforeModeChange = privacy.registerBeforeModeChange(async () => {
     await flushSave()
     if (saveStatus.value === 'error') return false
@@ -1265,7 +1276,7 @@ onMounted(() => {
   })
   pageScrollContainer = settingsPageRef.value?.closest('main') ?? null
   pageScrollContainer?.addEventListener('scroll', queueSectionUpdate, { passive: true })
-  window.addEventListener('resize', queueSectionUpdate)
+  window.addEventListener('resize', onSettingsResize)
   requestAnimationFrame(() => {
     const initialDialog = settingsDialogIdFromHash(route.hash)
     const initialSection = sectionIdFromHash(route.hash)
@@ -2287,7 +2298,7 @@ onBeforeRouteLeave(async () => {
             <button
               type="button"
               class="btn-ghost"
-              :disabled="backupAction !== null"
+              :disabled="backupAction !== null || backupsLoading"
               @click="backupImportInput?.click()"
             >
               {{ backupAction === 'upload' ? 'Subiendo…' : 'Subir backup' }}
@@ -2295,7 +2306,7 @@ onBeforeRouteLeave(async () => {
             <button
               type="button"
               class="btn-primary"
-              :disabled="backupAction !== null"
+              :disabled="backupAction !== null || backupsLoading"
               @click="createBackup"
             >
               {{ backupAction === 'create' ? 'Creando…' : 'Crear backup' }}
@@ -2309,9 +2320,15 @@ onBeforeRouteLeave(async () => {
         <p v-if="backupError" class="mt-3 text-xs text-red-500" role="alert">
           {{ backupError }}
         </p>
-        <p v-if="backupsLoading" class="mt-4 text-sm text-[var(--color-fg-muted)]">
+        <p v-if="backupsLoading" class="mt-4 text-sm text-[var(--color-fg-muted)]" role="status">
           Cargando backups…
         </p>
+        <div v-else-if="backupListError" class="mt-4 flex flex-wrap items-center gap-3">
+          <p class="text-sm text-red-500" role="alert">{{ backupListError }}</p>
+          <button type="button" class="btn-ghost" :disabled="backupAction !== null" @click="loadBackups">
+            Reintentar carga de backups
+          </button>
+        </div>
         <p v-else-if="backups.length === 0" class="mt-4 text-sm text-[var(--color-fg-muted)]">
           No hay backups todavía.
         </p>
@@ -2427,7 +2444,12 @@ onBeforeRouteLeave(async () => {
         <p class="mb-4 text-sm text-[var(--color-fg-muted)]">
           Gestiona los prompts predefinidos usados para crear conjuntos de imágenes.
         </p>
-        <SwarmPromptSettings ref="swarmPromptSettingsRef" />
+        <Suspense v-if="swarmPromptSettingsMounted">
+          <SwarmPromptSettings ref="swarmPromptSettingsRef" />
+          <template #fallback>
+            <p role="status" class="text-sm text-[var(--color-fg-muted)]">Cargando prompts…</p>
+          </template>
+        </Suspense>
       </div>
     </SettingsDialog>
   </div>

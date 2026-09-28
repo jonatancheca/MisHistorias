@@ -4,6 +4,91 @@ import { DEFAULT_CHARACTER_REFERENCE_PROMPT } from '../../app/lib/characterRefer
 import { DEFAULT_PRESET_CONTENT } from '../../app/lib/defaultPreset'
 import { expect, test } from './fixtures'
 
+test('abre Ajustes y permite guardar mientras el listado de backups sigue pendiente', async ({ page, data }) => {
+  await data.patchSettings({ userName: 'Protagonista' })
+  let release!: () => void
+  const pending = new Promise<void>(resolve => { release = resolve })
+  let requested = false
+  await page.route('**/api/backups', async (route) => {
+    requested = true
+    await pending
+    await route.fulfill({ json: [] })
+  })
+  try {
+    await page.goto('/')
+    await page.getByRole('link', { name: 'Ajustes', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Apariencia', exact: true })).toBeVisible()
+    await expect.poll(() => requested).toBe(true)
+    const protagonist = page.locator('#userName')
+    const saved = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/settings' && response.request().method() === 'PATCH'
+    )
+    await protagonist.fill(data.unique('Protagonista mientras cargan backups'))
+    await protagonist.blur()
+    expect((await saved).ok()).toBe(true)
+    await expect(page.getByText('Cargando backups…', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Crear backup', exact: true })).toBeDisabled()
+    release()
+    await expect(page.getByText('No hay backups todavía.', { exact: true })).toBeVisible()
+  } finally {
+    release()
+    await data.patchSettings({ userName: 'Protagonista' })
+  }
+})
+
+test('permite reintentar el listado fallido de backups sin bloquear Ajustes', async ({ page }) => {
+  let succeed = false
+  await page.route('**/api/backups', route => succeed
+    ? route.fulfill({ json: [] })
+    : route.fulfill({ status: 503, json: { message: 'Listado no disponible' } })
+  )
+  await page.goto('/settings')
+  await expect(page.getByRole('heading', { name: 'Apariencia', exact: true })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: 'Listado no disponible' })).toBeVisible()
+  await expect(page.getByText('No hay backups todavía.', { exact: true })).toHaveCount(0)
+  succeed = true
+  await page.getByRole('button', { name: 'Reintentar carga de backups' }).click()
+  await expect(page.getByText('No hay backups todavía.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Crear backup', exact: true })).toBeEnabled()
+})
+
+test('carga imágenes para Prompts SwarmUI solo al abrir y conserva el borrador al cerrar', async ({ page, data }) => {
+  await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
+  const character = await data.createCharacter({ name: data.unique('Imagen diferida') })
+  const image = await data.createImage(character)
+  let release!: () => void
+  const pending = new Promise<void>(resolve => { release = resolve })
+  let imageRequested = false
+  await page.route(`**/api/data/images/${image.id}/content?*`, async (route) => {
+    imageRequested = true
+    await pending
+    await route.continue()
+  })
+  try {
+    await page.goto('/settings')
+    await expect(page.getByRole('heading', { name: 'Apariencia', exact: true })).toBeVisible()
+    expect(imageRequested).toBe(false)
+    await page.getByRole('button', { name: 'Prompts SwarmUI', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Prompts SwarmUI' })
+    await expect(dialog.getByText('Cargando prompts…', { exact: true })).toBeVisible()
+    await expect.poll(() => imageRequested).toBe(true)
+    await dialog.getByRole('button', { name: 'Cerrar diálogo' }).click()
+    await expect(dialog).toBeHidden()
+    release()
+    await page.getByRole('button', { name: 'Prompts SwarmUI', exact: true }).click()
+    await dialog.getByLabel('Nombre', { exact: true }).fill('Borrador sin prompt')
+    await dialog.getByRole('button', { name: 'Cerrar diálogo' }).click()
+    await page.getByRole('button', { name: 'Prompts SwarmUI', exact: true }).click()
+    await expect(dialog.getByLabel('Nombre', { exact: true })).toHaveValue('Borrador sin prompt')
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 800 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    }
+  } finally {
+    release()
+  }
+})
+
 test('avisa de una actualización, permite descartarla y comprobarla en Ajustes', async ({ page }) => {
   const update = {
     currentVersion: 'main-old123',

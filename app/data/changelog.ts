@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 220, completedAt: '2026-09-28', summary: 'Ajustes se abre sin esperar los backups, que se comprueban en segundo plano; los prompts SwarmUI se cargan al abrir su diálogo.' },
   { issue: 219, completedAt: '2026-09-25', summary: 'Precarga automática del modelo LM Studio al abrir el formulario de nueva historia.' },
   { issue: 216, completedAt: '2026-09-25', summary: 'Atajos Inicio y Fin para recorrer historias en Chat y Novela Visual.' },
   { issue: 217, completedAt: '2026-09-25', summary: 'Imágenes pequeñas ampliadas al espacio disponible en el visor de historias.' },
