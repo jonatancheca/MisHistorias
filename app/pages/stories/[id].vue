@@ -8,6 +8,7 @@ import type {
 } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
 import { primaryTag } from '~/lib/tags'
+import { isAiInstruction } from '~/lib/chatInstructions'
 import { createStoryThumbnail } from '~/lib/storyThumbnail'
 import {
   buildVisualNovelFrames,
@@ -401,6 +402,21 @@ const storyModelPreload = computed(() => {
   const attempt = modelPreload.currentAttempt
   return attempt?.storyId === stories.activeStory?.id ? attempt : null
 })
+const {
+  visible: modelLoadAvailable,
+  loading: modelLoading,
+  error: modelLoadError,
+  load: loadStoryModel
+} = useStoryModelLoad()
+const modelLoadTargetId = computed(() => timeline.value.findLast((item) =>
+  item.kind === 'trace' || (!item.message.swarmError && debugForMessage(item.id) &&
+    (desktopStoryControls.value || !isAiInstruction(item.message.raw)))
+)?.id ?? null)
+const modelLoadInFooter = computed(() => modelLoadAvailable.value && (
+  stories.activeStory?.visualMode
+    ? !desktopStoryControls.value || !activeVisualMessage.value || !debugForMessage(activeVisualMessage.value.id)
+    : !modelLoadTargetId.value
+))
 
 watch(timeline, () => scheduleFollowBottom(), { deep: true, flush: 'post' })
 watch(
@@ -1262,14 +1278,18 @@ onBeforeRouteLeave(() => {
               :original-text-available="desktopStoryControls"
               :original-text-open="originalTextOpenIds.has(activeVisualMessage.id)"
               :original-text-controls="`visual-original-${activeVisualMessage.id}`"
+              :model-load-available="modelLoadAvailable && !modelLoadInFooter"
+              :model-loading="modelLoading"
+              :model-load-disabled="stories.generating"
               data-testid="visual-message-actions"
-              class="visual-message-actions absolute right-3 bottom-3 z-20 rounded-xl border border-white/15 bg-slate-950/80 p-1 text-slate-300 shadow-lg backdrop-blur-sm"
+              class="visual-message-actions absolute right-3 bottom-3 z-20 max-w-[calc(100%-1.5rem)] rounded-xl border border-white/15 bg-slate-950/80 p-1 text-slate-300 shadow-lg backdrop-blur-sm"
               @debug="selectedDebugTrace = $event"
               @edit="editingVisualMessage = activeVisualMessage"
               @remove="removeMessage(activeVisualMessage.id)"
               @regenerate="regenerateFrom(activeVisualMessage.id)"
               @resend="resendFrom(activeVisualMessage.id)"
               @toggle-original="toggleStoryOriginal(activeVisualMessage.id)"
+              @load-model="loadStoryModel"
             />
 
             <StoryOriginalText
@@ -1448,6 +1468,9 @@ onBeforeRouteLeave(() => {
               :original-text-available="desktopStoryControls && !item.message.swarmError"
               :original-text-open="originalTextOpenIds.has(item.message.id)"
               :original-text="originalMessagesById.get(item.message.id)?.raw"
+              :model-load-available="modelLoadAvailable && !stories.activeStory.visualMode && item.id === modelLoadTargetId"
+              :model-loading="modelLoading"
+              :model-load-disabled="stories.generating"
               @debug="selectedDebugTrace = $event"
               @edit="stories.updateMessage(item.message.id, $event)"
               @remove="removeMessage(item.message.id)"
@@ -1455,12 +1478,19 @@ onBeforeRouteLeave(() => {
               @resend="resendFrom(item.message.id)"
               @select-image="openImageReplacement"
               @toggle-original="toggleStoryOriginal(item.message.id)"
+              @load-model="loadStoryModel"
             />
 
             <div v-else class="group flex min-w-0 items-start gap-2">
               <div
-                class="flex w-8 shrink-0 text-red-500 opacity-100 transition max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                class="flex shrink-0 text-red-500 opacity-100 transition max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
               >
+                <StoryModelLoadButton
+                  v-if="modelLoadAvailable && !stories.activeStory.visualMode && item.id === modelLoadTargetId"
+                  :loading="modelLoading"
+                  :disabled="stories.generating"
+                  @load="loadStoryModel"
+                />
                 <button
                   type="button"
                   class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-red-500/10"
@@ -1528,9 +1558,22 @@ onBeforeRouteLeave(() => {
         v-if="!stories.activeStory.readOnly"
         class="relative border-t border-[var(--color-border-soft)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4"
       >
+        <StoryModelLoadButton
+          v-if="modelLoadInFooter"
+          class="mb-2"
+          :loading="modelLoading"
+          :disabled="stories.generating"
+          @load="loadStoryModel"
+        />
+        <p
+          v-if="modelLoadError"
+          data-testid="story-model-load-error"
+          class="mb-2 text-sm break-words text-red-500"
+          role="alert"
+        >{{ modelLoadError }}</p>
         <p
           v-if="storyModelPreload && (storyModelPreload.status === 'loading' ||
-            (storyModelPreload.status === 'error' && isEmpty && !stories.error))"
+            (storyModelPreload.status === 'error' && isEmpty && !stories.error && !modelLoadError))"
           data-testid="story-model-preload"
           class="mb-2 text-center text-sm"
           :class="storyModelPreload.status === 'error' ? 'text-red-500' : 'text-[var(--color-fg-muted)]'"

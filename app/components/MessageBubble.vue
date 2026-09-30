@@ -16,6 +16,9 @@ const props = defineProps<{
   originalTextAvailable?: boolean
   originalTextOpen?: boolean
   originalText?: string
+  modelLoadAvailable?: boolean
+  modelLoading?: boolean
+  modelLoadDisabled?: boolean
 }>()
 const emit = defineEmits<{
   edit: [string]
@@ -25,6 +28,7 @@ const emit = defineEmits<{
   debug: [LlmDebugTrace]
   selectImage: [target: { characterId: string; messageId: string; segmentIndex: number; imageId: string | null }]
   toggleOriginal: []
+  loadModel: []
 }>()
 
 const characters = useCharactersStore()
@@ -228,14 +232,20 @@ function confirmEdit() {
       :compaction-trace="compactionTrace"
       :original-text-available="originalTextAvailable"
       :original-text-open="originalTextOpen"
+      :model-load-available="modelLoadAvailable"
+      :model-loading="modelLoading"
+      :model-load-disabled="modelLoadDisabled"
       class="flex-col text-[var(--color-fg-muted)] opacity-100 transition max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-      :class="originalTextAvailable ? 'w-[4.25rem]' : 'w-8'"
+      :class="modelLoadAvailable
+        ? (originalTextAvailable ? 'w-[9.5rem]' : 'w-[7.25rem]')
+        : (originalTextAvailable ? 'w-[4.25rem]' : 'w-8')"
       @edit="startEdit"
       @remove="emit('remove')"
       @regenerate="emit('regenerate')"
       @resend="emit('resend')"
       @debug="emit('debug', $event)"
       @toggle-original="emit('toggleOriginal')"
+      @load-model="emit('loadModel')"
     />
 
     <div class="min-w-0 flex-1">

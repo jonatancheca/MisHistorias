@@ -207,6 +207,14 @@ export async function fetchNativeModels(settings: LlmProxySettings): Promise<LmS
   return models
 }
 
+export async function getConfiguredModelStatus(settings: LlmProxySettings, model: string) {
+  const key = model.trim()
+  if (!key) throw llmError('Falta el modelo configurado', 400)
+  const available = (await fetchNativeModels(settings)).find(item => item.key === key && item.type === 'llm')
+  if (!available) throw llmError('El modelo configurado no está disponible en LM Studio', 400)
+  return { loaded: available.loadedInstances.length > 0 }
+}
+
 export async function loadConfiguredModel(settings: LlmProxySettings, model: string) {
   const key = model.trim()
   if (!key) throw llmError('Falta el modelo configurado', 400)

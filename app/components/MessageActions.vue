@@ -9,6 +9,9 @@ defineProps<{
   originalTextAvailable?: boolean
   originalTextOpen?: boolean
   originalTextControls?: string
+  modelLoadAvailable?: boolean
+  modelLoading?: boolean
+  modelLoadDisabled?: boolean
 }>()
 const emit = defineEmits<{
   edit: []
@@ -17,17 +20,24 @@ const emit = defineEmits<{
   resend: []
   debug: [LlmDebugTrace]
   toggleOriginal: []
+  loadModel: []
 }>()
 </script>
 
 <template>
-  <div v-if="editable || debugTrace || compactionTrace || originalTextAvailable" class="flex shrink-0 gap-1">
-    <div v-if="originalTextAvailable || debugTrace" class="flex shrink-0 gap-1">
+  <div v-if="editable || debugTrace || compactionTrace || originalTextAvailable || modelLoadAvailable" class="flex shrink-0 flex-wrap gap-1">
+    <div v-if="originalTextAvailable || debugTrace || modelLoadAvailable" class="flex shrink-0 gap-1">
       <StoryOriginalToggle
         v-if="originalTextAvailable"
         :expanded="originalTextOpen === true"
         :controls="originalTextControls ?? `story-original-${message.id}`"
         @toggle="emit('toggleOriginal')"
+      />
+      <StoryModelLoadButton
+        v-if="modelLoadAvailable"
+        :loading="modelLoading"
+        :disabled="modelLoadDisabled"
+        @load="emit('loadModel')"
       />
       <button
         v-if="debugTrace"

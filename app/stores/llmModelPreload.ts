@@ -56,7 +56,7 @@ export const useLlmModelPreloadStore = defineStore('llmModelPreload', () => {
       status: 'loading',
       message: 'Cargando modelo de LM Studio…'
     }
-    if (pending.has(key)) return
+    if (pending.has(key)) return pending.get(key)
 
     const request = preloadLlmModel(scope)
       .then((result) => {
@@ -81,6 +81,7 @@ export const useLlmModelPreloadStore = defineStore('llmModelPreload', () => {
         pending.delete(key)
       })
     pending.set(key, request)
+    return request
   }
 
   function attachStory(storyId: string) {

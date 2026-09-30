@@ -63,6 +63,14 @@ export async function fetchLlmModels(scope: DataScope = getActiveDataScope()): P
   }
 }
 
+export async function fetchLlmModelStatus(scope: DataScope = getActiveDataScope(), signal?: AbortSignal) {
+  try {
+    return await $fetch<{ loaded: boolean }>('/api/llm/model-status', { query: { scope }, signal })
+  } catch (caught) {
+    throw normalizeError(caught)
+  }
+}
+
 export async function preloadLlmModel(scope: DataScope = getActiveDataScope()) {
   try {
     return await $fetch<{ status: 'loaded' | 'already-loaded'; instanceId: string }>(
