@@ -8,14 +8,13 @@ export function useStoryModelLoad() {
   const stories = useStoriesStore()
   const preload = useLlmModelPreloadStore()
   const status = ref<'unknown' | 'loaded' | 'unloaded'>('unknown')
-  const error = ref('')
   const loadFailure = ref('')
   const enabled = computed(() => Boolean(stories.activeStory && !stories.activeStory.readOnly) &&
     !privacy.isDemo && !settings.settings.mockMode && !settings.activeUseChromeLlm &&
     (!access.session.multiUserEnabled || access.session.isAdmin))
   const loading = computed(() => enabled.value && preload.currentAttempt?.status === 'loading')
   const visible = computed(() => enabled.value && (loading.value || status.value !== 'loaded'))
-  const errorMessage = computed(() => enabled.value ? loadFailure.value || error.value : '')
+  const errorMessage = computed(() => enabled.value ? loadFailure.value : '')
   const configuration = computed(() => JSON.stringify([
     enabled.value, stories.activeStory?.id, getActiveDataScope(),
     settings.activeBaseUrl, settings.activeModel
@@ -38,12 +37,10 @@ export function useStoryModelLoad() {
       const result = await fetchLlmModelStatus(getActiveDataScope(), controller.signal)
       if (check !== controller || configuration.value !== key || loading.value) return
       status.value = result.loaded ? 'loaded' : 'unloaded'
-      error.value = ''
       if (result.loaded) loadFailure.value = ''
-    } catch (caught) {
+    } catch {
       if (check !== controller || configuration.value !== key || controller.signal.aborted) return
       status.value = 'unknown'
-      error.value = (caught as Error).message || 'No se pudo comprobar el estado de LM Studio.'
     } finally {
       if (check === controller) check = null
     }
@@ -63,7 +60,6 @@ export function useStoryModelLoad() {
   async function load() {
     if (!enabled.value || loading.value || stories.generating) return
     cancelCheck()
-    error.value = ''
     loadFailure.value = ''
     const key = configuration.value
     const request = preload.start()
@@ -78,7 +74,6 @@ export function useStoryModelLoad() {
   watch(configuration, () => {
     cancelCheck()
     status.value = 'unknown'
-    error.value = ''
     loadFailure.value = ''
     syncPolling()
   })

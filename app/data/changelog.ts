@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 226, completedAt: '2026-10-01', summary: 'Errores automáticos de comprobación y precarga del LLM ocultos al abrir historias y Nueva historia, conservando los fallos de carga manual y generación.' },
   { issue: 225, completedAt: '2026-09-30', summary: 'Botón load IA en Chat y Novela Visual para cargar el modelo de historias de LM Studio, con comprobación periódica de su estado.' },
   { issue: 223, completedAt: '2026-09-30', summary: 'Reintento automático único ante respuestas narrativas vacías, con indicador y sin duplicar mensajes ni imágenes.' },
   { issue: 224, completedAt: '2026-09-30', summary: 'Texto original consultable por mensaje en escritorio, con anotaciones, directivas y acceso a mensajes ocultos en Chat y Novela Visual.' },

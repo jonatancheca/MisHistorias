@@ -141,11 +141,10 @@ async function submit() {
         <NuxtLink to="/" class="btn-ghost">Cancelar</NuxtLink>
       </div>
       <p
-        v-if="modelPreload.currentAttempt"
+        v-if="modelPreload.currentAttempt && modelPreload.currentAttempt.status !== 'error'"
         data-testid="story-model-preload"
-        class="text-sm"
-        :class="modelPreload.currentAttempt.status === 'error' ? 'text-red-500' : 'text-[var(--color-fg-muted)]'"
-        :role="modelPreload.currentAttempt.status === 'error' ? 'alert' : 'status'"
+        class="text-sm text-[var(--color-fg-muted)]"
+        role="status"
       >
         {{ modelPreload.currentAttempt.message }}
       </p>

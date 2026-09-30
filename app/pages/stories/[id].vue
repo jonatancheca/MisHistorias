@@ -1572,12 +1572,10 @@ onBeforeRouteLeave(() => {
           role="alert"
         >{{ modelLoadError }}</p>
         <p
-          v-if="storyModelPreload && (storyModelPreload.status === 'loading' ||
-            (storyModelPreload.status === 'error' && isEmpty && !stories.error && !modelLoadError))"
+          v-if="storyModelPreload?.status === 'loading'"
           data-testid="story-model-preload"
-          class="mb-2 text-center text-sm"
-          :class="storyModelPreload.status === 'error' ? 'text-red-500' : 'text-[var(--color-fg-muted)]'"
-          :role="storyModelPreload.status === 'error' ? 'alert' : 'status'"
+          class="mb-2 text-center text-sm text-[var(--color-fg-muted)]"
+          role="status"
         >
           {{ storyModelPreload.message }}
         </p>

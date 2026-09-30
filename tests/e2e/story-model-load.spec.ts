@@ -135,7 +135,7 @@ test('sin Debug usa el cuadro de escritura y permite reintentar errores sin perd
   expect(await data.list<Message>('messages', 'normal', { storyId: story.id })).toEqual([])
 })
 
-test('estado desconocido permite cargar y durante generación el botón queda deshabilitado', async ({ page, data }) => {
+test('estado desconocido oculta el fallo automático y permite cargar sin interferir con la generación', async ({ page, data }) => {
   const { story, lastMessage } = await storyWithDebug(data, page.request)
   const release = Promise.withResolvers<undefined>()
   await page.route('**/api/llm/model-status?*', (route) => route.fulfill({
@@ -147,7 +147,7 @@ test('estado desconocido permite cargar y durante generación el botón queda de
   })
   try {
     await page.goto(`/stories/${story.id}`)
-    await expect(page.getByTestId('story-model-load-error')).toHaveText('No se pudo comprobar LM Studio')
+    await expect(page.getByTestId('story-model-load-error')).toHaveCount(0)
     const area = page.locator(`[data-story-message-id="${lastMessage.id}"]`)
     await area.hover()
     await expect(page.getByTestId('story-model-load')).toBeEnabled()
@@ -158,6 +158,73 @@ test('estado desconocido permite cargar y durante generación el botón queda de
     release.resolve(undefined)
   }
 })
+
+for (const scope of ['normal', 'private'] as const) {
+  for (const visualMode of [false, true]) {
+    test(`consultas automáticas silenciosas y fallo manual recuperable; scope=${scope}, visual=${visualMode}`, async ({ page, data }) => {
+      const story = await data.createStory({ characters: [], visualMode, scope })
+      await data.patchSettings({ privateLlmSettingsEnabled: true, privateModel: 'modelo-privado' })
+      let checks = 0
+      let loads = 0
+      let loaded = false
+      await page.route('**/api/llm/model-status?*', (route) => {
+        expect(new URL(route.request().url()).searchParams.get('scope')).toBe(scope)
+        checks += 1
+        return route.fulfill(loaded
+          ? { json: { loaded: true } }
+          : { status: 502, json: { message: 'Consulta automática desconectada' } })
+      })
+      await page.route('**/api/llm/model-management', (route) => {
+        expect(route.request().postDataJSON()).toEqual({ action: 'load', scope })
+        loads += 1
+        if (loads === 1) {
+          return route.fulfill({ status: 502, json: { message: 'Carga manual desconectada' } })
+        }
+        loaded = true
+        return route.fulfill({ json: { status: 'loaded', instanceId: 'modelo-historia' } })
+      })
+      if (scope === 'private') {
+        await page.goto('/settings')
+        const privateTrigger = page.getByRole('button', { name: 'Activar modo privado' })
+        for (let click = 0; click < 3; click++) await privateTrigger.click()
+        await expect(page.locator('html')).toHaveClass(/private-scope/)
+      }
+      await page.clock.install()
+      if (scope === 'private') {
+        await page.getByRole('link', { name: 'Historias', exact: true }).click()
+        await page.getByRole('link', { name: story.title, exact: true }).click()
+      } else {
+        await page.goto(`/stories/${story.id}`)
+      }
+      const error = page.getByTestId('story-model-load-error')
+      const button = page.getByTestId('story-model-load')
+      const input = page.getByRole('textbox')
+      await expect.poll(() => checks).toBeGreaterThan(0)
+      await expect(button).toBeEnabled()
+      await input.fill('Borrador conservado.')
+      const initialChecks = checks
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+      await expect.poll(() => checks).toBeGreaterThan(initialChecks)
+      const checksBeforeInterval = checks
+      await page.clock.runFor(30_000)
+      await expect.poll(() => checks).toBeGreaterThan(checksBeforeInterval)
+      await expect(error).toHaveCount(0)
+      await expect(page.getByRole('alert')).toHaveCount(0)
+      expect(loads).toBe(0)
+      await button.click()
+      await expect(error).toHaveText('Carga manual desconectada')
+      const checksBeforeFocus = checks
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+      await expect.poll(() => checks).toBeGreaterThan(checksBeforeFocus)
+      await expect(error).toHaveText('Carga manual desconectada')
+      await button.click()
+      await expect(button).toHaveCount(0)
+      await expect(error).toHaveCount(0)
+      await expect(input).toHaveValue('Borrador conservado.')
+      expect(await data.list<Message>('messages', scope, { storyId: story.id })).toEqual([])
+    })
+  }
+}
 
 test('comprueba cada 30 segundos y pausa con pestaña oculta', async ({ page, data }) => {
   const story = await data.createStory({ characters: [] })

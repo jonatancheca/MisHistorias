@@ -96,6 +96,14 @@ _Evitar_: Modelo cargado, primer modelo disponible
 Modelo de historias del ámbito activo que está disponible en memoria para generar texto. La presencia de otros modelos cargados no implica que el configurado esté disponible.
 _Evitar_: Modelo de historias configurado, cualquier modelo cargado
 
+**Comprobación del modelo de historias**:
+Consulta que determina si el modelo de historias configurado está cargado, sin solicitar su carga. Si la consulta falla, su estado queda desconocido.
+_Evitar_: Carga del modelo, precarga del modelo
+
+**Precarga del modelo de historias**:
+Carga anticipada y automática del modelo de historias antes de solicitar la primera respuesta del narrador. Es distinta de la carga solicitada expresamente por el usuario.
+_Evitar_: Comprobación del modelo, generación de respuesta
+
 **Ajustes privados**:
 Preferencias que pueden tener un valor propio en la colección privada. Cuando no existe un valor propio, heredan el ajuste normal; otras preferencias se comparten entre ámbitos.
 _Evitar_: Configuración privada independiente

@@ -58,13 +58,17 @@ test('precarga LM Studio al abrir el formulario y espera antes de generar', asyn
   }
 })
 
-test('un error de precarga no impide crear ni generar la historia', async ({ page, data }) => {
+test('un error de precarga queda oculto y no impide crear ni generar la historia', async ({ page, data }) => {
   const character = await data.createCharacter()
   await data.patchSettings({ mockMode: false, useChromeLlm: false, model: 'modelo-historia' })
   let chatRequests = 0
-  await page.route('**/api/llm/model-management', (route) => route.fulfill({
-    status: 502,
-    json: { message: 'LM Studio desconectado' }
+  let loads = 0
+  await page.route('**/api/llm/model-management', (route) => {
+    loads += 1
+    return route.fulfill({ status: 502, json: { message: 'LM Studio desconectado' } })
+  })
+  await page.route('**/api/llm/model-status?*', (route) => route.fulfill({
+    status: 502, json: { message: 'LM Studio desconectado' }
   }))
   await page.route('**/api/llm/chat', async (route) => {
     chatRequests += 1
@@ -72,14 +76,19 @@ test('un error de precarga no impide crear ni generar la historia', async ({ pag
   })
 
   await page.goto('/stories/new')
-  await expect(page.getByTestId('story-model-preload')).toContainText('LM Studio desconectado')
-  await expect(page.getByTestId('story-model-preload')).toHaveAttribute('role', 'alert')
+  await expect.poll(() => loads).toBe(1)
+  await expect(page.getByTestId('story-model-preload')).toHaveCount(0)
   await page.getByLabel('Planteamiento').fill('Una aventura de prueba.')
   await page.getByRole('button', { name: 'Añadir personaje' }).click()
   await page.getByRole('dialog', { name: 'Añadir personaje' })
     .getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
   await page.getByRole('button', { name: 'Empezar historia' }).click()
   await expect(page).toHaveURL(/\/stories\/[^/]+$/)
+  await expect(page.getByTestId('story-model-preload')).toHaveCount(0)
+  await expect(page.getByTestId('story-model-load-error')).toHaveCount(0)
+  await page.getByTestId('story-model-load').click()
+  await expect(page.getByTestId('story-model-load-error')).toHaveText('LM Studio desconectado')
+  expect(loads).toBe(2)
   await page.getByRole('button', { name: 'Deja que la história empiece sola' }).click()
   await expect.poll(() => chatRequests).toBe(1)
   const storyId = new URL(page.url()).pathname.split('/').pop()!
@@ -100,7 +109,9 @@ test('al cambiar a privado precarga el modelo del nuevo ámbito', async ({ page,
   await page.route('**/api/llm/model-management', async (route) => {
     const body = route.request().postDataJSON() as { action: string; scope: string }
     scopes.push(`${body.action}:${body.scope}`)
-    await route.fulfill({ json: { status: 'loaded', instanceId: body.scope } })
+    await route.fulfill(body.scope === 'private'
+      ? { status: 502, json: { message: 'LM Studio privado desconectado' } }
+      : { json: { status: 'loaded', instanceId: body.scope } })
   })
 
   await page.goto('/stories/new')
@@ -108,7 +119,8 @@ test('al cambiar a privado precarga el modelo del nuevo ámbito', async ({ page,
   await page.keyboard.press('Control+Alt+p')
   await expect(page.locator('html')).toHaveClass(/private-scope/)
   await expect.poll(() => scopes).toEqual(['load:normal', 'load:private'])
-  await expect(page.getByTestId('story-model-preload')).toContainText('Modelo de LM Studio cargado.')
+  await expect(page.getByTestId('story-model-preload')).toHaveCount(0)
+  await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
 test('omite la precarga con Chrome, modo de prueba y usuarios no administradores', async ({ page, data }) => {
