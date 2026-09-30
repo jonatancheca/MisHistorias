@@ -169,6 +169,7 @@ const timeline = computed<TimelineItem[]>(() => {
     ...stories.debugTraces
       .filter((trace) =>
         trace.request.purpose !== 'compaction' &&
+        !trace.request.generation?.automaticallyRetried &&
         (trace.status === 'error' || !trace.responseMessageId)
       )
       .map((trace) => ({
@@ -1558,7 +1559,7 @@ onBeforeRouteLeave(() => {
                 : ''
             "
           >
-            <span>Creando historia…</span>
+            <span>Creando historia…{{ stories.retryingEmptyResponse ? ' (reintentando)' : '' }}</span>
             <span class="flex shrink-0 items-center gap-1" aria-hidden="true">
               <span class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none" />
               <span

@@ -128,6 +128,10 @@ _Evitar_: Todos los personajes personalizados, catálogo de personajes
 Instantánea de nombre, color, prompt y etiquetas que una historia conserva para un personaje, aunque no pertenezca al elenco activo.
 _Evitar_: Personaje eliminado, personalización global
 
+**Respuesta narrativa vacía**:
+Respuesta del narrador sin contenido textual para incorporar a la historia, aunque contenga peticiones de imagen. Es distinta de una respuesta parcial con texto y del contenido que solo se oculta al visualizar la historia.
+_Evitar_: Error de conexión, texto oculto en pantalla
+
 **Reintento de respuesta**:
-Repetición de la última acción del narrador que falló, ya sea el inicio de la historia, una respuesta a un mensaje, Sigue o Auto. Conserva el historial válido anterior y no duplica el mensaje del usuario.
+Repetición de la última acción del narrador que falló, iniciada automáticamente ante una respuesta narrativa vacía o solicitada por el usuario. Conserva el historial válido anterior y no duplica el mensaje del usuario.
 _Evitar_: Reenvío de mensaje, regeneración de respuesta

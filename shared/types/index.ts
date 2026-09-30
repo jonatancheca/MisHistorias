@@ -297,6 +297,8 @@ export interface StoryGenerationAttempt {
   historyMessageIds: string[]
   /** La acción se ha sustituido por un nuevo intento, incluso si este se cancela. */
   dismissed?: boolean
+  /** Respuesta vacía sustituida por un reintento automático, conservada solo para diagnóstico. */
+  automaticallyRetried?: boolean
 }
 
 export interface LlmDebugRequest {

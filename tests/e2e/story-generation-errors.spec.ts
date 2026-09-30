@@ -128,20 +128,21 @@ test.describe('errores de generación en Novela Visual', () => {
     let calls = 0
     await page.route('**/api/llm/chat', async (route) => {
       calls += 1
-      await route.fulfill({ json: { content: calls < 3 ? '' : 'Contenido recuperado.', finishReason: 'stop' } })
+      await route.fulfill({ json: { content: calls < 5 ? '' : 'Contenido recuperado.', finishReason: 'stop' } })
     })
     await page.goto(`/stories/${story.id}`)
     await composer.fill('Espero respuesta.')
     await page.getByRole('button', { name: 'Enviar', exact: true }).click()
     await expect(feedback).toContainText('El modelo no devolvió contenido visible.')
+    expect(calls).toBe(2)
     await feedback.getByRole('button', { name: 'Reintentar', exact: true }).click()
-    await expect.poll(() => calls).toBe(2)
+    await expect.poll(() => calls).toBe(4)
     await expect(feedback).toContainText('El modelo no devolvió contenido visible.')
     await page.reload()
     await feedback.getByRole('button', { name: 'Reintentar', exact: true }).click()
     await expect(page.getByTestId('visual-novel-frame')).toContainText('Contenido recuperado.')
     expect(await data.list<Message>('messages', 'normal', { storyId: story.id })).toHaveLength(2)
-    expect(calls).toBe(3)
+    expect(calls).toBe(5)
   })
 
   test('texto truncado se conserva con aviso persistente sin reintento', async ({ page, data }) => {

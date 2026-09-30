@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 223, completedAt: '2026-09-30', summary: 'Reintento automático único ante respuestas narrativas vacías, con indicador y sin duplicar mensajes ni imágenes.' },
   { issue: 224, completedAt: '2026-09-30', summary: 'Texto original consultable por mensaje en escritorio, con anotaciones, directivas y acceso a mensajes ocultos en Chat y Novela Visual.' },
   { issue: 222, completedAt: '2026-09-28', summary: 'Errores del narrador visibles en Novela Visual con reintento persistente, conservando historial y respuestas parciales.' },
   { issue: 221, completedAt: '2026-09-28', summary: 'Fondos archivables y recuperables, con filtro de catálogo y continuidad en las historias que ya los utilizan.' },

@@ -211,6 +211,7 @@ export const useStoriesStore = defineStore('stories', () => {
   const saveSlots = ref<StorySaveSlot[]>([])
   const generating = ref(false)
   const waitingForResponse = ref(false)
+  const retryingEmptyResponse = ref(false)
   const compacting = ref(false)
   const pendingAssistantMessage = ref<Message | null>(null)
   const visualRevealWaitingForAdvance = ref(false)
@@ -1085,7 +1086,7 @@ export const useStoriesStore = defineStore('stories', () => {
   }
 
   async function stop(options: { preserveAutoResponse?: boolean } = {}) {
-    if (options.preserveAutoResponse && generationModeInProgress === 'auto') return
+    if (options.preserveAutoResponse && generationModeInProgress === 'auto' && !retryingEmptyResponse.value) return
 
     const wasWaiting = waitingForResponse.value
     const wasCompacting = compacting.value
@@ -1096,6 +1097,7 @@ export const useStoriesStore = defineStore('stories', () => {
     if (wasWaiting || wasCompacting) controller?.abort()
     controller = null
     waitingForResponse.value = false
+    retryingEmptyResponse.value = false
     compacting.value = false
     cancelAnimation()
     animationDraft = null
@@ -1351,6 +1353,7 @@ export const useStoriesStore = defineStore('stories', () => {
     transientGenerationFeedback.value = null
     imageGenerationError.value = null
     generating.value = true
+    retryingEmptyResponse.value = false
     generationModeInProgress = generationMode
     const requestController = new AbortController()
     controller = requestController
@@ -1542,23 +1545,50 @@ export const useStoriesStore = defineStore('stories', () => {
           if (!generationStillActive()) return
         }
 
-        const result = useChromeLlm
-          ? await fetchChromeLlmChat({
-              messages: payload,
-              operation: 'story.chat',
-              signal: requestController.signal
-            })
-          : await fetchLlmChat({
-              model,
-              messages: payload,
-              operation: 'story.chat',
-              temperature,
-              maxTokens,
-              signal: requestController.signal
-            })
-        raw = result.content
-        finishReason = result.finishReason
+        for (let responseAttempt = 0; responseAttempt < 2; responseAttempt += 1) {
+          const result = useChromeLlm
+            ? await fetchChromeLlmChat({
+                messages: payload,
+                operation: 'story.chat',
+                signal: requestController.signal
+              })
+            : await fetchLlmChat({
+                model,
+                messages: payload,
+                operation: 'story.chat',
+                temperature,
+                maxTokens,
+                signal: requestController.signal
+              })
+          if (!generationStillActive()) return
+          raw = result.content
+          finishReason = result.finishReason
+          const responseIsEmpty = !parseStoryImageRequests(
+            raw,
+            storyCharacters,
+            story.autoGenerateImages === true
+          ).visibleRaw.trim()
+          if (!responseIsEmpty || responseAttempt === 1) break
+
+          // El primer resultado vacío no crea imágenes ni consume instrucciones pendientes.
+          const stored = await persistDebugTrace({
+            id: newId(),
+            storyId: story.id,
+            requestMessageId,
+            status: 'success',
+            request: {
+              ...debugRequest,
+              generation: { ...attempt, dismissed: true, automaticallyRetried: true }
+            },
+            response: { content: raw, finishReason },
+            createdAt: Date.now()
+          }, scope)
+          if (!stored) error.value = 'La respuesta llegó, pero no se pudo guardar su traza de debug.'
+          if (!generationStillActive()) return
+          retryingEmptyResponse.value = true
+        }
         waitingForResponse.value = false
+        retryingEmptyResponse.value = false
 
         if (!generationStillActive()) return
 
@@ -1800,6 +1830,7 @@ export const useStoriesStore = defineStore('stories', () => {
       }
       if (generationModeInProgress === generationMode) generationModeInProgress = null
       if (controller === requestController) {
+        retryingEmptyResponse.value = false
         generating.value = false
         controller = null
       }
@@ -1862,6 +1893,7 @@ export const useStoriesStore = defineStore('stories', () => {
     saveSlots,
     generating,
     waitingForResponse,
+    retryingEmptyResponse,
     compacting,
     pendingAssistantMessage,
     visualRevealWaitingForAdvance,
