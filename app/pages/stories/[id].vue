@@ -55,6 +55,30 @@ const canScrollToTop = ref(false)
 const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
 const editingVisualMessage = ref<Message | null>(null)
+const desktopStoryControls = useStoryDesktopControls()
+const originalTextOpenIds = ref(new Set<string>())
+const hiddenMessagesOpen = ref(false)
+const originalMessages = computed(() =>
+  withPendingAssistantMessage(stories.messages, stories.pendingAssistantMessage)
+)
+const originalMessagesById = computed(() =>
+  new Map(originalMessages.value.map((message) => [message.id, message]))
+)
+
+function toggleStoryOriginal(id: string) {
+  const expanded = new Set(originalTextOpenIds.value)
+  if (expanded.has(id)) expanded.delete(id)
+  else expanded.add(id)
+  originalTextOpenIds.value = expanded
+}
+
+watch(() => stories.activeStory?.id, () => {
+  originalTextOpenIds.value = new Set()
+  hiddenMessagesOpen.value = false
+})
+watch(() => stories.activeStory?.visualMode, () => {
+  hiddenMessagesOpen.value = false
+})
 
 async function saveVisualMessage(id: string, raw: string) {
   if (stories.generating) return
@@ -617,6 +641,15 @@ const completeVisualFrames = computed(() =>
     }
   )
 )
+const messagesWithoutVisualFrame = computed(() => {
+  const representedIds = new Set(completeVisualFrames.value.map((frame) => frame.messageId))
+  return originalMessages.value.filter((message) =>
+    !message.swarmError && message.raw.trim() && !representedIds.has(message.id)
+  )
+})
+const hiddenMessagesDialogOpen = computed(() =>
+  hiddenMessagesOpen.value && desktopStoryControls.value && stories.activeStory?.visualMode === true
+)
 const visualFrameTotal = computed(() =>
   Math.max(visualFrames.value.length, completeVisualFrames.value.length)
 )
@@ -939,7 +972,7 @@ function onStoryKeydown(event: KeyboardEvent) {
   if (!stories.activeStory || event.defaultPrevented) return
   if (
     storyPreferencesOpen.value || selectedDebugTrace.value || imagePickerTarget.value || editingVisualMessage.value ||
-    storySavesOpen.value || confirmDialog.dialog
+    storySavesOpen.value || hiddenMessagesDialogOpen.value || confirmDialog.dialog
   ) return
 
   const target = event.target
@@ -1220,11 +1253,14 @@ onBeforeRouteLeave(() => {
             />
 
             <MessageActions
-              v-if="activeVisualMessage && !stories.activeStory.readOnly"
+              v-if="activeVisualMessage"
               :message="activeVisualMessage"
-              :editable="!stories.generating"
-              :debug-trace="debugForMessage(activeVisualMessage.id)"
-              :compaction-trace="compactionDebugForMessage(activeVisualMessage.id)"
+              :editable="!stories.generating && !stories.activeStory.readOnly"
+              :debug-trace="!stories.activeStory.readOnly ? debugForMessage(activeVisualMessage.id) : null"
+              :compaction-trace="!stories.activeStory.readOnly ? compactionDebugForMessage(activeVisualMessage.id) : null"
+              :original-text-available="desktopStoryControls"
+              :original-text-open="originalTextOpenIds.has(activeVisualMessage.id)"
+              :original-text-controls="`visual-original-${activeVisualMessage.id}`"
               data-testid="visual-message-actions"
               class="visual-message-actions absolute right-3 bottom-3 z-20 rounded-xl border border-white/15 bg-slate-950/80 p-1 text-slate-300 shadow-lg backdrop-blur-sm"
               @debug="selectedDebugTrace = $event"
@@ -1232,7 +1268,25 @@ onBeforeRouteLeave(() => {
               @remove="removeMessage(activeVisualMessage.id)"
               @regenerate="regenerateFrom(activeVisualMessage.id)"
               @resend="resendFrom(activeVisualMessage.id)"
+              @toggle-original="toggleStoryOriginal(activeVisualMessage.id)"
             />
+
+            <StoryOriginalText
+              v-if="desktopStoryControls && activeVisualMessage && originalTextOpenIds.has(activeVisualMessage.id)"
+              :id="`visual-original-${activeVisualMessage.id}`"
+              :text="originalMessagesById.get(activeVisualMessage.id)?.raw ?? activeVisualMessage.raw"
+              class="absolute inset-x-3 bottom-14 z-20 max-h-[calc(100%-4rem)] overflow-y-auto"
+            />
+
+            <button
+              v-if="desktopStoryControls && messagesWithoutVisualFrame.length"
+              type="button"
+              class="absolute top-3 right-3 z-20 rounded-xl border border-white/15 bg-slate-950/80 px-3 py-2 text-sm text-white shadow-lg backdrop-blur-sm"
+              data-testid="story-hidden-messages-button"
+              aria-label="Ver mensajes sin cuadro"
+              :aria-expanded="hiddenMessagesDialogOpen"
+              @click="hiddenMessagesOpen = !hiddenMessagesOpen"
+            >Contenido oculto ({{ messagesWithoutVisualFrame.length }})</button>
 
             <button
               v-if="sounds.backgroundPlaying"
@@ -1390,12 +1444,16 @@ onBeforeRouteLeave(() => {
               :compaction-trace="compactionDebugForMessage(item.message.id)"
               :editable="!stories.generating && !stories.activeStory.readOnly"
               :visual-mode="stories.activeStory.visualMode"
+              :original-text-available="desktopStoryControls && !item.message.swarmError"
+              :original-text-open="originalTextOpenIds.has(item.message.id)"
+              :original-text="originalMessagesById.get(item.message.id)?.raw"
               @debug="selectedDebugTrace = $event"
               @edit="stories.updateMessage(item.message.id, $event)"
               @remove="removeMessage(item.message.id)"
               @regenerate="regenerateFrom(item.message.id)"
               @resend="resendFrom(item.message.id)"
               @select-image="openImageReplacement"
+              @toggle-original="toggleStoryOriginal(item.message.id)"
             />
 
             <div v-else class="group flex min-w-0 items-start gap-2">
@@ -1683,6 +1741,14 @@ onBeforeRouteLeave(() => {
         :character-names="storyCharacterNames"
       />
     </div>
+
+    <StoryHiddenMessagesDialog
+      :open="hiddenMessagesDialogOpen"
+      :messages="messagesWithoutVisualFrame"
+      :expanded-ids="originalTextOpenIds"
+      @close="hiddenMessagesOpen = false"
+      @toggle-original="toggleStoryOriginal"
+    />
 
     <StorySavesDialog
       :open="storySavesOpen"

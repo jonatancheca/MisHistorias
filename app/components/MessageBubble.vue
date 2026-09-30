@@ -13,6 +13,9 @@ const props = defineProps<{
   visualMode?: boolean
   characterNames?: Record<string, string>
   characterColors?: Record<string, string>
+  originalTextAvailable?: boolean
+  originalTextOpen?: boolean
+  originalText?: string
 }>()
 const emit = defineEmits<{
   edit: [string]
@@ -21,6 +24,7 @@ const emit = defineEmits<{
   resend: []
   debug: [LlmDebugTrace]
   selectImage: [target: { characterId: string; messageId: string; segmentIndex: number; imageId: string | null }]
+  toggleOriginal: []
 }>()
 
 const characters = useCharactersStore()
@@ -34,6 +38,17 @@ const expandedImageTags = ref<Record<string, boolean>>({})
 const userName = computed(() => settings.activeUserName)
 const userColor = computed(() => normalizeColor(settings.settings.userColor, DEFAULT_USER_COLOR))
 const visibleUserText = computed(() => stripBracketedText(props.message.raw))
+const hiddenMessage = computed(() =>
+  isAiInstruction(props.message.raw) || (
+    props.message.role === 'user'
+      ? !visibleUserText.value
+      : !props.message.segments.some((segment) =>
+          segment.type === 'background' || segment.type === 'sound' ||
+          (segment.type === 'dialogue' && Boolean(segment.characterId)) ||
+          segment.type === 'protagonist-dialogue' || stripBracketedText(segment.text)
+        )
+  )
+)
 
 interface FlowRow {
   key: string
@@ -201,22 +216,26 @@ function confirmEdit() {
 
 <template>
   <div
-    v-if="!isAiInstruction(message.raw)"
+    v-if="!isAiInstruction(message.raw) || originalTextAvailable"
     class="group flex min-w-0 items-start gap-2"
     :data-story-message-id="message.id"
   >
     <MessageActions
-      v-if="!message.swarmError && !editing && (editable || debugTrace || compactionTrace)"
+      v-if="!message.swarmError && !editing && (editable || debugTrace || compactionTrace || originalTextAvailable)"
       :message="message"
       :editable="editable"
       :debug-trace="debugTrace"
       :compaction-trace="compactionTrace"
-      class="w-8 flex-col text-[var(--color-fg-muted)] opacity-100 transition max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+      :original-text-available="originalTextAvailable"
+      :original-text-open="originalTextOpen"
+      class="flex-col text-[var(--color-fg-muted)] opacity-100 transition max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+      :class="originalTextAvailable ? 'w-[4.25rem]' : 'w-8'"
       @edit="startEdit"
       @remove="emit('remove')"
       @regenerate="emit('regenerate')"
       @resend="emit('resend')"
       @debug="emit('debug', $event)"
+      @toggle-original="emit('toggleOriginal')"
     />
 
     <div class="min-w-0 flex-1">
@@ -230,6 +249,10 @@ function confirmEdit() {
           </div>
         </form>
       </template>
+
+      <p v-else-if="originalTextAvailable && hiddenMessage" class="text-sm text-[var(--color-fg-muted)]">
+        Contenido oculto
+      </p>
 
       <template v-else-if="message.role === 'user'">
         <p class="text-[15px] leading-relaxed">
@@ -318,6 +341,12 @@ function confirmEdit() {
           <p v-if="message.segments.length === 0" class="text-sm text-[var(--color-fg-muted)]">…</p>
         </div>
       </template>
+      <StoryOriginalText
+        v-if="originalTextAvailable && originalTextOpen && !message.swarmError && !editing"
+        :id="`story-original-${message.id}`"
+        :text="originalText ?? message.raw"
+        class="mt-3"
+      />
     </div>
   </div>
 </template>

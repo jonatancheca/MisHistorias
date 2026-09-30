@@ -56,6 +56,10 @@ _Evitar_: Línea visual, párrafo de pantalla
 Campo de una historia donde se prepara la siguiente intervención antes de enviarla. Su borrador no forma parte de la historia y es distinto de los cuadros de respuesta de Novela Visual.
 _Evitar_: Cuadro de respuesta, mensaje enviado
 
+**Texto original del mensaje**:
+Contenido textual de una intervención conservado por la historia, antes de ocultar anotaciones y representar sus directivas como personajes, fondos o sonidos. Incluye instrucciones al narrador y puede consultarse sin modificar la intervención.
+_Evitar_: Texto visible, traza LLM, respuesta del proveedor
+
 **Efecto de sonido**:
 Audio puntual que acompaña un suceso de la historia y termina por sí mismo.
 _Evitar_: Sonido de fondo

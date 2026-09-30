@@ -6,6 +6,9 @@ defineProps<{
   editable?: boolean
   debugTrace?: LlmDebugTrace | null
   compactionTrace?: LlmDebugTrace | null
+  originalTextAvailable?: boolean
+  originalTextOpen?: boolean
+  originalTextControls?: string
 }>()
 const emit = defineEmits<{
   edit: []
@@ -13,25 +16,34 @@ const emit = defineEmits<{
   regenerate: []
   resend: []
   debug: [LlmDebugTrace]
+  toggleOriginal: []
 }>()
 </script>
 
 <template>
-  <div v-if="editable || debugTrace || compactionTrace" class="flex shrink-0 gap-1">
-    <button
-      v-if="debugTrace"
-      type="button"
-      class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-amber-500/10 hover:text-amber-600"
-      aria-label="Ver datos de debug de la llamada LLM"
-      title="Debug LLM"
-      @click="emit('debug', debugTrace)"
-    >
-      <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M8 2h8M9 2v3m6-3v3M4 13h3m10 0h3M5 7l3 2m11-2-3 2M5 19l3-2m11 2-3-2" />
-        <rect x="7" y="5" width="10" height="16" rx="5" />
-        <path d="M9 11h6m-6 4h6" />
-      </svg>
-    </button>
+  <div v-if="editable || debugTrace || compactionTrace || originalTextAvailable" class="flex shrink-0 gap-1">
+    <div v-if="originalTextAvailable || debugTrace" class="flex shrink-0 gap-1">
+      <StoryOriginalToggle
+        v-if="originalTextAvailable"
+        :expanded="originalTextOpen === true"
+        :controls="originalTextControls ?? `story-original-${message.id}`"
+        @toggle="emit('toggleOriginal')"
+      />
+      <button
+        v-if="debugTrace"
+        type="button"
+        class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-amber-500/10 hover:text-amber-600"
+        aria-label="Ver datos de debug de la llamada LLM"
+        title="Debug LLM"
+        @click="emit('debug', debugTrace)"
+      >
+        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 2h8M9 2v3m6-3v3M4 13h3m10 0h3M5 7l3 2m11-2-3 2M5 19l3-2m11 2-3-2" />
+          <rect x="7" y="5" width="10" height="16" rx="5" />
+          <path d="M9 11h6m-6 4h6" />
+        </svg>
+      </button>
+    </div>
     <button
       v-if="compactionTrace"
       type="button"
