@@ -1451,6 +1451,7 @@ test.describe('chat', () => {
       model: 'qwen-test',
       responseSpeed: 'instant',
       historyBudget: 40_000,
+      compactionPrompt: null,
       useChromeLlm: false,
       privateUseChromeLlm: null
     })

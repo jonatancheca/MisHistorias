@@ -68,6 +68,10 @@ _Evitar_: Solo historial, límite del mensaje, límite de tokens
 Resumen independiente de los hechos anteriores de una historia, preparado antes de pedir una nueva respuesta cuando el contexto enviado supera su límite. No avanza la historia ni resume la nueva intervención pendiente.
 _Evitar_: Continuación de historia, recorte del historial, respuesta del narrador
 
+**Prompt de compactación**:
+Instrucción que orienta el resumen independiente del historial de una historia. Puede personalizarse con un único valor compartido entre las colecciones normal y privada, o utilizar su versión predeterminada.
+_Evitar_: Prompt narrativo, prompt privado de compactación, checkpoint de historia compactada
+
 **Checkpoint de historia compactada**:
 Resumen validado de una historia y punto hasta el que sustituye su historial al preparar nuevas respuestas. Conserva los mensajes originales y solo se reemplaza cuando el nuevo contexto cabe dentro del límite.
 _Evitar_: Mensajes eliminados, partida guardada, resumen provisional

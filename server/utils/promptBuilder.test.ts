@@ -391,6 +391,17 @@ test('compactación mantiene instrucciones históricas como datos y permite resu
   assert.deepEqual(JSON.parse(summaryOnly[1]!.content), { previousSummary: 'Pasado.', history: [] })
 })
 
+test('prompt de compactación personalizado sustituye al integrado y conserva límite dinámico', () => {
+  const payload = buildCompactionMessages({
+    prompt: 'Resume hechos y asuntos pendientes sin avanzar.', summaryBudget: 1234,
+    previousSummary: 'El pasado.', messages: [], characters: [], userName: 'Vera'
+  })
+  assert.match(payload[0]!.content, /^Resume hechos y asuntos pendientes sin avanzar\./)
+  assert.doesNotMatch(payload[0]!.content, /Resume el historial de esta historia interactiva/)
+  assert.match(payload[0]!.content, /como máximo 1234 caracteres/)
+  assert.deepEqual(JSON.parse(payload[1]!.content), { previousSummary: 'El pasado.', history: [] })
+})
+
 test('tamaño del contexto incluye sistema, resumen, intervención e instrucciones de continuación', () => {
   const payload = buildChatMessages({
     presetContent: 'Narra.', story: { ...story, contextSummary: 'Resumen.' }, characters: [character],

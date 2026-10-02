@@ -444,6 +444,8 @@ export interface AppSettings {
   privateProtagonistPreferences: string | null
   /** Prompt narrativo personalizado; null usa el integrado en el código. */
   narrativePrompt: string | null
+  /** Prompt de compactación compartido entre ámbitos; null usa el integrado en el código. */
+  compactionPrompt: string | null
   /** Instrucción personalizada para deducir el prompt visual desde una foto; null usa la integrada. */
   characterReferencePrompt: string | null
 }

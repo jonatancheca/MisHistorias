@@ -3943,7 +3943,7 @@ export class MisHistoriasStorage {
         key !== 'swarmAuthConfigured'
       ) {
         if (
-          (key === 'narrativePrompt' || key === 'characterReferencePrompt') &&
+          (key === 'narrativePrompt' || key === 'compactionPrompt' || key === 'characterReferencePrompt') &&
           value === null
         ) {
           Reflect.deleteProperty(nextValue, key)

@@ -4,6 +4,7 @@ import { expect, test, type TestDataFactory } from './fixtures'
 
 interface ChatRequest {
   operation: string
+  scope?: string
   messages: Array<{ role: string; content: string }>
 }
 
@@ -11,7 +12,7 @@ async function prepareStory(page: Page, data: TestDataFactory, visualMode = fals
   await data.patchSettings({
     mockMode: false, model: 'test-model', useChromeLlm: false, privateUseChromeLlm: null,
     responseSpeed: 'instant', visualNovelManualAdvance: false, userName: 'Vera', historyBudget: 40_000,
-    narrativePrompt: 'PROMPT_NARRATIVO: continúa la historia con los personajes.'
+    narrativePrompt: 'PROMPT_NARRATIVO: continúa la historia con los personajes.', compactionPrompt: null
   })
   const character = await data.createCharacter()
   const background = await data.createBackground()
@@ -273,5 +274,43 @@ test.describe('compactación previa del contexto', () => {
     expect(JSON.stringify(prompts[0])).not.toContain('Mensaje nuevo para Chrome.')
     expect(prompts[1]!.reduce((total, message) => total + message.content.length, 0)).toBe(40_000)
     expect(lmStudioCalls).toBe(0)
+  })
+
+  test('usa el mismo prompt personalizado en compactación normal y privada', async ({ page, data }) => {
+    const { story: normal, composer } = await prepareStory(page, data)
+    const character = await data.createCharacter({ scope: 'private' })
+    const background = await data.createBackground({ scope: 'private' })
+    const privateStory = await data.createStory({ characters: [character], background, scope: 'private' })
+    await data.createMessage({ story: privateStory, role: 'assistant', scope: 'private',
+      raw: 'Pasado privado. '.repeat(3500), segments: [{ type: 'narration', text: 'Pasado privado. '.repeat(3500) }] })
+    const prompt = 'PROMPT_COMPACTACION_COMPARTIDO: resume el pasado sin avanzar.'
+    await data.patchSettings({ compactionPrompt: prompt, privateLlmSettingsEnabled: false })
+    const compactedScopes: string[] = []
+    await page.route('**/api/llm/chat', async (route) => {
+      const request = route.request().postDataJSON() as ChatRequest
+      if (request.operation === 'story.compaction') {
+        expect(request.messages[0]!.content).toContain(prompt)
+        expect(request.messages[0]!.content).toMatch(/como máximo \d+ caracteres/)
+        compactedScopes.push(request.scope!)
+        return route.fulfill({ json: { content: 'Resumen compartido.', finishReason: 'stop' } })
+      }
+      expect(request.messages[0]!.content).not.toContain('PROMPT_COMPACTACION_COMPARTIDO')
+      await route.fulfill({ json: { content: 'Respuesta con prompt compartido.', finishReason: 'stop' } })
+    })
+    await page.goto(`/stories/${normal.id}`)
+    await composer.fill('Intervención normal.')
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+    await expect(page.getByText('Respuesta con prompt compartido.', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toBeEnabled()
+    await page.getByRole('link', { name: 'Historias', exact: true }).click()
+    await page.locator('main').press('Control+Alt+p')
+    await expect(page.locator('html')).toHaveClass(/private-scope/)
+    await page.locator(`a[href="/stories/${privateStory.id}"]`).first().click()
+    await expect(composer).toBeVisible()
+    await composer.fill('Intervención privada.')
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+    await expect(page.getByText('Respuesta con prompt compartido.', { exact: true })).toBeVisible()
+    expect(compactedScopes).toEqual(['normal', 'private'])
+    await data.patchSettings({ compactionPrompt: null })
   })
 })

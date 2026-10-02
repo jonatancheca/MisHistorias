@@ -192,6 +192,7 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
       swarmBaseUrl: 'http://localhost:7801',
       swarmAuthToken: 'swarm-secreto',
       narrativePrompt: 'Prompt personalizado',
+      compactionPrompt: 'Resume únicamente los hechos confirmados.',
       characterReferencePrompt: 'Prompt visual personalizado'
     })
     storage.close()
@@ -230,6 +231,7 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
       assert.equal(reopened.readSettings()?.value.privateUseChromeLlm, false)
       assert.equal(reopened.readSettings()?.value.visualNovelManualAdvance, true)
       assert.equal(reopened.readSettings()?.value.narrativePrompt, 'Prompt personalizado')
+      assert.equal(reopened.readSettings()?.value.compactionPrompt, 'Resume únicamente los hechos confirmados.')
       assert.equal(
         reopened.readSettings()?.value.characterReferencePrompt,
         'Prompt visual personalizado'
@@ -251,8 +253,9 @@ test('crea esquema, conserva datos al reabrir y separa ámbitos', () => {
       assert.equal(reopened.get('stories', 'private', 'story-private')?.archived, false)
       assert.equal(reopened.health().schemaVersion, 44)
       assert.equal(reopened.get('backgrounds', 'normal', 'background-demo')?.archived, true)
-      reopened.writeSettings({ narrativePrompt: null, characterReferencePrompt: null })
+      reopened.writeSettings({ narrativePrompt: null, compactionPrompt: null, characterReferencePrompt: null })
       assert.equal('narrativePrompt' in (reopened.readSettings()?.value ?? {}), false)
+      assert.equal('compactionPrompt' in (reopened.readSettings()?.value ?? {}), false)
       assert.equal('characterReferencePrompt' in (reopened.readSettings()?.value ?? {}), false)
     } finally {
       reopened.close()
@@ -1197,7 +1200,8 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     storage.writeSettings({
       theme: 'dark',
       accessTeamDomain: 'https://old.cloudflareaccess.com',
-      accessAudience: 'old_audience_1234567890'
+      accessAudience: 'old_audience_1234567890',
+      compactionPrompt: 'Prompt de compactación guardado en backup.'
     })
 
     const backup = storage.createManualBackup()
@@ -1212,6 +1216,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
       "SELECT value_json FROM settings WHERE key = 'app'"
     ).get() as { value_json: string }
     backupDatabase.close()
+    assert.equal(JSON.parse(backupSettings.value_json).compactionPrompt, 'Prompt de compactación guardado en backup.')
     assert.equal(
       JSON.parse(backupSettings.value_json).accessTeamDomain,
       'https://old.cloudflareaccess.com'
@@ -1225,7 +1230,8 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
     storage.writeSettings({
       theme: 'light',
       accessTeamDomain: 'https://current.cloudflareaccess.com',
-      accessAudience: 'current_audience_1234567890'
+      accessAudience: 'current_audience_1234567890',
+      compactionPrompt: 'Prompt cambiado después del backup.'
     })
 
     const result = storage.restoreBackup(backup.name)
@@ -1243,6 +1249,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
         'Privado original'
       )
       assert.equal(restored.readSettings()?.value.theme, 'dark')
+      assert.equal(restored.readSettings()?.value.compactionPrompt, 'Prompt de compactación guardado en backup.')
       assert.equal(
         restored.readSettings()?.value.accessTeamDomain,
         'https://current.cloudflareaccess.com'

@@ -851,6 +851,7 @@ export const useStoriesStore = defineStore('stories', () => {
     chatOptions: Parameters<typeof buildChatMessages>[0]
     historyMessages: Message[]
     historyBudget: number
+    compactionPrompt: string
     model: string
     temperature: number
     maxTokens: number
@@ -888,7 +889,8 @@ export const useStoriesStore = defineStore('stories', () => {
       messages: options.historyMessages,
       characters: chatOptions.characters,
       userName: chatOptions.userName,
-      summaryBudget
+      summaryBudget,
+      prompt: options.compactionPrompt
     })
     const debugRequest: LlmDebugRequest = {
       provider: options.useChromeLlm ? 'chrome' : 'lmstudio',
@@ -1544,6 +1546,7 @@ export const useStoriesStore = defineStore('stories', () => {
           chatOptions,
           historyMessages: compactableMessages,
           historyBudget,
+          compactionPrompt: settingsStore.effectiveCompactionPrompt,
           model,
           temperature,
           maxTokens,

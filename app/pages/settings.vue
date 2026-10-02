@@ -28,6 +28,7 @@ import {
 } from '~/lib/swarm'
 import { DEFAULT_CHARACTER_REFERENCE_PROMPT } from '~/lib/characterReferencePrompt'
 import { DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
+import { DEFAULT_COMPACTION_PROMPT } from '~/lib/compactionPrompt'
 
 const settings = useSettingsStore()
 const access = useAccessStore()
@@ -92,6 +93,7 @@ const settingsSections = [
   { id: 'usuarios', label: 'Usuarios' },
   { id: 'llm', label: 'LLM' },
   { id: 'prompt-narrativo', label: 'Prompt narrativo' },
+  { id: 'prompt-compactacion', label: 'Prompt de compactación' },
   { id: 'swarmui', label: 'SwarmUI' },
   { id: 'actualizaciones', label: 'Actualizaciones' },
   { id: 'datos', label: 'Datos' }
@@ -131,6 +133,8 @@ const SETTINGS_NAV_DRAG_THRESHOLD = 6
 const form = reactive({ ...settings.settings })
 const narrativePrompt = ref(settings.settings.narrativePrompt ?? DEFAULT_PRESET_CONTENT)
 const narrativePromptCustomized = ref(settings.settings.narrativePrompt !== null)
+const compactionPrompt = ref(settings.settings.compactionPrompt ?? DEFAULT_COMPACTION_PROMPT)
+const compactionPromptCustomized = ref(settings.settings.compactionPrompt !== null)
 const characterReferencePrompt = ref(
   settings.settings.characterReferencePrompt ?? DEFAULT_CHARACTER_REFERENCE_PROMPT
 )
@@ -226,6 +230,7 @@ let syncingScope = false
 let scopeRevision = 0
 let unregisterBeforeModeChange: (() => void) | null = null
 let narrativePromptDirty = false
+let compactionPromptDirty = false
 let characterReferencePromptDirty = false
 let privateClickCount = 0
 let privateClickTimer: ReturnType<typeof setTimeout> | null = null
@@ -567,6 +572,9 @@ function settingsPatch() {
   if (canManageGlobal.value && narrativePromptDirty) {
     patch.narrativePrompt = narrativePromptCustomized.value ? narrativePrompt.value : null
   }
+  if (canManageGlobal.value && compactionPromptDirty) {
+    patch.compactionPrompt = compactionPromptCustomized.value ? compactionPrompt.value : null
+  }
   if (canManageGlobal.value && characterReferencePromptDirty) {
     patch.characterReferencePrompt = characterReferencePromptCustomized.value
       ? characterReferencePrompt.value
@@ -728,6 +736,7 @@ function enqueueSave(revision: number) {
         if ('privateUserName' in patch) privateUserNameDirty = false
         if ('privateProtagonistPreferences' in patch) privateProtagonistPreferencesDirty = false
         if ('narrativePrompt' in patch) narrativePromptDirty = false
+        if ('compactionPrompt' in patch) compactionPromptDirty = false
         if ('characterReferencePrompt' in patch) characterReferencePromptDirty = false
         form.apiKeyConfigured =
           privacy.isPrivate && privateLlmSettingsEnabled.value
@@ -783,6 +792,19 @@ function revertNarrativePrompt() {
 function onCharacterReferencePromptInput() {
   characterReferencePromptCustomized.value = true
   characterReferencePromptDirty = true
+  scheduleSave()
+}
+
+function onCompactionPromptInput() {
+  compactionPromptCustomized.value = true
+  compactionPromptDirty = true
+  scheduleSave()
+}
+
+function revertCompactionPrompt() {
+  compactionPrompt.value = DEFAULT_COMPACTION_PROMPT
+  compactionPromptCustomized.value = false
+  compactionPromptDirty = true
   scheduleSave()
 }
 
@@ -1989,6 +2011,36 @@ onBeforeRouteLeave(async () => {
       >
         Revertir a prompt por defecto
       </button>
+    </section>
+
+    <section
+      id="prompt-compactacion"
+      class="settings-panel"
+      :class="[
+        { 'settings-panel-active': activeSectionId === 'prompt-compactacion' },
+        { 'opacity-60': !canManageGlobal }
+      ]"
+      :inert="!canManageGlobal"
+      :aria-disabled="!canManageGlobal"
+      data-testid="compaction-prompt-settings"
+    >
+      <h2>Prompt de compactación</h2>
+      <p>
+        Resume el historial antes de pedir una nueva respuesta. Se comparte entre colección normal y privada.
+        El límite de caracteres se añade automáticamente. Los backups conservan tu prompt personalizado.
+      </p>
+      <textarea
+        v-model="compactionPrompt"
+        class="field min-h-64 w-full font-mono text-sm"
+        aria-label="Prompt de compactación integrado"
+        @input="onCompactionPromptInput"
+      />
+      <button
+        v-if="compactionPromptCustomized"
+        type="button"
+        class="btn mt-3"
+        @click="revertCompactionPrompt"
+      >Revertir prompt de compactación por defecto</button>
     </section>
 
     <section

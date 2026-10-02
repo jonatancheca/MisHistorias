@@ -4,6 +4,7 @@ import { activeDataScope, readSettings, writeSettings } from '~/lib/db'
 import { DEFAULT_USER_COLOR } from '~/lib/colors'
 import { DEFAULT_CHARACTER_REFERENCE_PROMPT } from '~/lib/characterReferencePrompt'
 import { DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
+import { DEFAULT_COMPACTION_PROMPT } from '~/lib/compactionPrompt'
 
 const DEFAULTS: AppSettings = {
   accessTeamDomain: '',
@@ -40,6 +41,7 @@ const DEFAULTS: AppSettings = {
   protagonistPreferences: '',
   privateProtagonistPreferences: null,
   narrativePrompt: null,
+  compactionPrompt: null,
   characterReferencePrompt: null
 }
 
@@ -92,6 +94,9 @@ export const useSettingsStore = defineStore('settings', () => {
   )
   const activeNarrativePrompt = computed(() =>
     settings.value.narrativePrompt ?? DEFAULT_PRESET_CONTENT
+  )
+  const effectiveCompactionPrompt = computed(() =>
+    settings.value.compactionPrompt ?? DEFAULT_COMPACTION_PROMPT
   )
   const effectiveCharacterReferencePrompt = computed(() =>
     settings.value.characterReferencePrompt ?? DEFAULT_CHARACTER_REFERENCE_PROMPT
@@ -172,6 +177,7 @@ export const useSettingsStore = defineStore('settings', () => {
     activeUserName,
     activeProtagonistPreferences,
     activeNarrativePrompt,
+    effectiveCompactionPrompt,
     effectiveCharacterReferencePrompt,
     loaded,
     load,

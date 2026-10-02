@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import type { AppSettings, Character, DatabaseBackup } from '../../shared/types'
 import { DEFAULT_CHARACTER_REFERENCE_PROMPT } from '../../app/lib/characterReferencePrompt'
 import { DEFAULT_PRESET_CONTENT } from '../../app/lib/defaultPreset'
+import { DEFAULT_COMPACTION_PROMPT } from '../../app/lib/compactionPrompt'
 import { expect, test } from './fixtures'
 
 test('abre Ajustes y permite guardar mientras el listado de backups sigue pendiente', async ({ page, data }) => {
@@ -244,7 +245,7 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
 
   const nav = page.getByTestId('settings-section-nav')
   await expect(nav).toBeVisible()
-  await expect(nav.getByRole('link')).toHaveCount(8)
+  await expect(nav.getByRole('link')).toHaveCount(9)
   expect(await nav.getByRole('link').evaluateAll(links =>
     links.map(link => link.getAttribute('data-settings-section'))
   )).toEqual([
@@ -253,6 +254,7 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
     'usuarios',
     'llm',
     'prompt-narrativo',
+    'prompt-compactacion',
     'swarmui',
     'actualizaciones',
     'datos'
@@ -265,6 +267,7 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
     'usuarios',
     'llm',
     'prompt-narrativo',
+    'prompt-compactacion',
     'swarmui',
     'actualizaciones',
     'datos'
@@ -964,6 +967,46 @@ test('personaliza y revierte el prompt narrativo integrado', async ({ page, data
   await expect(page.getByRole('link', { name: 'Prompts', exact: true })).toHaveCount(0)
   await page.goto('/prompts')
   await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
+})
+
+test('personaliza prompt de compactación compartido, lo recupera del backup y revierte', async ({ page, data }) => {
+  await data.patchSettings({ compactionPrompt: null })
+  await page.goto('/settings#prompt-compactacion')
+  const prompt = page.getByLabel('Prompt de compactación integrado')
+  const revert = page.getByRole('button', { name: 'Revertir prompt de compactación por defecto' })
+  await expect(prompt).toHaveValue(DEFAULT_COMPACTION_PROMPT)
+  await expect(revert).toHaveCount(0)
+  const customized = 'Resume hechos confirmados, decisiones y asuntos pendientes. No avances la historia.'
+  await prompt.fill(customized)
+  await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).compactionPrompt).toBe(customized)
+  await expect(revert).toBeVisible()
+  await page.reload()
+  await expect(prompt).toHaveValue(customized)
+  await page.locator('main').press('Control+Alt+p')
+  await expect(prompt).toHaveValue(customized)
+  await prompt.fill(`${customized} Incluye relaciones.`)
+  await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).compactionPrompt).toBe(`${customized} Incluye relaciones.`)
+  await page.locator('main').press('Control+Alt+p')
+  await expect(prompt).toHaveValue(`${customized} Incluye relaciones.`)
+  const backupResponse = await page.request.post('/api/backups')
+  await expect(backupResponse).toBeOK()
+  const backup = await backupResponse.json() as DatabaseBackup
+  await prompt.fill('Cambiar tras crear backup.')
+  await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).compactionPrompt).toBe('Cambiar tras crear backup.')
+  await expect(await page.request.post(`/api/backups/${encodeURIComponent(backup.name)}/restore`)).toBeOK()
+  await page.reload()
+  await expect(prompt).toHaveValue(`${customized} Incluye relaciones.`)
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await expect(prompt).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  }
+  await revert.click()
+  await expect(prompt).toHaveValue(DEFAULT_COMPACTION_PROMPT)
+  await expect(revert).toHaveCount(0)
+  await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).compactionPrompt).toBeNull()
+  await page.reload()
+  await expect(prompt).toHaveValue(DEFAULT_COMPACTION_PROMPT)
 })
 
 test('personaliza y revierte el prompt de referencia de personaje', async ({ page, data }) => {

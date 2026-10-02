@@ -31,6 +31,7 @@ const ALLOWED_SETTINGS = new Set([
   'protagonistPreferences',
   'privateProtagonistPreferences',
   'narrativePrompt',
+  'compactionPrompt',
   'characterReferencePrompt'
 ])
 const PERSONAL_SETTINGS = new Set([
@@ -99,6 +100,7 @@ function validSetting(key: string, value: unknown) {
     case 'privateProtagonistPreferences':
       return value === null || (typeof value === 'string' && value.length <= 100000)
     case 'narrativePrompt':
+    case 'compactionPrompt':
     case 'characterReferencePrompt':
       return value === null || (typeof value === 'string' && value.length <= 100000)
     default:
@@ -112,6 +114,7 @@ function publicSettings(row: ReturnType<ReturnType<typeof getStorage>['readSetti
     useChromeLlm: false,
     privateUseChromeLlm: null,
     narrativePrompt: null,
+    compactionPrompt: null,
     characterReferencePrompt: null,
     ...row.value,
     apiKey: '',
