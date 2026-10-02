@@ -60,6 +60,18 @@ _Evitar_: Cuadro de respuesta, mensaje enviado
 Contenido textual de una intervención conservado por la historia, antes de ocultar anotaciones y representar sus directivas como personajes, fondos o sonidos. Incluye instrucciones al narrador y puede consultarse sin modificar la intervención.
 _Evitar_: Texto visible, traza LLM, respuesta del proveedor
 
+**Contexto enviado**:
+Conjunto de textos que recibe el narrador para responder: instrucciones, personajes y recursos disponibles, resumen anterior, historial pendiente y nueva intervención. Su límite se expresa en caracteres; cero significa sin límite.
+_Evitar_: Solo historial, límite del mensaje, límite de tokens
+
+**Compactación del historial**:
+Resumen independiente de los hechos anteriores de una historia, preparado antes de pedir una nueva respuesta cuando el contexto enviado supera su límite. No avanza la historia ni resume la nueva intervención pendiente.
+_Evitar_: Continuación de historia, recorte del historial, respuesta del narrador
+
+**Checkpoint de historia compactada**:
+Resumen validado de una historia y punto hasta el que sustituye su historial al preparar nuevas respuestas. Conserva los mensajes originales y solo se reemplaza cuando el nuevo contexto cabe dentro del límite.
+_Evitar_: Mensajes eliminados, partida guardada, resumen provisional
+
 **Efecto de sonido**:
 Audio puntual que acompaña un suceso de la historia y termina por sí mismo.
 _Evitar_: Sonido de fondo

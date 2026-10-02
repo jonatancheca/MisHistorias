@@ -797,7 +797,7 @@ test('personaliza LMStudio en privado y vuelve a heredar al desactivarlo', async
   await model.fill('private-model')
   await page.getByLabel('Temperatura').fill('1.2')
   await page.getByLabel('Máx. tokens').fill('1200')
-  await page.getByLabel('Historial (caracteres)').fill('7000')
+  await page.getByLabel('Contexto enviado (caracteres)').fill('7000')
   await tokenInput.fill('private-secret')
   await expect(page.getByText('Guardado', { exact: true })).toBeVisible()
 

@@ -420,7 +420,7 @@ export interface AppSettings {
   model: string
   temperature: number
   maxTokens: number
-  /** Presupuesto de caracteres del historial enviado al modelo */
+  /** Límite de caracteres de todo el texto enviado al modelo; 0 significa sin límite. */
   historyBudget: number
   /** Versión aplicada del pack de sonidos por defecto en cada colección. */
   defaultSoundVersion: number

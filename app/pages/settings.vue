@@ -1940,7 +1940,7 @@ onBeforeRouteLeave(async () => {
           >
         </div>
         <div>
-          <label class="label" for="historyBudget">Historial (caracteres)</label>
+          <label class="label" for="historyBudget">Contexto enviado (caracteres)</label>
           <input
             id="historyBudget"
             v-model.number="form.historyBudget"
@@ -1952,7 +1952,7 @@ onBeforeRouteLeave(async () => {
             class="field"
           >
           <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-            Usa 0 para enviar todo el historial disponible.
+            Incluye instrucciones, personajes, resumen, historial y nuevo mensaje. Usa 0 para enviar sin límite.
           </p>
         </div>
       </div>

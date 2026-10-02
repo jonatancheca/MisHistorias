@@ -314,16 +314,15 @@ async function submit() {
   )
   followingBottom.value = true
   scheduleFollowBottom()
-  input.value = ''
-  const message = await stories.addUserMessage(text)
-  if (!message) return
-  if (showSubmittedVisualFrame) {
-    await nextTick()
-    visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
-    followingVisualReveal.value = true
-    stories.resumeVisualReveal()
-  }
-  await stories.generate('normal', { consumePendingImageInstructions: true })
+  await stories.send(text, async () => {
+    if (input.value === text) input.value = ''
+    if (showSubmittedVisualFrame) {
+      await nextTick()
+      visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
+      followingVisualReveal.value = true
+      stories.resumeVisualReveal()
+    }
+  })
 }
 
 function onSubmitShortcut(event: KeyboardEvent) {
@@ -1514,27 +1513,6 @@ onBeforeRouteLeave(() => {
             </div>
           </template>
 
-          <div
-            v-if="stories.compacting"
-            data-testid="compacting-indicator"
-            class="flex min-w-0 items-center gap-3 rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-alt)] px-4 py-3 text-sm text-[var(--color-fg-muted)]"
-            role="status"
-            aria-live="polite"
-          >
-            <span>El Narrador está compactando el historial</span>
-            <span class="flex items-center gap-1" aria-hidden="true">
-              <span class="h-2 w-2 animate-bounce rounded-full bg-violet-500 motion-reduce:animate-none" />
-              <span
-                class="h-2 w-2 animate-bounce rounded-full bg-violet-500 motion-reduce:animate-none"
-                style="animation-delay: 120ms"
-              />
-              <span
-                class="h-2 w-2 animate-bounce rounded-full bg-violet-500 motion-reduce:animate-none"
-                style="animation-delay: 240ms"
-              />
-            </span>
-          </div>
-
           <p
             v-if="stories.error"
             class="rounded-lg bg-red-500/10 px-4 py-2 text-sm text-red-500"
@@ -1579,6 +1557,13 @@ onBeforeRouteLeave(() => {
         >
           {{ storyModelPreload.message }}
         </p>
+        <p
+          v-if="stories.compacting"
+          data-testid="compacting-indicator"
+          class="mb-2 text-center text-sm text-[var(--color-fg-muted)]"
+          role="status"
+          aria-live="polite"
+        >El Narrador está compactando el historial</p>
         <!-- El diálogo visual mide 120px; 4.5rem separan el aviso de las fichas y acciones de la escena. -->
         <div
           v-if="stories.waitingForResponse && storyModelPreload?.status !== 'loading'"

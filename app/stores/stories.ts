@@ -43,6 +43,7 @@ import {
 import {
   buildChatMessages,
   buildCompactionMessages,
+  chatContextSize,
   resolveProtagonistPreferences
 } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
@@ -847,50 +848,47 @@ export const useStoriesStore = defineStore('stories', () => {
   }
 
   async function compactHistoryIfNeeded(options: {
-    story: Story
-    presetContent: string
-    storyCharacters: Character[]
-    images: CharacterImage[]
-    backgrounds: Background[]
-    sounds: Sound[]
+    chatOptions: Parameters<typeof buildChatMessages>[0]
+    historyMessages: Message[]
     historyBudget: number
-    userName: string
-    protagonistPreferences: string
     model: string
     temperature: number
     maxTokens: number
-    mock: boolean
     useChromeLlm: boolean
     signal: AbortSignal
-    triggerMessageId: string
+    scope: DataScope
+    isActive: () => boolean
   }) {
-    if (options.historyBudget <= 0 || options.mock || options.signal.aborted) return
-    const story = activeStory.value?.id === options.story.id ? activeStory.value : options.story
-    const fullContext = buildChatMessages({
-      presetContent: options.presetContent,
-      story,
-      characters: options.storyCharacters,
-      images: options.images,
-      backgrounds: options.backgrounds,
-      sounds: options.sounds,
-      messages: messages.value,
-      historyBudget: 0,
-      userName: options.userName,
-      protagonistPreferences: options.protagonistPreferences,
-      generationMode: 'normal'
-    })
-    const contextSize = fullContext.reduce((total, message) => total + message.content.length, 0)
-    const throughIndex = story.contextSummaryThroughMessageId
-      ? messages.value.findIndex((message) => message.id === story.contextSummaryThroughMessageId)
-      : -1
-    if (contextSize <= options.historyBudget || throughIndex >= messages.value.length - 1) return
+    const { chatOptions, historyBudget } = options
+    const story = chatOptions.story
+    if (historyBudget <= 0 || chatContextSize(buildChatMessages(chatOptions)) <= historyBudget) {
+      return story
+    }
+
+    const historicalIds = new Set(options.historyMessages.map((message) => message.id))
+    const pendingMessages = chatOptions.messages.filter((message) => !historicalIds.has(message.id))
+    // Un carácter reserva también el encabezado del resumen y sus separadores reales.
+    const summaryBudget = historyBudget - chatContextSize(buildChatMessages({
+      ...chatOptions,
+      story: { ...story, contextSummary: 'x', contextSummaryThroughMessageId: undefined },
+      messages: pendingMessages
+    })) + 1
+    if (summaryBudget <= 0) {
+      throw new Error(`El mensaje y las instrucciones de la historia superan el límite de ${historyBudget} caracteres. Acorta el mensaje o aumenta el límite en Ajustes.`)
+    }
+    if (!options.historyMessages.length && !story.contextSummary?.trim()) {
+      throw new Error(`La petición supera el límite de ${historyBudget} caracteres y no hay historial anterior que compactar. Acorta el mensaje o aumenta el límite en Ajustes.`)
+    }
+
+    const triggerMessageId = options.historyMessages.at(-1)?.id ?? story.contextSummaryThroughMessageId
 
     const compactionMessages = buildCompactionMessages({
       previousSummary: story.contextSummary,
       throughMessageId: story.contextSummaryThroughMessageId,
-      messages: messages.value,
-      characters: options.storyCharacters,
-      userName: options.userName
+      messages: options.historyMessages,
+      characters: chatOptions.characters,
+      userName: chatOptions.userName,
+      summaryBudget
     })
     const debugRequest: LlmDebugRequest = {
       provider: options.useChromeLlm ? 'chrome' : 'lmstudio',
@@ -916,34 +914,48 @@ export const useStoriesStore = defineStore('stories', () => {
             operation: 'story.compaction',
             temperature: options.temperature,
             maxTokens: options.maxTokens,
+            scope: options.scope,
             signal: options.signal
           })
+      if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
       const summary = result.content.trim()
       if (!summary) throw new Error('El modelo no devolvió un resumen visible.')
-      await persistStoryState({
-        ...story,
+      if (result.finishReason === 'length') {
+        throw new Error('La compactación es insuficiente: el resumen quedó truncado por el máximo de tokens.')
+      }
+      const updated = {
+        ...(activeStory.value?.id === story.id ? activeStory.value : story),
         contextSummary: summary,
-        contextSummaryThroughMessageId: options.triggerMessageId,
+        contextSummaryThroughMessageId: triggerMessageId,
         updatedAt: Date.now()
-      })
+      }
+      const compactedSize = chatContextSize(buildChatMessages({ ...chatOptions, story: updated }))
+      if (compactedSize > historyBudget) {
+        throw new Error(`La compactación es insuficiente: la petición ocupa ${compactedSize} caracteres y el límite es ${historyBudget}. Acorta el mensaje o aumenta el límite en Ajustes.`)
+      }
+      await putStoryInScope(updated, options.scope, options.signal)
+      if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
+      activeStory.value = updated
+      stories.value = stories.value.map((item) => item.id === story.id ? updated : item)
       const stored = await persistDebugTrace({
         id: newId(),
         storyId: story.id,
-        requestMessageId: options.triggerMessageId,
+        requestMessageId: triggerMessageId,
         status: 'success',
         request: debugRequest,
         response: { content: result.content, finishReason: result.finishReason },
         createdAt: Date.now()
-      })
+      }, options.scope)
       if (!stored) error.value = 'El historial se compactó, pero no se pudo guardar su traza de debug.'
+      return updated
     } catch (caught) {
-      if ((caught as Error).name === 'AbortError') return
+      if ((caught as Error).name === 'AbortError' || !options.isActive()) throw caught
       const callError = caught as LlmCallError
       const message = callError.message || 'No se pudo compactar el historial.'
       await persistDebugTrace({
         id: newId(),
         storyId: story.id,
-        requestMessageId: options.triggerMessageId,
+        requestMessageId: triggerMessageId,
         status: 'error',
         request: debugRequest,
         response: {
@@ -952,8 +964,9 @@ export const useStoriesStore = defineStore('stories', () => {
           detail: callError.detail
         },
         createdAt: Date.now()
-      })
+      }, options.scope)
       error.value = message
+      throw caught
     } finally {
       compacting.value = false
     }
@@ -1086,15 +1099,15 @@ export const useStoriesStore = defineStore('stories', () => {
   }
 
   async function stop(options: { preserveAutoResponse?: boolean } = {}) {
-    if (options.preserveAutoResponse && generationModeInProgress === 'auto' && !retryingEmptyResponse.value) return
+    if (options.preserveAutoResponse && generationModeInProgress === 'auto' && !retryingEmptyResponse.value && !compacting.value) return
 
     const wasWaiting = waitingForResponse.value
     const wasCompacting = compacting.value
     const draft = animationDraft
     const wasAnimating = finishAnimation !== null
-    if (!wasWaiting && !wasAnimating && !wasCompacting) return
+    if (!generating.value && !wasWaiting && !wasAnimating && !wasCompacting) return
 
-    if (wasWaiting || wasCompacting) controller?.abort()
+    controller?.abort()
     controller = null
     waitingForResponse.value = false
     retryingEmptyResponse.value = false
@@ -1333,10 +1346,14 @@ export const useStoriesStore = defineStore('stories', () => {
 
   async function generate(
     generationMode: GenerationMode = 'normal',
-    options: { consumePendingImageInstructions?: boolean } = {}
+    options: {
+      consumePendingImageInstructions?: boolean
+      pendingUserMessage?: Message
+      onUserMessageStored?: () => void | Promise<void>
+    } = {}
   ) {
     if (!activeStory.value || activeStory.value.readOnly || generating.value) return
-    const story = activeStory.value
+    let story = activeStory.value
     const scope = getActiveDataScope()
     const generationLifecycle = imageGenerationLifecycle
     const settingsStore = useSettingsStore()
@@ -1371,7 +1388,7 @@ export const useStoriesStore = defineStore('stories', () => {
       generationMode,
       createdAt: Date.now()
     }
-    const requestMessageId = [...messages.value]
+    const requestMessageId = options.pendingUserMessage?.id ?? [...messages.value]
       .reverse()
       .find((message) => message.role === 'user')?.id
     let debugRequest: LlmDebugRequest | null = null
@@ -1381,6 +1398,7 @@ export const useStoriesStore = defineStore('stories', () => {
     let imageProgress: ImageGenerationProgress | null = null
     let imageBatchWarnings: string[] = []
     let responseTraceStored = false
+    let preparingContext = true
 
     const persistGeneratedImageCatalog = async (
       _image: StoredImage,
@@ -1485,6 +1503,67 @@ export const useStoriesStore = defineStore('stories', () => {
 
       imageCharacters = storyCharacters
 
+      const requestMessages = options.pendingUserMessage
+        ? [...messages.value, options.pendingUserMessage]
+        : messages.value
+      const chatOptions: Parameters<typeof buildChatMessages>[0] = {
+        presetContent: settingsStore.activeNarrativePrompt,
+        story: activeStory.value ?? story,
+        characters: storyCharacters,
+        images: charactersStore.images,
+        backgrounds: storyBackgrounds,
+        sounds: storySounds,
+        messages: requestMessages,
+        historyBudget: 0,
+        userName: settingsStore.activeUserName,
+        protagonistPreferences: resolveProtagonistPreferences(
+          settingsStore.activeProtagonistPreferences,
+          story.protagonistPreferences ?? '',
+          story.protagonistPreferencesMode ?? 'append'
+        ),
+        generationMode,
+        imageCatalogChange: imageCatalogChange ? formatStoryImageCatalogChange(imageCatalogChange) : null,
+        pendingImageInstructions: pendingForRequest
+      }
+      if (!mock) {
+        if (!useChromeLlm) {
+          waitingForResponse.value = true
+          await useLlmModelPreloadStore().waitForStory(
+            story.id, scope, settingsStore.activeBaseUrl, model, requestController.signal
+          )
+          waitingForResponse.value = false
+          if (!generationStillActive()) return
+        }
+        const historyMessages = messages.value.filter((message) => !message.swarmError)
+        // Los mensajes de usuario aún sin respuesta deben llegar intactos al narrador.
+        const lastAssistantIndex = historyMessages.findLastIndex((message) => message.role === 'assistant')
+        const compactableMessages = options.pendingUserMessage
+          ? historyMessages
+          : historyMessages.slice(0, lastAssistantIndex + 1)
+        story = await compactHistoryIfNeeded({
+          chatOptions,
+          historyMessages: compactableMessages,
+          historyBudget,
+          model,
+          temperature,
+          maxTokens,
+          useChromeLlm,
+          signal: requestController.signal,
+          scope,
+          isActive: generationStillActive
+        })
+        if (!generationStillActive()) return
+        chatOptions.story = story
+      }
+      if (options.pendingUserMessage) {
+        await persist(options.pendingUserMessage)
+        attempt.historyMessageIds.push(options.pendingUserMessage.id)
+        if (!generationStillActive()) return
+        await options.onUserMessageStored?.()
+        if (!generationStillActive()) return
+      }
+      preparingContext = false
+
       let raw = ''
       let finishReason: string | null = null
 
@@ -1500,27 +1579,7 @@ export const useStoriesStore = defineStore('stories', () => {
           pendingForRequest
         )
       } else {
-        const payload = buildChatMessages({
-          presetContent: settingsStore.activeNarrativePrompt,
-          story,
-          characters: storyCharacters,
-          images: charactersStore.images,
-          backgrounds: storyBackgrounds,
-          sounds: storySounds,
-          messages: messages.value,
-          historyBudget,
-          userName: settingsStore.activeUserName,
-          protagonistPreferences: resolveProtagonistPreferences(
-            settingsStore.activeProtagonistPreferences,
-            story.protagonistPreferences ?? '',
-            story.protagonistPreferencesMode ?? 'append'
-          ),
-          generationMode,
-          imageCatalogChange: imageCatalogChange
-            ? formatStoryImageCatalogChange(imageCatalogChange)
-            : null,
-          pendingImageInstructions: pendingForRequest
-        })
+        const payload = buildChatMessages(chatOptions)
 
         debugRequest = {
           provider: useChromeLlm ? 'chrome' : 'lmstudio',
@@ -1534,16 +1593,6 @@ export const useStoriesStore = defineStore('stories', () => {
         }
 
         waitingForResponse.value = true
-        if (!useChromeLlm) {
-          await useLlmModelPreloadStore().waitForStory(
-            story.id,
-            scope,
-            settingsStore.activeBaseUrl,
-            model,
-            requestController.signal
-          )
-          if (!generationStillActive()) return
-        }
 
         for (let responseAttempt = 0; responseAttempt < 2; responseAttempt += 1) {
           const result = useChromeLlm
@@ -1732,30 +1781,6 @@ export const useStoriesStore = defineStore('stories', () => {
           messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
           return
         }
-        if (!mock && generationStillActive()) {
-          await compactHistoryIfNeeded({
-            story: activeStory.value ?? story,
-            presetContent: settingsStore.activeNarrativePrompt,
-            storyCharacters,
-            images: charactersStore.images,
-            backgrounds: storyBackgrounds,
-            sounds: storySounds,
-            historyBudget,
-            userName: settingsStore.activeUserName,
-            protagonistPreferences: resolveProtagonistPreferences(
-              settingsStore.activeProtagonistPreferences,
-              story.protagonistPreferences ?? '',
-              story.protagonistPreferencesMode ?? 'append'
-            ),
-            model,
-            temperature,
-            maxTokens,
-            mock,
-            useChromeLlm,
-            signal: requestController.signal,
-            triggerMessageId: completedMessage.id
-          })
-        }
       }
       if (pendingVariantJobs.length && imageProgress && !imageProgress.error && !imageProgress.canceled) {
         const variantJobs = pendingVariantJobs
@@ -1792,6 +1817,15 @@ export const useStoriesStore = defineStore('stories', () => {
       if ((caught as Error).name !== 'AbortError' && generationStillActive()) {
         const callError = caught as LlmCallError
         const message = callError.message || 'Fallo al generar la respuesta'
+        if (preparingContext) {
+          error.value = message
+          transientGenerationFeedback.value = {
+            message: storyGenerationErrorMessage(message, callError.status),
+            warning: false,
+            retry: options.pendingUserMessage ? undefined : attempt
+          }
+          return
+        }
         const responseMessageId = messages.value.some((item) => item.id === assistantMessage.id)
           ? assistantMessage.id
           : undefined
@@ -1845,10 +1879,17 @@ export const useStoriesStore = defineStore('stories', () => {
     })
   }
 
-  async function send(text: string) {
+  async function send(text: string, onUserMessageStored?: () => void | Promise<void>) {
     if (!text.trim() || generating.value) return
-    await addUserMessage(text)
-    await generate('normal', { consumePendingImageInstructions: true })
+    if (!activeStory.value || activeStory.value.readOnly) return
+    await generate('normal', {
+      consumePendingImageInstructions: true,
+      pendingUserMessage: {
+        id: newId(), storyId: activeStory.value.id, role: 'user',
+        raw: text.trim(), segments: [], createdAt: Date.now()
+      },
+      onUserMessageStored
+    })
   }
 
   async function regenerateFrom(id: string) {

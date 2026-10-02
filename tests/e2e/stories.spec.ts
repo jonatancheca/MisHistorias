@@ -1440,12 +1440,17 @@ test.describe('chat', () => {
     const { story } = await createStoryFixture(data)
     const firstAction = data.unique('Accion-que-sera-resumida')
     const nextAction = data.unique('Accion-posterior')
+    const thirdAction = data.unique('Accion-tras-checkpoint')
     const summary = 'La protagonista abrió la puerta y avanzó por el pasillo.'
+    await data.createMessage({ story, role: 'user', raw: firstAction })
+    const previousAssistant = await data.createMessage({ story, role: 'assistant',
+      raw: 'Hechos anteriores. '.repeat(3000),
+      segments: [{ type: 'narration', text: 'Hechos anteriores. '.repeat(3000) }] })
     await data.patchSettings({
       mockMode: false,
       model: 'qwen-test',
       responseSpeed: 'instant',
-      historyBudget: 100,
+      historyBudget: 40_000,
       useChromeLlm: false,
       privateUseChromeLlm: null
     })
@@ -1474,10 +1479,9 @@ test.describe('chat', () => {
     await page.setViewportSize({ width: 320, height: 760 })
     await page.goto(`/stories/${story.id}`)
     const input = page.getByPlaceholder('Escribe lo que haces o dices…')
-    await input.fill(firstAction)
+    await input.fill(nextAction)
     await page.getByRole('button', { name: 'Enviar', exact: true }).click()
 
-    await expect(page.getByText('Narración: La historia avanza.', { exact: true })).toBeVisible()
     await expect(page.getByTestId('compacting-indicator')).toContainText(
       'El Narrador está compactando el historial'
     )
@@ -1485,11 +1489,21 @@ test.describe('chat', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
       .toBe(true)
     expect(JSON.stringify(compactionRequest)).toContain(firstAction)
+    expect(JSON.stringify(compactionRequest)).not.toContain(nextAction)
+    expect(chatRequests).toHaveLength(0)
+    await expect(input).toHaveValue(nextAction)
+    expect(await data.list<Message>('messages', 'normal', { storyId: story.id })).toHaveLength(2)
     releaseCompaction()
 
     await expect(page.getByTestId('compacting-indicator')).toBeHidden()
+    await expect(page.getByText('Narración: La historia avanza.', { exact: true })).toBeVisible()
+    await expect(input).toHaveValue('')
+    expect(chatRequests[0]!.reduce((total, message) => total + message.content.length, 0)).toBeLessThanOrEqual(40_000)
+    expect(JSON.stringify(chatRequests[0])).toContain(nextAction)
+    expect(JSON.stringify(chatRequests[0])).not.toContain(firstAction)
     await expect.poll(async () => await data.get<Story>('stories', story.id)).toMatchObject({
-      contextSummary: summary
+      contextSummary: summary,
+      contextSummaryThroughMessageId: previousAssistant.id
     })
     const compactionTrace = (await data.list<LlmDebugTrace>('llmDebugTraces', 'normal', {
       storyId: story.id
@@ -1507,12 +1521,13 @@ test.describe('chat', () => {
     await data.patchSettings({ historyBudget: 1_000_000 })
     await page.setViewportSize({ width: 390, height: 760 })
     await page.reload()
-    await page.getByPlaceholder('Escribe lo que haces o dices…').fill(nextAction)
+    await page.getByPlaceholder('Escribe lo que haces o dices…').fill(thirdAction)
     await page.getByRole('button', { name: 'Enviar', exact: true }).click()
     await expect.poll(() => chatRequests.length).toBe(2)
     const secondRequest = JSON.stringify(chatRequests[1])
     expect(secondRequest).toContain(summary)
     expect(secondRequest).toContain(nextAction)
+    expect(secondRequest).toContain(thirdAction)
     expect(secondRequest).not.toContain(firstAction)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
       .toBe(true)
@@ -1549,7 +1564,7 @@ test.describe('chat', () => {
     ).filter((message) => message.role === 'assistant').length).toBe(1)
 
     await input.fill('Entra en la sala.')
-    await page.getByRole('button', { name: 'Enviar' }).click()
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
     await expect.poll(async () => (
       await data.list<Message>('messages', 'normal', { storyId: story.id })
     ).filter((message) => message.role === 'assistant').length).toBe(2)
