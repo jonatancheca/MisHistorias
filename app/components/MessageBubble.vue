@@ -16,6 +16,7 @@ const props = defineProps<{
   originalTextAvailable?: boolean
   originalTextOpen?: boolean
   originalText?: string
+  debugEnabled?: boolean
   modelLoadAvailable?: boolean
   modelLoading?: boolean
   modelLoadDisabled?: boolean
@@ -235,10 +236,10 @@ function confirmEdit() {
       :model-load-available="modelLoadAvailable"
       :model-loading="modelLoading"
       :model-load-disabled="modelLoadDisabled"
-      class="flex-col text-[var(--color-fg-muted)] opacity-100 transition max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-      :class="modelLoadAvailable
+      class="flex-col text-[var(--color-fg-muted)] transition"
+      :class="[debugEnabled ? 'opacity-100' : 'opacity-100 max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100', modelLoadAvailable
         ? (originalTextAvailable ? 'w-[9.5rem]' : 'w-[7.25rem]')
-        : (originalTextAvailable ? 'w-[4.25rem]' : 'w-8')"
+        : (originalTextAvailable ? 'w-[4.25rem]' : 'w-8')]"
       @edit="startEdit"
       @remove="emit('remove')"
       @regenerate="emit('regenerate')"

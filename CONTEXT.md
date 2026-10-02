@@ -76,6 +76,14 @@ _Evitar_: Prompt narrativo, prompt privado de compactación, checkpoint de histo
 Resumen validado de una historia y punto hasta el que sustituye su historial al preparar nuevas respuestas. Conserva los mensajes originales y solo se reemplaza cuando el nuevo contexto cabe dentro del límite.
 _Evitar_: Mensajes eliminados, partida guardada, resumen provisional
 
+**Modo Debug de la historia**:
+Vista temporal de diagnóstico que permite consultar el texto original, las compactaciones y los controles de cada intervención en Chat y Novela Visual. No cambia el contenido de la historia ni los permisos para consultarlo o editarlo.
+_Evitar_: Modo de generación, colección de diagnóstico
+
+**Comparación de compactación**:
+Contexto completo del narrador antes y después de un intento de compactación, junto con el límite vigente en ese momento. Distingue el resumen aplicado de un intento fallido y conserva los datos disponibles de compactaciones antiguas.
+_Evitar_: Historial eliminado, comparación de mensajes visibles
+
 **Efecto de sonido**:
 Audio puntual que acompaña un suceso de la historia y termina por sí mismo.
 _Evitar_: Sonido de fondo

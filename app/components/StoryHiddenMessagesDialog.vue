@@ -1,14 +1,22 @@
 <script setup lang="ts">
-import type { Message } from '#shared/types'
+import type { LlmDebugTrace, Message } from '#shared/types'
 
 const props = defineProps<{
   open: boolean
   messages: Message[]
   expandedIds: Set<string>
+  debugEnabled?: boolean
+  editable?: boolean
+  debugTraces?: LlmDebugTrace[]
 }>()
 const emit = defineEmits<{
   close: []
   toggleOriginal: [id: string]
+  edit: [message: Message]
+  remove: [id: string]
+  regenerate: [id: string]
+  resend: [id: string]
+  debug: [trace: LlmDebugTrace]
 }>()
 
 useDialogEscape(() => props.open, () => emit('close'))
@@ -34,14 +42,31 @@ useDialogEscape(() => props.open, () => emit('close'))
         </header>
         <ul class="min-h-0 space-y-3 overflow-y-auto p-5">
           <li v-for="message in messages" :key="message.id" :data-hidden-message-id="message.id" class="min-w-0">
-            <div class="flex items-center justify-between gap-3 rounded-lg bg-[var(--color-surface-alt)] p-2">
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[var(--color-surface-alt)] p-2">
               <p class="text-sm text-[var(--color-fg-muted)]">
                 {{ message.role === 'user' ? 'Usuario' : 'Narrador' }} · Contenido oculto
               </p>
               <StoryOriginalToggle
+                v-if="!debugEnabled"
                 :expanded="expandedIds.has(message.id)"
                 :controls="`hidden-original-${message.id}`"
                 @toggle="emit('toggleOriginal', message.id)"
+              />
+              <MessageActions
+                v-else
+                :message="message"
+                :editable="editable"
+                :debug-trace="debugTraces?.findLast(trace => trace.request.purpose !== 'compaction' && trace.responseMessageId === message.id)"
+                :compaction-trace="debugTraces?.findLast(trace => trace.request.purpose === 'compaction' && trace.requestMessageId === message.id)"
+                original-text-available
+                :original-text-open="expandedIds.has(message.id)"
+                :original-text-controls="`hidden-original-${message.id}`"
+                @toggle-original="emit('toggleOriginal', message.id)"
+                @edit="emit('edit', message)"
+                @remove="emit('remove', message.id)"
+                @regenerate="emit('regenerate', message.id)"
+                @resend="emit('resend', message.id)"
+                @debug="emit('debug', $event)"
               />
             </div>
             <StoryOriginalText

@@ -6,6 +6,13 @@ const emit = defineEmits<{ close: [] }>()
 const closeButton = ref<HTMLButtonElement | null>(null)
 const showRawRequest = ref(false)
 const isCompaction = computed(() => props.trace?.request.purpose === 'compaction')
+const comparison = computed(() => props.trace?.request.compaction)
+const contextLimit = computed(() => comparison.value?.historyBudget ?? props.historyBudget)
+const contextSnapshots = computed(() => [
+  { key: 'before', title: 'Antes de compactar', messages: comparison.value?.before },
+  { key: 'after', title: 'Después de compactar', messages: comparison.value?.after }
+])
+const countCharacters = (messages: Array<{ content: string }>) => messages.reduce((total, message) => total + message.content.length, 0)
 
 useDialogEscape(
   () => Boolean(props.trace),
@@ -16,10 +23,10 @@ const formattedRequest = computed(() => JSON.stringify(props.trace?.request ?? {
 const formattedResponse = computed(() => JSON.stringify(props.trace?.response ?? {}, null, 2))
 const requestMessages = computed(() => props.trace?.request.messages ?? [])
 const contextCharacters = computed(() =>
-  requestMessages.value.reduce((total, message) => total + message.content.length, 0)
+  countCharacters(comparison.value?.before ?? requestMessages.value)
 )
-const contextPercentage = computed(() => props.historyBudget > 0
-  ? (contextCharacters.value / props.historyBudget * 100).toLocaleString('es-ES', {
+const contextPercentage = computed(() => contextLimit.value > 0
+  ? (contextCharacters.value / contextLimit.value * 100).toLocaleString('es-ES', {
       maximumFractionDigits: 1
     })
   : null
@@ -91,19 +98,53 @@ function keepFocus() {
             data-testid="llm-debug-context-usage"
             class="mb-4 rounded-xl border border-[var(--color-border-soft)] p-3 text-sm"
           >
-            <h3 class="font-semibold">Contexto enviado (caracteres)</h3>
+            <h3 class="font-semibold">{{ comparison ? 'Contexto antes de compactar (caracteres)' : 'Contexto enviado (caracteres)' }}</h3>
             <p v-if="contextPercentage !== null">
-              {{ contextCharacters }} / {{ historyBudget }} caracteres · {{ contextPercentage }} % del límite
+              {{ contextCharacters }} / {{ contextLimit }} caracteres · {{ contextPercentage }} % del límite
             </p>
             <p v-else>{{ contextCharacters }} caracteres · Sin límite</p>
             <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-              Incluye instrucciones e historial de esta llamada. Máximo actual indicado en Ajustes.
+              {{ comparison ? 'Incluye el contexto completo del narrador. Límite conservado de este intento.' : 'Incluye instrucciones e historial de esta llamada. Máximo actual indicado en Ajustes.' }}
             </p>
+          </section>
+          <section v-if="isCompaction" class="mb-4 space-y-3" data-testid="compaction-comparison">
+            <p v-if="!comparison" class="rounded-xl bg-violet-500/10 p-3 text-sm">
+              Esta traza antigua no conserva el contexto completo antes/después ni el límite de aquel momento.
+              Debajo puedes consultar la petición al compactador y su resultado conservados.
+            </p>
+            <template v-else>
+              <p v-if="!comparison.applied" class="text-sm text-red-500">Este intento no se aplicó. El checkpoint anterior se conservó.</p>
+              <div class="grid min-w-0 gap-4 lg:grid-cols-2">
+                <section
+                  v-for="snapshot in contextSnapshots"
+                  :key="snapshot.key"
+                  :data-testid="`compaction-context-${snapshot.key}`"
+                  class="min-w-0 rounded-xl border border-[var(--color-border-soft)] p-3"
+                >
+                  <h3 class="font-semibold">{{ snapshot.title }}</h3>
+                  <template v-if="snapshot.messages">
+                    <p class="mb-3 text-xs text-[var(--color-fg-muted)]">{{ countCharacters(snapshot.messages) }} / {{ contextLimit }} caracteres</p>
+                    <p v-if="snapshot.key === 'after' && !comparison.applied" class="mb-2 text-xs">Contexto propuesto; no llegó a aplicarse.</p>
+                    <div class="max-h-[45dvh] space-y-3 overflow-y-auto">
+                      <section v-for="(message, index) in snapshot.messages" :key="index" class="min-w-0">
+                        <h4 class="mb-1 text-xs font-semibold text-[var(--color-fg-muted)]">{{ roleLabels[message.role] }} · Mensaje {{ index + 1 }}</h4>
+                        <pre class="text-xs whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{{ message.content }}</pre>
+                      </section>
+                    </div>
+                  </template>
+                  <p v-else class="mt-2 text-sm text-[var(--color-fg-muted)]">No se obtuvo un contexto posterior.</p>
+                </section>
+              </div>
+            </template>
+            <section v-if="'content' in trace.response" class="min-w-0 rounded-xl border border-violet-500/30 p-3">
+              <h3 class="mb-2 font-semibold">Resumen aplicado</h3>
+              <pre data-testid="compaction-summary" class="max-h-[35dvh] overflow-auto text-xs whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{{ trace.response.content }}</pre>
+            </section>
           </section>
           <div class="grid min-w-0 gap-4 lg:grid-cols-2">
             <section class="min-w-0">
               <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 class="text-sm font-semibold">Enviado</h3>
+                <h3 class="text-sm font-semibold">{{ isCompaction ? 'Petición al compactador' : 'Enviado' }}</h3>
                 <button
                   type="button"
                   class="btn-ghost px-3 py-1.5 text-xs"

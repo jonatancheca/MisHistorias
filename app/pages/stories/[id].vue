@@ -57,6 +57,8 @@ const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
 const editingVisualMessage = ref<Message | null>(null)
 const desktopStoryControls = useStoryDesktopControls()
+const debugEnabled = ref(false)
+const originalTextAvailable = computed(() => desktopStoryControls.value || debugEnabled.value)
 const originalTextOpenIds = ref(new Set<string>())
 const hiddenMessagesOpen = ref(false)
 const originalMessages = computed(() =>
@@ -74,6 +76,8 @@ function toggleStoryOriginal(id: string) {
 }
 
 watch(() => stories.activeStory?.id, () => {
+  debugEnabled.value = false
+  selectedDebugTrace.value = null
   originalTextOpenIds.value = new Set()
   hiddenMessagesOpen.value = false
 })
@@ -158,9 +162,14 @@ let missingStoryPrivateClickTimer: ReturnType<typeof setTimeout> | null = null
 type TimelineItem =
   | { kind: 'message'; id: string; createdAt: number; message: Message }
   | { kind: 'trace'; id: string; createdAt: number; trace: LlmDebugTrace }
+  | { kind: 'compaction'; id: string; createdAt: number; trace: LlmDebugTrace }
+
+const compactionTraces = computed(() => stories.activeStory?.readOnly ? [] : stories.debugTraces.filter(
+  (trace) => trace.request.purpose === 'compaction'
+))
 
 const timeline = computed<TimelineItem[]>(() => {
-  return [
+  const items: TimelineItem[] = [
     ...stories.messages.map((message) => ({
       kind: 'message' as const,
       id: message.id,
@@ -180,6 +189,20 @@ const timeline = computed<TimelineItem[]>(() => {
         trace
       }))
   ].sort((a, b) => a.createdAt - b.createdAt)
+  if (!debugEnabled.value) return items
+  const messageIds = new Set(stories.messages.map((message) => message.id))
+  const markers = compactionTraces.value.map((trace): TimelineItem & { kind: 'compaction' } => ({
+    kind: 'compaction', id: trace.id, createdAt: trace.createdAt, trace
+  }))
+  const anchored = new Map<string, typeof markers>()
+  for (const marker of markers) {
+    const anchor = marker.trace.requestMessageId
+    if (!anchor || !messageIds.has(anchor)) items.push(marker)
+    else anchored.set(anchor, [...(anchored.get(anchor) ?? []), marker])
+  }
+  return items.sort((a, b) => a.createdAt - b.createdAt).flatMap((item) =>
+    item.kind === 'message' ? [item, ...(anchored.get(item.id) ?? [])] : [item]
+  )
 })
 
 function debugForMessage(id: string) {
@@ -189,7 +212,7 @@ function debugForMessage(id: string) {
 }
 
 function compactionDebugForMessage(id: string) {
-  return stories.debugTraces.find((trace) =>
+  return stories.debugTraces.findLast((trace) =>
     trace.request.purpose === 'compaction' && trace.requestMessageId === id
   ) ?? null
 }
@@ -408,12 +431,12 @@ const {
   load: loadStoryModel
 } = useStoryModelLoad()
 const modelLoadTargetId = computed(() => timeline.value.findLast((item) =>
-  item.kind === 'trace' || (!item.message.swarmError && debugForMessage(item.id) &&
-    (desktopStoryControls.value || !isAiInstruction(item.message.raw)))
+  item.kind === 'trace' || (item.kind === 'message' && !item.message.swarmError && debugForMessage(item.id) &&
+    (originalTextAvailable.value || !isAiInstruction(item.message.raw)))
 )?.id ?? null)
 const modelLoadInFooter = computed(() => modelLoadAvailable.value && (
   stories.activeStory?.visualMode
-    ? !desktopStoryControls.value || !activeVisualMessage.value || !debugForMessage(activeVisualMessage.value.id)
+    ? !originalTextAvailable.value || !activeVisualMessage.value || !debugForMessage(activeVisualMessage.value.id)
     : !modelLoadTargetId.value
 ))
 
@@ -664,7 +687,7 @@ const messagesWithoutVisualFrame = computed(() => {
   )
 })
 const hiddenMessagesDialogOpen = computed(() =>
-  hiddenMessagesOpen.value && desktopStoryControls.value && stories.activeStory?.visualMode === true
+  hiddenMessagesOpen.value && originalTextAvailable.value && stories.activeStory?.visualMode === true
 )
 const visualFrameTotal = computed(() =>
   Math.max(visualFrames.value.length, completeVisualFrames.value.length)
@@ -1108,14 +1131,14 @@ onBeforeRouteLeave(() => {
     <section class="flex min-w-0 flex-1 flex-col">
       <header
         id="story-header"
-        class="flex shrink-0 items-center justify-between border-b border-[var(--color-border-soft)] px-4 transition-[max-height,opacity,padding,transform] duration-200 sm:max-h-none sm:translate-y-0 sm:overflow-visible sm:border-b sm:px-6 sm:py-4 sm:opacity-100"
+        class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-soft)] px-4 transition-[max-height,opacity,padding,transform] duration-200 sm:max-h-none sm:translate-y-0 sm:overflow-visible sm:border-b sm:px-6 sm:py-4 sm:opacity-100"
         :class="
           mobileChromeHidden
             ? 'max-h-0 -translate-y-2 overflow-hidden border-b-0 py-0 opacity-0'
-            : 'max-h-24 translate-y-0 py-3 opacity-100'
+            : 'max-h-40 translate-y-0 py-3 opacity-100'
         "
       >
-        <div class="min-w-0">
+        <div class="min-w-0 flex-1 max-sm:w-full max-sm:flex-none">
           <h1 class="truncate text-lg font-bold">
             {{ stories.activeStory.title }}
             <span
@@ -1138,7 +1161,24 @@ onBeforeRouteLeave(() => {
             {{ copySharedStoryError }}
           </p>
         </div>
-        <div class="flex shrink-0 gap-1 sm:gap-2">
+        <div class="flex shrink-0 flex-wrap gap-1 sm:gap-2">
+          <button
+            type="button"
+            class="btn-ghost h-10 shrink-0 px-2 sm:px-3"
+            :class="debugEnabled ? 'bg-violet-500/15 text-violet-600' : ''"
+            data-testid="story-debug-toggle"
+            aria-label="Debug"
+            title="Debug: compactaciones, texto original y controles de mensajes"
+            :aria-pressed="debugEnabled"
+            @click="debugEnabled = !debugEnabled"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 2h8M9 2v3m6-3v3M4 13h3m10 0h3M5 7l3 2m11-2-3 2M5 19l3-2m11 2-3-2" />
+              <rect x="7" y="5" width="10" height="16" rx="5" />
+              <path d="M9 11h6m-6 4h6" />
+            </svg>
+            <span class="hidden sm:inline">Debug</span>
+          </button>
           <button
             v-if="stories.activeStory.readOnly && stories.activeStory.visibleInDemo"
             type="button"
@@ -1259,6 +1299,12 @@ onBeforeRouteLeave(() => {
           data-testid="visual-novel-view"
           class="visual-novel-view flex h-full min-h-0 flex-col bg-slate-950"
         >
+          <details v-if="debugEnabled && compactionTraces.length" open class="shrink-0 border-b border-white/15 text-slate-200" data-testid="visual-compactions">
+            <summary class="cursor-pointer px-3 py-2 text-sm font-semibold">Compactaciones ({{ compactionTraces.length }})</summary>
+            <div class="max-h-32 space-y-2 overflow-y-auto px-3 pb-2">
+              <StoryCompactionMarker v-for="trace in compactionTraces" :key="trace.id" :trace="trace" @inspect="selectedDebugTrace = $event" />
+            </div>
+          </details>
           <div class="relative min-h-0 flex-1">
             <VisualNovelStage
               :character-ids="visualCharacterIds"
@@ -1274,7 +1320,7 @@ onBeforeRouteLeave(() => {
               :editable="!stories.generating && !stories.activeStory.readOnly"
               :debug-trace="!stories.activeStory.readOnly ? debugForMessage(activeVisualMessage.id) : null"
               :compaction-trace="!stories.activeStory.readOnly ? compactionDebugForMessage(activeVisualMessage.id) : null"
-              :original-text-available="desktopStoryControls"
+              :original-text-available="originalTextAvailable"
               :original-text-open="originalTextOpenIds.has(activeVisualMessage.id)"
               :original-text-controls="`visual-original-${activeVisualMessage.id}`"
               :model-load-available="modelLoadAvailable && !modelLoadInFooter"
@@ -1282,6 +1328,7 @@ onBeforeRouteLeave(() => {
               :model-load-disabled="stories.generating"
               data-testid="visual-message-actions"
               class="visual-message-actions absolute right-3 bottom-3 z-20 max-w-[calc(100%-1.5rem)] rounded-xl border border-white/15 bg-slate-950/80 p-1 text-slate-300 shadow-lg backdrop-blur-sm"
+              :class="debugEnabled ? 'debug-visible' : ''"
               @debug="selectedDebugTrace = $event"
               @edit="editingVisualMessage = activeVisualMessage"
               @remove="removeMessage(activeVisualMessage.id)"
@@ -1292,14 +1339,14 @@ onBeforeRouteLeave(() => {
             />
 
             <StoryOriginalText
-              v-if="desktopStoryControls && activeVisualMessage && originalTextOpenIds.has(activeVisualMessage.id)"
+              v-if="originalTextAvailable && activeVisualMessage && originalTextOpenIds.has(activeVisualMessage.id)"
               :id="`visual-original-${activeVisualMessage.id}`"
               :text="originalMessagesById.get(activeVisualMessage.id)?.raw ?? activeVisualMessage.raw"
               class="absolute inset-x-3 bottom-14 z-20 max-h-[calc(100%-4rem)] overflow-y-auto"
             />
 
             <button
-              v-if="desktopStoryControls && messagesWithoutVisualFrame.length"
+              v-if="originalTextAvailable && messagesWithoutVisualFrame.length"
               type="button"
               class="absolute top-3 right-3 z-20 rounded-xl border border-white/15 bg-slate-950/80 px-3 py-2 text-sm text-white shadow-lg backdrop-blur-sm"
               data-testid="story-hidden-messages-button"
@@ -1455,16 +1502,22 @@ onBeforeRouteLeave(() => {
           </div>
 
           <template v-for="item in timeline" :key="`${item.kind}-${item.id}`">
+            <StoryCompactionMarker
+              v-if="item.kind === 'compaction'"
+              :trace="item.trace"
+              @inspect="selectedDebugTrace = $event"
+            />
             <MessageBubble
-              v-if="item.kind === 'message'"
+              v-else-if="item.kind === 'message'"
               :message="item.message"
               :character-names="storyCharacterNames"
               :character-colors="storyCharacterColors"
-              :debug-trace="debugForMessage(item.message.id)"
-              :compaction-trace="compactionDebugForMessage(item.message.id)"
+              :debug-trace="!stories.activeStory.readOnly ? debugForMessage(item.message.id) : null"
+              :compaction-trace="!stories.activeStory.readOnly ? compactionDebugForMessage(item.message.id) : null"
               :editable="!stories.generating && !stories.activeStory.readOnly"
               :visual-mode="stories.activeStory.visualMode"
-              :original-text-available="desktopStoryControls && !item.message.swarmError"
+              :debug-enabled="debugEnabled"
+              :original-text-available="originalTextAvailable && !item.message.swarmError"
               :original-text-open="originalTextOpenIds.has(item.message.id)"
               :original-text="originalMessagesById.get(item.message.id)?.raw"
               :model-load-available="modelLoadAvailable && !stories.activeStory.visualMode && item.id === modelLoadTargetId"
@@ -1482,7 +1535,8 @@ onBeforeRouteLeave(() => {
 
             <div v-else class="group flex min-w-0 items-start gap-2">
               <div
-                class="flex shrink-0 text-red-500 opacity-100 transition max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                class="flex shrink-0 text-red-500 transition"
+                :class="debugEnabled ? 'opacity-100' : 'opacity-100 max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100'"
               >
                 <StoryModelLoadButton
                   v-if="modelLoadAvailable && !stories.activeStory.visualMode && item.id === modelLoadTargetId"
@@ -1773,8 +1827,16 @@ onBeforeRouteLeave(() => {
       :open="hiddenMessagesDialogOpen"
       :messages="messagesWithoutVisualFrame"
       :expanded-ids="originalTextOpenIds"
+      :debug-enabled="debugEnabled"
+      :editable="!stories.generating && !stories.activeStory.readOnly"
+      :debug-traces="!stories.activeStory.readOnly ? stories.debugTraces : []"
       @close="hiddenMessagesOpen = false"
       @toggle-original="toggleStoryOriginal"
+      @edit="hiddenMessagesOpen = false; editingVisualMessage = $event"
+      @remove="removeMessage"
+      @regenerate="hiddenMessagesOpen = false; regenerateFrom($event)"
+      @resend="hiddenMessagesOpen = false; resendFrom($event)"
+      @debug="selectedDebugTrace = $event"
     />
 
     <StorySavesDialog
@@ -1863,6 +1925,12 @@ onBeforeRouteLeave(() => {
 <style scoped>
 .visual-message-actions {
   display: none;
+}
+
+.visual-message-actions.debug-visible {
+  display: flex;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 @media (min-width: 640px) and (hover: hover) and (pointer: fine) {

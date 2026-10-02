@@ -308,6 +308,13 @@ export interface LlmDebugRequest {
   purpose?: 'chat' | 'compaction'
   /** Acción narrativa recuperable; ausente en trazas anteriores. */
   generation?: StoryGenerationAttempt
+  /** Contexto narrativo exacto y límite vigente durante este intento de compactación. */
+  compaction?: {
+    before: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+    after?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+    historyBudget: number
+    applied: boolean
+  }
   model: string
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   temperature: number

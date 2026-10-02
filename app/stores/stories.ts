@@ -862,7 +862,9 @@ export const useStoriesStore = defineStore('stories', () => {
   }) {
     const { chatOptions, historyBudget } = options
     const story = chatOptions.story
-    if (historyBudget <= 0 || chatContextSize(buildChatMessages(chatOptions)) <= historyBudget) {
+    if (historyBudget <= 0) return story
+    const contextBefore = buildChatMessages(chatOptions)
+    if (chatContextSize(contextBefore) <= historyBudget) {
       return story
     }
 
@@ -899,7 +901,8 @@ export const useStoriesStore = defineStore('stories', () => {
       messages: compactionMessages,
       temperature: options.temperature,
       max_tokens: options.maxTokens,
-      stream: false
+      stream: false,
+      compaction: { before: contextBefore, historyBudget, applied: false }
     }
     compacting.value = true
 
@@ -931,7 +934,9 @@ export const useStoriesStore = defineStore('stories', () => {
         contextSummaryThroughMessageId: triggerMessageId,
         updatedAt: Date.now()
       }
-      const compactedSize = chatContextSize(buildChatMessages({ ...chatOptions, story: updated }))
+      const contextAfter = buildChatMessages({ ...chatOptions, story: updated })
+      debugRequest.compaction!.after = contextAfter
+      const compactedSize = chatContextSize(contextAfter)
       if (compactedSize > historyBudget) {
         throw new Error(`La compactación es insuficiente: la petición ocupa ${compactedSize} caracteres y el límite es ${historyBudget}. Acorta el mensaje o aumenta el límite en Ajustes.`)
       }
@@ -939,6 +944,7 @@ export const useStoriesStore = defineStore('stories', () => {
       if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
       activeStory.value = updated
       stories.value = stories.value.map((item) => item.id === story.id ? updated : item)
+      debugRequest.compaction!.applied = true
       const stored = await persistDebugTrace({
         id: newId(),
         storyId: story.id,
