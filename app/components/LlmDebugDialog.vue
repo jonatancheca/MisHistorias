@@ -7,10 +7,12 @@ const closeButton = ref<HTMLButtonElement | null>(null)
 const showRawRequest = ref(false)
 const isCompaction = computed(() => props.trace?.request.purpose === 'compaction')
 const comparison = computed(() => props.trace?.request.compaction)
-const contextLimit = computed(() => comparison.value?.historyBudget ?? props.historyBudget)
+const usage = computed(() => comparison.value?.beforeUsage ?? props.trace?.request.contextUsage)
+const contextLimit = computed(() => usage.value?.effectiveLimit ?? comparison.value?.historyBudget ?? props.historyBudget)
+const contextUnit = computed(() => usage.value?.unit === 'tokens' ? 'tokens' : 'caracteres')
 const contextSnapshots = computed(() => [
-  { key: 'before', title: 'Antes de compactar', messages: comparison.value?.before },
-  { key: 'after', title: 'Después de compactar', messages: comparison.value?.after }
+  { key: 'before', title: 'Antes de compactar', messages: comparison.value?.before, usage: comparison.value?.beforeUsage },
+  { key: 'after', title: 'Después de compactar', messages: comparison.value?.after, usage: comparison.value?.afterUsage }
 ])
 const countCharacters = (messages: Array<{ content: string }>) => messages.reduce((total, message) => total + message.content.length, 0)
 
@@ -23,7 +25,7 @@ const formattedRequest = computed(() => JSON.stringify(props.trace?.request ?? {
 const formattedResponse = computed(() => JSON.stringify(props.trace?.response ?? {}, null, 2))
 const requestMessages = computed(() => props.trace?.request.messages ?? [])
 const contextCharacters = computed(() =>
-  countCharacters(comparison.value?.before ?? requestMessages.value)
+  usage.value?.count ?? countCharacters(comparison.value?.before ?? requestMessages.value)
 )
 const contextPercentage = computed(() => contextLimit.value > 0
   ? (contextCharacters.value / contextLimit.value * 100).toLocaleString('es-ES', {
@@ -98,13 +100,17 @@ function keepFocus() {
             data-testid="llm-debug-context-usage"
             class="mb-4 rounded-xl border border-[var(--color-border-soft)] p-3 text-sm"
           >
-            <h3 class="font-semibold">{{ comparison ? 'Contexto antes de compactar (caracteres)' : 'Contexto enviado (caracteres)' }}</h3>
+            <h3 class="font-semibold">{{ comparison ? 'Contexto antes de compactar' : 'Contexto enviado' }} ({{ contextUnit }})</h3>
             <p v-if="contextPercentage !== null">
-              {{ contextCharacters }} / {{ contextLimit }} caracteres · {{ contextPercentage }} % del límite
+              {{ contextCharacters }} / {{ contextLimit }} {{ contextUnit }} · {{ contextPercentage }} % del límite
             </p>
-            <p v-else>{{ contextCharacters }} caracteres · Sin límite</p>
+            <p v-else>{{ contextCharacters }} {{ contextUnit }} · Sin límite</p>
+            <p v-if="usage" class="mt-1 break-words text-xs [overflow-wrap:anywhere]">
+              Modelo: {{ usage.model }} · Límite configurado: {{ usage.configuredLimit || 'Sin límite' }} {{ contextUnit }}
+              <template v-if="usage.capacity !== undefined"> · Capacidad: {{ usage.capacity }} tokens · Reserva: {{ usage.reservedTokens }} tokens</template>
+            </p>
             <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-              {{ comparison ? 'Incluye el contexto completo del narrador. Límite conservado de este intento.' : 'Incluye instrucciones e historial de esta llamada. Máximo actual indicado en Ajustes.' }}
+              {{ comparison || usage ? 'Incluye el contexto completo. Medición y límite conservados de este intento.' : 'Traza antigua: conteo en caracteres. Máximo actual indicado en Ajustes.' }}
             </p>
           </section>
           <section v-if="isCompaction" class="mb-4 space-y-3" data-testid="compaction-comparison">
@@ -123,7 +129,7 @@ function keepFocus() {
                 >
                   <h3 class="font-semibold">{{ snapshot.title }}</h3>
                   <template v-if="snapshot.messages">
-                    <p class="mb-3 text-xs text-[var(--color-fg-muted)]">{{ countCharacters(snapshot.messages) }} / {{ contextLimit }} caracteres</p>
+                    <p class="mb-3 text-xs text-[var(--color-fg-muted)]">{{ snapshot.usage?.count ?? countCharacters(snapshot.messages) }} / {{ snapshot.usage?.effectiveLimit ?? contextLimit }} {{ snapshot.usage?.unit === 'tokens' ? 'tokens' : 'caracteres' }}</p>
                     <p v-if="snapshot.key === 'after' && !comparison.applied" class="mb-2 text-xs">Contexto propuesto; no llegó a aplicarse.</p>
                     <div class="max-h-[45dvh] space-y-3 overflow-y-auto">
                       <section v-for="(message, index) in snapshot.messages" :key="index" class="min-w-0">
@@ -136,6 +142,7 @@ function keepFocus() {
                 </section>
               </div>
             </template>
+            <p v-if="comparison?.blocks?.length" class="text-sm">Compactación en {{ comparison.blocks.length }} bloques. Las llamadas y resúmenes se conservan en la petición completa.</p>
             <section v-if="'content' in trace.response" class="min-w-0 rounded-xl border border-violet-500/30 p-3">
               <h3 class="mb-2 font-semibold">Resumen aplicado</h3>
               <pre data-testid="compaction-summary" class="max-h-[35dvh] overflow-auto text-xs whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{{ trace.response.content }}</pre>

@@ -15,7 +15,9 @@ import type {
   StorySaveSlot,
   StoryCharacterCustomization,
   StoryPendingImageInstruction,
-  StoryGenerationAttempt
+  StoryGenerationAttempt,
+  ContextUnit,
+  ContextUsage
 } from '#shared/types'
 import {
   deleteMessage as dbDeleteMessage,
@@ -43,13 +45,16 @@ import {
 import {
   buildChatMessages,
   buildCompactionMessages,
+  buildHistory,
+  type ChatMessage,
   chatContextSize,
   resolveProtagonistPreferences
 } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
 import { readSwarmDiagnostic } from '../../shared/utils/swarmError.ts'
-import { fetchLlmChat, type LlmCallError } from '~/lib/llm'
-import { fetchChromeLlmChat } from '~/lib/chromeLlm'
+import { fetchLlmChat, fetchLlmContext, type LlmCallError } from '~/lib/llm'
+import { fetchChromeLlmChat, measureChromeLlmContext } from '~/lib/chromeLlm'
+import { contextFits, tokenContextUsage, summarizeInBlocks, CompactionCapacityError } from '~/lib/contextBudget'
 import { hideIncompleteVisualDirectivePrefix, parseSegments } from '~/lib/streamParser'
 import { selectCharacterImage } from '~/lib/imageSelection'
 import { sanitizeTags } from '~/lib/tags'
@@ -214,6 +219,14 @@ export const useStoriesStore = defineStore('stories', () => {
   const waitingForResponse = ref(false)
   const retryingEmptyResponse = ref(false)
   const compacting = ref(false)
+  const canCompactInBlocks = ref(false)
+  let blockRetry: (() => Promise<void>) | null = null
+  let blockPendingText: string | null = null
+  watch(() => activeStory.value?.id, () => {
+    canCompactInBlocks.value = false
+    blockRetry = null
+    blockPendingText = null
+  })
   const pendingAssistantMessage = ref<Message | null>(null)
   const visualRevealWaitingForAdvance = ref(false)
   const visualRevealNavigationPaused = ref(false)
@@ -851,6 +864,10 @@ export const useStoriesStore = defineStore('stories', () => {
     chatOptions: Parameters<typeof buildChatMessages>[0]
     historyMessages: Message[]
     historyBudget: number
+    unit: ContextUnit
+    tokenBudget: number
+    allowBlocks: boolean
+    onUsage: (usage: ContextUsage) => void
     compactionPrompt: string
     model: string
     temperature: number
@@ -860,27 +877,43 @@ export const useStoriesStore = defineStore('stories', () => {
     scope: DataScope
     isActive: () => boolean
   }) {
-    const { chatOptions, historyBudget } = options
+    const { chatOptions } = options
     const story = chatOptions.story
-    if (historyBudget <= 0) return story
+    const measure = async (messages: ChatMessage[], manualLimit = true): Promise<ContextUsage> => {
+      options.signal.throwIfAborted()
+      if (options.unit === 'characters') return {
+        unit: 'characters', count: chatContextSize(messages), configuredLimit: options.historyBudget,
+        effectiveLimit: options.historyBudget, model: options.useChromeLlm ? 'chrome-prompt-api' : options.model
+      }
+      const result = options.useChromeLlm
+        ? await measureChromeLlmContext(messages, options.signal)
+        : await fetchLlmContext(messages, options.model, options.scope, options.signal)
+      if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
+      return tokenContextUsage(result.tokens, result.capacity, options.useChromeLlm ? 0 : options.maxTokens,
+        manualLimit ? options.tokenBudget : 0, result.model)
+    }
     const contextBefore = buildChatMessages(chatOptions)
-    if (chatContextSize(contextBefore) <= historyBudget) {
+    const beforeUsage = await measure(contextBefore)
+    options.onUsage(beforeUsage)
+    const historyBudget = beforeUsage.effectiveLimit
+    if (contextFits(beforeUsage)) {
       return story
     }
 
     const historicalIds = new Set(options.historyMessages.map((message) => message.id))
     const pendingMessages = chatOptions.messages.filter((message) => !historicalIds.has(message.id))
-    // Un carácter reserva también el encabezado del resumen y sus separadores reales.
-    const summaryBudget = historyBudget - chatContextSize(buildChatMessages({
+    // Reserva el encabezado del resumen; el contexto final se vuelve a medir completo.
+    const summaryBudget = historyBudget - (await measure(buildChatMessages({
       ...chatOptions,
       story: { ...story, contextSummary: 'x', contextSummaryThroughMessageId: undefined },
       messages: pendingMessages
-    })) + 1
+    }))).count + 1
+    const unitLabel = options.unit === 'tokens' ? 'tokens' : 'caracteres'
     if (summaryBudget <= 0) {
-      throw new Error(`El mensaje y las instrucciones de la historia superan el límite de ${historyBudget} caracteres. Acorta el mensaje o aumenta el límite en Ajustes.`)
+      throw new Error(`El mensaje y las instrucciones de la historia superan el límite de ${historyBudget} ${unitLabel}. Acorta el mensaje o aumenta el límite en Ajustes.`)
     }
     if (!options.historyMessages.length && !story.contextSummary?.trim()) {
-      throw new Error(`La petición supera el límite de ${historyBudget} caracteres y no hay historial anterior que compactar. Acorta el mensaje o aumenta el límite en Ajustes.`)
+      throw new Error(`La petición supera el límite de ${historyBudget} ${unitLabel} y no hay historial anterior que compactar. Acorta el mensaje o aumenta el límite en Ajustes.`)
     }
 
     const triggerMessageId = options.historyMessages.at(-1)?.id ?? story.contextSummaryThroughMessageId
@@ -892,6 +925,7 @@ export const useStoriesStore = defineStore('stories', () => {
       characters: chatOptions.characters,
       userName: chatOptions.userName,
       summaryBudget,
+      summaryUnit: options.unit,
       prompt: options.compactionPrompt
     })
     const debugRequest: LlmDebugRequest = {
@@ -902,32 +936,61 @@ export const useStoriesStore = defineStore('stories', () => {
       temperature: options.temperature,
       max_tokens: options.maxTokens,
       stream: false,
-      compaction: { before: contextBefore, historyBudget, applied: false }
+      compaction: { before: contextBefore, historyBudget, beforeUsage, applied: false }
     }
     compacting.value = true
 
     try {
-      const result = options.useChromeLlm
-        ? await fetchChromeLlmChat({
-            messages: compactionMessages,
+      const compactRequest = async (messages: typeof compactionMessages) => {
+        const usage = await measure(messages, false)
+        debugRequest.messages = messages
+        debugRequest.contextUsage = usage
+        debugRequest.model = usage.model
+        if (options.unit === 'tokens' && !contextFits(usage)) throw new CompactionCapacityError()
+        const result = options.useChromeLlm
+          ? await fetchChromeLlmChat({
+            messages,
             operation: 'story.compaction',
+            contextLimit: options.unit === 'tokens' ? usage.effectiveLimit : undefined,
             signal: options.signal
           })
         : await fetchLlmChat({
-            model: options.model,
-            messages: compactionMessages,
+            model: usage.model,
+            messages,
             operation: 'story.compaction',
             temperature: options.temperature,
             maxTokens: options.maxTokens,
             scope: options.scope,
             signal: options.signal
           })
-      if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
-      const summary = result.content.trim()
-      if (!summary) throw new Error('El modelo no devolvió un resumen visible.')
-      if (result.finishReason === 'length') {
-        throw new Error('La compactación es insuficiente: el resumen quedó truncado por el máximo de tokens.')
+        if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
+        const summary = result.content.trim()
+        if (!summary) throw new Error('El modelo no devolvió un resumen visible.')
+        if (result.finishReason === 'length') {
+          throw new Error('La compactación es insuficiente: el resumen quedó truncado por el máximo de tokens.')
+        }
+        if (options.allowBlocks) {
+          debugRequest.compaction!.blocks ??= []
+          debugRequest.compaction!.blocks.push({ messages, contextUsage: usage, summary })
+        }
+        return result
       }
+      let result: { content: string; finishReason: string | null }
+      if (options.allowBlocks && options.unit === 'tokens') {
+        const blockMessages = (previousSummary: string, history: typeof compactionMessages) => [
+          compactionMessages[0]!,
+          { role: 'user' as const, content: JSON.stringify({ previousSummary, history }) }
+        ]
+        const summary = await summarizeInBlocks({
+          previousSummary: story.contextSummary ?? '',
+          history: buildHistory(options.historyMessages, chatOptions.characters, 0, chatOptions.userName, story.contextSummaryThroughMessageId),
+          signal: options.signal,
+          fits: async (previousSummary, history) => contextFits(await measure(blockMessages(previousSummary, history), false)),
+          summarize: async (previousSummary, history) => (await compactRequest(blockMessages(previousSummary, history))).content.trim()
+        })
+        result = { content: summary, finishReason: 'stop' }
+      } else result = await compactRequest(compactionMessages)
+      const summary = result.content.trim()
       const updated = {
         ...(activeStory.value?.id === story.id ? activeStory.value : story),
         contextSummary: summary,
@@ -936,10 +999,12 @@ export const useStoriesStore = defineStore('stories', () => {
       }
       const contextAfter = buildChatMessages({ ...chatOptions, story: updated })
       debugRequest.compaction!.after = contextAfter
-      const compactedSize = chatContextSize(contextAfter)
-      if (compactedSize > historyBudget) {
-        throw new Error(`La compactación es insuficiente: la petición ocupa ${compactedSize} caracteres y el límite es ${historyBudget}. Acorta el mensaje o aumenta el límite en Ajustes.`)
+      const afterUsage = await measure(contextAfter)
+      debugRequest.compaction!.afterUsage = afterUsage
+      if (!contextFits(afterUsage)) {
+        throw new Error(`La compactación es insuficiente: la petición ocupa ${afterUsage.count} ${unitLabel} y el límite es ${afterUsage.effectiveLimit}. Acorta el mensaje o aumenta el límite en Ajustes.`)
       }
+      options.onUsage(afterUsage)
       await putStoryInScope(updated, options.scope, options.signal)
       if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
       activeStory.value = updated
@@ -1358,6 +1423,7 @@ export const useStoriesStore = defineStore('stories', () => {
       consumePendingImageInstructions?: boolean
       pendingUserMessage?: Message
       onUserMessageStored?: () => void | Promise<void>
+      allowCompactionBlocks?: boolean
     } = {}
   ) {
     if (!activeStory.value || activeStory.value.readOnly || generating.value) return
@@ -1376,6 +1442,9 @@ export const useStoriesStore = defineStore('stories', () => {
     }
     error.value = null
     transientGenerationFeedback.value = null
+    canCompactInBlocks.value = false
+    blockRetry = null
+    blockPendingText = null
     imageGenerationError.value = null
     generating.value = true
     retryingEmptyResponse.value = false
@@ -1447,6 +1516,7 @@ export const useStoriesStore = defineStore('stories', () => {
       const temperature = settingsStore.activeTemperature
       const maxTokens = settingsStore.activeMaxTokens
       const historyBudget = settingsStore.activeHistoryBudget
+      let contextUsage: ContextUsage | undefined
       const mock = settings.mockMode
       const useChromeLlm = settingsStore.activeUseChromeLlm
       if (!mock && !useChromeLlm && !model) {
@@ -1552,6 +1622,10 @@ export const useStoriesStore = defineStore('stories', () => {
           chatOptions,
           historyMessages: compactableMessages,
           historyBudget,
+          unit: settingsStore.activeContextUnit,
+          tokenBudget: settingsStore.activeContextTokenBudget,
+          allowBlocks: options.allowCompactionBlocks === true,
+          onUsage: usage => { contextUsage = usage },
           compactionPrompt: settingsStore.effectiveCompactionPrompt,
           model,
           temperature,
@@ -1593,8 +1667,9 @@ export const useStoriesStore = defineStore('stories', () => {
         debugRequest = {
           provider: useChromeLlm ? 'chrome' : 'lmstudio',
           purpose: 'chat',
+          contextUsage,
           generation: attempt,
-          model: useChromeLlm ? 'chrome-prompt-api' : model,
+          model: contextUsage?.model ?? (useChromeLlm ? 'chrome-prompt-api' : model),
           messages: payload,
           temperature,
           max_tokens: maxTokens,
@@ -1608,10 +1683,11 @@ export const useStoriesStore = defineStore('stories', () => {
             ? await fetchChromeLlmChat({
                 messages: payload,
                 operation: 'story.chat',
+                contextLimit: contextUsage?.unit === 'tokens' ? contextUsage.effectiveLimit : undefined,
                 signal: requestController.signal
               })
             : await fetchLlmChat({
-                model,
+                model: contextUsage?.model ?? model,
                 messages: payload,
                 operation: 'story.chat',
                 temperature,
@@ -1827,6 +1903,22 @@ export const useStoriesStore = defineStore('stories', () => {
         const callError = caught as LlmCallError
         const message = callError.message || 'Fallo al generar la respuesta'
         if (preparingContext) {
+          if (caught instanceof CompactionCapacityError) {
+            canCompactInBlocks.value = true
+            blockPendingText = options.pendingUserMessage?.raw ?? null
+            const retryStoryId = story.id
+            const retryScope = scope
+            const retryHistoryIds = messages.value.map(message => message.id).join(',')
+            blockRetry = async () => {
+              if (activeStory.value?.id !== retryStoryId || getActiveDataScope() !== retryScope) return
+              if (messages.value.map(message => message.id).join(',') !== retryHistoryIds) {
+                error.value = 'El historial ha cambiado. Vuelve a solicitar la respuesta antes de compactar por bloques.'
+                canCompactInBlocks.value = false
+                return
+              }
+              await generate(generationMode, { ...options, allowCompactionBlocks: true })
+            }
+          }
           error.value = message
           transientGenerationFeedback.value = {
             message: storyGenerationErrorMessage(message, callError.status),
@@ -1888,6 +1980,17 @@ export const useStoriesStore = defineStore('stories', () => {
     })
   }
 
+  async function compactInBlocks(pendingText: string) {
+    if (!canCompactInBlocks.value || generating.value || activeStory.value?.readOnly) return
+    if (blockPendingText !== null && pendingText.trim() !== blockPendingText) {
+      error.value = 'El borrador ha cambiado. Pulsa Enviar para preparar la nueva intervención.'
+      transientGenerationFeedback.value = { message: error.value, warning: false }
+      canCompactInBlocks.value = false
+      return
+    }
+    await blockRetry?.()
+  }
+
   async function send(text: string, onUserMessageStored?: () => void | Promise<void>) {
     if (!text.trim() || generating.value) return
     if (!activeStory.value || activeStory.value.readOnly) return
@@ -1945,6 +2048,8 @@ export const useStoriesStore = defineStore('stories', () => {
     waitingForResponse,
     retryingEmptyResponse,
     compacting,
+    canCompactInBlocks,
+    compactInBlocks,
     pendingAssistantMessage,
     visualRevealWaitingForAdvance,
     error,

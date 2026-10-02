@@ -16,8 +16,8 @@ const characters = (messages: Array<{ content: string }>) => messages.reduce((to
     <div class="min-w-0">
       <p class="font-semibold">{{ applied ? 'Historial compactado' : 'Compactación fallida' }}</p>
       <p v-if="trace.request.compaction" class="text-xs opacity-80">
-        {{ characters(trace.request.compaction.before) }} caracteres antes
-        <template v-if="trace.request.compaction.after"> · {{ characters(trace.request.compaction.after) }} después</template>
+        {{ trace.request.compaction.beforeUsage?.count ?? characters(trace.request.compaction.before) }} {{ trace.request.compaction.beforeUsage?.unit === 'tokens' ? 'tokens' : 'caracteres' }} antes
+        <template v-if="trace.request.compaction.after"> · {{ trace.request.compaction.afterUsage?.count ?? characters(trace.request.compaction.after) }} después</template>
       </p>
     </div>
     <button type="button" class="btn-ghost shrink-0 px-2 py-1 text-xs" @click="emit('inspect', trace)">

@@ -24,6 +24,7 @@
     "node": ">=24.15.0"
   },
   "dependencies": {
+    "@lmstudio/sdk": "2.0.0",
     "@pinia/nuxt": "^1.0.1",
     "cropperjs": "2.1.1",
     "jose": "^6.2.12",

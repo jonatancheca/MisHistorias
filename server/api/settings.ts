@@ -11,6 +11,8 @@ const ALLOWED_SETTINGS = new Set([
   'privateTemperature',
   'privateMaxTokens',
   'privateHistoryBudget',
+  'privateContextUnit',
+  'privateContextTokenBudget',
   'swarmBaseUrl',
   'swarmAuthToken',
   'useChromeLlm',
@@ -19,6 +21,8 @@ const ALLOWED_SETTINGS = new Set([
   'temperature',
   'maxTokens',
   'historyBudget',
+  'contextUnit',
+  'contextTokenBudget',
   'defaultSoundVersion',
   'privateDefaultSoundVersion',
   'theme',
@@ -75,8 +79,14 @@ function validSetting(key: string, value: unknown) {
       return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 100000
     case 'privateMaxTokens':
       return value === null || (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 100000)
+    case 'contextUnit':
+      return value === 'characters' || value === 'tokens'
+    case 'privateContextUnit':
+      return value === null || value === 'characters' || value === 'tokens'
+    case 'contextTokenBudget':
     case 'historyBudget':
       return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1000000
+    case 'privateContextTokenBudget':
     case 'privateHistoryBudget':
       return value === null || (Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1000000)
     case 'defaultSoundVersion':
@@ -113,6 +123,10 @@ function publicSettings(row: ReturnType<ReturnType<typeof getStorage>['readSetti
   return {
     useChromeLlm: false,
     privateUseChromeLlm: null,
+    contextUnit: 'characters',
+    contextTokenBudget: 3000,
+    privateContextUnit: null,
+    privateContextTokenBudget: null,
     narrativePrompt: null,
     compactionPrompt: null,
     characterReferencePrompt: null,

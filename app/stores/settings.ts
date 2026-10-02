@@ -20,6 +20,8 @@ const DEFAULTS: AppSettings = {
   privateTemperature: null,
   privateMaxTokens: null,
   privateHistoryBudget: null,
+  privateContextUnit: null,
+  privateContextTokenBudget: null,
   swarmBaseUrl: '',
   swarmAuthToken: '',
   swarmAuthConfigured: false,
@@ -29,6 +31,8 @@ const DEFAULTS: AppSettings = {
   temperature: 0.8,
   maxTokens: 10000,
   historyBudget: 12000,
+  contextUnit: 'characters',
+  contextTokenBudget: 3000,
   defaultSoundVersion: 0,
   privateDefaultSoundVersion: 0,
   theme: 'system',
@@ -80,6 +84,12 @@ export const useSettingsStore = defineStore('settings', () => {
       ? (settings.value.privateHistoryBudget ?? settings.value.historyBudget)
       : settings.value.historyBudget
   )
+  const activeContextUnit = computed(() => usePrivateLlmSettings.value
+    ? (settings.value.privateContextUnit ?? settings.value.contextUnit)
+    : settings.value.contextUnit)
+  const activeContextTokenBudget = computed(() => usePrivateLlmSettings.value
+    ? (settings.value.privateContextTokenBudget ?? settings.value.contextTokenBudget)
+    : settings.value.contextTokenBudget)
   const activeUserName = computed(() => {
     const value =
       activeDataScope.value === 'private'
@@ -174,6 +184,8 @@ export const useSettingsStore = defineStore('settings', () => {
     activeTemperature,
     activeMaxTokens,
     activeHistoryBudget,
+    activeContextUnit,
+    activeContextTokenBudget,
     activeUserName,
     activeProtagonistPreferences,
     activeNarrativePrompt,

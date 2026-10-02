@@ -372,6 +372,16 @@ async function retryFailedGeneration() {
   await stories.retryFailedGeneration()
 }
 
+async function compactInBlocks() {
+  if (stories.generating || stories.activeStory?.readOnly) return
+  void sounds.unlock()
+  followingBottom.value = true
+  followingVisualReveal.value = true
+  stories.resumeVisualReveal()
+  scheduleFollowBottom()
+  await stories.compactInBlocks(input.value)
+}
+
 async function generateContinuation(mode: Exclude<GenerationMode, 'normal'>) {
   if (stories.activeStory?.readOnly) return
   void sounds.unlock()
@@ -1567,13 +1577,14 @@ onBeforeRouteLeave(() => {
             </div>
           </template>
 
-          <p
+          <div
             v-if="stories.error"
-            class="rounded-lg bg-red-500/10 px-4 py-2 text-sm text-red-500"
+            class="flex min-w-0 flex-wrap items-center gap-3 rounded-lg bg-red-500/10 px-4 py-2 text-sm text-red-500"
             role="alert"
           >
-            {{ stories.error }}
-          </p>
+            <p class="min-w-0 flex-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{{ stories.error }}</p>
+            <button v-if="stories.canCompactInBlocks && !stories.generating" type="button" class="btn-ghost shrink-0" @click="compactInBlocks">Compactar por bloques</button>
+          </div>
           </div>
         </div>
         <button
@@ -1700,6 +1711,7 @@ onBeforeRouteLeave(() => {
             class="btn-ghost shrink-0 px-3 py-2"
             @click="retryFailedGeneration"
           >Reintentar</button>
+          <button v-if="stories.canCompactInBlocks" type="button" class="btn-ghost shrink-0 px-3 py-2" @click="compactInBlocks">Compactar por bloques</button>
         </div>
         <div v-if="visiblePendingImageInstructions.length" class="mb-2 flex flex-wrap gap-2" data-testid="pending-image-instructions">
           <span

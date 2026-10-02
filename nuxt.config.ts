@@ -13,6 +13,7 @@ export default defineNuxtConfig({
     }
   },
   nitro: {
+    externals: { external: ['@lmstudio/sdk'] },
     rollupConfig: { external: ['node:sqlite'] }
   },
   ssr: false,

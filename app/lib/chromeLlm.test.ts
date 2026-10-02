@@ -6,7 +6,8 @@ import {
   fetchChromeLlmChat,
   getChromeLlmAvailability,
   normalizeChromeMessages,
-  prepareChromeLlm
+  prepareChromeLlm,
+  measureChromeLlmContext
 } from './chromeLlm.ts'
 
 const originalLanguageModel = Object.getOwnPropertyDescriptor(globalThis, 'LanguageModel')
@@ -17,6 +18,33 @@ afterEach(() => {
   } else {
     Reflect.deleteProperty(globalThis, 'LanguageModel')
   }
+})
+
+test('mide mismo prompt normalizado y comprueba cuota antes de generar en esa sesión', async () => {
+  let measured: unknown
+  let destroyed = 0
+  let prompts = 0
+  let count = 10
+  const messages = [{ role: 'system' as const, content: 'Sistema' }, { role: 'user' as const, content: 'Hola' }]
+  installLanguageModel({
+    availability: async () => 'available',
+    create: async () => ({
+      contextWindow: 20, contextUsage: 2,
+      measureContextUsage: async input => { measured = input; return count },
+      prompt: async () => { prompts += 1; return 'Respuesta' },
+      destroy: () => { destroyed += 1 }
+    })
+  })
+  assert.deepEqual(await measureChromeLlmContext(messages, new AbortController().signal), {
+    tokens: 10, capacity: 18, model: 'chrome-prompt-api'
+  })
+  assert.deepEqual(measured, messages)
+  await fetchChromeLlmChat({ messages, contextLimit: 10 })
+  assert.equal(prompts, 1)
+  count = 19
+  await assert.rejects(fetchChromeLlmChat({ messages, contextLimit: 0 }), /supera la cuota/)
+  assert.equal(prompts, 1)
+  assert.equal(destroyed, 3)
 })
 
 function installLanguageModel(api: {

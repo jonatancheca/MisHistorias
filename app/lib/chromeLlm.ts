@@ -1,6 +1,7 @@
 /// <reference types="dom-chromium-ai" />
 
 import { reportClientErrorTrace } from './errorTraces.ts'
+import { contextFits, tokenContextUsage } from './contextBudget.ts'
 
 export type ChromeLlmAvailability = Availability
 
@@ -14,6 +15,7 @@ export interface ChromeLlmRequest {
   operation?: string
   signal?: AbortSignal
   onDownloadProgress?: (percent: number) => void
+  contextLimit?: number
 }
 
 export interface ChromeLlmError extends Error {
@@ -162,6 +164,11 @@ export async function fetchChromeLlmChat(request: ChromeLlmRequest) {
   try {
     session = await api.create(createOptions(request.signal, request.onDownloadProgress))
     const prompt = normalizeChromeMessages(request.messages) as unknown as LanguageModelPrompt
+    if (request.contextLimit !== undefined) {
+      const usage = tokenContextUsage(await session.measureContextUsage(prompt, { signal: request.signal }),
+        session.contextWindow - session.contextUsage, 0, request.contextLimit, 'chrome-prompt-api')
+      if (!contextFits(usage)) throw new Error('El contexto supera la cuota disponible de Chrome. Vuelve a solicitar la respuesta para compactar el historial.')
+    }
     const content = await session.prompt(prompt, { signal: request.signal })
     if (!content.trim()) {
       void reportClientErrorTrace({
@@ -178,6 +185,29 @@ export async function fetchChromeLlmChat(request: ChromeLlmRequest) {
         request: { messages: request.messages }, response: caught, stack: error.stack
       })
     }
+    throw error
+  } finally {
+    session?.destroy()
+  }
+}
+
+export async function measureChromeLlmContext(messages: ChromeLlmMessage[], signal: AbortSignal) {
+  const api = getLanguageModelApi()
+  if (!api || await getChromeLlmAvailability() === 'unavailable') {
+    throw chromeError('La IA local de Chrome no está disponible para medir el contexto.')
+  }
+  let session: LanguageModel | null = null
+  try {
+    session = await api.create(createOptions(signal))
+    if (typeof session.measureContextUsage !== 'function') throw new Error('Chrome no permite medir los tokens del contexto. Actualiza el navegador o selecciona Caracteres en Ajustes.')
+    const tokens = await session.measureContextUsage(normalizeChromeMessages(messages) as unknown as LanguageModelPrompt, { signal })
+    return { tokens, capacity: session.contextWindow - session.contextUsage, model: 'chrome-prompt-api' }
+  } catch (caught) {
+    const error = normalizeChromeError(caught)
+    if (error.name !== 'AbortError') void reportClientErrorTrace({
+      source: 'llm', operation: 'story.context', message: error.message,
+      requestSent: false, request: { messages }, response: null
+    })
     throw error
   } finally {
     session?.destroy()

@@ -158,6 +158,9 @@ function syncScopedForm() {
   form.historyBudget = privateLlmSettingsEnabled.value
     ? (values.privateHistoryBudget ?? values.historyBudget)
     : values.historyBudget
+  form.contextUnit = privateLlmSettingsEnabled.value ? (values.privateContextUnit ?? values.contextUnit) : values.contextUnit
+  form.contextTokenBudget = privateLlmSettingsEnabled.value
+    ? (values.privateContextTokenBudget ?? values.contextTokenBudget) : values.contextTokenBudget
   form.apiKey = ''
   form.apiKeyConfigured = privateLlmSettingsEnabled.value
     ? values.privateApiKeyConfigured
@@ -552,6 +555,8 @@ function settingsPatch() {
       patch.privateTemperature = Number(form.temperature)
       patch.privateMaxTokens = Number(form.maxTokens)
       patch.privateHistoryBudget = Number(form.historyBudget)
+      patch.privateContextUnit = form.contextUnit
+      patch.privateContextTokenBudget = Number(form.contextTokenBudget)
     }
     if (privateUserNameDirty) patch.privateUserName = form.userName.trim() || 'Protagonista'
     if (privateProtagonistPreferencesDirty) {
@@ -564,6 +569,8 @@ function settingsPatch() {
       patch.temperature = Number(form.temperature)
       patch.maxTokens = Number(form.maxTokens)
       patch.historyBudget = Number(form.historyBudget)
+      patch.contextUnit = form.contextUnit
+      patch.contextTokenBudget = Number(form.contextTokenBudget)
     }
     patch.userName = form.userName.trim() || 'Protagonista'
     patch.protagonistPreferences = form.protagonistPreferences.trim()
@@ -832,6 +839,8 @@ async function setPrivateLlmSettingsEnabled(enabled: boolean) {
     form.temperature = settings.settings.temperature
     form.maxTokens = settings.settings.maxTokens
     form.historyBudget = settings.settings.historyBudget
+    form.contextUnit = settings.settings.contextUnit
+    form.contextTokenBudget = settings.settings.contextTokenBudget
     form.apiKey = ''
     apiKeyDirty = false
     if (enabled) {
@@ -841,7 +850,9 @@ async function setPrivateLlmSettingsEnabled(enabled: boolean) {
         privateModel: form.model,
         privateTemperature: form.temperature,
         privateMaxTokens: form.maxTokens,
-        privateHistoryBudget: form.historyBudget
+        privateHistoryBudget: form.historyBudget,
+        privateContextUnit: form.contextUnit,
+        privateContextTokenBudget: form.contextTokenBudget
       })
       form.apiKeyConfigured = settings.settings.privateApiKeyConfigured
     } else {
@@ -852,7 +863,9 @@ async function setPrivateLlmSettingsEnabled(enabled: boolean) {
         privateModel: null,
         privateTemperature: null,
         privateMaxTokens: null,
-        privateHistoryBudget: null
+        privateHistoryBudget: null,
+        privateContextUnit: null,
+        privateContextTokenBudget: null
       })
       form.apiKeyConfigured = settings.settings.apiKeyConfigured
     }
@@ -933,6 +946,8 @@ watch(
     form.temperature,
     form.maxTokens,
     form.historyBudget,
+    form.contextUnit,
+    form.contextTokenBudget,
     form.responseSpeed,
     form.userName,
     form.userColor,
@@ -1950,7 +1965,7 @@ onBeforeRouteLeave(async () => {
           >
         </div>
         <div>
-          <label class="label" for="maxTokens">Máx. tokens</label>
+          <label class="label" for="maxTokens">Máx. tokens de respuesta</label>
           <input
             id="maxTokens"
             v-model.number="form.maxTokens"
@@ -1962,8 +1977,19 @@ onBeforeRouteLeave(async () => {
           >
         </div>
         <div>
-          <label class="label" for="historyBudget">Contexto enviado (caracteres)</label>
+          <label class="label" for="contextUnit">Unidad del contexto enviado</label>
+          <select
+            id="contextUnit"
+            v-model="form.contextUnit"
+            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
+            class="field mb-3"
+          >
+            <option value="characters">Caracteres</option>
+            <option value="tokens">Tokens del modelo</option>
+          </select>
+          <label v-if="form.contextUnit === 'characters'" class="label" for="historyBudget">Contexto enviado (caracteres)</label>
           <input
+            v-if="form.contextUnit === 'characters'"
             id="historyBudget"
             v-model.number="form.historyBudget"
             :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
@@ -1973,8 +1999,20 @@ onBeforeRouteLeave(async () => {
             step="1000"
             class="field"
           >
+          <template v-else>
+            <label class="label" for="contextTokenBudget">Contexto enviado (tokens)</label>
+            <input
+              id="contextTokenBudget" v-model.number="form.contextTokenBudget" type="number" min="0" step="100" class="field"
+              :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
+            >
+          </template>
           <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-            Incluye instrucciones, personajes, resumen, historial y nuevo mensaje. Usa 0 para enviar sin límite.
+            Incluye instrucciones, personajes, resumen, historial y nuevo mensaje. Cada unidad conserva su valor.
+            Usa 0 para desactivar el límite elegido.
+            <template v-if="form.contextUnit === 'tokens'">
+              Se mide con el modelo. LM Studio reserva los tokens máximos de respuesta; Chrome respeta su cuota de contexto.
+              Si no puede medirse, el envío se detiene y conserva el borrador.
+            </template>
           </p>
         </div>
       </div>

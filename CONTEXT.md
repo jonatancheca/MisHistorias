@@ -61,8 +61,12 @@ Contenido textual de una intervención conservado por la historia, antes de ocul
 _Evitar_: Texto visible, traza LLM, respuesta del proveedor
 
 **Contexto enviado**:
-Conjunto de textos que recibe el narrador para responder: instrucciones, personajes y recursos disponibles, resumen anterior, historial pendiente y nueva intervención. Su límite se expresa en caracteres; cero significa sin límite.
-_Evitar_: Solo historial, límite del mensaje, límite de tokens
+Conjunto de textos que recibe el narrador para responder: instrucciones, personajes y recursos disponibles, resumen anterior, historial pendiente y nueva intervención. Cada ámbito permite limitarlo por caracteres o por los tokens del modelo; cero desactiva el límite elegido y, en tokens, sigue respetándose la capacidad disponible para la entrada.
+_Evitar_: Solo historial, límite del mensaje, máximo de tokens de respuesta
+
+**Compactación por bloques**:
+Resumen progresivo del historial solicitado expresamente cuando una única petición de compactación no cabe en el modelo. Conserva el checkpoint anterior hasta que el resumen completo permite preparar una nueva respuesta dentro del límite.
+_Evitar_: Recorte del historial, checkpoint parcial
 
 **Compactación del historial**:
 Resumen independiente de los hechos anteriores de una historia, preparado antes de pedir una nueva respuesta cuando el contexto enviado supera su límite. No avanza la historia ni resume la nueva intervención pendiente.

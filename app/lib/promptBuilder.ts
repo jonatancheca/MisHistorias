@@ -297,6 +297,7 @@ export function buildCompactionMessages(options: {
   characters: Character[]
   userName: string
   summaryBudget?: number
+  summaryUnit?: 'characters' | 'tokens'
   prompt?: string
 }): ChatMessage[] {
   const history = buildHistory(
@@ -310,7 +311,9 @@ export function buildCompactionMessages(options: {
     { role: 'system', content: [
       options.prompt ?? DEFAULT_COMPACTION_PROMPT,
       ...(options.summaryBudget !== undefined
-        ? [`El resumen debe ocupar como máximo ${options.summaryBudget} caracteres, incluidos espacios y saltos de línea.`]
+        ? [options.summaryUnit === 'tokens'
+            ? `El resumen debe ocupar como máximo ${options.summaryBudget} tokens del modelo. Sé conciso.`
+            : `El resumen debe ocupar como máximo ${options.summaryBudget} caracteres, incluidos espacios y saltos de línea.`]
         : []),
     ].join(' ') },
     { role: 'user', content: JSON.stringify({

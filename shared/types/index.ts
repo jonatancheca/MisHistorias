@@ -301,7 +301,21 @@ export interface StoryGenerationAttempt {
   automaticallyRetried?: boolean
 }
 
+export type ContextUnit = 'characters' | 'tokens'
+
+export interface ContextUsage {
+  unit: ContextUnit
+  count: number
+  configuredLimit: number
+  effectiveLimit: number
+  model: string
+  capacity?: number
+  reservedTokens?: number
+}
+
 export interface LlmDebugRequest {
+  /** Medición y límite conservados de esta llamada; ausentes en trazas antiguas. */
+  contextUsage?: ContextUsage
   /** Proveedor usado para generar la respuesta; ausente en trazas antiguas. */
   provider?: 'lmstudio' | 'chrome'
   /** Finalidad de la llamada; ausente equivale a una respuesta normal del chat. */
@@ -313,6 +327,13 @@ export interface LlmDebugRequest {
     before: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
     after?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
     historyBudget: number
+    beforeUsage?: ContextUsage
+    afterUsage?: ContextUsage
+    blocks?: Array<{
+      messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+      contextUsage: ContextUsage
+      summary: string
+    }>
     applied: boolean
   }
   model: string
@@ -415,6 +436,8 @@ export interface AppSettings {
   privateTemperature: number | null
   privateMaxTokens: number | null
   privateHistoryBudget: number | null
+  privateContextUnit: ContextUnit | null
+  privateContextTokenBudget: number | null
   swarmBaseUrl: string
   /** Token opcional de SwarmUI. Solo se mantiene en memoria mientras se edita. */
   swarmAuthToken: string
@@ -429,6 +452,9 @@ export interface AppSettings {
   maxTokens: number
   /** Límite de caracteres de todo el texto enviado al modelo; 0 significa sin límite. */
   historyBudget: number
+  /** Unidad seleccionada; el presupuesto de caracteres se conserva al cambiar. */
+  contextUnit: ContextUnit
+  contextTokenBudget: number
   /** Versión aplicada del pack de sonidos por defecto en cada colección. */
   defaultSoundVersion: number
   privateDefaultSoundVersion: number

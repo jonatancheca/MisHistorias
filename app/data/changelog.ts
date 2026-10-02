@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 229, completedAt: '2026-10-02', summary: 'Selector de contexto en caracteres o tokens del modelo, con capacidad y reserva de respuesta; compactación por bloques bajo demanda y mediciones históricas en Debug.' },
   { issue: 228, completedAt: '2026-10-02', summary: 'Modo Debug unificado en Chat y Novela Visual: compactaciones con contexto completo antes/después, límite histórico y controles de mensajes visibles también en móvil.' },
   { issue: 227, completedAt: '2026-10-02', summary: 'Compactación previa con límite total, checkpoint validado y borrador protegido; prompt editable compartido entre ámbitos y conservado en backups SQLite.' },
   { issue: 226, completedAt: '2026-10-01', summary: 'Errores automáticos de comprobación y precarga del LLM ocultos al abrir historias y Nueva historia, conservando los fallos de carga manual y generación.' },
