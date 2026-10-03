@@ -6,6 +6,12 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 235, completedAt: '2026-10-04', summary: 'Load IA accesible en la navegación de Novela Visual, con icono, indicador de carga y presentación compacta en móvil.' },
+  { issue: 234, completedAt: '2026-10-04', summary: 'Controles de historias reorganizados: Más opciones, navegación agrupada, escritura y generación diferenciadas, atajos visibles y selector de elenco mejorado.' },
+  { issue: 233, completedAt: '2026-10-04', summary: 'Tarjetas de sonidos más compactas en móvil, con controles y etiquetas distribuidos sin desbordamiento a 320 y 390 px.' },
+  { issue: 232, completedAt: '2026-10-04', summary: 'Errores al guardar la configuración de Cloudflare Access visibles en Ajustes, con posibilidad de reintentar.' },
+  { issue: 231, completedAt: '2026-10-04', summary: 'Tipado reforzado de SQLite, recursos, partidas y generación por lotes; datos y aserciones de pruebas adaptados a los contratos actuales.' },
+  { issue: 230, completedAt: '2026-10-04', summary: 'Apertura de historias sin esperar todos los archivos multimedia, Debug ni partidas; cargas auxiliares protegidas frente a respuestas tardías y fallos.' },
   { issue: 229, completedAt: '2026-10-02', summary: 'Selector de contexto en caracteres o tokens del modelo, con capacidad y reserva de respuesta; compactación por bloques bajo demanda y mediciones históricas en Debug.' },
   { issue: 228, completedAt: '2026-10-02', summary: 'Modo Debug unificado en Chat y Novela Visual: compactaciones con contexto completo antes/después, límite histórico y controles de mensajes visibles también en móvil.' },
   { issue: 227, completedAt: '2026-10-02', summary: 'Compactación previa con límite total, checkpoint validado y borrador protegido; prompt editable compartido entre ámbitos y conservado en backups SQLite.' },
