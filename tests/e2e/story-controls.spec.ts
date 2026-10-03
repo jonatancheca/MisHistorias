@@ -54,6 +54,19 @@ for (const width of [320, 390, 1280]) {
       if (visual) await expect(page.getByTestId('visual-novel-counter')).toHaveText('12 / 12')
       await page.getByLabel('Tu intervención').fill('Observo el horizonte.')
       await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toBeEnabled()
+      const writeBounds = await page.locator('.story-write-box').boundingBox()
+      const sendBounds = await page.getByRole('button', { name: 'Enviar', exact: true }).boundingBox()
+      expect(Math.abs((writeBounds!.y + writeBounds!.height / 2) - (sendBounds!.y + sendBounds!.height / 2))).toBeLessThan(1)
+      if (width === 1280) {
+        await expect(page.getByTestId('story-start-button')).toHaveAttribute('title', /Ctrl\+Inicio/)
+        await expect(page.getByTestId('story-end-button')).toHaveAttribute('title', /Ctrl\+Fin/)
+        await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toHaveAttribute('title', /Enter \/ Ctrl\+Enter/)
+        if (visual) {
+          await expect(page.getByTestId('visual-novel-previous')).toHaveAttribute('title', /Re Pág/)
+          await expect(page.getByTestId('visual-novel-next')).toHaveAttribute('title', /Av Pág \/ Espacio \/ Enter/)
+        }
+      }
+      await expect(page.getByTestId('story-reader-controls')).not.toContainText('Cuadros')
       const geometry = await page.evaluate(() => {
         const controls = [...document.querySelectorAll('#story-header button, .story-reader-controls button, .story-composer button')]
           .filter(el => el.getClientRects().length > 0)

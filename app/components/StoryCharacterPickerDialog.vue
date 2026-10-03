@@ -90,6 +90,17 @@ useDialogEscape(
                   </svg>
                 </button>
                 <CharacterTagsTooltip :tags="character.tags" :label="character.label" />
+                <button
+                  type="button"
+                  class="btn-primary h-10 w-10 shrink-0 px-0"
+                  :aria-label="`Añadir ${character.label} al elenco`"
+                  title="Añadir al elenco"
+                  @click="emit('select', character.id)"
+                >
+                  <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </button>
               </header>
               <p
                 v-if="character.prompt.trim() && mobilePromptCharacterId === character.id"
@@ -105,20 +116,8 @@ useDialogEscape(
                   :alt="character.label"
                   class="h-64 min-w-0 flex-1 sm:h-72"
                 />
-                <div class="flex w-10 shrink-0 flex-col gap-2">
+                <div v-if="character.customized" class="flex w-10 shrink-0 flex-col gap-2">
                   <button
-                    type="button"
-                    class="btn-primary h-10 w-10 px-0"
-                    :aria-label="`Añadir ${character.label} al elenco`"
-                    title="Añadir al elenco"
-                    @click="emit('select', character.id)"
-                  >
-                    <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                  </button>
-                  <button
-                    v-if="character.customized"
                     type="button"
                     class="btn-ghost h-10 w-10 px-0 text-red-500"
                     :aria-label="`Olvidar personalización de ${character.label}`"
@@ -139,7 +138,7 @@ useDialogEscape(
                 v-if="character.prompt.trim()"
                 :id="promptDescriptionId(character.id, 'tooltip')"
                 role="tooltip"
-                class="character-prompt-tooltip pointer-events-none invisible absolute top-12 right-3 left-3 z-30 hidden whitespace-pre-wrap break-words rounded-xl bg-slate-950 px-3 py-2 text-sm leading-snug text-white opacity-0 shadow-xl transition sm:block"
+                class="character-prompt-tooltip pointer-events-none invisible absolute top-16 right-3 left-3 z-30 hidden whitespace-pre-wrap break-words rounded-xl bg-slate-950 px-3 py-2 text-sm leading-snug text-white opacity-0 shadow-xl transition sm:block"
                 data-testid="story-character-prompt-tooltip"
               >
                 {{ character.prompt }}

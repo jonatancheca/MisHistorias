@@ -31,8 +31,9 @@ test.beforeEach(async ({ data }) => {
 })
 
 for (const visualMode of [false, true]) {
-  test(`botón único junto a Debug, carga sin enviar y conserva borrador; visual=${visualMode}`, async ({ page, data }) => {
+  test(`botón único de carga accesible, carga sin enviar y conserva borrador; visual=${visualMode}`, async ({ page, data }) => {
     const { story, lastMessage } = await storyWithDebug(data, page.request, visualMode)
+    if (visualMode) await data.createMessage({ story, role: 'user', raw: 'Observo el horizonte.' })
     let loaded = false
     let checks = 0
     let loads = 0
@@ -59,15 +60,28 @@ for (const visualMode of [false, true]) {
       await page.goto(`/stories/${story.id}`)
       await expect.poll(() => checks).toBeGreaterThan(0)
       const area = visualMode
-        ? page.getByTestId('visual-message-actions')
+        ? page.getByTestId('story-reader-controls')
         : page.locator(`[data-story-message-id="${lastMessage.id}"]`)
       if (!visualMode) await area.hover()
       const button = page.getByTestId('story-model-load')
       await expect(button).toHaveCount(1)
       await expect(area.getByTestId('story-model-load')).toBeVisible()
+      await expect(button.locator('svg')).toBeVisible()
       const loadBounds = await button.boundingBox()
-      const debugBounds = await area.getByRole('button', { name: 'Ver datos de debug de la llamada LLM' }).boundingBox()
-      expect(loadBounds!.x + loadBounds!.width).toBeLessThanOrEqual(debugBounds!.x)
+      const adjacentButton = visualMode
+        ? page.getByTestId('visual-novel-next')
+        : area.getByRole('button', { name: 'Ver datos de debug de la llamada LLM' })
+      const adjacentBounds = await adjacentButton.boundingBox()
+      expect(loadBounds!.x + loadBounds!.width).toBeLessThanOrEqual(adjacentBounds!.x)
+      if (visualMode) {
+        expect(loadBounds!.y).toBe(adjacentBounds!.y)
+        await page.getByTestId('story-start-button').click()
+        await expect(page.getByTestId('visual-novel-frame')).toContainText('Escena 1.')
+        await expect(button).toBeVisible()
+        await page.getByTestId('story-end-button').click()
+        await expect(page.getByTestId('visual-novel-frame')).toContainText('Observo el horizonte.')
+        await expect(button).toBeVisible()
+      }
       expect(loads).toBe(0)
       const input = page.getByRole('textbox')
       await input.fill('Borrador conservado.')
@@ -105,7 +119,7 @@ for (const visualMode of [false, true]) {
   })
 }
 
-test('sin Debug usa el cuadro de escritura y permite reintentar errores sin perder texto', async ({ page, data }) => {
+test('novela vacía mantiene la carga en navegación y permite reintentar errores sin perder texto', async ({ page, data }) => {
   const story = await data.createStory({ characters: [], visualMode: true })
   let loads = 0
   let loaded = false
@@ -122,7 +136,7 @@ test('sin Debug usa el cuadro de escritura y permite reintentar errores sin perd
   await page.goto(`/stories/${story.id}`)
   const input = page.getByRole('textbox')
   const button = page.getByTestId('story-model-load')
-  await expect(page.locator('footer').getByTestId('story-model-load')).toBeVisible()
+  await expect(page.getByTestId('story-reader-controls').getByTestId('story-model-load')).toBeVisible()
   await input.fill('Todavía sin enviar.')
   await button.click()
   await expect(page.getByTestId('story-model-load-error')).toHaveText('LM Studio desconectado')

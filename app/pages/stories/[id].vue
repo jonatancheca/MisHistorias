@@ -447,11 +447,13 @@ const modelLoadTargetId = computed(() => timeline.value.findLast((item) =>
   item.kind === 'trace' || (item.kind === 'message' && !item.message.swarmError && debugForMessage(item.id) &&
     (originalTextAvailable.value || !isAiInstruction(item.message.raw)))
 )?.id ?? null)
-const modelLoadInFooter = computed(() => modelLoadAvailable.value && (
-  stories.activeStory?.visualMode
-    ? !originalTextAvailable.value || !activeVisualMessage.value || !debugForMessage(activeVisualMessage.value.id)
-    : !modelLoadTargetId.value
-))
+const modelLoadInFooter = computed(() =>
+  modelLoadAvailable.value && !stories.activeStory?.visualMode && !modelLoadTargetId.value
+)
+
+function storyControlTitle(label: string, shortcuts: string) {
+  return desktopStoryControls.value ? `${label} (${shortcuts})` : label
+}
 
 watch(timeline, () => scheduleFollowBottom(), { deep: true, flush: 'post' })
 watch(
@@ -1311,9 +1313,6 @@ onBeforeRouteLeave(() => {
               :original-text-available="originalTextAvailable"
               :original-text-open="originalTextOpenIds.has(activeVisualMessage.id)"
               :original-text-controls="`visual-original-${activeVisualMessage.id}`"
-              :model-load-available="modelLoadAvailable && !modelLoadInFooter"
-              :model-loading="modelLoading"
-              :model-load-disabled="stories.generating"
               data-testid="visual-message-actions"
               class="visual-message-actions absolute right-3 bottom-3 z-20 max-w-[calc(100%-1.5rem)] rounded-xl border border-white/15 bg-slate-950/80 p-1 text-slate-300 shadow-lg backdrop-blur-sm"
               :class="debugEnabled ? 'debug-visible' : ''"
@@ -1323,7 +1322,6 @@ onBeforeRouteLeave(() => {
               @regenerate="regenerateFrom(activeVisualMessage.id)"
               @resend="resendFrom(activeVisualMessage.id)"
               @toggle-original="toggleStoryOriginal(activeVisualMessage.id)"
-              @load-model="loadStoryModel"
             />
 
             <StoryOriginalText
@@ -1557,7 +1555,8 @@ onBeforeRouteLeave(() => {
           class="story-nav-button"
           data-testid="story-start-button"
           :aria-label="stories.activeStory.visualMode ? 'Ir a la primera frase' : 'Volver al principio'"
-          :title="stories.activeStory.visualMode ? 'Ir a la primera frase' : 'Volver al principio'"
+          :title="storyControlTitle(stories.activeStory.visualMode ? 'Ir a la primera frase' : 'Volver al principio', 'Inicio; Ctrl+Inicio al escribir')"
+          aria-keyshortcuts="Home Control+Home"
           :disabled="stories.activeStory.visualMode ? !canShowPreviousVisualFrame : !canScrollToTop"
           @click="showStoryStart"
         >
@@ -1571,7 +1570,8 @@ onBeforeRouteLeave(() => {
           class="story-nav-button"
           data-testid="visual-novel-previous"
           aria-label="Frase anterior"
-          title="Frase anterior"
+          :title="storyControlTitle('Frase anterior', '← / Re Pág')"
+          aria-keyshortcuts="ArrowLeft PageUp"
           :disabled="!canShowPreviousVisualFrame"
           @click="showPreviousVisualFrame"
         >
@@ -1582,17 +1582,25 @@ onBeforeRouteLeave(() => {
         <div class="min-w-0 flex-1 text-center text-xs text-[var(--color-fg-muted)]">
           <template v-if="stories.activeStory.visualMode">
             <span data-testid="visual-novel-counter" class="block text-sm font-bold tabular-nums text-[var(--color-fg)]">{{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrameTotal }}</span>
-            <span class="hidden sm:block">Cuadros</span>
           </template>
           <span v-else>Historial</span>
         </div>
+        <StoryModelLoadButton
+          v-if="stories.activeStory.visualMode && modelLoadAvailable"
+          class="story-nav-button"
+          compact-on-mobile
+          :loading="modelLoading"
+          :disabled="stories.generating"
+          @load="loadStoryModel"
+        />
         <button
           v-if="stories.activeStory.visualMode"
           type="button"
           class="story-nav-button story-nav-next"
           data-testid="visual-novel-next"
           aria-label="Frase siguiente"
-          title="Frase siguiente"
+          :title="storyControlTitle('Frase siguiente', '→ / Av Pág / Espacio / Enter')"
+          aria-keyshortcuts="ArrowRight PageDown Space Enter"
           :disabled="!canAdvanceVisualFrame"
           @click="advanceVisualFrame"
         >
@@ -1605,7 +1613,8 @@ onBeforeRouteLeave(() => {
           class="story-nav-button"
           data-testid="story-end-button"
           :aria-label="stories.activeStory.visualMode ? 'Ir a la última frase' : 'Volver al final'"
-          :title="stories.activeStory.visualMode ? 'Ir a la última frase' : 'Volver al final'"
+          :title="storyControlTitle(stories.activeStory.visualMode ? 'Ir a la última frase' : 'Volver al final', 'Fin; Ctrl+Fin al escribir')"
+          aria-keyshortcuts="End Control+End"
           :disabled="stories.activeStory.visualMode ? !canShowNextVisualFrame : !canScrollToBottom"
           @click="showStoryEnd"
         >
@@ -1765,8 +1774,8 @@ onBeforeRouteLeave(() => {
               type="submit"
               class="btn-primary story-send-button"
               :disabled="stories.generating"
-              aria-keyshortcuts="Control+Enter"
-              title="Enviar (Ctrl+Enter)"
+              aria-keyshortcuts="Enter Control+Enter"
+              :title="storyControlTitle('Enviar', 'Enter / Ctrl+Enter')"
             >
               <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13" /></svg>
               Enviar
@@ -2034,7 +2043,7 @@ onBeforeRouteLeave(() => {
 .story-write-box {
   display: flex;
   min-width: 0;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.5rem;
   border: 1px solid var(--color-border-soft);
   border-radius: 1rem;
