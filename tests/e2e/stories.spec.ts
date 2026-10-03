@@ -9,6 +9,10 @@ import type {
 } from '../../shared/types'
 import { createPng, expect, PNG_BYTES, test, type TestDataFactory } from './fixtures'
 
+test.beforeEach(async ({ data }) => {
+  await data.patchSettings({ historyBudget: 100_000, contextUnit: 'characters' })
+})
+
 async function createStoryFixture(data: TestDataFactory, visualMode = false) {
   const character = await data.createCharacter()
   const image = await data.createImage(character, ['feliz', 'armadura'])
@@ -159,6 +163,7 @@ test.describe('historias', () => {
     await page.getByRole('link', { name: sharedStory.title, exact: true }).click()
     await expect(page.getByText('Historia demo compartida · solo lectura')).toBeVisible()
     const copyButton = page.getByTestId('copy-shared-story')
+    await page.getByTestId('story-tools-toggle').click()
     await expect(copyButton).toBeVisible()
     await copyButton.click()
     const confirmation = page.getByRole('alertdialog', { name: 'Copiar historia demo' })
@@ -178,6 +183,7 @@ test.describe('historias', () => {
     await expect(page).toHaveURL(`/stories/${copiedStory.id}`)
     await expect(page.getByText('Historia demo compartida · solo lectura')).toHaveCount(0)
     await expect(page.getByTestId('copy-shared-story')).toHaveCount(0)
+    await page.getByTestId('story-tools-toggle').click()
     await expect(page.getByRole('button', { name: 'Ajustes de la historia' })).toBeVisible()
     await expect(page.getByPlaceholder('Escribe lo que haces o dices…')).toBeEditable()
     await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toBeEnabled()
@@ -322,6 +328,7 @@ test.describe('historias', () => {
     const updatedPremise = data.unique('Planteamiento-editado')
     const updatedTitle = data.unique('Historia-editada')
     const updatedCharacterName = data.unique('Nombre-editado')
+    await page.getByTestId('story-tools-toggle').click()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     const form = page.getByRole('heading', { name: 'Ajustes de la historia' }).locator('..')
     await expect(form.getByRole('heading', {
@@ -502,6 +509,7 @@ test.describe('historias', () => {
     const tooltip = card.getByTestId('story-character-prompt-tooltip')
     const blankCard = picker.getByTestId('story-character-picker-card').filter({ hasText: blankCharacter.name })
 
+    await picker.getByRole('heading', { name: 'Añadir personaje' }).hover()
     await expect(tooltip).toBeHidden()
     await card.hover()
     await expect(tooltip).toBeVisible()
@@ -547,6 +555,8 @@ test.describe('historias', () => {
       characterIds: story.characterIds
     })
     expect(await data.list<Message>('messages', 'normal', { storyId: copiedId })).toHaveLength(0)
+
+    await page.getByTestId('story-tools-toggle').click()
 
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     const form = page.getByRole('heading', { name: 'Ajustes de la historia' }).locator('..')
@@ -759,6 +769,7 @@ test.describe('historias', () => {
     })
 
     await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('story-tools-toggle').click()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     const form = page.getByRole('heading', { name: 'Ajustes de la historia' }).locator('..')
     await addStoryCharacter(page, form, added.name)
@@ -779,6 +790,7 @@ test.describe('historias', () => {
     })
 
     await page.reload()
+    await page.getByTestId('story-tools-toggle').click()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     await expect(page.getByRole('button', { name: `Editar ${added.name}` })).toBeVisible()
   })
@@ -793,6 +805,7 @@ test.describe('historias', () => {
     const rememberedPrompt = data.unique('Prompt-recordado')
 
     await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('story-tools-toggle').click()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     let form = page.getByRole('dialog', { name: 'Ajustes de la historia' })
     await form.getByRole('button', { name: `Editar ${remembered.name}` }).click()
@@ -815,6 +828,7 @@ test.describe('historias', () => {
     })
     expect(archiveResponse.ok()).toBe(true)
     await page.reload()
+    await page.getByTestId('story-tools-toggle').click()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     form = page.getByRole('dialog', { name: 'Ajustes de la historia' })
     await form.getByRole('button', { name: 'Añadir personaje' }).click()
@@ -830,6 +844,7 @@ test.describe('historias', () => {
 
     stored = await data.get<Story>('stories', story.id)
     expect(stored.characterIds).toEqual([active.id, remembered.id])
+    await page.getByTestId('story-tools-toggle').click()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     form = page.getByRole('dialog', { name: 'Ajustes de la historia' })
     await form.getByRole('button', { name: `Quitar ${remembered.name} del elenco` }).click()
@@ -937,6 +952,7 @@ test.describe('historias', () => {
     await expect(traceResponse).toBeOK()
 
     await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('story-tools-toggle').click()
     await page.getByRole('button', { name: 'Partidas' }).click()
     const dialog = page.getByRole('dialog', { name: 'Partidas' })
     const name = dialog.getByLabel('Nombre de la partida')
@@ -970,6 +986,8 @@ test.describe('historias', () => {
     await page.reload()
     await expect(page.getByText(branch.raw, { exact: true })).toBeVisible()
 
+    await page.getByTestId('story-tools-toggle').click()
+
     await page.getByRole('button', { name: 'Partidas' }).click()
     await dialog.getByRole('listitem').first().getByRole('button', { name: 'Cargar' }).click()
     const loadConfirm = page.getByRole('alertdialog', { name: 'Cargar partida' })
@@ -992,6 +1010,8 @@ test.describe('historias', () => {
     })
     await page.reload()
     await expect(page.getByText(continuation.raw, { exact: true })).toBeVisible()
+
+    await page.getByTestId('story-tools-toggle').click()
 
     await page.getByRole('button', { name: 'Partidas' }).click()
     await page.setViewportSize({ width: 320, height: 800 })
@@ -1018,7 +1038,7 @@ test.describe('historias', () => {
       version: number
       stories: Array<{ title: string; saves?: StorySaveSlot[] }>
     }
-    expect(bundle.version).toBe(24)
+    expect(bundle.version).toBe(26)
     expect(bundle.stories.find((item) => item.title === story.title)?.saves).toHaveLength(1)
   })
 
@@ -1026,16 +1046,20 @@ test.describe('historias', () => {
     const { story } = await createStoryFixture(data)
     await page.goto(`/stories/${story.id}`)
 
+    await page.getByTestId('story-tools-toggle').click()
+
     await page.getByRole('button', { name: 'Partidas', exact: true }).click()
     const saves = page.getByRole('dialog', { name: 'Partidas' })
     await expect(saves).toBeVisible()
-    await page.getByRole('button', { name: 'Partidas', exact: true }).press('Escape')
+    await page.keyboard.press('Escape')
     await expect(saves).toHaveCount(0)
+
+    await page.getByTestId('story-tools-toggle').click()
 
     await page.getByRole('button', { name: 'Ajustes de la historia', exact: true }).click()
     const preferences = page.getByRole('heading', { name: 'Ajustes de la historia' })
     await expect(preferences).toBeVisible()
-    await page.getByRole('button', { name: 'Ajustes de la historia', exact: true }).press('Escape')
+    await page.keyboard.press('Escape')
     await expect(preferences).toHaveCount(0)
   })
 })
@@ -1089,7 +1113,7 @@ test.describe('chat', () => {
     await expect(frame).toContainText('Primera intervención suficientemente larga')
     await expect(frame).not.toContainText('Segunda intervención completa.')
     await page.getByTestId('visual-mode-toggle').click()
-    await expect(page.getByTestId('visual-mode-toggle')).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByRole('button', { name: 'Activar modo novela visual', exact: true })).toHaveAttribute('aria-pressed', 'false')
     await page.clock.runFor(10_000)
     await expect(page.getByTestId('story-scroller')).toContainText('Segunda intervención completa.')
     await expect(page.getByRole('button', { name: 'Parar', exact: true })).toHaveCount(0)
@@ -1130,7 +1154,7 @@ test.describe('chat', () => {
     await expect(page.getByTestId('visual-novel-sound')).toBeVisible()
     expect(await soundPlays()).toBe(1)
     await toggle.click()
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByRole('button', { name: 'Activar modo novela visual', exact: true })).toHaveAttribute('aria-pressed', 'false')
     await toggle.click()
     await expect(page.getByTestId('visual-novel-sound')).toBeVisible()
     expect(await soundPlays()).toBe(1)
@@ -1172,7 +1196,7 @@ test.describe('chat', () => {
       await toggle.click()
       await expect(page.getByTestId('visual-novel-view')).toBeVisible()
       await toggle.click()
-      await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+      await expect(page.getByRole('button', { name: 'Activar modo novela visual', exact: true })).toHaveAttribute('aria-pressed', 'false')
       await toggle.click()
       await expect(page.getByTestId('visual-novel-view')).toBeVisible()
     } finally {
@@ -1383,6 +1407,8 @@ test.describe('chat', () => {
     await expect(input).toBeFocused()
     expect(await input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(4)
 
+    await page.getByTestId('story-tools-toggle').click()
+
     await page.locator('button[title="Ajustes de la historia"]').click()
     const dialog = page.getByRole('dialog', { name: 'Ajustes de la historia' })
     await expect(dialog).toBeVisible()
@@ -1415,7 +1441,7 @@ test.describe('chat', () => {
 
     await page.goto(`/stories/${story.id}`)
     await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Entra en la sala.')
-    await page.getByRole('button', { name: 'Enviar' }).click()
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
     await expect.poll(async () => (
       await data.list<Message>('messages', 'normal', { storyId: story.id })
     ).some((message) => message.role === 'assistant')).toBe(true)
@@ -1430,7 +1456,7 @@ test.describe('chat', () => {
     expect(systemContent.match(/^ {2}- \[feliz\]$/gm)).toHaveLength(1)
     expect(systemContent).not.toContain(background.description)
     expect(systemContent).not.toContain('sin descripción')
-    expect(systemContent).toContain(`[${sound.tags[0]}] (personaje ${character.name})`)
+    expect(systemContent).toContain(`[${sound.tags[0]}] (personaje ${character.name}; efecto de sonido)`)
     expect(systemContent).toContain('Habla en susurros.')
     expect(requestMessages.slice(1).every((message) => message.role !== 'system')).toBe(true)
     await data.patchSettings({ narrativePrompt: null })
@@ -1559,7 +1585,7 @@ test.describe('chat', () => {
     const input = page.getByPlaceholder('Escribe lo que haces o dices…')
     const instruction = 'Narrador: Habla en susurros.'
     await input.fill(instruction)
-    await page.getByRole('button', { name: 'Enviar' }).click()
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
     await expect.poll(async () => (
       await data.list<Message>('messages', 'normal', { storyId: story.id })
     ).filter((message) => message.role === 'assistant').length).toBe(1)
@@ -1617,7 +1643,7 @@ test.describe('chat', () => {
 
     await page.goto(`/stories/${story.id}`)
     await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Continúa con Chrome.')
-    await page.getByRole('button', { name: 'Enviar' }).click()
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
 
     await expect.poll(async () => {
       const messages = await data.list<Message>('messages', 'normal', { storyId: story.id })
@@ -1648,7 +1674,7 @@ test.describe('chat', () => {
 
     await page.goto(`/stories/${story.id}`)
     await page.getByPlaceholder('Escribe lo que haces o dices…').fill(input)
-    await page.getByRole('button', { name: 'Enviar' }).click()
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
     await expect(page.getByText(input, { exact: true })).toBeVisible()
     await expect.poll(async () => (await data.list<Message>('messages', 'normal', {
       storyId: story.id
@@ -1752,17 +1778,18 @@ test.describe('chat', () => {
       await page.goto(`/stories/${story.id}`)
 
       await expect(page.getByTestId('pending-image-button')).toHaveCount(0)
-      const composerButtonHeights = await page.evaluate(() =>
-        ['Enviar', 'Sigue', 'Auto'].map((name) =>
-          document.querySelector<HTMLButtonElement>(
-            name === 'Enviar'
-              ? 'button[type="submit"]'
-              : `[data-testid="${name === 'Sigue' ? 'continue-button' : 'auto-button'}"]`
-          )?.getBoundingClientRect().height
-        )
-      )
-      expect(composerButtonHeights[1]).toBe(composerButtonHeights[0])
-      expect(composerButtonHeights[2]).toBe(composerButtonHeights[0])
+      const composerButtons = [
+        page.getByRole('button', { name: 'Enviar', exact: true }),
+        page.getByTestId('continue-button'),
+        page.getByTestId('auto-button')
+      ]
+      const composerButtonHeights = await Promise.all(composerButtons.map(async (button) => {
+        await expect(button).toBeVisible()
+        return button.evaluate(element => element.getBoundingClientRect().height)
+      }))
+      expect(composerButtonHeights[0]).toBeGreaterThanOrEqual(44)
+      expect(composerButtonHeights[1]).toBeGreaterThanOrEqual(44)
+      expect(composerButtonHeights[2]).toBe(composerButtonHeights[1])
 
       await expect(page.getByRole('button', { name: 'Ver datos de debug de la llamada LLM' })).toBeVisible()
       await expect(page.getByRole('button', { name: 'Editar mensaje' }).first()).toBeVisible()
@@ -1948,7 +1975,8 @@ test.describe('chat', () => {
       content: firstResponse
     })
     const generated = (await data.list<CharacterImage>('images', 'normal'))
-      .filter((image) => image.generation)
+      .filter((image) => image.generation &&
+        [firstCharacter.id, secondCharacter.id].includes(image.characterId))
     expect(generated).toHaveLength(9)
     expect(generated.every((image) => image.generation?.preset === 'Retrato')).toBe(true)
     expect(generated.every((image) => image.generation?.model === 'model-a')).toBe(true)
@@ -2296,7 +2324,7 @@ test.describe('novela visual y responsive', () => {
     await page.goto(`/stories/${story.id}`)
     for (const mode of ['Chat', 'Novela Visual']) {
       await page.setViewportSize({ width: 1280, height: 720 })
-      const visualMode = await page.getByTestId('visual-mode-toggle').getAttribute('aria-pressed') === 'true'
+      const visualMode = await page.getByRole('button', { name: 'Activar modo novela visual', exact: true }).getAttribute('aria-pressed') === 'true'
       if (visualMode !== (mode === 'Novela Visual')) {
         await page.getByTestId('visual-mode-toggle').click()
       }
@@ -2589,6 +2617,7 @@ test.describe('novela visual y responsive', () => {
     await expect(page.getByTestId('visual-novel-background')).toBeVisible()
     await expect(page.getByTestId('visual-novel-frame')).toContainText('Te estaba esperando.')
     await expect(page.getByTestId('visual-novel-counter')).toHaveText('3 / 3')
+    await page.getByTestId('story-tools-toggle').click()
     await page.getByTestId('visual-manual-advance-toggle').click()
     await page.getByTestId('visual-novel-previous').click()
     await expect(page.getByTestId('visual-novel-frame')).toContainText('Las ramas crujen.')
@@ -3236,7 +3265,7 @@ test.describe('novela visual y responsive', () => {
       await scroller.evaluate((element) => { element.scrollTop = 80 })
       await expect(toggle).toHaveAttribute('aria-expanded', 'false')
       await expect(navigation).toBeHidden()
-      await expect(storyHeader).toBeHidden()
+      await expect(storyHeader).toBeVisible()
 
       await scroller.evaluate((element) => { element.scrollTop = 40 })
       await expect(toggle).toHaveAttribute('aria-expanded', 'true')

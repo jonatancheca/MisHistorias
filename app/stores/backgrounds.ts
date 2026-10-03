@@ -3,9 +3,11 @@ import {
   copyBackground as copyStoredBackground,
   deleteBackground,
   getActiveDataScope,
-  listBackgrounds,
+  assetContentUrl,
+  listBackgroundMetadata,
   newId,
   putBackground,
+  type BackgroundAsset,
   type StoredBackground
 } from '~/lib/db'
 import { normalizeImage } from '~/lib/images'
@@ -13,7 +15,7 @@ import { normalizeBackgroundStyle } from '~/lib/backgroundStyles'
 import { hasTag, nextAvailableTag, sanitizeTags, tagKey } from '~/lib/tags'
 
 export const useBackgroundsStore = defineStore('backgrounds', () => {
-  const backgrounds = ref<StoredBackground[]>([])
+  const backgrounds = ref<BackgroundAsset[]>([])
   const urls = ref<Record<string, string>>({})
   const loaded = ref(false)
   let loadRevision = 0
@@ -22,7 +24,9 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
   function syncUrls() {
     const next: Record<string, string> = {}
     for (const background of backgrounds.value) {
-      next[background.id] = urls.value[background.id] ?? URL.createObjectURL(background.blob)
+      next[background.id] = urls.value[background.id] ?? (background.blob
+        ? URL.createObjectURL(background.blob)
+        : assetContentUrl('backgrounds', background.id))
     }
     for (const [id, url] of Object.entries(urls.value)) {
       if (!next[id]) URL.revokeObjectURL(url)
@@ -41,7 +45,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     if (loaded.value && !force) return
     const scope = getActiveDataScope()
     const revision = ++loadRevision
-    const result = await listBackgrounds(scope)
+    const result = await listBackgroundMetadata(scope)
     if (scope !== getActiveDataScope() || revision !== loadRevision) return
     backgrounds.value = result
     syncUrls()
@@ -54,7 +58,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     return background && isVisibleInDemo(background) ? background : null
   }
 
-  function isVisibleInDemo(background: StoredBackground) {
+  function isVisibleInDemo(background: BackgroundAsset) {
     const privacy = usePrivacyStore()
     if (!privacy.isDemo || background.visibleInDemo) return true
     const storyStore = useStoriesStore()
@@ -124,7 +128,7 @@ export const useBackgroundsStore = defineStore('backgrounds', () => {
     const current = byId(id)
     if (!current) return null
     const tags = patch.tags === undefined ? current.tags : prepareTags(patch.tags, id)
-    const updated: StoredBackground = {
+    const updated: BackgroundAsset = {
       ...current,
       ...patch,
       tags,

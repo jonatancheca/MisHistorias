@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { StoredSound } from '~/lib/db'
+import type { SoundAsset } from '~/lib/db'
 
 const props = defineProps<{
   characterId?: string
@@ -47,7 +47,7 @@ async function add(event: Event) {
   }
 }
 
-async function update(sound: StoredSound, nextTags: string[], background = sound.isBackground === true) {
+async function update(sound: SoundAsset, nextTags: string[], background = sound.isBackground === true) {
   error.value = null
   try {
     await sounds.updateSound(sound.id, nextTags, background)
@@ -56,7 +56,7 @@ async function update(sound: StoredSound, nextTags: string[], background = sound
   }
 }
 
-async function remove(sound: StoredSound) {
+async function remove(sound: SoundAsset) {
   const accepted = await confirmDialog.ask({
     title: 'Borrar sonido',
     message: `Se borrará el sonido [${sound.tags[0] ?? 'sin etiqueta'}].`
@@ -103,7 +103,7 @@ async function remove(sound: StoredSound) {
       <li
         v-for="sound in entries"
         :key="sound.id"
-        class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-[var(--color-border-soft)] p-2 sm:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto]"
+        class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-xl border border-[var(--color-border-soft)] px-2 py-1 sm:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto] sm:gap-2"
         data-testid="sound-card"
       >
         <audio
@@ -112,8 +112,8 @@ async function remove(sound: StoredSound) {
           preload="metadata"
           class="col-span-2 w-full min-w-0 sm:col-span-1"
         />
-        <div class="min-w-0">
-          <label class="mb-1 flex items-center gap-2 text-sm">
+        <div class="contents sm:block sm:min-w-0">
+          <label class="col-start-1 row-start-2 flex min-w-0 items-center gap-2 text-sm sm:col-auto sm:row-auto sm:mb-1">
             <input
               type="checkbox"
               :checked="sound.isBackground === true"
@@ -122,14 +122,16 @@ async function remove(sound: StoredSound) {
             >
             Sonido de fondo
           </label>
-          <TagInput
-            :model-value="sound.tags"
-            aria-label="Etiquetas del sonido"
-            placeholder="puerta"
-            @update:model-value="update(sound, $event)"
-          />
+          <div class="col-span-2 row-start-3 min-w-0 sm:col-span-1 sm:row-auto">
+            <TagInput
+              :model-value="sound.tags"
+              aria-label="Etiquetas del sonido"
+              placeholder="puerta"
+              @update:model-value="update(sound, $event)"
+            />
+          </div>
         </div>
-        <button type="button" class="btn-danger justify-self-end" @click="remove(sound)">Borrar</button>
+        <button type="button" class="btn-danger col-start-2 row-start-2 justify-self-end sm:col-auto sm:row-auto" @click="remove(sound)">Borrar</button>
       </li>
     </ul>
   </section>

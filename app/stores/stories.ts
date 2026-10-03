@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { reportClientErrorTrace } from '~/lib/errorTraces'
 import type {
   Background,
   Character,
@@ -215,6 +216,14 @@ export const useStoriesStore = defineStore('stories', () => {
   const messages = ref<Message[]>([])
   const debugTraces = ref<LlmDebugTrace[]>([])
   const saveSlots = ref<StorySaveSlot[]>([])
+  const saveSlotsLoading = ref(false)
+  const saveSlotsError = ref<string | null>(null)
+  let storyOpenRevision = 0
+  let auxiliaryController: AbortController | null = null
+  let pendingTraceLoad: Promise<void> | null = null
+  let debugLoadError: string | null = null
+  const removedMessageIds = new Set<string>()
+  const removedSaveIds = new Set<string>()
   const generating = ref(false)
   const waitingForResponse = ref(false)
   const retryingEmptyResponse = ref(false)
@@ -481,6 +490,7 @@ export const useStoriesStore = defineStore('stories', () => {
   watch(getActiveDataScope, () => cancelImageGeneration(), { flush: 'sync' })
 
   async function resetForScope() {
+    cancelStoryAuxiliary()
     loadRevision += 1
     cancelImageGeneration({ abandonResponse: true })
     await stop()
@@ -569,6 +579,7 @@ export const useStoriesStore = defineStore('stories', () => {
     await deleteStory(id)
     stories.value = stories.value.filter((story) => story.id !== id)
     if (activeStory.value?.id === id) {
+      cancelStoryAuxiliary()
       activeStory.value = null
       messages.value = []
       debugTraces.value = []
@@ -615,24 +626,79 @@ export const useStoriesStore = defineStore('stories', () => {
     return updated
   }
 
+  function cancelStoryAuxiliary() {
+    storyOpenRevision += 1
+    auxiliaryController?.abort()
+    auxiliaryController = null
+    pendingTraceLoad = null
+    saveSlotsLoading.value = false
+  }
+
+  function loadStoryAuxiliary(id: string, scope: DataScope, opening: number) {
+    const controller = new AbortController()
+    auxiliaryController = controller
+    const current = () => !controller.signal.aborted && opening === storyOpenRevision &&
+      scope === getActiveDataScope() && activeStory.value?.id === id
+    saveSlotsLoading.value = true
+    const traces = listLlmDebugTraces(id, scope, controller.signal)
+      .then(stored => {
+        if (!current()) return
+        const merged = new Map(stored.map(trace => [trace.id, trace]))
+        for (const trace of debugTraces.value) merged.set(trace.id, trace)
+        debugTraces.value = [...merged.values()].sort((a, b) => a.createdAt - b.createdAt)
+        removeLocalTracesForMessages([...removedMessageIds])
+      })
+      .catch((caught: unknown) => {
+        if (!current()) return
+        debugLoadError = (caught as Error).message || 'No se pudieron cargar los datos de Debug.'
+        void reportClientErrorTrace({ source: 'client', operation: 'stories.debug.load', scope,
+          message: debugLoadError, response: caught })
+      })
+    pendingTraceLoad = traces
+    const saves = listStorySaves(id, scope, controller.signal)
+      .then(stored => {
+        if (!current()) return
+        const merged = new Map(stored.map(save => [save.id, save]))
+        for (const save of saveSlots.value) merged.set(save.id, save)
+        saveSlots.value = [...merged.values()].filter(save => !removedSaveIds.has(save.id))
+          .sort((a, b) => b.createdAt - a.createdAt)
+      })
+      .catch((caught: unknown) => {
+        if (!current()) return
+        saveSlotsError.value = 'No se pudieron cargar las partidas. Vuelve a abrir la historia para reintentar.'
+        void reportClientErrorTrace({ source: 'client', operation: 'stories.saves.load', scope,
+          message: (caught as Error).message || saveSlotsError.value, response: caught })
+      })
+      .finally(() => {
+        if (current()) saveSlotsLoading.value = false
+      })
+    void Promise.all([traces, saves]).then(() => {
+      if (auxiliaryController === controller) auxiliaryController = null
+      if (pendingTraceLoad === traces) pendingTraceLoad = null
+    })
+  }
+
   async function openStory(id: string) {
+    cancelStoryAuxiliary()
+    const opening = storyOpenRevision
     const scope = getActiveDataScope()
     await load()
-    if (scope !== getActiveDataScope()) return
+    if (scope !== getActiveDataScope() || opening !== storyOpenRevision) return
     const revision = loadRevision
     visualRevealNavigationPaused.value = false
     visualRevealWaitingForAdvance.value = false
     activeStory.value = stories.value.find((story) => story.id === id) ?? null
-    const [storedMessages, storedTraces, storedSaves] = activeStory.value
-      ? await Promise.all([
-          listMessages(id, scope),
-          listLlmDebugTraces(id, scope),
-          listStorySaves(id, scope)
-        ])
-      : [[], [], []]
+    messages.value = []
+    debugTraces.value = []
+    saveSlots.value = []
+    saveSlotsError.value = null
+    debugLoadError = null
+    removedMessageIds.clear()
+    removedSaveIds.clear()
+    const storedMessages = activeStory.value ? await listMessages(id, scope) : []
     const charactersStore = useCharactersStore()
     await charactersStore.load()
-    if (scope !== getActiveDataScope() || revision !== loadRevision) return
+    if (scope !== getActiveDataScope() || revision !== loadRevision || opening !== storyOpenRevision) return
     const changed: Message[] = []
     const normalizedMessages = storedMessages.map((message) => {
       if (message.role !== 'assistant' || message.swarmError) return message
@@ -658,17 +724,21 @@ export const useStoriesStore = defineStore('stories', () => {
       return normalized
     })
     if (changed.length) await Promise.all(changed.map((message) => putMessage(message, scope)))
+    if (scope !== getActiveDataScope() || opening !== storyOpenRevision) return
     messages.value = normalizedMessages
-    debugTraces.value = storedTraces
     transientGenerationFeedback.value = null
-    saveSlots.value = storedSaves
     error.value = null
+    if (activeStory.value) loadStoryAuxiliary(id, scope, opening)
   }
 
   async function createSaveSlot(name: string, thumbnailDataUrl: string) {
     if (!activeStory.value) return null
-    const save = await dbCreateStorySave(activeStory.value.id, name, thumbnailDataUrl)
-    saveSlots.value = [save, ...saveSlots.value]
+    const id = activeStory.value.id
+    const opening = storyOpenRevision
+    const save = await dbCreateStorySave(id, name, thumbnailDataUrl)
+    if (opening === storyOpenRevision && activeStory.value?.id === id) {
+      saveSlots.value = [save, ...saveSlots.value]
+    }
     return save
   }
 
@@ -682,7 +752,10 @@ export const useStoriesStore = defineStore('stories', () => {
   }
 
   async function removeSaveSlot(id: string) {
+    const opening = storyOpenRevision
     await dbDeleteStorySave(id)
+    if (opening !== storyOpenRevision) return
+    removedSaveIds.add(id)
     saveSlots.value = saveSlots.value.filter((save) => save.id !== id)
   }
 
@@ -1067,6 +1140,7 @@ export const useStoriesStore = defineStore('stories', () => {
   }
 
   function removeLocalTracesForMessages(ids: string[]) {
+    ids.forEach(id => removedMessageIds.add(id))
     const idSet = new Set(ids)
     debugTraces.value = debugTraces.value.filter(
       (trace) =>
@@ -2020,6 +2094,10 @@ export const useStoriesStore = defineStore('stories', () => {
 
   async function resendFrom(id: string) {
     if (generating.value) return
+    const opening = storyOpenRevision
+    await pendingTraceLoad
+    if (opening !== storyOpenRevision || generating.value) return
+    if (debugLoadError) throw new Error(debugLoadError)
     const index = messages.value.findIndex((message) => message.id === id)
     if (index < 0 || messages.value[index]?.role !== 'user') return
     const ids = messages.value.slice(index + 1).map((message) => message.id)
@@ -2044,6 +2122,8 @@ export const useStoriesStore = defineStore('stories', () => {
     messages,
     debugTraces,
     saveSlots,
+    saveSlotsLoading,
+    saveSlotsError,
     generating,
     waitingForResponse,
     retryingEmptyResponse,
@@ -2069,6 +2149,7 @@ export const useStoriesStore = defineStore('stories', () => {
     removeStory,
     copySharedDemoStory,
     openStory,
+    cancelStoryAuxiliary,
     createSaveSlot,
     loadSaveSlot,
     removeSaveSlot,

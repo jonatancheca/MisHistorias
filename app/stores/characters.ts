@@ -7,13 +7,15 @@ import {
   deleteCharacter,
   deleteImage,
   importCharacterArchive as importStoredCharacterArchive,
-  listAllImages,
+  assetContentUrl,
+  listImageMetadata,
   listCharacters,
   newId,
   putCharacter,
   putImage,
   reorderCharacterImages,
   restoreImage as restoreStoredImage,
+  type ImageAsset,
   type StoredImage
 } from '~/lib/db'
 import type { ImportedCharacterArchive } from '~/lib/characterArchive'
@@ -27,19 +29,26 @@ import {
 
 export const useCharactersStore = defineStore('characters', () => {
   const characters = ref<Character[]>([])
-  const images = ref<StoredImage[]>([])
+  const images = ref<ImageAsset[]>([])
   const urls = ref<Record<string, string>>({})
   const urlBlobs = new Map<string, Blob>()
   const loaded = ref(false)
   let loadRevision = 0
+  let imageUpdateQueue: Promise<void> = Promise.resolve()
+  const imageUpdateVersions = new Map<string, number>()
+  const defaultUpdateVersions = new Map<string, number>()
+  let pendingLoad: { scope: DataScope; promise: Promise<void> } | null = null
 
   function syncUrls() {
     const next: Record<string, string> = {}
     for (const image of images.value) {
-      next[image.id] = urlBlobs.get(image.id) === image.blob && urls.value[image.id]
-        ? urls.value[image.id]!
-        : URL.createObjectURL(image.blob)
-      urlBlobs.set(image.id, image.blob)
+      next[image.id] = image.blob
+        ? urlBlobs.get(image.id) === image.blob && urls.value[image.id]
+          ? urls.value[image.id]!
+          : URL.createObjectURL(image.blob)
+        : assetContentUrl('images', image.id)
+      if (image.blob) urlBlobs.set(image.id, image.blob)
+      else urlBlobs.delete(image.id)
     }
     for (const [id, url] of Object.entries(urls.value)) {
       if (next[id] !== url) URL.revokeObjectURL(url)
@@ -49,6 +58,7 @@ export const useCharactersStore = defineStore('characters', () => {
   }
 
   function resetForScope() {
+    pendingLoad = null
     loadRevision += 1
     characters.value = []
     images.value = []
@@ -59,10 +69,21 @@ export const useCharactersStore = defineStore('characters', () => {
   async function load(force = false) {
     if (loaded.value && !force) return
     const scope = getActiveDataScope()
+    if (!force && pendingLoad?.scope === scope) return pendingLoad.promise
+    const pending = { scope, promise: loadCatalog(scope) }
+    pendingLoad = pending
+    try {
+      await pending.promise
+    } finally {
+      if (pendingLoad === pending) pendingLoad = null
+    }
+  }
+
+  async function loadCatalog(scope: DataScope) {
     const revision = ++loadRevision
     const [chars, imgs] = await Promise.all([
       listCharacters(scope),
-      listAllImages(scope)
+      listImageMetadata(scope)
     ])
     if (scope !== getActiveDataScope() || revision !== loadRevision) return
     characters.value = chars
@@ -266,21 +287,28 @@ export const useCharactersStore = defineStore('characters', () => {
     return stored
   }
 
-  function applyDefaultLocally(image: StoredImage) {
+  function applyDefaultLocally(image: ImageAsset) {
+    const version = (defaultUpdateVersions.get(image.characterId) ?? 0) + 1
+    defaultUpdateVersions.set(image.characterId, version)
     images.value = images.value.map((item) =>
       item.characterId === image.characterId && item.id !== image.id
         ? { ...item, isDefault: false }
         : item
     )
+    return version
   }
 
   async function updateImage(
     id: string,
     patch: Partial<Pick<StoredImage, 'tags' | 'isDefault'>>
   ) {
+    const scope = getActiveDataScope()
+    const revision = loadRevision
+    const version = (imageUpdateVersions.get(id) ?? 0) + 1
+    imageUpdateVersions.set(id, version)
     const current = images.value.find((image) => image.id === id)
     if (!current) return
-    const updated: StoredImage = {
+    const updated: ImageAsset = {
       ...current,
       ...patch,
       tags:
@@ -288,9 +316,34 @@ export const useCharactersStore = defineStore('characters', () => {
           ? current.tags
           : sanitizeTags(patch.tags, undefined, 'neutral')
     }
-    await putImage(updated)
-    images.value = images.value.map((image) => (image.id === id ? updated : image))
-    if (updated.isDefault) applyDefaultLocally(updated)
+    const previousDefaults = new Map(images.value.filter(image => image.characterId === current.characterId)
+      .map(image => [image.id, image.isDefault]))
+    images.value = images.value.map((image) => image.id === id ? updated : image)
+    const defaultVersion = updated.isDefault ? applyDefaultLocally(updated) : null
+    const persist = async () => {
+      const cached = scope === getActiveDataScope() && revision === loadRevision
+        ? images.value.find(image => image.id === id)?.blob : undefined
+      const stored = await putImage({ ...updated, blob: updated.blob ?? cached }, scope)
+      if (scope !== getActiveDataScope() || revision !== loadRevision) return
+      images.value = images.value.map(image => image.id === id ? { ...image, blob: stored.blob } : image)
+      syncUrls()
+    }
+    const request = imageUpdateQueue.then(persist, persist)
+    imageUpdateQueue = request.then(() => undefined, () => undefined)
+    try {
+      await request
+    } catch (caught) {
+      if (scope === getActiveDataScope() && revision === loadRevision && imageUpdateVersions.get(id) === version) {
+        const restoreDefaults = defaultVersion !== null && defaultUpdateVersions.get(current.characterId) === defaultVersion
+        images.value = images.value.map(image => {
+          const restored = image.id === id ? { ...current, isDefault: image.isDefault } : image
+          return restoreDefaults && previousDefaults.has(image.id)
+            ? { ...restored, isDefault: previousDefaults.get(image.id)! } : restored
+        })
+        syncUrls()
+      }
+      throw caught
+    }
   }
 
   async function reorderImages(characterId: string, imageIds: string[]) {

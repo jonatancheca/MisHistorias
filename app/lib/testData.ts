@@ -139,6 +139,7 @@ async function seedNormalData() {
       imageGenerationSeed: '',
       imageGenerationPromptPrefix: '',
       archived: false,
+      visibleInDemo: false,
       createdAt: TEST_TIME + 10,
       updatedAt: TEST_TIME + 10
     },
@@ -153,6 +154,7 @@ async function seedNormalData() {
       imageGenerationSeed: '',
       imageGenerationPromptPrefix: '',
       archived: false,
+      visibleInDemo: false,
       createdAt: TEST_TIME + 11,
       updatedAt: TEST_TIME + 11
     }
@@ -209,6 +211,7 @@ async function seedNormalData() {
       description: 'Bosque verde al amanecer.',
       mimeType: 'image/svg+xml',
       archived: false,
+      visibleInDemo: false,
       createdAt: TEST_TIME + 30,
       blob: svgBlob('Bosque', '#166534')
     },
@@ -219,6 +222,7 @@ async function seedNormalData() {
       description: 'Taberna cálida iluminada por velas.',
       mimeType: 'image/svg+xml',
       archived: false,
+      visibleInDemo: false,
       createdAt: TEST_TIME + 31,
       blob: svgBlob('Taberna', '#92400e')
     }
@@ -243,6 +247,7 @@ async function seedNormalData() {
       premise: 'Alicia busca a Bruno antes de que caiga la noche.',
       visualMode: false,
       archived: false,
+      visibleInDemo: false,
       protagonistPreferences: 'Mantener tono aventurero.',
       protagonistPreferencesMode: 'append',
       characterIds: [TEST_DATA_IDS.characterAlicia, TEST_DATA_IDS.characterBruno],
@@ -277,6 +282,7 @@ async function seedNormalData() {
       premise: 'Historia preparada para probar el primer mensaje.',
       visualMode: false,
       archived: false,
+      visibleInDemo: false,
       protagonistPreferences: 'Usar frases muy cortas.',
       protagonistPreferencesMode: 'replace',
       characterIds: [TEST_DATA_IDS.characterAlicia],
@@ -393,13 +399,13 @@ async function seedNormalData() {
 
   await Promise.all([
     ...characters.map(putCharacter),
-    ...backgrounds.map(putBackground)
+    ...backgrounds.map((background) => putBackground(background))
   ])
   await Promise.all(images.map((image) => putImage(image)))
-  await Promise.all(sounds.map(putSound))
+  await Promise.all(sounds.map((sound) => putSound(sound)))
   await Promise.all(stories.map(putStory))
   await Promise.all(messages.map((message) => putMessage(message)))
-  await Promise.all(traces.map(putLlmDebugTrace))
+  await Promise.all(traces.map((trace) => putLlmDebugTrace(trace)))
 }
 
 export async function resetNormalTestData(seed: boolean): Promise<TestDataResetResult> {

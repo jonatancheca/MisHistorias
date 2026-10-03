@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { activeDataScope, type StoredImage } from '~/lib/db'
+import { activeDataScope, readAssetBlob, type ImageAsset, type StoredImage } from '~/lib/db'
 import {
   createCharacterImageBatch,
   runCharacterImageJobs
@@ -604,11 +604,22 @@ function skipCrop() {
   if (pendingFiles.value.length === 0) finishBatch()
 }
 
-function editCrop(image: StoredImage) {
+async function editCrop(image: ImageAsset) {
   if (busy.value || editingBusy.value) return
+  const scope = activeDataScope.value
+  editingBusy.value = true
   error.value = null
   notice.value = null
-  editingImage.value = image
+  try {
+    const blob = await readAssetBlob('images', image, scope)
+    if (scope === activeDataScope.value && props.characterId === image.characterId) {
+      editingImage.value = { ...image, blob }
+    }
+  } catch (caught) {
+    error.value = (caught as Error).message || 'No se pudo cargar la imagen para recortarla.'
+  } finally {
+    editingBusy.value = false
+  }
 }
 
 async function saveCrop(blob: Blob) {
@@ -626,7 +637,7 @@ async function saveCrop(blob: Blob) {
   }
 }
 
-async function restoreOriginal(image: StoredImage) {
+async function restoreOriginal(image: ImageAsset) {
   if (busy.value || editingBusy.value) return
   editingBusy.value = true
   error.value = null
@@ -650,14 +661,14 @@ function downloadPart(value: string) {
     .replace(/^-|-$/g, '') || 'imagen'
 }
 
-function extensionFor(image: StoredImage) {
-  const mimeType = image.mimeType || image.blob.type
+function extensionFor(image: ImageAsset) {
+  const mimeType = image.mimeType || image.blob?.type || ''
   if (mimeType === 'image/jpeg') return 'jpg'
   if (mimeType === 'image/svg+xml') return 'svg'
   return mimeType.startsWith('image/') ? (mimeType.slice(6).split('+')[0] || 'img') : 'img'
 }
 
-function downloadName(image: StoredImage) {
+function downloadName(image: ImageAsset) {
   const character = characters.byId(props.characterId)
   return [
     downloadPart(character?.name ?? 'personaje'),

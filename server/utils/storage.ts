@@ -9,13 +9,16 @@ import {
 } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
+import { DatabaseSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite'
 import { inspectBackupDatabase, inspectBackupsInBackground } from './backupInspection.ts'
 import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
 import { readStorySwarmError } from '../../shared/utils/swarmError.ts'
 import type {
   AccessConfiguration,
   AccessIdentity,
+  Background,
+  Character,
+  CharacterImage,
   DatabaseBackup,
   DatabaseBackupKind,
   ErrorTrace,
@@ -28,6 +31,7 @@ import type {
   IdentityReassignmentResult,
   LlmDebugTrace,
   Message,
+  Sound,
   Story,
   StorySaveSlot
 } from '../../shared/types/index.ts'
@@ -114,10 +118,11 @@ interface SettingsRow {
   swarmAuthToken: string
 }
 
-interface SqliteRow extends Record<string, unknown> {
-  id: string
-  scope: DataScope
-}
+type SqliteRow<Columns extends string = never> = Record<string, SQLOutputValue> &
+  Record<Columns, SQLOutputValue> & {
+    id: string
+    scope: DataScope
+  }
 
 const SCHEMA_VERSION = 44
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
@@ -311,7 +316,7 @@ function storyWithCharacterNames(
   }
 }
 
-function rowToCharacter(row: SqliteRow) {
+function rowToCharacter(row: SqliteRow): Character {
   return {
     id: row.id,
     name: text(row.name),
@@ -343,7 +348,7 @@ function rowToSwarmPrompt(row: SqliteRow) {
   }
 }
 
-function rowToImage(row: SqliteRow) {
+function rowToImage(row: SqliteRow): CharacterImage {
   return {
     id: row.id,
     characterId: text(row.character_id),
@@ -357,7 +362,7 @@ function rowToImage(row: SqliteRow) {
   }
 }
 
-function rowToBackground(row: SqliteRow) {
+function rowToBackground(row: SqliteRow): Background {
   return {
     id: row.id,
     tags: parseJson<string[]>(row.tags_json, []),
@@ -384,7 +389,7 @@ function nextAvailableTag(base: string, used: Set<string>) {
   return candidate
 }
 
-function rowToSound(row: SqliteRow) {
+function rowToSound(row: SqliteRow): Sound {
   return {
     id: row.id,
     tags: parseJson<string[]>(row.tags_json, []),
@@ -396,7 +401,7 @@ function rowToSound(row: SqliteRow) {
   }
 }
 
-function rowToStory(row: SqliteRow) {
+function rowToStory(row: SqliteRow): Story {
   return {
     id: row.id,
     title: text(row.title),
@@ -426,7 +431,7 @@ function rowToStory(row: SqliteRow) {
       row.image_catalog_snapshot_json === null
         ? undefined
         : imageCatalogSnapshot(parseJson(row.image_catalog_snapshot_json, undefined)),
-    pendingImageInstructions: parseJson(row.pending_image_instructions_json, []),
+    pendingImageInstructions: parseJson<Story['pendingImageInstructions']>(row.pending_image_instructions_json, []),
     contextSummary: text(row.context_summary),
     ...(typeof row.context_summary_through_message_id === 'string'
       ? { contextSummaryThroughMessageId: row.context_summary_through_message_id }
@@ -436,14 +441,14 @@ function rowToStory(row: SqliteRow) {
   }
 }
 
-function rowToMessage(row: SqliteRow) {
+function rowToMessage(row: SqliteRow): Message & { readOnly?: boolean } {
   const swarmError = readStorySwarmError(parseJson(row.swarm_error_json, null))
   return {
     id: row.id,
     storyId: text(row.story_id),
     role: row.role === 'assistant' ? 'assistant' : 'user',
     raw: text(row.raw),
-    segments: parseJson<unknown[]>(row.segments_json, []),
+    segments: parseJson<Message['segments']>(row.segments_json, []),
     ...(swarmError ? { swarmError } : {}),
     createdAt: integer(row.created_at)
   }
@@ -489,20 +494,22 @@ function rowToErrorTrace(row: Record<string, unknown>): ErrorTrace {
   }
 }
 
-function rowToStorySave(row: SqliteRow) {
+function rowToStorySave(row: SqliteRow): StorySaveSlot {
   return {
     id: row.id,
     storyId: text(row.story_id),
     name: text(row.name),
-    story: storyWithArchived(parseJson(row.story_json, {})),
-    messages: sanitizeSavedMessages(parseJson(row.messages_json, [])),
-    debugTraces: parseJson(row.debug_traces_json, []),
+    story: storyWithArchived(parseJson(row.story_json, {})) as Story,
+    messages: sanitizeSavedMessages(parseJson<Message[]>(row.messages_json, [])),
+    debugTraces: parseJson<LlmDebugTrace[]>(row.debug_traces_json, []),
     thumbnailDataUrl: text(row.thumbnail_data_url),
     createdAt: integer(row.created_at)
   }
 }
 
-function sanitizeSavedMessages(value: unknown) {
+function sanitizeSavedMessages(value: Message[]): Message[]
+function sanitizeSavedMessages(value: unknown): Record<string, unknown>[]
+function sanitizeSavedMessages(value: unknown): Message[] | Record<string, unknown>[] {
   if (!Array.isArray(value)) return []
   return value.map((message) => {
     const item = record(message)
@@ -1867,7 +1874,7 @@ export class MisHistoriasStorage {
         claimed[table] = Number(result.changes)
       }
 
-      const settings = {
+      const settings: Record<string, unknown> = {
         ...(this.readSettings()?.value ?? {}),
         ...(configuration
           ? {
@@ -2185,9 +2192,11 @@ export class MisHistoriasStorage {
     }
   }
 
-  private accessFilter(resource: DataResource, alias: string, access?: StorageAccess) {
-    if (!access) return { sql: '', args: [] as unknown[] }
-    if (!access.ownerId) return { sql: ` AND ${alias}.owner_id IS NULL`, args: [] as unknown[] }
+  private accessFilter(
+    resource: DataResource, alias: string, access?: StorageAccess
+  ): { sql: string; args: SQLInputValue[] } {
+    if (!access) return { sql: '', args: [] }
+    if (!access.ownerId) return { sql: ` AND ${alias}.owner_id IS NULL`, args: [] }
     const own = `${alias}.owner_id = ?`
     if (!access.includeSharedDemo) return { sql: ` AND ${own}`, args: [access.ownerId] }
     if (resource === 'stories') {
@@ -2702,20 +2711,32 @@ export class MisHistoriasStorage {
 
       const characterRows = this.database.prepare(`
         SELECT * FROM characters WHERE scope = ? AND owner_id = ?
-      `).all(scope, sourceOwnerId) as SqliteRow[]
+      `).all(scope, sourceOwnerId) as SqliteRow<
+        'name' | 'prompt' | 'tags_json' | 'color' | 'image_generation_preset' |
+        'image_generation_lora' | 'image_generation_seed' | 'image_generation_prompt_prefix' |
+        'image_generation_notes' | 'image_generation_prompt' | 'image_generation_model' |
+        'archived' | 'created_at' | 'updated_at'
+      >[]
       const imageRows = this.database.prepare(`
         SELECT images.*, image_blobs.data AS blob_data
         FROM images
         INNER JOIN image_blobs
           ON image_blobs.scope = images.scope AND image_blobs.id = images.blob_id
         WHERE images.scope = ? AND images.owner_id = ? AND image_blobs.owner_id = ?
-      `).all(scope, sourceOwnerId, sourceOwnerId) as SqliteRow[]
+      `).all(scope, sourceOwnerId, sourceOwnerId) as SqliteRow<
+        'blob_data' | 'tags_json' | 'is_default' | 'mime_type' | 'created_at' |
+        'original_data' | 'original_mime_type' | 'generation_json'
+      >[]
       const backgroundRows = this.database.prepare(`
         SELECT * FROM backgrounds WHERE scope = ? AND owner_id = ?
-      `).all(scope, sourceOwnerId) as SqliteRow[]
+      `).all(scope, sourceOwnerId) as SqliteRow<
+        'style' | 'description' | 'mime_type' | 'created_at' | 'data'
+      >[]
       const soundRows = this.database.prepare(`
         SELECT * FROM sounds WHERE scope = ? AND owner_id = ?
-      `).all(scope, sourceOwnerId) as SqliteRow[]
+      `).all(scope, sourceOwnerId) as SqliteRow<
+        'is_background' | 'mime_type' | 'created_at' | 'data'
+      >[]
 
       const selectedCharacters = characterRows.filter((row) => characterIds.has(row.id))
       const selectedCharacterIds = new Set(selectedCharacters.map((row) => row.id))
@@ -2921,7 +2942,7 @@ export class MisHistoriasStorage {
       `)
       for (const row of selectedCharacters) {
         insertCharacter.run(
-          scope, access.ownerId, characterIdMap.get(row.id), row.name, row.prompt, row.tags_json,
+          scope, access.ownerId, characterIdMap.get(row.id)!, row.name, row.prompt, row.tags_json,
           row.color, row.image_generation_preset, row.image_generation_lora,
           row.image_generation_seed, row.image_generation_prompt_prefix,
           row.image_generation_notes, row.image_generation_prompt, row.image_generation_model,
@@ -2942,7 +2963,7 @@ export class MisHistoriasStorage {
         const id = imageIdMap.get(row.id)!
         insertBlob.run(scope, access.ownerId, id, row.blob_data)
         insertImage.run(
-          scope, access.ownerId, id, characterIdMap.get(text(row.character_id)), integer(row.position),
+          scope, access.ownerId, id, characterIdMap.get(text(row.character_id))!, integer(row.position),
           row.tags_json, row.is_default, row.mime_type, row.created_at, id, row.original_data,
           row.original_mime_type, row.generation_json
         )
@@ -2956,7 +2977,7 @@ export class MisHistoriasStorage {
       `)
       for (const row of selectedBackgrounds) {
         insertBackground.run(
-          scope, access.ownerId, backgroundIdMap.get(row.id), json(backgroundTagsForCopy.get(row.id)),
+          scope, access.ownerId, backgroundIdMap.get(row.id)!, json(backgroundTagsForCopy.get(row.id)),
           row.style, row.description, row.mime_type, row.created_at, row.data
         )
       }
@@ -2969,7 +2990,7 @@ export class MisHistoriasStorage {
       `)
       for (const row of selectedSounds) {
         insertSound.run(
-          scope, access.ownerId, soundIdMap.get(row.id), json(soundTagsForCopy.get(row.id)),
+          scope, access.ownerId, soundIdMap.get(row.id)!, json(soundTagsForCopy.get(row.id)),
           typeof row.character_id === 'string' ? characterIdMap.get(row.character_id) ?? null : null,
           typeof row.background_id === 'string' ? backgroundIdMap.get(row.background_id) ?? null : null,
           row.is_background,
@@ -3124,7 +3145,7 @@ export class MisHistoriasStorage {
       return {
         character,
         images: this.list('images', scope, { characterId }, access),
-        sounds: (this.list('sounds', scope, {}, access) as Array<Record<string, unknown>>)
+        sounds: this.list('sounds', scope, {}, access)
           .filter((sound) => sound.characterId === characterId)
       }
     })
@@ -3416,6 +3437,13 @@ export class MisHistoriasStorage {
     return saved
   }
 
+  putBinary<R extends 'images' | 'backgrounds' | 'sounds'>(
+    resource: R,
+    scope: DataScope,
+    id: string,
+    payload: BinaryPayload,
+    access?: StorageAccess
+  ): DataRecordMap[R]
   putBinary(
     resource: 'images' | 'backgrounds' | 'sounds',
     scope: DataScope,

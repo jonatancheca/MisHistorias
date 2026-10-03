@@ -128,7 +128,7 @@ interface ExportedStory {
   initialBackgroundId?: string | null
   backgroundStyle?: string | null
   messages: Array<Pick<Message, 'id' | 'role' | 'raw' | 'segments' | 'generationMode' | 'swarmError' | 'createdAt'>>
-  saves?: StorySaveSlot[]
+  saves?: Array<Omit<StorySaveSlot, 'messages'> & { messages: ExportedStory['messages'] }>
 }
 
 interface ExportBundle {

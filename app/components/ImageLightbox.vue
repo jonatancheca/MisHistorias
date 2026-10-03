@@ -131,7 +131,7 @@ watch(() => props.activeItemId, (id) => {
 watch(() => items.value.map((item) => item.id ?? item.src), (currentIds, previousIds) => {
   if (!open.value) return
   const currentId = previousIds[activeIndex.value]
-  const index = currentIds.indexOf(currentId)
+  const index = currentId === undefined ? -1 : currentIds.indexOf(currentId)
   activeIndex.value = index >= 0 ? index : Math.max(0, Math.min(activeIndex.value, currentIds.length - 1))
 })
 

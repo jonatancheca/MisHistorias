@@ -811,6 +811,7 @@ test.describe('personajes', () => {
 
     await page.goto(`/stories/${first.id}`)
     await expect(page.getByText(character.name, { exact: true })).toBeVisible()
+    await page.getByTestId('story-tools-toggle').click()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     await expect(page.getByRole('button', { name: `Editar ${character.name}` })).toBeVisible()
 

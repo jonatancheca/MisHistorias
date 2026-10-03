@@ -7,7 +7,7 @@ import {
   readCharacterArchive,
   type ImportedCharacterArchive
 } from '~/lib/characterArchive'
-import { getOriginalImageBlob, listSounds, listStories } from '~/lib/db'
+import { getOriginalImageBlob, listImages, listSounds, listStories } from '~/lib/db'
 
 const characters = useCharactersStore()
 const privacy = usePrivacyStore()
@@ -99,7 +99,7 @@ async function exportCharacter(id: string) {
   transferSuccess.value = null
   try {
     const sounds = (await listSounds()).filter((sound) => sound.characterId === id)
-    const images = await Promise.all(characters.imagesFor(id).map(async (image) => ({
+    const images = await Promise.all((await listImages(id)).map(async (image) => ({
       ...image,
       originalBlob: image.hasOriginal ? await getOriginalImageBlob(image.id) : undefined
     })))

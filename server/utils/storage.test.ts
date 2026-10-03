@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { DatabaseSync } from 'node:sqlite'
 import { MisHistoriasStorage } from './storage.ts'
-import type { Background, CharacterImage, ErrorTrace, SwarmPrompt } from '../../shared/types/index.ts'
+import type { Background, CharacterImage, ErrorTrace, Story, SwarmPrompt } from '../../shared/types/index.ts'
 
 function withStorage(run: (storage: MisHistoriasStorage, path: string) => void) {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-'))
@@ -45,7 +45,7 @@ function character(id: string) {
   }
 }
 
-function story(id: string) {
+function story(id: string): Story {
   return {
     id,
     title: `Historia ${id}`,
@@ -374,6 +374,7 @@ test('migra v27 y conserva semillas al recortar, copiar, restaurar e importar', 
       migrated.restoreImage('normal', 'i')
       assert.deepEqual((migrated.get('images', 'normal', 'i') as CharacterImage)?.generation, generation)
       const imported = migrated.importCharacter('normal', null, { ...character('import'),
+        imageGenerationNotes: '', imageGenerationPrompt: '',
         images: [{ metadata: { ...metadata, generation }, data: new Uint8Array([3]) }], sounds: [] })!
       assert.deepEqual((imported.images[0] as CharacterImage)?.generation, generation)
     } finally { migrated.close() }
@@ -1650,7 +1651,7 @@ test('conserva la primera original al recortar, copiar, reabrir y restaurar en c
       assert.deepEqual(storage.getBinary('images', scope, String(copiedImage.id)), { data: original, mimeType: 'image/png' })
       assert.equal(storage.getOriginalImage(scope === 'normal' ? 'private' : 'normal', String(copiedImage.id)), null)
       storage.putBinary('images', scope, String(copiedImage.id), {
-        metadata: copiedImage, data: new Uint8Array([7, 8])
+        metadata: { ...copiedImage }, data: new Uint8Array([7, 8])
       })
     }
     storage.close()
@@ -2027,6 +2028,8 @@ test('importa personaje nuevo con medios e IDs nuevos', () => {
       imageGenerationLora: 'Detalle',
       imageGenerationSeed: '12345',
       imageGenerationPromptPrefix: 'detailed portrait',
+      imageGenerationNotes: '',
+      imageGenerationPrompt: '',
       images: [{
         metadata: {
           tags: ['feliz'],
@@ -2092,6 +2095,8 @@ test('reemplaza personaje de forma atómica conservando su ID e historias', () =
       imageGenerationLora: '',
       imageGenerationSeed: '',
       imageGenerationPromptPrefix: '',
+      imageGenerationNotes: '',
+      imageGenerationPrompt: '',
       images: [{
         metadata: {
           tags: ['después'], isDefault: true, mimeType: 'image/webp'
@@ -2123,6 +2128,8 @@ test('reemplaza personaje de forma atómica conservando su ID e historias', () =
       imageGenerationLora: '',
       imageGenerationSeed: '',
       imageGenerationPromptPrefix: '',
+      imageGenerationNotes: '',
+      imageGenerationPrompt: '',
       images: [1, 2].map(() => ({
         metadata: { tags: [], isDefault: true, mimeType: 'image/png' },
         data: new Uint8Array([3])
@@ -2243,7 +2250,7 @@ test('activa multiusuario, reclama el legado y aísla propietarios compartiendo 
     )
     assert.equal(activation.state.multiUserEnabled, true)
     assert.equal(activation.state.adminOwnerId, 'admin-sub')
-    assert.ok(activation.claimed.characters >= 2)
+    assert.ok(activation.claimed.characters !== undefined && activation.claimed.characters >= 2)
     assert.equal(storage.readSettings()?.value.model, 'global-model')
     assert.equal(
       storage.readSettings()?.value.accessTeamDomain,

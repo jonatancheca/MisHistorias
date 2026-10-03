@@ -34,6 +34,7 @@ const character: Character = {
   imageGenerationSeed: '',
   imageGenerationPromptPrefix: '',
   archived: false,
+  visibleInDemo: false,
   createdAt: 1,
   updatedAt: 1
 }
@@ -44,6 +45,7 @@ const story: Story = {
   premise: 'Premisa',
   visualMode: false,
   archived: false,
+  visibleInDemo: false,
   protagonistPreferences: '',
   protagonistPreferencesMode: 'append',
   characterIds: [character.id],
@@ -120,6 +122,7 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
   const legacyImage = {
     id: 'image-1',
     characterId: 'character-1',
+    position: 0,
     tags: ['feliz', 'armadura'],
     description: 'DESCRIPCIÓN LEGACY NO ENVIADA',
     isDefault: true,
@@ -173,12 +176,12 @@ test('usa prompt y etiquetas descriptivas de la historia sin cambiar etiquetas v
 
 test('envía combinaciones de etiquetas únicas por personaje y fondo, sin descripciones de imágenes', () => {
   const image = {
-    id: 'image', characterId: character.id, tags: ['criada'], isDefault: true,
+    id: 'image', characterId: character.id, position: 0, tags: ['criada'], isDefault: true,
     description: 'DESCRIPCIÓN DE IMAGEN LEGACY', mimeType: 'image/png', createdAt: 1, blob: new Blob()
   }
   const background = {
     id: 'background', tags: ['bosque', 'noche'], description: 'DESCRIPCIÓN DEL FONDO',
-    mimeType: 'image/png', archived: false, createdAt: 1, blob: new Blob()
+    mimeType: 'image/png', archived: false, visibleInDemo: false, createdAt: 1, blob: new Blob()
   }
   const payload = buildChatMessages({
     presetContent: 'Narra.', story: { ...story, initialBackgroundId: background.id },
@@ -498,6 +501,7 @@ test('combina todos los mensajes system para Qwen sin perder catálogo ni orden'
     images: [{
       id: 'image-1',
       characterId: character.id,
+      position: 0,
       tags: ['feliz', 'armadura'],
       isDefault: true,
       mimeType: 'image/png',

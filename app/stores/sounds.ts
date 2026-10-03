@@ -2,9 +2,13 @@ import { defineStore } from 'pinia'
 import {
   deleteSound,
   getActiveDataScope,
-  listSounds,
+  assetContentUrl,
+  listSoundMetadata,
+  readAssetBlob,
   newId,
   putSound,
+  type DataScope,
+  type SoundAsset,
   type StoredSound
 } from '~/lib/db'
 import type { AppSettings } from '#shared/types'
@@ -15,6 +19,7 @@ import {
   planDefaultSoundSeeds
 } from '~/lib/defaultSounds'
 import { sanitizeTags, tagKey } from '~/lib/tags'
+import { reportClientErrorTrace } from '~/lib/errorTraces'
 
 const ALLOWED_TYPES = new Set([
   'audio/mpeg',
@@ -26,7 +31,7 @@ const ALLOWED_TYPES = new Set([
 const MAX_SOUND_BYTES = 10 * 1024 * 1024
 
 export const useSoundsStore = defineStore('sounds', () => {
-  const sounds = ref<StoredSound[]>([])
+  const sounds = ref<SoundAsset[]>([])
   const urls = ref<Record<string, string>>({})
   const loaded = ref(false)
   let loadRevision = 0
@@ -48,7 +53,9 @@ export const useSoundsStore = defineStore('sounds', () => {
   function syncUrls() {
     const next: Record<string, string> = {}
     for (const sound of sounds.value) {
-      next[sound.id] = urls.value[sound.id] ?? URL.createObjectURL(sound.blob)
+      next[sound.id] = urls.value[sound.id] ?? (sound.blob
+        ? URL.createObjectURL(sound.blob)
+        : assetContentUrl('sounds', sound.id))
     }
     for (const [id, url] of Object.entries(urls.value)) {
       if (!next[id]) URL.revokeObjectURL(url)
@@ -72,39 +79,49 @@ export const useSoundsStore = defineStore('sounds', () => {
     const settings = useSettingsStore()
     await settings.load()
     if (scope !== getActiveDataScope() || revision !== loadRevision) return
-    const all = await listSounds(scope)
+    const all = await listSoundMetadata(scope)
     if (scope !== getActiveDataScope() || revision !== loadRevision) return
     const versionKey = scope === 'private'
       ? ('privateDefaultSoundVersion' as const)
       : ('defaultSoundVersion' as const)
     const appliedVersion = settings.settings[versionKey]
-    if (appliedVersion < DEFAULT_SOUND_VERSION) {
-      const seeds = planDefaultSoundSeeds(all, appliedVersion)
-      for (const seed of seeds) {
-        const response = await fetch(`/sounds/default/${encodeURIComponent(seed.file)}`)
-        if (!response.ok) throw new Error(`No se pudo cargar el sonido ${seed.tags[0]}.`)
-        if (scope !== getActiveDataScope() || revision !== loadRevision) return
-        const sound: StoredSound = {
-          id: seed.id,
-          tags: seed.tags,
-          characterId: null,
-          backgroundId: null,
-          mimeType: 'audio/wav',
-          createdAt:
-            DEFAULT_SOUND_CREATED_AT +
-            DEFAULT_SOUNDS.findIndex((definition) => definition.id === seed.id),
-          blob: await response.blob()
-        }
-        await putSound(sound, scope)
-        all.push(sound)
-      }
-      if (scope !== getActiveDataScope() || revision !== loadRevision) return
-      await settings.save({ [versionKey]: DEFAULT_SOUND_VERSION } as Partial<AppSettings>)
-    }
-    if (scope !== getActiveDataScope() || revision !== loadRevision) return
     sounds.value = all
     syncUrls()
     loaded.value = true
+    if (appliedVersion < DEFAULT_SOUND_VERSION) {
+      void seedDefaults(scope, revision, all, appliedVersion, versionKey).catch((caught: unknown) => {
+        void reportClientErrorTrace({ source: 'client', operation: 'sounds.seed', scope,
+          message: (caught as Error).message, response: caught })
+      })
+    }
+  }
+
+  async function seedDefaults(scope: DataScope, revision: number, all: SoundAsset[], appliedVersion: number,
+    versionKey: 'defaultSoundVersion' | 'privateDefaultSoundVersion') {
+    const settings = useSettingsStore()
+    const seeds = planDefaultSoundSeeds(all, appliedVersion)
+    for (const seed of seeds) {
+      const response = await fetch(`/sounds/default/${encodeURIComponent(seed.file)}`)
+      if (!response.ok) throw new Error(`No se pudo cargar el sonido ${seed.tags[0]}.`)
+      if (scope !== getActiveDataScope() || revision !== loadRevision) return
+      const sound: StoredSound = {
+        id: seed.id,
+        tags: seed.tags,
+        characterId: null,
+        backgroundId: null,
+        mimeType: 'audio/wav',
+        createdAt: DEFAULT_SOUND_CREATED_AT +
+          DEFAULT_SOUNDS.findIndex((definition) => definition.id === seed.id),
+        blob: await response.blob()
+      }
+      if (scope !== getActiveDataScope() || revision !== loadRevision) return
+      await putSound(sound, scope)
+      if (scope !== getActiveDataScope() || revision !== loadRevision) return
+      sounds.value = [...sounds.value.filter(item => item.id !== sound.id), sound]
+      syncUrls()
+    }
+    if (scope !== getActiveDataScope() || revision !== loadRevision) return
+    await settings.save({ [versionKey]: DEFAULT_SOUND_VERSION } as Partial<AppSettings>)
   }
 
   function byId(id: string | null | undefined) {
@@ -113,7 +130,7 @@ export const useSoundsStore = defineStore('sounds', () => {
     return sound && isVisibleInDemo(sound) ? sound : null
   }
 
-  function isVisibleInDemo(sound: StoredSound) {
+  function isVisibleInDemo(sound: SoundAsset) {
     const privacy = usePrivacyStore()
     if (!privacy.isDemo) return true
     if (!sound.characterId && !sound.backgroundId) return false
@@ -239,6 +256,8 @@ export const useSoundsStore = defineStore('sounds', () => {
   }
 
   async function play(id: string | null | undefined) {
+    const scope = getActiveDataScope()
+    const revision = loadRevision
     const sound = byId(id)
     if (!sound) return
     if (sound.isBackground === true) {
@@ -249,7 +268,9 @@ export const useSoundsStore = defineStore('sounds', () => {
       if (audioContext?.state === 'running') {
         let buffer = decoded.get(sound.id)
         if (!buffer) {
-          buffer = await audioContext.decodeAudioData(await sound.blob.arrayBuffer())
+          const blob = await readAssetBlob('sounds', sound, scope)
+          buffer = await audioContext.decodeAudioData(await blob.arrayBuffer())
+          if (scope !== getActiveDataScope() || revision !== loadRevision) return
           decoded.set(sound.id, buffer)
         }
         const source = audioContext.createBufferSource()
@@ -261,6 +282,7 @@ export const useSoundsStore = defineStore('sounds', () => {
     } catch {
       // El control HTML sigue disponible si Web Audio no puede decodificar el fichero.
     }
+    if (scope !== getActiveDataScope() || revision !== loadRevision) return
     const url = urlFor(sound.id)
     if (!url || typeof Audio === 'undefined') return
     const audio = new Audio(url)

@@ -56,6 +56,8 @@ test('configura estilo por historia y separa los cuadros narrativos', async ({ p
     narrationStyle: 'few'
   })
 
+  await page.getByTestId('story-tools-toggle').click()
+
   await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
   const settingsDialog = page.getByRole('dialog', { name: 'Ajustes de la historia' })
   await settingsDialog.getByRole('button', { name: /Estilo respuesta/ }).click()

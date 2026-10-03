@@ -1,5 +1,4 @@
-import type { Character, StoryImageCatalogEntry } from '#shared/types'
-import type { StoredImage } from '~/lib/db'
+import type { Character, CharacterImage, StoryImageCatalogEntry } from '#shared/types'
 
 export interface StoryImageCatalogChange {
   added: StoryImageCatalogEntry[]
@@ -14,7 +13,7 @@ export interface StoryImageCatalogChange {
 export function buildStoryImageCatalog(
   characterIds: string[],
   characters: Character[],
-  images: StoredImage[]
+  images: CharacterImage[]
 ): StoryImageCatalogEntry[] {
   const selectedIds = new Set(characterIds)
   const names = new Map(characters.map((character) => [character.id, character.name]))

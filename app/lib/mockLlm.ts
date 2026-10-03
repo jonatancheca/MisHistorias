@@ -1,10 +1,11 @@
 import type {
+  Background,
   Character,
+  CharacterImage,
   GenerationMode,
   Sound,
   StoryPendingImageInstruction
 } from '#shared/types'
-import type { StoredBackground, StoredImage } from '~/lib/db'
 
 const NARRATION_LINES = [
   'La sala huele a polvo y a papel viejo.',
@@ -51,7 +52,7 @@ function shuffle<T>(items: T[]): T[] {
   return copy
 }
 
-function tagGroupsOf(characterId: string, images: StoredImage[]) {
+function tagGroupsOf(characterId: string, images: CharacterImage[]) {
   const own = images
     .filter((image) => image.characterId === characterId)
     .map((image) => image.tags)
@@ -66,8 +67,8 @@ function tagGroupsOf(characterId: string, images: StoredImage[]) {
  */
 export function buildMockResponse(
   characters: Character[],
-  images: StoredImage[],
-  backgrounds: StoredBackground[],
+  images: CharacterImage[],
+  backgrounds: Background[],
   sounds: Sound[],
   initialBackgroundId: string | null,
   generationMode: GenerationMode,

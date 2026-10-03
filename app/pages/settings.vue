@@ -300,7 +300,7 @@ function updateActiveSection() {
 
   const activationLine = (settingsNavShell()?.getBoundingClientRect().bottom
     ?? container.getBoundingClientRect().top) + 24
-  let current = settingsSections[0].id
+  let current: SettingsSectionId = settingsSections[0].id
   for (const section of settingsSections) {
     const element = sectionElement(section.id)
     if (!element || element.getBoundingClientRect().top > activationLine) break
@@ -641,7 +641,9 @@ async function saveAccessConfiguration() {
     form.accessAudience = saved.audience
     accessMessage.value = 'Configuración de Cloudflare Access actualizada.'
   } catch (caught) {
-    accessError.value = apiErrorMessage(caught, 'No se pudo actualizar Cloudflare Access.')
+    const detail = caught as { data?: { message?: string; statusMessage?: string }; message?: string } | null
+    accessError.value = detail?.data?.message || detail?.data?.statusMessage || detail?.message ||
+      'No se pudo actualizar Cloudflare Access.'
   } finally {
     updatingAccessConfiguration.value = false
   }

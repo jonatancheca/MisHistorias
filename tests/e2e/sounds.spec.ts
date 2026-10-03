@@ -106,7 +106,9 @@ test('muestra tarjetas de sonido compactas y responsive', async ({ page, data })
   await expect(card).toBeVisible()
   expect(await card.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(80)
 
-  await page.setViewportSize({ width: 390, height: 800 })
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
-  expect(await card.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(190)
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 800 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    expect(await card.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(190)
+  }
 })

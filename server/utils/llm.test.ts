@@ -65,9 +65,9 @@ test('proxy envía JSON no streaming y conserva finishReason', async () => {
 })
 
 test('proxy conserva bloques multimodales de imagen', async () => {
-  let received: Record<string, unknown> | null = null
+  const received: Record<string, unknown>[] = []
   const server = createServer(async (request, response) => {
-    received = await readJson(request)
+    received.push(await readJson(request))
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({ choices: [{ message: { content: 'caption' }, finish_reason: 'stop' }] }))
   })
@@ -79,6 +79,8 @@ test('proxy conserva bloques multimodales de imagen', async () => {
       { baseUrl: `http://127.0.0.1:${address.port}`, apiKey: '' },
       {
         model: 'vision',
+        temperature: 0.8,
+        maxTokens: 100,
         messages: [{
           role: 'user',
           content: [
@@ -88,7 +90,7 @@ test('proxy conserva bloques multimodales de imagen', async () => {
         }]
       }
     )
-    const messages = received?.messages as Array<{ content: unknown }>
+    const messages = received[0]?.messages as Array<{ content: unknown }>
     assert.deepEqual(messages[0]?.content, [
       { type: 'text', text: 'caption this' },
       { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }

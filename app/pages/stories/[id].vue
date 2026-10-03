@@ -28,6 +28,7 @@ const access = useAccessStore()
 const modelPreload = useLlmModelPreloadStore()
 const {
   hidden: mobileChromeHidden,
+  atTop: mobileChromeAtTop,
   hide: hideMobileChrome,
   show: showMobileChrome,
   toggle: toggleMobileChrome,
@@ -200,7 +201,7 @@ const timeline = computed<TimelineItem[]>(() => {
     if (!anchor || !messageIds.has(anchor)) items.push(marker)
     else anchored.set(anchor, [...(anchored.get(anchor) ?? []), marker])
   }
-  return items.sort((a, b) => a.createdAt - b.createdAt).flatMap((item) =>
+  return items.sort((a, b) => a.createdAt - b.createdAt).flatMap<TimelineItem>((item) =>
     item.kind === 'message' ? [item, ...(anchored.get(item.id) ?? [])] : [item]
   )
 })
@@ -278,6 +279,8 @@ function scrollToTop() {
   if (!scroller.value) return
   followingBottom.value = false
   autoScrollTarget = 0
+  setMobileChromeAtTop(true)
+  if (window.innerWidth < 640) showMobileChrome()
   scroller.value.scrollTo({ top: 0, behavior: 'smooth' })
   updateScrollControls()
 }
@@ -465,20 +468,22 @@ function onStoryScroll() {
   const current = scroller.value?.scrollTop ?? 0
   const delta = current - lastScrollTop
   lastScrollTop = current
-  const atTop = current <= 8
-  setMobileChromeAtTop(atTop)
+  // La marca del menú cambia la altura disponible unos 52px. Usa un margen
+  // distinto al salir del inicio para que ese cambio no vuelva a alternarla.
+  const atTop = current <= (mobileChromeAtTop.value ? 64 : 8)
 
   if (autoScrollTarget !== null) {
     const reachedTarget = Math.abs(current - autoScrollTarget) <= 1
     const movingTowardTarget = autoScrollTarget === 0 ? delta <= 0 : delta >= 0
     if (reachedTarget) autoScrollTarget = null
     if (reachedTarget || movingTowardTarget) {
-      if (atTop && window.innerWidth < 640) showMobileChrome()
       updateScrollControls()
       return
     }
     autoScrollTarget = null
   }
+
+  setMobileChromeAtTop(atTop)
 
   if (delta < -1) {
     followingBottom.value = false
@@ -1084,6 +1089,7 @@ onBeforeUnmount(() => {
 })
 
 onBeforeRouteLeave(() => {
+  stories.cancelStoryAuxiliary()
   stories.cancelImageGeneration({ abandonResponse: true })
   sounds.stopBackground()
 })
@@ -1104,52 +1110,44 @@ onBeforeRouteLeave(() => {
   </div>
 
   <div v-else class="flex h-full min-h-0">
-    <button
-      type="button"
-      class="btn-ghost fixed top-[calc(0.75rem+env(safe-area-inset-top))] right-3 z-30 flex h-10 w-10 items-center justify-center bg-[var(--color-surface)]/90 px-0 py-0 shadow-lg backdrop-blur-sm sm:hidden"
-      data-testid="mobile-story-menu-toggle"
-      aria-controls="app-navigation story-header"
-      :aria-expanded="!mobileChromeHidden"
-      :aria-label="mobileChromeHidden ? 'Mostrar menú de historia' : 'Ocultar menú de historia'"
-      :title="mobileChromeHidden ? 'Mostrar menú de historia' : 'Ocultar menú de historia'"
-      @click="toggleMobileChrome"
-    >
-      <svg
-        v-if="mobileChromeHidden"
-        aria-hidden="true"
-        class="h-5 w-5"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <path d="M4 6h16M4 12h16M4 18h16" />
-      </svg>
-      <svg
-        v-else
-        aria-hidden="true"
-        class="h-5 w-5"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <path d="m6 6 12 12M18 6 6 18" />
-      </svg>
-    </button>
-
     <section class="flex min-w-0 flex-1 flex-col">
-      <header
-        id="story-header"
-        class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-soft)] px-4 transition-[max-height,opacity,padding,transform] duration-200 sm:max-h-none sm:translate-y-0 sm:overflow-visible sm:border-b sm:px-6 sm:py-4 sm:opacity-100"
-        :class="
-          mobileChromeHidden
-            ? 'max-h-0 -translate-y-2 overflow-hidden border-b-0 py-0 opacity-0'
-            : 'max-h-40 translate-y-0 py-3 opacity-100'
-        "
-      >
-        <div class="min-w-0 flex-1 max-sm:w-full max-sm:flex-none">
-          <h1 class="truncate text-lg font-bold">
+      <header id="story-header" class="story-header">
+        <div class="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            class="btn-ghost h-11 w-11 shrink-0 px-0 py-0 sm:hidden"
+            data-testid="mobile-story-menu-toggle"
+            aria-controls="app-navigation"
+            :aria-expanded="!mobileChromeHidden"
+            :aria-label="mobileChromeHidden ? 'Mostrar menú de historia' : 'Ocultar menú de historia'"
+            :title="mobileChromeHidden ? 'Mostrar menú de historia' : 'Ocultar menú de historia'"
+            @click="toggleMobileChrome"
+          >
+            <svg
+              v-if="mobileChromeHidden"
+              aria-hidden="true"
+              class="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+            <svg
+              v-else
+              aria-hidden="true"
+              class="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </button>
+          <div class="min-w-0 flex-1">
+          <h1 class="truncate text-base font-bold sm:text-lg">
             {{ stories.activeStory.title }}
             <span
               v-if="settings.settings.mockMode"
@@ -1158,7 +1156,7 @@ onBeforeRouteLeave(() => {
               modo prueba
             </span>
           </h1>
-          <p class="truncate text-xs text-[var(--color-fg-muted)]">
+          <p class="hidden truncate text-xs sm:block text-[var(--color-fg-muted)]">
             {{ stories.activeStory.premise }}
           </p>
           <p
@@ -1171,92 +1169,68 @@ onBeforeRouteLeave(() => {
             {{ copySharedStoryError }}
           </p>
         </div>
-        <div class="flex shrink-0 flex-wrap gap-1 sm:gap-2">
-          <button
-            type="button"
-            class="btn-ghost h-10 shrink-0 px-2 sm:px-3"
-            :class="debugEnabled ? 'bg-violet-500/15 text-violet-600' : ''"
-            data-testid="story-debug-toggle"
-            aria-label="Debug"
-            title="Debug: compactaciones, texto original y controles de mensajes"
-            :aria-pressed="debugEnabled"
-            @click="debugEnabled = !debugEnabled"
-          >
-            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M8 2h8M9 2v3m6-3v3M4 13h3m10 0h3M5 7l3 2m11-2-3 2M5 19l3-2m11 2-3-2" />
-              <rect x="7" y="5" width="10" height="16" rx="5" />
-              <path d="M9 11h6m-6 4h6" />
-            </svg>
-            <span class="hidden sm:inline">Debug</span>
-          </button>
-          <button
-            v-if="stories.activeStory.readOnly && stories.activeStory.visibleInDemo"
-            type="button"
-            class="btn-primary h-10 w-10 shrink-0 px-0 py-0 sm:w-auto sm:px-3"
-            data-testid="copy-shared-story"
-            aria-label="Copiar a mi colección privada"
-            title="Copiar a mi colección privada"
-            :disabled="copyingSharedStory"
-            @click="copySharedStory"
-          >
-            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="8" y="8" width="11" height="11" rx="2" />
-              <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
-            </svg>
-            <span class="hidden sm:inline">{{ copyingSharedStory ? 'Copiando…' : 'Copiar' }}</span>
-          </button>
-          <button
-            v-if="!stories.activeStory.readOnly"
-            type="button"
-            class="btn-ghost h-10 shrink-0 px-2 sm:px-3"
-            aria-label="Partidas"
-            title="Partidas"
-            :disabled="stories.generating"
-            @click="storySavesOpen = true; storySavesError = null"
-          >
-            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M5 3h12l2 2v16H5V3Z" />
-              <path d="M8 3v6h8V3M8 21v-7h8v7" />
-            </svg>
-            <span class="hidden xl:inline">Partidas</span>
-          </button>
-          <button
-            type="button"
-            class="btn-ghost h-10 w-10 shrink-0 px-0 py-0"
-            data-testid="story-start-button"
-            :aria-label="stories.activeStory.visualMode ? 'Ir a la primera frase' : 'Volver al principio'"
-            :title="stories.activeStory.visualMode ? 'Ir a la primera frase' : 'Volver al principio'"
-            :disabled="stories.activeStory.visualMode ? !canShowPreviousVisualFrame : !canScrollToTop"
-            @click="showStoryStart"
-          >
-            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M5 4h14M12 20V7m-5 5 5-5 5 5" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            class="btn-ghost h-10 w-10 shrink-0 px-0 py-0"
-            data-testid="story-end-button"
-            :aria-label="stories.activeStory.visualMode ? 'Ir a la última frase' : 'Volver al final'"
-            :title="stories.activeStory.visualMode ? 'Ir a la última frase' : 'Volver al final'"
-            :disabled="stories.activeStory.visualMode ? !canShowNextVisualFrame : !canScrollToBottom"
-            @click="showStoryEnd"
-          >
-            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M5 20h14M12 4v13m-5-5 5 5 5-5" />
-            </svg>
-          </button>
-          <span
-            v-if="stories.activeStory.visualMode"
-            data-testid="visual-novel-counter"
-            class="hidden h-10 shrink-0 items-center text-xs text-[var(--color-fg-muted)] sm:flex"
-          >
-            {{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrameTotal }}
-          </span>
-          <button
+        </div>
+        <div class="flex min-w-0 items-center justify-between gap-2">
+          <div v-if="!stories.activeStory.readOnly" class="story-mode-switch" role="group" aria-label="Modo de lectura">
+            <button
+              type="button"
+              :class="{ 'is-active': !stories.activeStory.visualMode }"
+              :data-testid="stories.activeStory.visualMode ? 'visual-mode-toggle' : undefined"
+              aria-label="Desactivar modo novela visual"
+              :aria-pressed="!stories.activeStory.visualMode"
+              @click="stories.activeStory.visualMode && toggleVisualMode()"
+            >
+              <svg aria-hidden="true" class="hidden h-4 w-4 sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11a8 8 0 0 1-8 8H7l-5 3 2-6a8 8 0 1 1 17-5Z" /></svg>
+              Chat
+            </button>
+            <button
+              type="button"
+              :class="{ 'is-active': stories.activeStory.visualMode }"
+              :data-testid="!stories.activeStory.visualMode ? 'visual-mode-toggle' : undefined"
+              aria-label="Activar modo novela visual"
+              :aria-pressed="stories.activeStory.visualMode"
+              @click="!stories.activeStory.visualMode && toggleVisualMode()"
+            >
+              <svg aria-hidden="true" class="hidden h-4 w-4 sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m3 15 5-5 4 4 3-3 6 6M8 8h.01" /></svg>
+              Novela
+            </button>
+          </div>
+          <span v-else class="text-sm text-[var(--color-fg-muted)]">Solo lectura</span>
+          <StoryToolsMenu :active="debugEnabled">
+            <button
+              v-if="!stories.activeStory.readOnly"
+              type="button"
+              class="btn-ghost h-10 shrink-0 px-2 sm:px-3"
+              aria-label="Partidas"
+              title="Partidas"
+              :disabled="stories.generating"
+              @click="storySavesOpen = true; storySavesError = null"
+            >
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 3h12l2 2v16H5V3Z" />
+                <path d="M8 3v6h8V3M8 21v-7h8v7" />
+              </svg>
+              <span>Partidas</span>
+            </button>
+            <button
+              v-if="!stories.activeStory.readOnly"
+              type="button"
+              class="btn-ghost"
+              aria-label="Ajustes de la historia"
+              title="Ajustes de la historia"
+              :disabled="stories.generating"
+              @click="openStoryPreferences"
+            >
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+              </svg>
+              <span>Ajustes</span>
+            </button>
+            <button
             v-if="stories.activeStory.visualMode && !stories.activeStory.readOnly"
             type="button"
-            class="btn-ghost h-10 w-10 shrink-0 px-0 py-0"
+            class="btn-ghost"
             :class="settings.settings.visualNovelManualAdvance ? 'bg-brand-500/15 text-brand-500' : ''"
             data-testid="visual-manual-advance-toggle"
             :aria-label="settings.settings.visualNovelManualAdvance ? 'Activar avance automático' : 'Activar avance manual'"
@@ -1268,38 +1242,42 @@ onBeforeRouteLeave(() => {
               <path d="m7 5 8 7-8 7V5Z" />
               <path d="M18 5v14" />
             </svg>
-          </button>
-          <button
-            v-if="!stories.activeStory.readOnly"
-            type="button"
-            class="btn-ghost"
-            data-testid="visual-mode-toggle"
-            :aria-label="stories.activeStory.visualMode ? 'Desactivar modo novela visual' : 'Activar modo novela visual'"
-            :title="stories.activeStory.visualMode ? 'Desactivar modo novela visual' : 'Activar modo novela visual'"
-            :aria-pressed="stories.activeStory.visualMode"
-            @click="toggleVisualMode"
-          >
-            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-              <path d="m3 15 5-5 4 4 3-3 6 6M8 8h.01" />
-            </svg>
-            <span class="hidden sm:inline">{{ stories.activeStory.visualMode ? 'Chat' : 'Novela' }}</span>
-          </button>
-          <button
-            v-if="!stories.activeStory.readOnly"
-            type="button"
-            class="btn-ghost"
-            aria-label="Ajustes de la historia"
-            title="Ajustes de la historia"
-            :disabled="stories.generating"
-            @click="openStoryPreferences"
-          >
-            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
-            </svg>
-            <span class="hidden sm:inline">Ajustes</span>
-          </button>
+          <span>{{ settings.settings.visualNovelManualAdvance ? 'Avance manual' : 'Avance automático' }}</span>
+            </button>
+            <button
+              type="button"
+              class="btn-ghost h-10 shrink-0 px-2 sm:px-3"
+              :class="debugEnabled ? 'bg-violet-500/15 text-violet-600' : ''"
+              data-testid="story-debug-toggle"
+              aria-label="Debug"
+              title="Debug: compactaciones, texto original y controles de mensajes"
+              :aria-pressed="debugEnabled"
+              @click="debugEnabled = !debugEnabled"
+            >
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M8 2h8M9 2v3m6-3v3M4 13h3m10 0h3M5 7l3 2m11-2-3 2M5 19l3-2m11 2-3-2" />
+                <rect x="7" y="5" width="10" height="16" rx="5" />
+                <path d="M9 11h6m-6 4h6" />
+              </svg>
+              <span>Debug</span>
+            </button>
+            <button
+              v-if="stories.activeStory.readOnly && stories.activeStory.visibleInDemo"
+              type="button"
+              class="btn-primary h-10 w-10 shrink-0 px-0 py-0 sm:w-auto sm:px-3"
+              data-testid="copy-shared-story"
+              aria-label="Copiar a mi colección privada"
+              title="Copiar a mi colección privada"
+              :disabled="copyingSharedStory"
+              @click="copySharedStory"
+            >
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="8" y="8" width="11" height="11" rx="2" />
+                <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+              </svg>
+              <span>{{ copyingSharedStory ? 'Copiando…' : 'Copiar' }}</span>
+            </button>
+          </StoryToolsMenu>
         </div>
       </header>
 
@@ -1397,20 +1375,8 @@ onBeforeRouteLeave(() => {
             class="h-24 shrink-0 overflow-hidden border-t border-white/20 bg-slate-950 text-white shadow-[0_-10px_30px_rgba(0,0,0,0.35)] sm:h-[120px]"
             aria-live="polite"
           >
-            <div class="grid h-full grid-cols-1 sm:grid-cols-[4rem_minmax(0,1fr)_4rem]">
-              <button
-                type="button"
-                class="btn-ghost hidden h-full w-full rounded-none px-0 py-0 text-white disabled:text-slate-500 sm:flex"
-                data-testid="visual-novel-previous"
-                aria-label="Frase anterior"
-                title="Frase anterior"
-                :disabled="!canShowPreviousVisualFrame"
-                @click="showPreviousVisualFrame"
-              >
-                <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="m15 18-6-6 6-6" />
-                </svg>
-              </button>
+            <div class="h-full">
+
 
               <div
                 data-testid="visual-novel-frame"
@@ -1450,19 +1416,7 @@ onBeforeRouteLeave(() => {
                 <p v-else class="text-sm text-slate-300">La historia aún no ha empezado.</p>
               </div>
 
-              <button
-                type="button"
-                class="btn-ghost hidden h-full w-full rounded-none px-0 py-0 text-white disabled:text-slate-500 sm:flex"
-                data-testid="visual-novel-next"
-                aria-label="Frase siguiente"
-                title="Frase siguiente"
-                :disabled="!canAdvanceVisualFrame"
-                @click="advanceVisualFrame"
-              >
-                <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="m9 18 6-6-6-6" />
-                </svg>
-              </button>
+
             </div>
           </section>
         </div>
@@ -1597,9 +1551,73 @@ onBeforeRouteLeave(() => {
         >Stop</button>
       </div>
 
+      <nav class="story-reader-controls" aria-label="Navegación de la historia" data-testid="story-reader-controls">
+        <button
+          type="button"
+          class="story-nav-button"
+          data-testid="story-start-button"
+          :aria-label="stories.activeStory.visualMode ? 'Ir a la primera frase' : 'Volver al principio'"
+          :title="stories.activeStory.visualMode ? 'Ir a la primera frase' : 'Volver al principio'"
+          :disabled="stories.activeStory.visualMode ? !canShowPreviousVisualFrame : !canScrollToTop"
+          @click="showStoryStart"
+        >
+          <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path :d="stories.activeStory.visualMode ? 'M5 5v14m14-14-8 7 8 7' : 'M5 4h14M12 20V7m-5 5 5-5 5 5'" />
+          </svg>
+        <span v-if="!stories.activeStory.visualMode">Inicio</span></button>
+        <button
+          v-if="stories.activeStory.visualMode"
+          type="button"
+          class="story-nav-button"
+          data-testid="visual-novel-previous"
+          aria-label="Frase anterior"
+          title="Frase anterior"
+          :disabled="!canShowPreviousVisualFrame"
+          @click="showPreviousVisualFrame"
+        >
+          <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+        <span class="hidden md:inline">Anterior</span></button>
+        <div class="min-w-0 flex-1 text-center text-xs text-[var(--color-fg-muted)]">
+          <template v-if="stories.activeStory.visualMode">
+            <span data-testid="visual-novel-counter" class="block text-sm font-bold tabular-nums text-[var(--color-fg)]">{{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrameTotal }}</span>
+            <span class="hidden sm:block">Cuadros</span>
+          </template>
+          <span v-else>Historial</span>
+        </div>
+        <button
+          v-if="stories.activeStory.visualMode"
+          type="button"
+          class="story-nav-button story-nav-next"
+          data-testid="visual-novel-next"
+          aria-label="Frase siguiente"
+          title="Frase siguiente"
+          :disabled="!canAdvanceVisualFrame"
+          @click="advanceVisualFrame"
+        >
+          <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        <span class="hidden md:inline">Siguiente</span></button>
+        <button
+          type="button"
+          class="story-nav-button"
+          data-testid="story-end-button"
+          :aria-label="stories.activeStory.visualMode ? 'Ir a la última frase' : 'Volver al final'"
+          :title="stories.activeStory.visualMode ? 'Ir a la última frase' : 'Volver al final'"
+          :disabled="stories.activeStory.visualMode ? !canShowNextVisualFrame : !canScrollToBottom"
+          @click="showStoryEnd"
+        >
+          <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path :d="stories.activeStory.visualMode ? 'M19 5v14M5 5l8 7-8 7' : 'M5 20h14M12 4v13m-5-5 5 5 5-5'" />
+          </svg>
+        <span v-if="!stories.activeStory.visualMode">Final</span></button>
+      </nav>
+
       <footer
         v-if="!stories.activeStory.readOnly"
-        class="relative border-t border-[var(--color-border-soft)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4"
+        class="story-composer-footer relative shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-3"
       >
         <StoryModelLoadButton
           v-if="modelLoadInFooter"
@@ -1636,7 +1654,7 @@ onBeforeRouteLeave(() => {
           class="mb-2 flex min-w-0 items-center justify-center text-sm text-[var(--color-fg-muted)] sm:-translate-x-9"
           :class="
             stories.activeStory.visualMode
-              ? 'sm:pointer-events-none sm:absolute sm:inset-x-0 sm:bottom-[calc(100%+120px+4.5rem)] sm:mb-0 sm:z-20'
+              ? 'sm:pointer-events-none sm:absolute sm:inset-x-0 sm:bottom-[calc(100%+120px+8.5rem)] sm:mb-0 sm:z-20'
               : 'lg:!translate-x-[5.75rem]'
           "
           role="status"
@@ -1728,83 +1746,73 @@ onBeforeRouteLeave(() => {
             >×</button>
           </span>
         </div>
-        <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="submit">
-          <textarea
-            ref="composerInput"
-            v-model="input"
-            autocomplete="off"
-            class="field min-h-12 min-w-0 resize-none"
-            rows="2"
-            placeholder="Escribe lo que haces o dices…"
-            @keydown.enter.exact.prevent="submit"
-            @keydown.ctrl.enter.exact="onSubmitShortcut"
-          />
-          <div class="grid shrink-0 grid-cols-3 gap-2 sm:w-72">
+        <form class="story-composer" @submit.prevent="submit">
+          <div class="story-write-box">
+            <label for="story-composer-input" class="sr-only">Tu intervención</label>
+            <textarea
+              id="story-composer-input"
+              ref="composerInput"
+              v-model="input"
+              autocomplete="off"
+              class="story-write-input"
+              rows="2"
+              placeholder="Escribe lo que haces o dices…"
+              @keydown.enter.exact.prevent="submit"
+              @keydown.ctrl.enter.exact="onSubmitShortcut"
+            />
             <button
-              v-if="stories.activeStory.visualMode && stories.generating"
-              type="button"
-              class="btn-ghost hidden h-full w-full items-center justify-center sm:flex"
-              @click="stories.stop({ preserveAutoResponse: true })"
-            >
-              Parar
-            </button>
-            <button
+              v-if="!stories.activeStory.visualMode || !stories.generating"
               type="submit"
-              class="btn-primary"
-              :class="stories.activeStory.visualMode && stories.generating ? 'sm:hidden' : ''"
+              class="btn-primary story-send-button"
               :disabled="stories.generating"
               aria-keyshortcuts="Control+Enter"
               title="Enviar (Ctrl+Enter)"
             >
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13" /></svg>
               Enviar
             </button>
-            <span class="group relative min-w-0">
-              <button
-                type="button"
-                class="btn-ghost h-full w-full"
-                data-testid="continue-button"
-                aria-describedby="continue-tooltip"
-                aria-label="Continuar sin decidir por el protagonista"
-                :disabled="stories.generating"
-                @click="generateContinuation('continue')"
-              >
-                Sigue
-              </button>
-              <span
-                id="continue-tooltip"
-                role="tooltip"
-                class="pointer-events-none invisible absolute bottom-full right-0 z-20 mb-2 w-64 max-w-[calc(100vw-2rem)] rounded-lg bg-slate-950 px-3 py-2 text-left text-xs font-normal leading-snug text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
-              >
-                Continúa la historia sin que la IA hable ni decida por el protagonista.
-              </span>
-            </span>
-            <span class="group relative min-w-0">
-              <button
-                type="button"
-                class="btn-ghost h-full w-full"
-                data-testid="auto-button"
-                aria-describedby="auto-tooltip"
-                aria-label="Continuar permitiendo que la IA decida por el protagonista"
-                :disabled="stories.generating"
-                @click="generateContinuation('auto')"
-              >
-                Auto
-              </button>
-              <span
-                id="auto-tooltip"
-                role="tooltip"
-                class="pointer-events-none invisible absolute bottom-full right-0 z-20 mb-2 w-64 max-w-[calc(100vw-2rem)] rounded-lg bg-slate-950 px-3 py-2 text-left text-xs font-normal leading-snug text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
-              >
-                Continúa la historia y permite que la IA decida acciones o diálogos del protagonista.
-              </span>
-            </span>
             <button
-              v-if="stories.generating"
+              v-else
               type="button"
-              class="btn-ghost col-span-4"
-              :class="stories.activeStory.visualMode ? 'sm:hidden' : ''"
+              class="btn-danger story-send-button"
               @click="stories.stop({ preserveAutoResponse: true })"
             >
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+              Parar
+            </button>
+          </div>
+          <div class="story-generation-controls">
+            <button
+              type="button"
+              class="story-generate-button"
+              data-testid="continue-button"
+              aria-label="Continuar sin decidir por el protagonista"
+              title="Continúa la historia sin que la IA hable ni decida por el protagonista."
+              :disabled="stories.generating"
+              @click="generateContinuation('continue')"
+            >
+              <svg aria-hidden="true" class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 5 7 7-7 7" /></svg>
+              <span><strong>Sigue</strong><small>Tú decides</small></span>
+            </button>
+            <button
+              type="button"
+              class="story-generate-button"
+              data-testid="auto-button"
+              aria-label="Continuar permitiendo que la IA decida por el protagonista"
+              title="Continúa la historia y permite que la IA decida acciones o diálogos del protagonista."
+              :disabled="stories.generating"
+              @click="generateContinuation('auto')"
+            >
+              <svg aria-hidden="true" class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6L12 3Z" /></svg>
+              <span><strong>Auto</strong><small>La IA decide</small></span>
+            </button>
+            <button
+              v-if="stories.generating && !stories.activeStory.visualMode"
+              type="button"
+              class="btn-danger story-stop-button"
+              @click="stories.stop({ preserveAutoResponse: true })"
+            >
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
               Parar
             </button>
           </div>
@@ -1854,8 +1862,9 @@ onBeforeRouteLeave(() => {
     <StorySavesDialog
       :open="storySavesOpen"
       :saves="stories.saveSlots"
+      :loading="stories.saveSlotsLoading"
       :busy="storySavesBusy"
-      :error="storySavesError"
+      :error="storySavesError || stories.saveSlotsError"
       @close="storySavesOpen = false"
       @save="saveStorySlot"
       @load="loadStorySlot"
@@ -1935,6 +1944,159 @@ onBeforeRouteLeave(() => {
 </template>
 
 <style scoped>
+
+.story-header {
+  position: relative;
+  z-index: 30;
+  display: grid;
+  flex-shrink: 0;
+  gap: 0.625rem;
+  border-bottom: 1px solid var(--color-border-soft);
+  background: var(--color-surface);
+  padding: 0.75rem;
+}
+
+.story-mode-switch {
+  display: flex;
+  min-width: 0;
+  gap: 0.25rem;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 0.875rem;
+  background: var(--color-surface-alt);
+  padding: 0.25rem;
+}
+
+.story-mode-switch button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.625rem;
+  padding: 0.375rem 0.75rem;
+  color: var(--color-fg-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.story-mode-switch button.is-active {
+  background: var(--color-brand-600);
+  color: white;
+  box-shadow: 0 2px 5px rgb(0 0 0 / 12%);
+}
+
+.story-mode-switch button:not(.is-active):hover {
+  background: var(--color-surface);
+  color: var(--color-fg);
+}
+
+.story-reader-controls {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.375rem;
+  border-block: 1px solid var(--color-border-soft);
+  background: var(--color-surface);
+  padding: 0.375rem 0.75rem;
+}
+
+.story-nav-button {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 0.75rem;
+  background: var(--color-surface-alt);
+  padding: 0.5rem 0.75rem;
+  color: var(--color-fg);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.story-nav-next {
+  border-color: var(--color-brand-600);
+  background: var(--color-brand-600);
+  color: white;
+}
+
+.story-nav-button:hover:not(:disabled) { border-color: var(--color-brand-400); }
+.story-nav-button:disabled { cursor: default; opacity: 0.4; }
+
+.story-composer-footer { background: var(--color-surface); }
+.story-composer { display: grid; gap: 0.625rem; }
+
+.story-write-box {
+  display: flex;
+  min-width: 0;
+  align-items: flex-end;
+  gap: 0.5rem;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 1rem;
+  background: var(--color-field);
+  padding: 0.5rem;
+}
+
+.story-write-box:focus-within {
+  border-color: var(--color-brand-400);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-500) 12%, transparent);
+}
+
+.story-write-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 60px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  padding: 0.375rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.story-write-input::placeholder { color: var(--color-fg-muted); }
+.story-send-button { width: 96px; min-height: 44px; flex-shrink: 0; padding-inline: 0.75rem; box-shadow: none; }
+.story-generation-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+
+.story-generate-button {
+  display: flex;
+  min-width: 0;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 0.875rem;
+  background: var(--color-surface-alt);
+  padding: 0.5rem 0.75rem;
+  color: var(--color-fg);
+  text-align: left;
+  cursor: pointer;
+}
+.story-generate-button strong { display: block; font-size: 0.8125rem; }
+.story-generate-button small { display: block; color: var(--color-fg-muted); font-size: 0.6875rem; }
+.story-generate-button > svg { color: var(--color-brand-500); }
+.story-generate-button:hover:not(:disabled) { border-color: var(--color-brand-400); background: var(--color-surface); }
+.story-generate-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.story-stop-button { grid-column: 1 / -1; min-height: 44px; }
+
+@media (min-width: 640px) {
+  .story-header { padding: 0.75rem 1.25rem; }
+  .story-reader-controls { padding-inline: 1.25rem; }
+}
+
+@media (min-width: 1280px) {
+  .story-header { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1rem; }
+  .story-composer { grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; }
+  .story-generation-controls { min-width: 240px; }
+}
+
+
 .visual-message-actions {
   display: none;
 }

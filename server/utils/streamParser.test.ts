@@ -28,6 +28,7 @@ const characters: Character[] = [
     imageGenerationSeed: '',
     imageGenerationPromptPrefix: '',
     archived: false,
+    visibleInDemo: false,
     createdAt: 1,
     updatedAt: 1
   }
@@ -37,6 +38,7 @@ const images = [
   {
     id: 'neutral',
     characterId: 'alicia',
+    position: 0,
     tags: ['neutral'],
     isDefault: true,
     mimeType: 'image/png',
@@ -45,6 +47,7 @@ const images = [
   {
     id: 'happy',
     characterId: 'alicia',
+    position: 1,
     tags: ['feliz', 'sonrisa'],
     isDefault: false,
     mimeType: 'image/png',
@@ -151,7 +154,7 @@ describe('parser de etiquetas visuales', () => {
     const segments = parseSegments(
       'Fondo [bosque]:\nAlicia [neutral]: Hola.',
       characters,
-      [{ id: 'forest', tags: ['bosque'], description: '', mimeType: 'image/png', archived: false, createdAt: 1 }],
+      [{ id: 'forest', tags: ['bosque'], description: '', mimeType: 'image/png', archived: false, visibleInDemo: false, createdAt: 1 }],
       '',
       images,
       'message-4'
@@ -164,7 +167,7 @@ describe('parser de etiquetas visuales', () => {
 
   it('serializa y vuelve a parsear todos los tipos visibles', () => {
     const backgrounds = [
-      { id: 'forest', tags: ['bosque'], description: '', mimeType: 'image/png', archived: false, createdAt: 1 }
+      { id: 'forest', tags: ['bosque'], description: '', mimeType: 'image/png', archived: false, visibleInDemo: false, createdAt: 1 }
     ]
     const raw = [
       'Fondo [bosque]:',

@@ -127,6 +127,7 @@ test.describe('modo demo', () => {
     await page.getByRole('link', { name: 'Historias', exact: true }).click()
     await page.getByRole('link', { name: story.title }).evaluate((element: HTMLAnchorElement) => element.click())
     await expect(page.getByText(`Fondo inicial · ${contextualBackground.tags[0]}`, { exact: true })).toBeVisible()
+    await page.getByTestId('story-tools-toggle').click()
     await page.getByRole('button', { name: 'Ajustes de la historia' }).click()
     const form = page.getByRole('dialog', { name: 'Ajustes de la historia' })
     await form.getByRole('button', { name: `Editar ${contextualCharacter.name}` }).click()

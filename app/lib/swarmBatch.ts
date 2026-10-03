@@ -56,11 +56,11 @@ export function createSwarmBatch(input: {
   return { total, jobs: jobs() }
 }
 
-export async function runSwarmBatch<T>(input: {
-  jobs: Iterable<SwarmBatchJob>
+export async function runSwarmBatch<T, Job extends SwarmBatchJob = SwarmBatchJob>(input: {
+  jobs: Iterable<Job>
   signal: AbortSignal
-  generate: (job: SwarmBatchJob) => Promise<T>
-  save: (image: T, job: SwarmBatchJob) => Promise<unknown>
+  generate: (job: Job) => Promise<T>
+  save: (image: T, job: Job) => Promise<unknown>
   progress: (completed: number) => void
 }) {
   let completed = 0

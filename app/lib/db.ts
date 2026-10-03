@@ -18,16 +18,28 @@ import type {
   SwarmPrompt
 } from '#shared/types'
 
-export interface StoredImage extends CharacterImage {
-  blob: Blob
+export interface ImageAsset extends CharacterImage {
+  blob?: Blob
   originalBlob?: Blob
 }
 
-export interface StoredBackground extends Background {
+export interface BackgroundAsset extends Background {
+  blob?: Blob
+}
+
+export interface SoundAsset extends Sound {
+  blob?: Blob
+}
+
+export interface StoredImage extends ImageAsset {
   blob: Blob
 }
 
-export interface StoredSound extends Sound {
+export interface StoredBackground extends BackgroundAsset {
+  blob: Blob
+}
+
+export interface StoredSound extends SoundAsset {
   blob: Blob
 }
 
@@ -85,12 +97,20 @@ async function deleteJson(resource: string, id: string) {
   await $fetch(dataUrl(`${resource}/${encodeURIComponent(id)}`), { method: 'DELETE' })
 }
 
+export function assetContentUrl(resource: 'images' | 'backgrounds' | 'sounds', id: string, scope: DataScope = activeDataScope.value) {
+  return dataUrl(`${resource}/${encodeURIComponent(id)}/content`, scope)
+}
+
+export async function readAssetBlob(resource: 'images' | 'backgrounds' | 'sounds', asset: { id: string; blob?: Blob }, scope: DataScope = activeDataScope.value) {
+  return asset.blob ?? fetchBlob(resource, asset.id, scope)
+}
+
 async function fetchBlob(
   resource: 'images' | 'backgrounds' | 'sounds',
   id: string,
   scope: DataScope = activeDataScope.value
 ) {
-  const response = await fetch(dataUrl(`${resource}/${encodeURIComponent(id)}/content`, scope))
+  const response = await fetch(assetContentUrl(resource, id, scope))
   if (!response.ok) throw new Error('No se pudo cargar el archivo guardado')
   return response.blob()
 }
@@ -198,17 +218,22 @@ export async function listImages(
   })))
 }
 
+export async function listImageMetadata(scope: DataScope = activeDataScope.value) {
+  return $fetch<ImageMetadata[]>(dataUrl('images', scope))
+}
+
 export async function listAllImages(scope: DataScope = activeDataScope.value) {
-  const metadata = await $fetch<ImageMetadata[]>(dataUrl('images', scope))
+  const metadata = await listImageMetadata(scope)
   return Promise.all(metadata.map(async (image) => ({
     ...image,
     blob: await fetchBlob('images', image.id, scope)
   })))
 }
 
-export async function putImage(image: StoredImage, scope: DataScope = activeDataScope.value) {
-  const metadata = await putBinary('images', image, scope)
-  return { ...metadata, blob: image.blob }
+export async function putImage(image: ImageAsset, scope: DataScope = activeDataScope.value) {
+  const blob = await readAssetBlob('images', image, scope)
+  const metadata = await putBinary('images', { ...image, blob }, scope)
+  return { ...metadata, blob }
 }
 
 export async function reorderCharacterImages(
@@ -242,8 +267,13 @@ export async function deleteImage(id: string) {
   await deleteJson('images', id)
 }
 
-export async function listBackgrounds(scope: DataScope = activeDataScope.value) {
+export async function listBackgroundMetadata(scope: DataScope = activeDataScope.value) {
   const metadata = await $fetch<BackgroundMetadata[]>(dataUrl('backgrounds', scope))
+  return metadata.map(background => ({ ...background, archived: background.archived === true }))
+}
+
+export async function listBackgrounds(scope: DataScope = activeDataScope.value) {
+  const metadata = await listBackgroundMetadata(scope)
   return Promise.all(
     metadata.map(async (background) => ({
       ...background,
@@ -260,19 +290,24 @@ export async function copyBackground(sourceId: string) {
 }
 
 export async function putBackground(
-  background: StoredBackground,
+  background: BackgroundAsset,
   scope: DataScope = activeDataScope.value
 ) {
-  await putBinary('backgrounds', background, scope)
-  return background
+  const stored = { ...background, blob: await readAssetBlob('backgrounds', background, scope) }
+  await putBinary('backgrounds', stored, scope)
+  return stored
 }
 
 export async function deleteBackground(id: string) {
   await deleteJson('backgrounds', id)
 }
 
+export async function listSoundMetadata(scope: DataScope = activeDataScope.value) {
+  return $fetch<SoundMetadata[]>(dataUrl('sounds', scope))
+}
+
 export async function listSounds(scope: DataScope = activeDataScope.value) {
-  const metadata = await $fetch<SoundMetadata[]>(dataUrl('sounds', scope))
+  const metadata = await listSoundMetadata(scope)
   return Promise.all(
     metadata.map(async (sound) => ({
       ...sound,
@@ -281,9 +316,10 @@ export async function listSounds(scope: DataScope = activeDataScope.value) {
   )
 }
 
-export async function putSound(sound: StoredSound, scope: DataScope = activeDataScope.value) {
-  await putBinary('sounds', sound, scope)
-  return sound
+export async function putSound(sound: SoundAsset, scope: DataScope = activeDataScope.value) {
+  const stored = { ...sound, blob: await readAssetBlob('sounds', sound, scope) }
+  await putBinary('sounds', stored, scope)
+  return stored
 }
 
 export async function deleteSound(id: string) {
@@ -343,23 +379,23 @@ export async function deleteMessages(ids: string[]) {
   await $fetch(dataUrl('messages/delete-many'), { method: 'POST', body: { ids } })
 }
 
-export async function listLlmDebugTraces(storyId: string, scope: DataScope = activeDataScope.value) {
+export async function listLlmDebugTraces(storyId: string, scope: DataScope = activeDataScope.value, signal?: AbortSignal) {
   return $fetch<LlmDebugTrace[]>(
-    dataUrl(`llmDebugTraces?storyId=${encodeURIComponent(storyId)}`, scope)
+    dataUrl(`llmDebugTraces?storyId=${encodeURIComponent(storyId)}`, scope), { signal }
   )
 }
 
-export async function putLlmDebugTrace(trace: LlmDebugTrace) {
-  return putJson('llmDebugTraces', trace)
+export async function putLlmDebugTrace(trace: LlmDebugTrace, scope: DataScope = activeDataScope.value) {
+  return putJson('llmDebugTraces', trace, scope)
 }
 
 export async function deleteLlmDebugTrace(id: string) {
   await deleteJson('llmDebugTraces', id)
 }
 
-export async function listStorySaves(storyId: string, scope: DataScope = activeDataScope.value) {
+export async function listStorySaves(storyId: string, scope: DataScope = activeDataScope.value, signal?: AbortSignal) {
   return $fetch<StorySaveSlot[]>(
-    dataUrl(`storySaves?storyId=${encodeURIComponent(storyId)}`, scope)
+    dataUrl(`storySaves?storyId=${encodeURIComponent(storyId)}`, scope), { signal }
   )
 }
 

@@ -32,6 +32,7 @@ const character: Character = {
 const image: StoredImage = {
   id: 'image-1',
   characterId: character.id,
+  position: 0,
   tags: ['feliz'],
   isDefault: true,
   mimeType: 'image/png',

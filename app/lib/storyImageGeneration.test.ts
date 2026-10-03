@@ -18,6 +18,7 @@ const character = (id: string, name: string): Character => ({
   imageGenerationPromptPrefix: 'quality',
   imageGenerationModel: 'model-a',
   archived: false,
+  visibleInDemo: false,
   createdAt: 1,
   updatedAt: 1
 })

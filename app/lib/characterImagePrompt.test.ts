@@ -18,6 +18,7 @@ const character: Character = {
   imageGenerationSeed: '',
   imageGenerationPromptPrefix: '',
   archived: false,
+  visibleInDemo: false,
   createdAt: 1,
   updatedAt: 1
 }

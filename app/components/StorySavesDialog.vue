@@ -5,6 +5,7 @@ const props = defineProps<{
   open: boolean
   saves: StorySaveSlot[]
   busy?: boolean
+  loading?: boolean
   error?: string | null
 }>()
 const emit = defineEmits<{
@@ -82,7 +83,10 @@ function submit() {
         </p>
 
         <div class="min-h-0 flex-1 overflow-y-auto p-5">
-          <p v-if="!saves.length" class="text-sm text-[var(--color-fg-muted)]">
+          <p v-if="loading" role="status" class="text-sm text-[var(--color-fg-muted)]">
+            Cargando partidas…
+          </p>
+          <p v-else-if="!saves.length && !error" class="text-sm text-[var(--color-fg-muted)]">
             Todavía no hay partidas guardadas.
           </p>
           <ul v-else class="grid gap-3">

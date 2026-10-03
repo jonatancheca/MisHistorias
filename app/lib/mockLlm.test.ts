@@ -15,12 +15,14 @@ const character: Character = {
   imageGenerationSeed: '',
   imageGenerationPromptPrefix: '',
   archived: false,
+  visibleInDemo: false,
   createdAt: 1,
   updatedAt: 1
 }
 const image: StoredImage = {
   id: 'image-1',
   characterId: character.id,
+  position: 0,
   tags: ['feliz', 'armadura'],
   isDefault: true,
   mimeType: 'image/png',
@@ -33,6 +35,7 @@ const background: StoredBackground = {
   description: '',
   mimeType: 'image/png',
   archived: false,
+  visibleInDemo: false,
   createdAt: 1,
   blob: new Blob()
 }

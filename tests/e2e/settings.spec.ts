@@ -53,14 +53,19 @@ test('permite reintentar el listado fallido de backups sin bloquear Ajustes', as
   await expect(page.getByRole('button', { name: 'Crear backup', exact: true })).toBeEnabled()
 })
 
-test('carga imágenes para Prompts SwarmUI solo al abrir y conserva el borrador al cerrar', async ({ page, data }) => {
+test('carga catálogo de imágenes para Prompts SwarmUI solo al abrir y conserva el borrador al cerrar', async ({ page, data }) => {
   await data.patchSettings({ swarmBaseUrl: 'http://localhost:7801' })
   const character = await data.createCharacter({ name: data.unique('Imagen diferida') })
-  const image = await data.createImage(character)
+  await data.createImage(character)
+  let binaryRequests = 0
+  await page.route('**/api/data/images/*/content?*', route => {
+    binaryRequests += 1
+    return route.continue()
+  })
   let release!: () => void
   const pending = new Promise<void>(resolve => { release = resolve })
   let imageRequested = false
-  await page.route(`**/api/data/images/${image.id}/content?*`, async (route) => {
+  await page.route('**/api/data/images?*', async (route) => {
     imageRequested = true
     await pending
     await route.continue()
@@ -81,6 +86,7 @@ test('carga imágenes para Prompts SwarmUI solo al abrir y conserva el borrador 
     await dialog.getByRole('button', { name: 'Cerrar diálogo' }).click()
     await page.getByRole('button', { name: 'Prompts SwarmUI', exact: true }).click()
     await expect(dialog.getByLabel('Nombre', { exact: true })).toHaveValue('Borrador sin prompt')
+    expect(binaryRequests).toBe(0)
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 800 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
@@ -357,6 +363,34 @@ test('navega por secciones de Ajustes en desktop y conserva móvil sin overflow'
     await expect(nav).toBeHidden()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
   }
+})
+
+test('muestra el error de configuración Access y permite reintentar', async ({ page }) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', error => pageErrors.push(error.message))
+  await page.route('**/api/access', route => route.fulfill({ json: {
+    multiUserEnabled: true,
+    identity: { id: 'admin-test', email: 'admin@example.com' },
+    isAdmin: true,
+    canActivate: false
+  } }))
+  let fail = true
+  await page.route('**/api/access/config', route => fail
+    ? route.fulfill({ status: 503, json: { message: 'Configuración temporalmente no disponible.' } })
+    : route.fulfill({ json: route.request().postDataJSON() })
+  )
+  await page.goto('/settings#usuarios')
+  await page.getByLabel('Dominio del equipo').fill('https://equipo.cloudflareaccess.com')
+  await page.getByLabel('Audience de la aplicación').fill('audience-test')
+  const save = page.getByRole('button', { name: 'Actualizar Cloudflare Access', exact: true })
+  await save.click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Configuración temporalmente no disponible.' })).toBeVisible()
+  await expect(save).toBeEnabled()
+  expect(pageErrors).toEqual([])
+  fail = false
+  await save.click()
+  await expect(page.getByRole('status').filter({ hasText: 'Configuración de Cloudflare Access actualizada.' })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: 'Configuración temporalmente no disponible.' })).toHaveCount(0)
 })
 
 test('previsualiza y confirma reasignación Access sin overflow', async ({ page }) => {

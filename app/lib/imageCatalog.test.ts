@@ -20,6 +20,7 @@ const characters: Character[] = [
     imageGenerationSeed: '',
     imageGenerationPromptPrefix: '',
     archived: false,
+    visibleInDemo: false,
     createdAt: 1,
     updatedAt: 1
   },
@@ -34,6 +35,7 @@ const characters: Character[] = [
     imageGenerationSeed: '',
     imageGenerationPromptPrefix: '',
     archived: false,
+    visibleInDemo: false,
     createdAt: 1,
     updatedAt: 1
   }
@@ -43,6 +45,7 @@ const images: StoredImage[] = [
   {
     id: 'image-b',
     characterId: 'character-b',
+    position: 0,
     tags: ['serio'],
     isDefault: false,
     mimeType: 'image/png',
@@ -52,6 +55,7 @@ const images: StoredImage[] = [
   {
     id: 'image-a',
     characterId: 'character-a',
+    position: 0,
     tags: ['feliz'],
     isDefault: true,
     mimeType: 'image/png',
