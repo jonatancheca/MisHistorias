@@ -23,6 +23,7 @@ import {
   deleteMessage as dbDeleteMessage,
   deleteMessages as dbDeleteMessages,
   deleteLlmDebugTrace as dbDeleteLlmDebugTrace,
+  deleteStoryCompaction as dbDeleteStoryCompaction,
   deleteStory,
   deleteStorySave as dbDeleteStorySave,
   createStorySave as dbCreateStorySave,
@@ -227,6 +228,7 @@ export const useStoriesStore = defineStore('stories', () => {
   const waitingForResponse = ref(false)
   const retryingEmptyResponse = ref(false)
   const compacting = ref(false)
+  const deletingCompaction = ref(false)
   const canCompactInBlocks = ref(false)
   let blockRetry: (() => Promise<void>) | null = null
   let blockPendingText: string | null = null
@@ -1161,6 +1163,32 @@ export const useStoriesStore = defineStore('stories', () => {
     )
   }
 
+  async function removeCompaction(id: string) {
+    const story = activeStory.value
+    if (!story || story.readOnly || generating.value || deletingCompaction.value) return
+    const scope = getActiveDataScope()
+    const opening = storyOpenRevision
+    const current = () => opening === storyOpenRevision && scope === getActiveDataScope() && activeStory.value?.id === story.id
+    deletingCompaction.value = true
+    try {
+      await pendingTraceLoad
+      if (!current()) return
+      if (debugLoadError) throw new Error(debugLoadError)
+      const trace = debugTraces.value.find((item) => item.id === id && item.request.purpose === 'compaction')
+      if (!trace) return
+      const updated = await dbDeleteStoryCompaction(story.id, id, scope)
+      if (!current()) return
+      activeStory.value = updated
+      stories.value = stories.value.map((item) => item.id === story.id ? updated : item)
+      debugTraces.value = debugTraces.value.filter((item) => item.id !== id)
+      canCompactInBlocks.value = false
+      blockRetry = null
+      blockPendingText = null
+    } finally {
+      deletingCompaction.value = false
+    }
+  }
+
   async function updateStorySettings(
     title: string,
     premise: string,
@@ -1508,7 +1536,7 @@ export const useStoriesStore = defineStore('stories', () => {
       allowCompactionBlocks?: boolean
     } = {}
   ) {
-    if (!activeStory.value || activeStory.value.readOnly || generating.value) return
+    if (!activeStory.value || activeStory.value.readOnly || generating.value || deletingCompaction.value) return
     let story = activeStory.value
     const scope = getActiveDataScope()
     const generationLifecycle = imageGenerationLifecycle
@@ -2086,7 +2114,7 @@ export const useStoriesStore = defineStore('stories', () => {
   }
 
   async function regenerateFrom(id: string) {
-    if (generating.value) return
+    if (generating.value || deletingCompaction.value) return
     const index = messages.value.findIndex((message) => message.id === id)
     if (index < 0 || messages.value[index]?.role !== 'assistant' || messages.value[index]?.swarmError) return
     const generationMode = messages.value[index]?.generationMode ?? 'normal'
@@ -2100,10 +2128,10 @@ export const useStoriesStore = defineStore('stories', () => {
   }
 
   async function resendFrom(id: string) {
-    if (generating.value) return
+    if (generating.value || deletingCompaction.value) return
     const opening = storyOpenRevision
     await pendingTraceLoad
-    if (opening !== storyOpenRevision || generating.value) return
+    if (opening !== storyOpenRevision || generating.value || deletingCompaction.value) return
     if (debugLoadError) throw new Error(debugLoadError)
     const index = messages.value.findIndex((message) => message.id === id)
     if (index < 0 || messages.value[index]?.role !== 'user') return
@@ -2135,6 +2163,8 @@ export const useStoriesStore = defineStore('stories', () => {
     waitingForResponse,
     retryingEmptyResponse,
     compacting,
+    deletingCompaction,
+    removeCompaction,
     canCompactInBlocks,
     compactInBlocks,
     pendingAssistantMessage,

@@ -3692,6 +3692,28 @@ export class MisHistoriasStorage {
     }
   }
 
+  deleteStoryCompaction(scope: DataScope, storyId: string, id: string, access?: StorageAccess) {
+    return this.transaction(() => {
+      const ownAccess = access ? { ownerId: access.ownerId } : undefined
+      const story = this.get('stories', scope, storyId, ownAccess) as Story | null
+      const trace = this.get('llmDebugTraces', scope, id, ownAccess) as LlmDebugTrace | null
+      if (!story || !trace || trace.storyId !== storyId || trace.request.purpose !== 'compaction') return null
+
+      // Los resúmenes posteriores pueden incorporar esta compactación. Volver al
+      // historial original evita conservar indirectamente el resumen eliminado.
+      const applied = trace.status === 'success' && trace.request.compaction?.applied !== false
+      const updated = applied ? {
+        ...story,
+        contextSummary: '',
+        contextSummaryThroughMessageId: undefined,
+        updatedAt: Date.now()
+      } : story
+      if (applied) this.put('stories', scope, storyId, updated, ownAccess)
+      this.delete('llmDebugTraces', scope, id, ownAccess)
+      return updated
+    })
+  }
+
   createStorySave(
     scope: DataScope,
     storyId: string,

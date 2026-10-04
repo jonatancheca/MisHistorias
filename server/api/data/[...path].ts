@@ -602,6 +602,16 @@ export default defineEventHandler(async (event) => {
       return loaded
     }
 
+    if (
+      segments[0] === 'stories' && segments[2] === 'compactions'
+    ) {
+      if (event.method !== 'DELETE') throw createError({ statusCode: 405, message: 'Método no permitido' })
+      if (segments.length !== 4) throw createError({ statusCode: 404, message: 'Compactación no encontrada' })
+      const story = storage.deleteStoryCompaction(scope, asId(segments[1]), asId(segments[3]), access)
+      if (!story) throw createError({ statusCode: 404, message: 'Compactación no encontrada' })
+      return story
+    }
+
     const resource = asResource(segments[0])
     const id = segments[1]
 

@@ -393,6 +393,13 @@ export async function deleteLlmDebugTrace(id: string) {
   await deleteJson('llmDebugTraces', id)
 }
 
+export async function deleteStoryCompaction(storyId: string, id: string, scope: DataScope) {
+  return $fetch<Story>(
+    dataUrl(`stories/${encodeURIComponent(storyId)}/compactions/${encodeURIComponent(id)}`, scope),
+    { method: 'DELETE' }
+  )
+}
+
 export async function listStorySaves(storyId: string, scope: DataScope = activeDataScope.value, signal?: AbortSignal) {
   return $fetch<StorySaveSlot[]>(
     dataUrl(`storySaves?storyId=${encodeURIComponent(storyId)}`, scope), { signal }

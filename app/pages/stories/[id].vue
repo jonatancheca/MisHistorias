@@ -56,6 +56,7 @@ const timelineContent = ref<HTMLElement | null>(null)
 const canScrollToTop = ref(false)
 const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
+const compactionDeleteError = ref<string | null>(null)
 const editingVisualMessage = ref<Message | null>(null)
 const desktopStoryControls = useStoryDesktopControls()
 const debugEnabled = ref(false)
@@ -79,6 +80,7 @@ function toggleStoryOriginal(id: string) {
 watch(() => stories.activeStory?.id, () => {
   debugEnabled.value = false
   selectedDebugTrace.value = null
+  compactionDeleteError.value = null
   originalTextOpenIds.value = new Set()
   hiddenMessagesOpen.value = false
 })
@@ -594,6 +596,27 @@ async function onMissingStoryPrivateTrigger() {
     missingStoryPrivateClickCount = 0
     missingStoryPrivateClickTimer = null
   }, 1000)
+}
+
+async function removeCompaction(trace: LlmDebugTrace) {
+  if (stories.activeStory?.readOnly || stories.generating || stories.deletingCompaction) return
+  const story = stories.activeStory
+  const applied = trace.status === 'success' && trace.request.compaction?.applied !== false
+  const accepted = await confirmDialog.ask({
+    title: 'Borrar compactación',
+    message: applied
+      ? 'Se borrará este registro y se dejará de usar el resumen activo, que puede incluir esta compactación. La IA volverá a utilizar los mensajes originales y podrá compactarlos de nuevo si superan el límite. Los mensajes y los demás registros se conservarán.'
+      : 'Se borrará el registro de esta compactación fallida. El resumen activo y los mensajes originales se conservarán.',
+    confirmLabel: 'Borrar'
+  })
+  if (!accepted || stories.activeStory !== story) return
+  compactionDeleteError.value = null
+  try {
+    await stories.removeCompaction(trace.id)
+    if (selectedDebugTrace.value?.id === trace.id) selectedDebugTrace.value = null
+  } catch {
+    if (stories.activeStory === story) compactionDeleteError.value = 'No se pudo borrar la compactación. Inténtalo de nuevo.'
+  }
 }
 
 async function removeMessage(id: string) {
@@ -1289,7 +1312,14 @@ onBeforeRouteLeave(() => {
           <details v-if="debugEnabled && compactionTraces.length" open class="shrink-0 border-b border-white/15 text-slate-200" data-testid="visual-compactions">
             <summary class="cursor-pointer px-3 py-2 text-sm font-semibold">Compactaciones ({{ compactionTraces.length }})</summary>
             <div class="max-h-32 space-y-2 overflow-y-auto px-3 pb-2">
-              <StoryCompactionMarker v-for="trace in compactionTraces" :key="trace.id" :trace="trace" @inspect="selectedDebugTrace = $event" />
+              <StoryCompactionMarker
+                v-for="trace in compactionTraces"
+                :key="trace.id"
+                :trace="trace"
+                :editable="!stories.generating && !stories.deletingCompaction && !stories.activeStory.readOnly"
+                @inspect="selectedDebugTrace = $event"
+                @remove="removeCompaction"
+              />
             </div>
           </details>
           <div class="relative min-h-0 flex-1">
@@ -1464,7 +1494,9 @@ onBeforeRouteLeave(() => {
             <StoryCompactionMarker
               v-if="item.kind === 'compaction'"
               :trace="item.trace"
+              :editable="!stories.generating && !stories.deletingCompaction && !stories.activeStory.readOnly"
               @inspect="selectedDebugTrace = $event"
+              @remove="removeCompaction"
             />
             <MessageBubble
               v-else-if="item.kind === 'message'"
@@ -1537,6 +1569,9 @@ onBeforeRouteLeave(() => {
           @click="sounds.stopBackground()"
         >Stop</button>
         <StoryNoticeOverlay :visual-mode="stories.activeStory.visualMode">
+          <p v-if="compactionDeleteError" class="story-notice story-notice-error text-sm" role="alert">
+            {{ compactionDeleteError }}
+          </p>
           <p v-if="copySharedStoryError" class="story-notice story-notice-error text-sm" role="alert">
             {{ copySharedStoryError }}
           </p>

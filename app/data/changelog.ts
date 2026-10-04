@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 237, completedAt: '2026-10-04', summary: 'Borrado individual de compactaciones desde Debug en Chat y Novela Visual, con confirmación y retirada del resumen activo al borrar una aplicada, conservando los mensajes originales.' },
   { issue: 238, completedAt: '2026-10-04', summary: 'Carga de IA precedida por la descarga de los demás modelos de LM Studio, con cancelación ante fallos y sin cambios si el elegido ya está cargado; botón Load IA junto al selector en Ajustes.' },
   { issue: 236, completedAt: '2026-10-04', summary: 'Avisos de carga, creación, compactación, imágenes y errores superpuestos a la escena sin desplazarla, en Chat y Novela Visual; carga renombrada a «Cargando IA».' },
   { issue: 235, completedAt: '2026-10-04', summary: 'Load IA accesible en la navegación de Novela Visual, con icono, indicador de carga y presentación compacta en móvil.' },

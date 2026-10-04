@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { LlmDebugTrace } from '#shared/types'
 
-const props = defineProps<{ trace: LlmDebugTrace }>()
-const emit = defineEmits<{ inspect: [trace: LlmDebugTrace] }>()
+const props = defineProps<{ trace: LlmDebugTrace; editable?: boolean }>()
+const emit = defineEmits<{ inspect: [trace: LlmDebugTrace]; remove: [trace: LlmDebugTrace] }>()
 const applied = computed(() => props.trace.status === 'success' && props.trace.request.compaction?.applied !== false)
 const characters = (messages: Array<{ content: string }>) => messages.reduce((total, message) => total + message.content.length, 0)
 </script>
@@ -20,8 +20,19 @@ const characters = (messages: Array<{ content: string }>) => messages.reduce((to
         <template v-if="trace.request.compaction.after"> · {{ trace.request.compaction.afterUsage?.count ?? characters(trace.request.compaction.after) }} después</template>
       </p>
     </div>
-    <button type="button" class="btn-ghost shrink-0 px-2 py-1 text-xs" @click="emit('inspect', trace)">
-      Ver antes / después
-    </button>
+    <div class="flex flex-wrap gap-1">
+      <button type="button" class="btn-ghost shrink-0 px-2 py-1 text-xs" @click="emit('inspect', trace)">
+        Ver antes / después
+      </button>
+      <button
+        v-if="editable"
+        type="button"
+        class="btn-danger shrink-0 px-2 py-1 text-xs"
+        aria-label="Borrar compactación"
+        @click="emit('remove', trace)"
+      >
+        Borrar
+      </button>
+    </div>
   </div>
 </template>

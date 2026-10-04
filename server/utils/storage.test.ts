@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { DatabaseSync } from 'node:sqlite'
 import { MisHistoriasStorage } from './storage.ts'
-import type { Background, CharacterImage, ErrorTrace, Story, SwarmPrompt } from '../../shared/types/index.ts'
+import type { Background, CharacterImage, ErrorTrace, LlmDebugTrace, Story, SwarmPrompt } from '../../shared/types/index.ts'
 
 function withStorage(run: (storage: MisHistoriasStorage, path: string) => void) {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-'))
@@ -63,6 +63,91 @@ function story(id: string): Story {
     updatedAt: 4
   }
 }
+
+function compaction(id: string, storyId = 'story'): LlmDebugTrace {
+  return {
+    id, storyId, requestMessageId: 'old', status: 'success', createdAt: 10,
+    request: { purpose: 'compaction', model: 'test', messages: [], temperature: 0.7, max_tokens: 100, stream: false },
+    response: { content: 'Resumen anterior.', finishReason: 'stop' }
+  }
+}
+
+for (const scope of ['normal', 'private'] as const) {
+  test(`borra compactación aplicada y resumen acumulado sin borrar mensajes ni otras trazas (${scope})`, () => {
+    withStorage((storage) => {
+      const original = { id: 'old', storyId: 'story', role: 'user', raw: 'Texto original.', segments: [], createdAt: 5 }
+      const checkpoint = { ...story('story'), contextSummary: 'Resumen posterior acumulado.', contextSummaryThroughMessageId: 'old' }
+      storage.put('stories', scope, 'story', checkpoint)
+      storage.put('messages', scope, 'old', original)
+      storage.put('llmDebugTraces', scope, 'earlier', compaction('earlier'))
+      storage.put('llmDebugTraces', scope, 'later', { ...compaction('later'), createdAt: 20 })
+
+      const updated = storage.deleteStoryCompaction(scope, 'story', 'earlier')!
+      assert.equal(updated.contextSummary, '')
+      assert.equal(updated.contextSummaryThroughMessageId, undefined)
+      assert.equal(storage.get('stories', scope, 'story')?.contextSummary, '')
+      assert.equal(storage.get('stories', scope, 'story')?.contextSummaryThroughMessageId, undefined)
+      assert.equal(storage.get('llmDebugTraces', scope, 'earlier'), null)
+      assert.ok(storage.get('llmDebugTraces', scope, 'later'))
+      assert.equal(storage.get('messages', scope, 'old')?.raw, original.raw)
+      assert.equal(storage.deleteStoryCompaction(scope, 'story', 'earlier'), null)
+    })
+  })
+}
+
+test('borrar compactaciones fallidas o no aplicadas conserva el checkpoint activo', () => {
+  withStorage((storage) => {
+    const checkpoint = { ...story('story'), contextSummary: 'Resumen válido.', contextSummaryThroughMessageId: 'old' }
+    storage.put('stories', 'normal', 'story', checkpoint)
+    for (const status of ['error', 'success'] as const) {
+      storage.put('llmDebugTraces', 'normal', status, {
+        ...compaction(status), status,
+        request: { ...compaction(status).request, compaction: { before: [], historyBudget: 100, applied: false } }
+      })
+      const before = storage.get('stories', 'normal', 'story')
+      storage.deleteStoryCompaction('normal', 'story', status)
+      assert.deepEqual(storage.get('stories', 'normal', 'story'), before)
+      assert.equal(storage.get('llmDebugTraces', 'normal', status), null)
+    }
+  })
+})
+
+test('borrar compactación exige historia, ámbito y propietario propios, incluso en demo', () => {
+  withStorage((storage) => {
+    storage.activateMultiUser({ id: 'owner', email: 'owner@example.com' })
+    const owner = { ownerId: 'owner', includeSharedDemo: true }
+    const visitor = { ownerId: 'visitor', includeSharedDemo: true }
+    storage.put('stories', 'private', 'story', { ...story('story'), visibleInDemo: true, contextSummary: 'Resumen privado.' }, owner)
+    storage.put('stories', 'private', 'other', story('other'), owner)
+    storage.put('llmDebugTraces', 'private', 'trace', compaction('trace'), owner)
+    storage.put('llmDebugTraces', 'private', 'chat', { ...compaction('chat'), request: { ...compaction('chat').request, purpose: 'chat' } }, owner)
+    const before = storage.get('stories', 'private', 'story', owner)
+    assert.equal(storage.deleteStoryCompaction('private', 'story', 'trace', visitor), null)
+    assert.equal(storage.deleteStoryCompaction('normal', 'story', 'trace', owner), null)
+    assert.equal(storage.deleteStoryCompaction('private', 'other', 'trace', owner), null)
+    assert.equal(storage.deleteStoryCompaction('private', 'story', 'chat', owner), null)
+    assert.deepEqual(storage.get('stories', 'private', 'story', owner), before)
+    assert.ok(storage.get('llmDebugTraces', 'private', 'trace', owner))
+    assert.equal(storage.deleteStoryCompaction('private', 'story', 'trace', owner)?.contextSummary, '')
+  })
+})
+
+test('revierte la retirada del resumen si falla el borrado de la compactación', () => {
+  withStorage((storage, path) => {
+    storage.put('stories', 'normal', 'story', { ...story('story'), contextSummary: 'Resumen válido.', contextSummaryThroughMessageId: 'old' })
+    storage.put('llmDebugTraces', 'normal', 'trace', compaction('trace'))
+    const database = new DatabaseSync(path)
+    try {
+      database.exec("CREATE TRIGGER fail_compaction_delete BEFORE DELETE ON llm_debug_traces BEGIN SELECT RAISE(ABORT, 'Borrado rechazado'); END")
+    } finally {
+      database.close()
+    }
+    const before = storage.get('stories', 'normal', 'story')
+    assert.throws(() => storage.deleteStoryCompaction('normal', 'story', 'trace'), /Borrado rechazado/)
+    assert.deepEqual(storage.get('stories', 'normal', 'story'), before)
+    assert.ok(storage.get('llmDebugTraces', 'normal', 'trace'))
+  })
+})
 
 function migrationBackups(path: string) {
   const backupDirectory = join(dirname(path), 'backups')
