@@ -54,7 +54,7 @@ export const useLlmModelPreloadStore = defineStore('llmModelPreload', () => {
       key,
       storyId: null,
       status: 'loading',
-      message: 'Cargando modelo de LM Studio…'
+      message: 'Cargando IA…'
     }
     if (pending.has(key)) return pending.get(key)
 

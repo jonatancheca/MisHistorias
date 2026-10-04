@@ -447,7 +447,7 @@ const modelLoadTargetId = computed(() => timeline.value.findLast((item) =>
   item.kind === 'trace' || (item.kind === 'message' && !item.message.swarmError && debugForMessage(item.id) &&
     (originalTextAvailable.value || !isAiInstruction(item.message.raw)))
 )?.id ?? null)
-const modelLoadInFooter = computed(() =>
+const modelLoadInNavigation = computed(() =>
   modelLoadAvailable.value && !stories.activeStory?.visualMode && !modelLoadTargetId.value
 )
 
@@ -1167,9 +1167,6 @@ onBeforeRouteLeave(() => {
           >
             Historia demo compartida · solo lectura
           </p>
-          <p v-if="copySharedStoryError" class="mt-1 text-xs text-red-500" role="alert">
-            {{ copySharedStoryError }}
-          </p>
         </div>
         </div>
         <div class="flex min-w-0 items-center justify-between gap-2">
@@ -1283,7 +1280,7 @@ onBeforeRouteLeave(() => {
         </div>
       </header>
 
-      <div class="relative min-h-0 flex-1 overflow-hidden">
+      <div class="relative min-h-0 flex-1 overflow-hidden" data-testid="story-reader">
         <div
           v-if="stories.activeStory.visualMode"
           data-testid="visual-novel-view"
@@ -1529,14 +1526,6 @@ onBeforeRouteLeave(() => {
             </div>
           </template>
 
-          <div
-            v-if="stories.error"
-            class="flex min-w-0 flex-wrap items-center gap-3 rounded-lg bg-red-500/10 px-4 py-2 text-sm text-red-500"
-            role="alert"
-          >
-            <p class="min-w-0 flex-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{{ stories.error }}</p>
-            <button v-if="stories.canCompactInBlocks && !stories.generating" type="button" class="btn-ghost shrink-0" @click="compactInBlocks">Compactar por bloques</button>
-          </div>
           </div>
         </div>
         <button
@@ -1547,6 +1536,107 @@ onBeforeRouteLeave(() => {
           aria-label="Detener sonido de fondo"
           @click="sounds.stopBackground()"
         >Stop</button>
+        <StoryNoticeOverlay :visual-mode="stories.activeStory.visualMode">
+          <p v-if="copySharedStoryError" class="story-notice story-notice-error text-sm" role="alert">
+            {{ copySharedStoryError }}
+          </p>
+          <template v-if="!stories.activeStory.readOnly">
+            <p
+              v-if="modelLoadError"
+              data-testid="story-model-load-error"
+              class="story-notice story-notice-error text-sm break-words"
+              role="alert"
+            >{{ modelLoadError }}</p>
+            <p
+              v-if="storyModelPreload?.status === 'loading'"
+              data-testid="story-model-preload"
+              class="story-notice text-center text-sm"
+              role="status"
+            >
+              {{ storyModelPreload.message }}
+            </p>
+            <p
+              v-if="stories.compacting"
+              data-testid="compacting-indicator"
+              class="story-notice text-center text-sm"
+              role="status"
+              aria-live="polite"
+            >El Narrador está compactando el historial</p>
+            <div
+              v-if="stories.waitingForResponse && storyModelPreload?.status !== 'loading'"
+              data-testid="thinking-indicator"
+              class="story-notice flex items-center justify-center text-sm"
+              role="status"
+              aria-live="polite"
+            >
+              <div
+                class="flex min-w-0 items-center gap-3"
+              >
+                <span>Creando historia…{{ stories.retryingEmptyResponse ? ' (reintentando)' : '' }}</span>
+                <span class="flex shrink-0 items-center gap-1" aria-hidden="true">
+                  <span class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none" />
+                  <span
+                    class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
+                    style="animation-delay: 120ms"
+                  />
+                  <span
+                    class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
+                    style="animation-delay: 240ms"
+                  />
+                </span>
+              </div>
+            </div>
+            <div
+              v-if="stories.generatingImages"
+              class="story-notice flex flex-wrap items-center gap-3 text-sm"
+              data-testid="image-generation-status"
+              role="status"
+              aria-live="polite"
+            >
+              <span class="min-w-0 flex-1 break-words">
+                Creando imagen de {{ stories.imageGenerationCharacter }}
+                {{ stories.imageGenerationTags.map((tag) => `[${tag}]`).join('') }}
+                ({{ stories.imageGenerationCompleted }} / {{ stories.imageGenerationTotal }})
+              </span>
+              <button
+                type="button"
+                class="btn-ghost shrink-0 px-2 py-1 text-xs"
+                data-testid="cancel-image-generation"
+                @click="stories.cancelImageGeneration()"
+              >
+                Cancelar imágenes
+              </button>
+            </div>
+            <p
+              v-if="stories.imageGenerationError"
+              class="story-notice story-notice-warning text-sm"
+              data-testid="image-generation-warning"
+              role="alert"
+            >
+              {{ stories.imageGenerationError }}
+            </p>
+            <div
+              v-if="!stories.generating && (stories.generationFeedback || stories.error)"
+              :data-testid="stories.activeStory.visualMode ? 'visual-generation-feedback' : 'story-generation-feedback'"
+              class="story-notice flex flex-wrap items-center gap-3 text-sm"
+              :class="stories.generationFeedback?.warning
+                ? 'story-notice-warning'
+                : 'story-notice-error'"
+              role="alert"
+            >
+              <p class="min-w-0 flex-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                {{ stories.generationFeedback?.message ?? stories.error }}
+              </p>
+              <button
+                v-if="stories.generationFeedback?.retry"
+                type="button"
+                class="btn-ghost shrink-0 px-3 py-2"
+                @click="retryFailedGeneration"
+              >Reintentar</button>
+              <button v-if="stories.canCompactInBlocks" type="button" class="btn-ghost shrink-0 px-3 py-2" @click="compactInBlocks">Compactar por bloques</button>
+            </div>
+          </template>
+        </StoryNoticeOverlay>
       </div>
 
       <nav class="story-reader-controls" aria-label="Navegación de la historia" data-testid="story-reader-controls">
@@ -1586,7 +1676,7 @@ onBeforeRouteLeave(() => {
           <span v-else>Historial</span>
         </div>
         <StoryModelLoadButton
-          v-if="stories.activeStory.visualMode && modelLoadAvailable"
+          v-if="modelLoadAvailable && (stories.activeStory.visualMode || modelLoadInNavigation)"
           class="story-nav-button"
           compact-on-mobile
           :loading="modelLoading"
@@ -1628,118 +1718,6 @@ onBeforeRouteLeave(() => {
         v-if="!stories.activeStory.readOnly"
         class="story-composer-footer relative shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-3"
       >
-        <StoryModelLoadButton
-          v-if="modelLoadInFooter"
-          class="mb-2"
-          :loading="modelLoading"
-          :disabled="stories.generating"
-          @load="loadStoryModel"
-        />
-        <p
-          v-if="modelLoadError"
-          data-testid="story-model-load-error"
-          class="mb-2 text-sm break-words text-red-500"
-          role="alert"
-        >{{ modelLoadError }}</p>
-        <p
-          v-if="storyModelPreload?.status === 'loading'"
-          data-testid="story-model-preload"
-          class="mb-2 text-center text-sm text-[var(--color-fg-muted)]"
-          role="status"
-        >
-          {{ storyModelPreload.message }}
-        </p>
-        <p
-          v-if="stories.compacting"
-          data-testid="compacting-indicator"
-          class="mb-2 text-center text-sm text-[var(--color-fg-muted)]"
-          role="status"
-          aria-live="polite"
-        >El Narrador está compactando el historial</p>
-        <!-- El diálogo visual mide 120px; 4.5rem separan el aviso de las fichas y acciones de la escena. -->
-        <div
-          v-if="stories.waitingForResponse && storyModelPreload?.status !== 'loading'"
-          data-testid="thinking-indicator"
-          class="mb-2 flex min-w-0 items-center justify-center text-sm text-[var(--color-fg-muted)] sm:-translate-x-9"
-          :class="
-            stories.activeStory.visualMode
-              ? 'sm:pointer-events-none sm:absolute sm:inset-x-0 sm:bottom-[calc(100%+120px+8.5rem)] sm:mb-0 sm:z-20'
-              : 'lg:!translate-x-[5.75rem]'
-          "
-          role="status"
-          aria-live="polite"
-        >
-          <div
-            class="flex items-center gap-3"
-            :class="
-              stories.activeStory.visualMode
-                ? 'sm:rounded-full sm:border sm:border-white/25 sm:bg-slate-950/85 sm:px-4 sm:py-2 sm:text-white sm:shadow-lg sm:backdrop-blur-sm'
-                : ''
-            "
-          >
-            <span>Creando historia…{{ stories.retryingEmptyResponse ? ' (reintentando)' : '' }}</span>
-            <span class="flex shrink-0 items-center gap-1" aria-hidden="true">
-              <span class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none" />
-              <span
-                class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
-                style="animation-delay: 120ms"
-              />
-              <span
-                class="h-2 w-2 animate-bounce rounded-full bg-brand-500 motion-reduce:animate-none"
-                style="animation-delay: 240ms"
-              />
-            </span>
-          </div>
-        </div>
-        <div
-          v-if="stories.generatingImages"
-          class="mb-2 flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-brand-500/20 bg-brand-500/5 px-3 py-2 text-sm text-[var(--color-fg-muted)]"
-          data-testid="image-generation-status"
-          role="status"
-          aria-live="polite"
-        >
-          <span class="min-w-0 flex-1 break-words">
-            Creando imagen de {{ stories.imageGenerationCharacter }}
-            {{ stories.imageGenerationTags.map((tag) => `[${tag}]`).join('') }}
-            ({{ stories.imageGenerationCompleted }} / {{ stories.imageGenerationTotal }})
-          </span>
-          <button
-            type="button"
-            class="btn-ghost shrink-0 px-2 py-1 text-xs"
-            data-testid="cancel-image-generation"
-            @click="stories.cancelImageGeneration()"
-          >
-            Cancelar imágenes
-          </button>
-        </div>
-        <p
-          v-if="stories.imageGenerationError"
-          class="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
-          data-testid="image-generation-warning"
-          role="alert"
-        >
-          {{ stories.imageGenerationError }}
-        </p>
-        <div
-          v-if="stories.activeStory.visualMode && !stories.generating && (stories.generationFeedback || stories.error)"
-          data-testid="visual-generation-feedback"
-          class="mb-2 flex min-w-0 flex-wrap items-center gap-3 rounded-lg px-3 py-2 text-sm"
-          :class="stories.generationFeedback?.warning
-            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
-            : 'bg-red-500/10 text-red-600 dark:text-red-400'"
-          role="alert"
-        >
-          <p class="min-w-0 flex-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-            {{ stories.generationFeedback?.message ?? stories.error }}
-          </p>
-          <button
-            v-if="stories.generationFeedback?.retry"
-            type="button"
-            class="btn-ghost shrink-0 px-3 py-2"
-            @click="retryFailedGeneration"
-          >Reintentar</button>
-          <button v-if="stories.canCompactInBlocks" type="button" class="btn-ghost shrink-0 px-3 py-2" @click="compactInBlocks">Compactar por bloques</button>
-        </div>
         <div v-if="visiblePendingImageInstructions.length" class="mb-2 flex flex-wrap gap-2" data-testid="pending-image-instructions">
           <span
             v-for="instruction in visiblePendingImageInstructions"
@@ -1770,7 +1748,7 @@ onBeforeRouteLeave(() => {
               @keydown.ctrl.enter.exact="onSubmitShortcut"
             />
             <button
-              v-if="!stories.activeStory.visualMode || !stories.generating"
+              v-if="!stories.generating"
               type="submit"
               class="btn-primary story-send-button"
               :disabled="stories.generating"
@@ -1814,15 +1792,6 @@ onBeforeRouteLeave(() => {
             >
               <svg aria-hidden="true" class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6L12 3Z" /></svg>
               <span><strong>Auto</strong><small>La IA decide</small></span>
-            </button>
-            <button
-              v-if="stories.generating && !stories.activeStory.visualMode"
-              type="button"
-              class="btn-danger story-stop-button"
-              @click="stories.stop({ preserveAutoResponse: true })"
-            >
-              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
-              Parar
             </button>
           </div>
         </form>
@@ -2092,7 +2061,6 @@ onBeforeRouteLeave(() => {
 .story-generate-button > svg { color: var(--color-brand-500); }
 .story-generate-button:hover:not(:disabled) { border-color: var(--color-brand-400); background: var(--color-surface); }
 .story-generate-button:disabled { opacity: 0.45; cursor: not-allowed; }
-.story-stop-button { grid-column: 1 / -1; min-height: 44px; }
 
 @media (min-width: 640px) {
   .story-header { padding: 0.75rem 1.25rem; }

@@ -23,7 +23,7 @@ test('precarga LM Studio al abrir el formulario y espera antes de generar', asyn
     await page.goto('/')
     await page.getByRole('link', { name: 'Nueva historia' }).click()
     await loadRequested.promise
-    await expect(page.getByTestId('story-model-preload')).toContainText('Cargando modelo')
+    await expect(page.getByTestId('story-model-preload')).toContainText('Cargando IA')
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 844 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
@@ -34,7 +34,7 @@ test('precarga LM Studio al abrir el formulario y espera antes de generar', asyn
       .getByRole('button', { name: `Añadir ${character.name} al elenco` }).click()
     await page.getByRole('button', { name: 'Empezar historia' }).click()
     await expect(page).toHaveURL(/\/stories\/[^/]+$/)
-    await expect(page.getByTestId('story-model-preload')).toContainText('Cargando modelo')
+    await expect(page.getByTestId('story-model-preload')).toContainText('Cargando IA')
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 844 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)

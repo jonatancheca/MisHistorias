@@ -38,20 +38,25 @@ test.describe('errores de generación en Novela Visual', () => {
     const frameText = await page.getByTestId('visual-novel-frame').innerText()
     await page.getByTestId('visual-mode-toggle').click()
     await expect(page.getByTestId('story-scroller').getByRole('alert')).toContainText('Servidor LLM no disponible.')
-    await expect(page.getByRole('button', { name: 'Reintentar', exact: true })).toHaveCount(0)
+    await expect(page.getByTestId('story-generation-feedback').getByRole('button', { name: 'Reintentar', exact: true })).toBeVisible()
     await page.getByTestId('visual-mode-toggle').click()
     await expect(feedback).toBeVisible()
     await expect(page.getByTestId('visual-novel-frame')).toHaveText(frameText)
-    for (const width of [320, 390, 1280]) {
-      await page.setViewportSize({ width, height: 900 })
-      await expect(feedback).toBeInViewport()
-      await expect(composer).toBeInViewport()
-      const panelBounds = (await feedback.boundingBox())!
-      const inputBounds = (await composer.boundingBox())!
-      expect(panelBounds.y + panelBounds.height).toBeLessThanOrEqual(inputBounds.y)
-      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
-      if (width === 390) await page.screenshot({ path: test.info().outputPath('error-390.png') })
+    for (const visualMode of [true, false]) {
+      if (!visualMode) await page.getByTestId('visual-mode-toggle').click()
+      const notice = page.getByTestId(visualMode ? 'visual-generation-feedback' : 'story-generation-feedback')
+      for (const width of [320, 390, 1280]) {
+        await page.setViewportSize({ width, height: 900 })
+        await expect(notice).toBeInViewport()
+        await expect(composer).toBeInViewport()
+        const panelBounds = (await notice.boundingBox())!
+        const inputBounds = (await composer.boundingBox())!
+        expect(panelBounds.y + panelBounds.height).toBeLessThanOrEqual(inputBounds.y)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+        if (width === 390) await page.screenshot({ path: test.info().outputPath('error-' + visualMode + '-390.png') })
+      }
     }
+    await page.getByTestId('visual-mode-toggle').click()
     await page.reload()
     await expect(feedback).toContainText('HTTP 502')
     await composer.fill('Borrador para después.')

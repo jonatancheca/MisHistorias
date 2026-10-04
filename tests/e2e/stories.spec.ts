@@ -1209,7 +1209,8 @@ test.describe('chat', () => {
   })
 
   for (const visualMode of [false, true]) {
-    test(`muestra pensando sobre escritura en ${visualMode ? 'Visual Novel' : 'chat'}`, async ({ page, data }) => {
+    test(`muestra pensando sobre la escena sin desplazar escritura en ${visualMode ? 'Visual Novel' : 'chat'}`, async ({ page, data }) => {
+      await page.emulateMedia({ reducedMotion: 'reduce' })
       const { story } = await createStoryFixture(data, visualMode)
       await data.patchSettings({ mockMode: false, model: 'test-model', useChromeLlm: false, privateUseChromeLlm: null, responseSpeed: 'instant' })
       let releaseResponse!: () => void
@@ -1222,22 +1223,31 @@ test.describe('chat', () => {
       await page.goto(`/stories/${story.id}`)
       const input = page.getByPlaceholder('Escribe lo que haces o dices…')
       await input.fill('Comienza.')
-      const readVisualGeometry = () => page.evaluate(() => {
-        const bounds = (selector: string) => {
-          const rect = document.querySelector<HTMLElement>(selector)?.getBoundingClientRect()
-          return rect
-            ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
-            : null
-        }
-        return {
-          view: bounds('[data-testid="visual-novel-view"]'),
-          stage: bounds('[data-testid="visual-novel-stage"]'),
-          dialogue: bounds('[data-testid="visual-novel-dialogue"]'),
-          footer: bounds('footer'),
-          input: bounds('textarea[placeholder="Escribe lo que haces o dices…"]')
-        }
-      })
-      const visualGeometryBefore = visualMode ? await readVisualGeometry() : null
+      const readVisualGeometry = async () => {
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+        return page.evaluate(() => {
+          const bounds = (selector: string) => {
+            const rect = document.querySelector<HTMLElement>(selector)?.getBoundingClientRect()
+            return rect
+              ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+              : null
+          }
+          return {
+            reader: bounds('[data-testid="story-reader"]'),
+            view: bounds('[data-testid="visual-novel-view"]'),
+            stage: bounds('[data-testid="visual-novel-stage"]'),
+            dialogue: bounds('[data-testid="visual-novel-dialogue"]'),
+            footer: bounds('footer'),
+            input: bounds('textarea[placeholder="Escribe lo que haces o dices…"]')
+          }
+        })
+      }
+      const geometryBefore = new Map<number, Awaited<ReturnType<typeof readVisualGeometry>>>()
+      for (const width of [1280, 640, 320, 390]) {
+        await page.setViewportSize({ width, height: 900 })
+        geometryBefore.set(width, await readVisualGeometry())
+      }
+      await page.setViewportSize({ width: 1280, height: 900 })
       await page.getByRole('button', { name: 'Enviar', exact: true }).click()
       const indicator = page.getByTestId('thinking-indicator')
       try {
@@ -1249,15 +1259,16 @@ test.describe('chat', () => {
           await page.setViewportSize({ width, height: 900 })
           await expect(indicator).toBeVisible()
           await expect(indicator).toHaveText('Creando historia…')
-          await expect(page.locator('footer').getByTestId('thinking-indicator')).toHaveCount(1)
+          await expect(page.getByTestId('story-notices').getByTestId('thinking-indicator')).toHaveCount(1)
           const statusBounds = await indicator.boundingBox()
           const inputBounds = await input.boundingBox()
           expect(statusBounds!.y + statusBounds!.height).toBeLessThanOrEqual(inputBounds!.y)
-          expect(Math.abs(statusBounds!.x + statusBounds!.width / 2 - width / 2)).toBeLessThanOrEqual(1)
-          expect(await indicator.evaluate(element => getComputedStyle(element).position)).toBe(
-            visualMode && width >= 640 ? 'absolute' : 'static'
-          )
-          if (visualMode && width >= 640) {
+          const readerBounds = await page.getByTestId('story-reader').boundingBox()
+          expect(Math.abs(statusBounds!.x + statusBounds!.width / 2 - readerBounds!.x - readerBounds!.width / 2)).toBeLessThanOrEqual(1)
+          await expect(page.getByTestId('story-notices')).toHaveCSS('position', 'absolute')
+          expect(await readVisualGeometry()).toEqual(geometryBefore.get(width))
+          await page.screenshot({ path: test.info().outputPath('thinking-' + width + '.png') })
+          if (visualMode) {
             const stageBounds = await page.getByTestId('visual-novel-stage').boundingBox()
             const dialogueBounds = await page.getByTestId('visual-novel-dialogue').boundingBox()
             expect(statusBounds!.y).toBeGreaterThanOrEqual(stageBounds!.y)
@@ -1265,7 +1276,6 @@ test.describe('chat', () => {
             expect(statusBounds!.y + statusBounds!.height).toBeLessThan(dialogueBounds!.y)
           }
           if (visualMode && width === 1280) {
-            expect(await readVisualGeometry()).toEqual(visualGeometryBefore)
             await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toHaveCount(0)
             await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeVisible()
           }
@@ -1512,7 +1522,8 @@ test.describe('chat', () => {
     await expect(page.getByTestId('compacting-indicator')).toContainText(
       'El Narrador está compactando el historial'
     )
-    await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Parar', exact: true })).toBeEnabled()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
       .toBe(true)
     expect(JSON.stringify(compactionRequest)).toContain(firstAction)

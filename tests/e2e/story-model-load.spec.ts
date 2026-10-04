@@ -88,11 +88,28 @@ for (const visualMode of [false, true]) {
       const messages = await data.list<Message>('messages', 'normal', { storyId: story.id })
       if (visualMode) await page.getByTestId('visual-novel-frame').hover()
       else await area.hover()
+      const geometryBefore = new Map<number, Awaited<ReturnType<typeof input.boundingBox>>>()
+      for (const width of [1280, 320, 390]) {
+        await page.setViewportSize({ width, height: 900 })
+        geometryBefore.set(width, await input.boundingBox())
+      }
+      await page.setViewportSize({ width: 1280, height: 900 })
+      if (!visualMode) await area.hover()
       await button.click()
       await requested.promise
       await expect(button).toHaveText('Cargando…')
       await expect(button).toBeDisabled()
       expect(loads).toBe(1)
+      for (const width of [1280, 320, 390]) {
+        await page.setViewportSize({ width, height: 900 })
+        const notice = page.getByTestId('story-model-preload')
+        await expect(notice).toHaveText('Cargando IA…')
+        await expect(notice).toBeInViewport()
+        await expect(page.getByTestId('story-notices')).toHaveCSS('position', 'absolute')
+        expect(await input.boundingBox()).toEqual(geometryBefore.get(width))
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+        await page.screenshot({ path: test.info().outputPath('loading-' + width + '.png') })
+      }
       release.resolve(undefined)
       await expect(button).toHaveCount(0)
       await expect(input).toHaveValue('Borrador conservado.')
