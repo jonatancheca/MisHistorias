@@ -59,6 +59,11 @@ const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
 const compactionDeleteError = ref<string | null>(null)
 const editingVisualMessage = ref<Message | null>(null)
 const desktopStoryControls = useStoryDesktopControls()
+const readerOptionsInNavigation = ref(false)
+let readerOptionsMedia: MediaQueryList | null = null
+function syncReaderOptionsPlacement() {
+  readerOptionsInNavigation.value = readerOptionsMedia?.matches ?? false
+}
 const debugEnabled = ref(false)
 const originalTextAvailable = computed(() => desktopStoryControls.value || debugEnabled.value)
 const originalTextOpenIds = ref(new Set<string>())
@@ -668,6 +673,9 @@ async function resendFrom(id: string) {
 }
 
 onMounted(async () => {
+  readerOptionsMedia = window.matchMedia('(min-width: 640px)')
+  syncReaderOptionsPlacement()
+  readerOptionsMedia.addEventListener('change', syncReaderOptionsPlacement)
   timelineResizeObserver = new ResizeObserver(scheduleFollowBottom)
   if (timelineContent.value) timelineResizeObserver.observe(timelineContent.value)
   if (scroller.value) timelineResizeObserver.observe(scroller.value)
@@ -1102,6 +1110,7 @@ function onStoryKeydown(event: KeyboardEvent) {
 }
 
 onBeforeUnmount(() => {
+  readerOptionsMedia?.removeEventListener('change', syncReaderOptionsPlacement)
   stories.cancelImageGeneration({ abandonResponse: true })
   sounds.stopBackground()
   timelineContent.value?.removeEventListener('load', onTimelineAssetLoad, true)
@@ -1192,7 +1201,9 @@ onBeforeRouteLeave(() => {
           </p>
         </div>
         </div>
-        <div class="flex min-w-0 items-center justify-between gap-2">
+        <div class="story-header-options">
+          <Teleport defer to="#story-reader-options" :disabled="!readerOptionsInNavigation">
+          <div class="story-reader-options flex min-w-0 items-center justify-between gap-2">
           <div v-if="!stories.activeStory.readOnly" class="story-mode-switch" role="group" aria-label="Modo de lectura">
             <button
               type="button"
@@ -1218,7 +1229,7 @@ onBeforeRouteLeave(() => {
             </button>
           </div>
           <span v-else class="text-sm text-[var(--color-fg-muted)]">Solo lectura</span>
-          <StoryToolsMenu :active="debugEnabled">
+          <StoryToolsMenu :active="debugEnabled" :placement="readerOptionsInNavigation ? 'top' : 'bottom'">
             <button
               v-if="!stories.activeStory.readOnly"
               type="button"
@@ -1300,6 +1311,8 @@ onBeforeRouteLeave(() => {
               <span>{{ copyingSharedStory ? 'Copiando…' : 'Copiar' }}</span>
             </button>
           </StoryToolsMenu>
+          </div>
+          </Teleport>
         </div>
       </header>
 
@@ -1675,6 +1688,7 @@ onBeforeRouteLeave(() => {
       </div>
 
       <nav class="story-reader-controls" aria-label="Navegación de la historia" data-testid="story-reader-controls">
+        <div class="story-frame-navigation">
         <button
           type="button"
           class="story-nav-button"
@@ -1708,7 +1722,7 @@ onBeforeRouteLeave(() => {
           <template v-if="stories.activeStory.visualMode">
             <span data-testid="visual-novel-counter" class="block text-sm font-bold tabular-nums text-[var(--color-fg)]">{{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrameTotal }}</span>
           </template>
-          <span v-else>Historial</span>
+          <span v-else>Historia</span>
         </div>
         <StoryModelLoadButton
           v-if="modelLoadAvailable && (stories.activeStory.visualMode || modelLoadInNavigation)"
@@ -1747,6 +1761,8 @@ onBeforeRouteLeave(() => {
             <path :d="stories.activeStory.visualMode ? 'M19 5v14M5 5l8 7-8 7' : 'M5 20h14M12 4v13m-5-5 5 5 5-5'" />
           </svg>
         <span v-if="!stories.activeStory.visualMode">Final</span></button>
+        </div>
+        <div id="story-reader-options" class="story-reader-options-target" />
       </nav>
 
       <footer
@@ -1969,6 +1985,10 @@ onBeforeRouteLeave(() => {
   padding: 0.75rem;
 }
 
+.story-header-options:empty { display: none; }
+.story-reader-options { width: 100%; }
+.story-reader-options-target { display: none; }
+
 .story-mode-switch {
   display: flex;
   min-width: 0;
@@ -2005,6 +2025,8 @@ onBeforeRouteLeave(() => {
 }
 
 .story-reader-controls {
+  position: relative;
+  z-index: 30;
   display: flex;
   flex-shrink: 0;
   align-items: center;
@@ -2012,6 +2034,14 @@ onBeforeRouteLeave(() => {
   border-block: 1px solid var(--color-border-soft);
   background: var(--color-surface);
   padding: 0.375rem 0.75rem;
+}
+
+.story-frame-navigation {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 18rem;
+  align-items: center;
+  gap: 0.375rem;
 }
 
 .story-nav-button {
@@ -2099,7 +2129,9 @@ onBeforeRouteLeave(() => {
 
 @media (min-width: 640px) {
   .story-header { padding: 0.75rem 1.25rem; }
-  .story-reader-controls { padding-inline: 1.25rem; }
+  .story-reader-controls { flex-wrap: wrap; column-gap: 1rem; padding-inline: 1.25rem; }
+  .story-frame-navigation { min-width: max-content; }
+  .story-reader-options-target { display: block; min-width: max-content; flex: 1 1 22rem; }
 }
 
 @media (min-width: 1280px) {

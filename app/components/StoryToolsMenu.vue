@@ -1,5 +1,7 @@
 <script setup lang="ts">
-defineProps<{ active?: boolean }>()
+withDefaults(defineProps<{ active?: boolean; placement?: 'top' | 'bottom' }>(), {
+  placement: 'bottom'
+})
 
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
@@ -56,7 +58,8 @@ onBeforeUnmount(() => {
     <div
       v-show="open"
       :id="panelId"
-      class="story-tools-panel absolute top-full right-0 z-40 mt-2 grid max-h-[min(28rem,60dvh)] w-72 max-w-[calc(100vw-2rem)] gap-1 overflow-y-auto rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-2 shadow-xl"
+      class="story-tools-panel absolute right-0 z-40 grid max-h-[min(28rem,60dvh)] w-72 max-w-[calc(100vw-2rem)] gap-1 overflow-y-auto rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-2 shadow-xl"
+      :class="placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'"
       data-testid="story-tools-panel"
       @click="onAction"
     >
