@@ -2,6 +2,10 @@ import type { Page } from '@playwright/test'
 import type { LlmDebugTrace, Message, Story } from '../../shared/types'
 import { expect, test, type TestDataFactory } from './fixtures'
 
+test.beforeEach(async ({ data }) => {
+  await data.patchSettings({ contextTokenBudget: 0, privateLlmSettingsEnabled: false })
+})
+
 interface ChatRequest {
   operation: string
   scope?: string

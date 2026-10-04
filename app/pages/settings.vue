@@ -158,7 +158,6 @@ function syncScopedForm() {
   form.historyBudget = privateLlmSettingsEnabled.value
     ? (values.privateHistoryBudget ?? values.historyBudget)
     : values.historyBudget
-  form.contextUnit = privateLlmSettingsEnabled.value ? (values.privateContextUnit ?? values.contextUnit) : values.contextUnit
   form.contextTokenBudget = privateLlmSettingsEnabled.value
     ? (values.privateContextTokenBudget ?? values.contextTokenBudget) : values.contextTokenBudget
   form.apiKey = ''
@@ -197,6 +196,9 @@ const importMessage = ref<string | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
 const backupImportInput = ref<HTMLInputElement | null>(null)
 const backups = ref<DatabaseBackup[]>([])
+const backupsDialogOpen = ref(false)
+const latestBackup = computed(() => backups.value.reduce<DatabaseBackup | null>((latest, backup) =>
+  backup.valid && (!latest || Date.parse(backup.createdAt) > Date.parse(latest.createdAt)) ? backup : latest, null))
 const backupsLoading = ref(false)
 const backupAction = ref<string | null>(null)
 const backupMessage = ref<string | null>(null)
@@ -555,7 +557,6 @@ function settingsPatch() {
       patch.privateTemperature = Number(form.temperature)
       patch.privateMaxTokens = Number(form.maxTokens)
       patch.privateHistoryBudget = Number(form.historyBudget)
-      patch.privateContextUnit = form.contextUnit
       patch.privateContextTokenBudget = Number(form.contextTokenBudget)
     }
     if (privateUserNameDirty) patch.privateUserName = form.userName.trim() || 'Protagonista'
@@ -569,7 +570,6 @@ function settingsPatch() {
       patch.temperature = Number(form.temperature)
       patch.maxTokens = Number(form.maxTokens)
       patch.historyBudget = Number(form.historyBudget)
-      patch.contextUnit = form.contextUnit
       patch.contextTokenBudget = Number(form.contextTokenBudget)
     }
     patch.userName = form.userName.trim() || 'Protagonista'
@@ -841,7 +841,6 @@ async function setPrivateLlmSettingsEnabled(enabled: boolean) {
     form.temperature = settings.settings.temperature
     form.maxTokens = settings.settings.maxTokens
     form.historyBudget = settings.settings.historyBudget
-    form.contextUnit = settings.settings.contextUnit
     form.contextTokenBudget = settings.settings.contextTokenBudget
     form.apiKey = ''
     apiKeyDirty = false
@@ -853,7 +852,6 @@ async function setPrivateLlmSettingsEnabled(enabled: boolean) {
         privateTemperature: form.temperature,
         privateMaxTokens: form.maxTokens,
         privateHistoryBudget: form.historyBudget,
-        privateContextUnit: form.contextUnit,
         privateContextTokenBudget: form.contextTokenBudget
       })
       form.apiKeyConfigured = settings.settings.privateApiKeyConfigured
@@ -948,7 +946,6 @@ watch(
     form.temperature,
     form.maxTokens,
     form.historyBudget,
-    form.contextUnit,
     form.contextTokenBudget,
     form.responseSpeed,
     form.userName,
@@ -1951,7 +1948,7 @@ onBeforeRouteLeave(async () => {
         </p>
       </div>
 
-      <div class="grid gap-4 sm:grid-cols-3">
+      <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label class="label" for="temperature">Temperatura</label>
           <input
@@ -1979,19 +1976,8 @@ onBeforeRouteLeave(async () => {
           >
         </div>
         <div>
-          <label class="label" for="contextUnit">Unidad del contexto enviado</label>
-          <select
-            id="contextUnit"
-            v-model="form.contextUnit"
-            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
-            class="field mb-3"
-          >
-            <option value="characters">Caracteres</option>
-            <option value="tokens">Tokens del modelo</option>
-          </select>
-          <label v-if="form.contextUnit === 'characters'" class="label" for="historyBudget">Contexto enviado (caracteres)</label>
+          <label class="label" for="historyBudget">Contexto enviado (caracteres)</label>
           <input
-            v-if="form.contextUnit === 'characters'"
             id="historyBudget"
             v-model.number="form.historyBudget"
             :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
@@ -2001,20 +1987,20 @@ onBeforeRouteLeave(async () => {
             step="1000"
             class="field"
           >
-          <template v-else>
-            <label class="label" for="contextTokenBudget">Contexto enviado (tokens)</label>
-            <input
-              id="contextTokenBudget" v-model.number="form.contextTokenBudget" type="number" min="0" step="100" class="field"
-              :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
-            >
-          </template>
           <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
-            Incluye instrucciones, personajes, resumen, historial y nuevo mensaje. Cada unidad conserva su valor.
-            Usa 0 para desactivar el límite elegido.
-            <template v-if="form.contextUnit === 'tokens'">
-              Se mide con el modelo. LM Studio reserva los tokens máximos de respuesta; Chrome respeta su cuota de contexto.
-              Si no puede medirse, el envío se detiene y conserva el borrador.
-            </template>
+            Incluye instrucciones, personajes, resumen, historial y nuevo mensaje. 0 desactiva este límite.
+          </p>
+        </div>
+        <div>
+          <label class="label" for="contextTokenBudget">Contexto enviado (tokens)</label>
+          <input
+            id="contextTokenBudget" v-model.number="form.contextTokenBudget" type="number" min="0" step="100" class="field"
+            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
+          >
+          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+            Ambos límites se aplican a la vez: superar cualquiera compacta el historial.
+            0 desactiva el límite de tokens y su medición. Con un valor mayor, LM Studio reserva los tokens máximos de respuesta;
+            Chrome respeta su cuota de contexto. Si no puede medirse, se conserva el borrador y se detiene el envío.
           </p>
         </div>
       </div>
@@ -2067,7 +2053,7 @@ onBeforeRouteLeave(async () => {
       <h2>Prompt de compactación</h2>
       <p>
         Resume el historial antes de pedir una nueva respuesta. Se comparte entre colección normal y privada.
-        El límite de caracteres se añade automáticamente. Los backups conservan tu prompt personalizado.
+        Los límites activos de caracteres y tokens se añaden automáticamente. Los backups conservan tu prompt personalizado.
       </p>
       <textarea
         v-model="compactionPrompt"
@@ -2390,6 +2376,14 @@ onBeforeRouteLeave(async () => {
             <button
               type="button"
               class="btn-ghost"
+              :disabled="backupAction !== null"
+              @click="backupsDialogOpen = true; loadBackups()"
+            >
+              Ver todos los backups
+            </button>
+            <button
+              type="button"
+              class="btn-ghost"
               :disabled="backupAction !== null || backupsLoading"
               @click="backupImportInput?.click()"
             >
@@ -2424,7 +2418,35 @@ onBeforeRouteLeave(async () => {
         <p v-else-if="backups.length === 0" class="mt-4 text-sm text-[var(--color-fg-muted)]">
           No hay backups todavía.
         </p>
-        <ul v-else class="mt-4 divide-y divide-[var(--color-border-soft)]" data-testid="backup-list">
+        <p v-else class="mt-4 text-sm text-[var(--color-fg-muted)]" data-testid="latest-backup">
+          {{ latestBackup ? `Último backup: ${formatBackupDate(latestBackup.createdAt)}` : 'No hay backups válidos.' }}
+        </p>
+      </div>
+      <p
+        v-else
+        class="settings-subpanel mt-6 rounded-2xl border border-[var(--color-border-soft)] p-4 text-sm text-[var(--color-fg-muted)]"
+      >
+        Los backups SQLite contienen toda la instancia y solo están disponibles para el administrador.
+      </p>
+    </section>
+
+    <SettingsDialog
+      v-if="canManageGlobal"
+      :open="backupsDialogOpen"
+      title="Backups SQLite"
+      title-id="backups-dialog-title"
+      :busy="backupAction !== null"
+      @close="backupsDialogOpen = false"
+    >
+      <template v-if="backupsDialogOpen">
+        <p v-if="backupError" class="mb-3 text-sm text-red-500" role="alert">{{ backupError }}</p>
+        <p v-if="backupsLoading" role="status">Cargando backups…</p>
+        <div v-else-if="backupListError">
+          <p class="text-sm text-red-500" role="alert">{{ backupListError }}</p>
+          <button type="button" class="btn-ghost mt-3" @click="loadBackups">Reintentar carga de backups</button>
+        </div>
+        <p v-else-if="!backups.length">No hay backups todavía.</p>
+        <ul v-else class="divide-y divide-[var(--color-border-soft)]" data-testid="backup-list">
           <li
             v-for="backup in backups"
             :key="backup.name"
@@ -2464,14 +2486,8 @@ onBeforeRouteLeave(async () => {
             </div>
           </li>
         </ul>
-      </div>
-      <p
-        v-else
-        class="settings-subpanel mt-6 rounded-2xl border border-[var(--color-border-soft)] p-4 text-sm text-[var(--color-fg-muted)]"
-      >
-        Los backups SQLite contienen toda la instancia y solo están disponibles para el administrador.
-      </p>
-    </section>
+      </template>
+    </SettingsDialog>
 
     <SettingsDialog
       :open="activeSettingsDialog === 'prompt-referencia-personaje'"

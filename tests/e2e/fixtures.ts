@@ -146,7 +146,14 @@ function resourceUrl(
   return `/api/data/${resource}?${params}`
 }
 
-export const test = base.extend<{ data: TestDataFactory }>({
+export const test = base.extend<{ data: TestDataFactory; contextLimits: undefined }>({
+  contextLimits: [async ({ request }, use) => {
+    // Las pruebas del tokenizer activan su presupuesto explícitamente; las demás no dependen de LM Studio.
+    await assertOk(await request.patch('/api/settings', {
+      data: { contextTokenBudget: 0, privateContextTokenBudget: null }
+    }))
+    await use(undefined)
+  }, { auto: true }],
   data: async ({ request }, use) => {
     let sequence = 0
     let imagePosition = 0

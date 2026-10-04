@@ -18,25 +18,82 @@ test.afterEach(async ({ data }) => {
     privateLlmSettingsEnabled: false, maxTokens: 10000 })
 })
 
-test('selector conserva ambos valores, herencia privada y datos tras recargar', async ({ page, data }) => {
+for (const limits of [
+  { name: 'caracteres con tokens por debajo', characters: 3000, tokens: 20000, compact: true },
+  { name: 'tokens con caracteres por debajo', characters: 100000, tokens: 1500, compact: true },
+  { name: 'solo caracteres', characters: 3000, tokens: 0, compact: true },
+  { name: 'solo tokens', characters: 0, tokens: 1500, compact: true },
+  { name: 'ambos desactivados', characters: 0, tokens: 0, compact: false }
+]) {
+  test(`límites simultáneos: ${limits.name}`, async ({ page, data }) => {
+    await data.patchSettings({ historyBudget: limits.characters, contextTokenBudget: limits.tokens })
+    const story = await data.createStory({ characters: [] })
+    await data.createMessage({ story, role: 'assistant', raw: 'Hecho anterior. '.repeat(700) })
+    let measurements = 0
+    let compactions = 0
+    await page.route('**/api/llm/context', async route => {
+      measurements += 1
+      const { messages } = route.request().postDataJSON()
+      const tokens = messages.reduce((total: number, message: { content: string }) => total + Math.ceil(message.content.length / 4), 0)
+      await route.fulfill({ json: { tokens, capacity: 30000, model: 'test-instance' } })
+    })
+    await page.route('**/api/llm/chat', async route => {
+      const request = route.request().postDataJSON()
+      if (request.operation === 'story.compaction') {
+        compactions += 1
+        expect(JSON.stringify(request.messages)).not.toContain('MENSAJE_PENDIENTE')
+        if (limits.characters && limits.tokens) {
+          expect(request.messages[0].content).toMatch(/máximo \d+ tokens/)
+          expect(request.messages[0].content).toMatch(/máximo \d+ caracteres/)
+        }
+        return route.fulfill({ json: { content: 'Resumen breve.', finishReason: 'stop' } })
+      }
+      await route.fulfill({ json: { content: 'Respuesta con límites comprobados.', finishReason: 'stop' } })
+    })
+    await page.goto(`/stories/${story.id}`)
+    await page.getByPlaceholder(/Escribe lo que haces/).fill('MENSAJE_PENDIENTE')
+    await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+    await expect(page.getByText('Respuesta con límites comprobados.', { exact: true })).toBeVisible()
+    expect(compactions).toBe(limits.compact ? 1 : 0)
+    expect(measurements > 0).toBe(limits.tokens > 0)
+  })
+}
+
+test('rechaza resumen que cabe en tokens pero sigue excediendo caracteres', async ({ page, data }) => {
+  await data.patchSettings({ historyBudget: 3000, contextTokenBudget: 20000 })
+  const story = await data.createStory({ characters: [] })
+  await data.createMessage({ story, role: 'assistant', raw: 'Historia anterior. '.repeat(600) })
+  await page.route('**/api/llm/context', route => route.fulfill({ json: { tokens: 1000, capacity: 30000, model: 'test-instance' } }))
+  let calls = 0
+  await page.route('**/api/llm/chat', async route => {
+    calls += 1
+    expect(route.request().postDataJSON().operation).toBe('story.compaction')
+    await route.fulfill({ json: { content: 'R'.repeat(4000), finishReason: 'stop' } })
+  })
+  await page.goto(`/stories/${story.id}`)
+  const composer = page.getByPlaceholder(/Escribe lo que haces/)
+  await composer.fill('Borrador intacto.')
+  await page.getByRole('button', { name: 'Enviar', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('caracteres y el límite es 3000')
+  await expect(composer).toHaveValue('Borrador intacto.')
+  expect(calls).toBe(1)
+  expect((await data.get<Story>('stories', story.id)).contextSummary).toBeFalsy()
+})
+
+test('muestra ambos límites y conserva valores normales y privados tras recargar', async ({ page, data }) => {
   await data.patchSettings({ contextUnit: 'characters', historyBudget: 54321 })
   await page.goto('/settings#llm')
-  const unit = page.getByLabel('Unidad del contexto enviado')
+  await expect(page.getByLabel('Unidad del contexto enviado')).toHaveCount(0)
   await expect(page.getByLabel('Contexto enviado (caracteres)', { exact: true })).toHaveValue('54321')
-  await unit.selectOption('tokens')
   await page.getByLabel('Contexto enviado (tokens)', { exact: true }).fill('4123')
   await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).contextTokenBudget).toBe(4123)
   await page.reload()
-  await expect(unit).toHaveValue('tokens')
   await expect(page.getByLabel('Contexto enviado (tokens)', { exact: true })).toHaveValue('4123')
-  await unit.selectOption('characters')
   await expect(page.getByLabel('Contexto enviado (caracteres)', { exact: true })).toHaveValue('54321')
-  await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).contextUnit).toBe('characters')
   await data.patchSettings({ privateLlmSettingsEnabled: true, privateContextUnit: 'tokens', privateContextTokenBudget: 7890 })
   await page.reload()
   await page.locator('main').press('Control+Alt+p')
   await expect(page.locator('html')).toHaveClass(/private-scope/)
-  await expect(unit).toHaveValue('tokens')
   await expect(page.getByLabel('Contexto enviado (tokens)', { exact: true })).toHaveValue('7890')
   await page.getByLabel('Contexto enviado (tokens)', { exact: true }).fill('7900')
   await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).privateContextTokenBudget).toBe(7900)
@@ -49,8 +106,8 @@ test('selector conserva ambos valores, herencia privada y datos tras recargar', 
   }
 })
 
-test('cero respeta capacidad con reserva, límite exacto y Debug histórico en tokens', async ({ page, data }) => {
-  await data.patchSettings({ contextTokenBudget: 0, historyBudget: 1 })
+test('respeta capacidad con reserva, límite exacto y Debug histórico en tokens', async ({ page, data }) => {
+  await data.patchSettings({ contextTokenBudget: 10000, historyBudget: 0 })
   const story = await data.createStory({ characters: [] })
   await page.route('**/api/llm/context', route => route.fulfill({ json: { tokens: 2000, capacity: 2100, model: 'test-instance' } }))
   await page.route('**/api/llm/chat', async route => {
@@ -63,7 +120,7 @@ test('cero respeta capacidad con reserva, límite exacto y Debug histórico en t
   await expect(page.getByText('Respuesta en el límite exacto.', { exact: true })).toBeVisible()
   const traces = await data.list<LlmDebugTrace>('llmDebugTraces', 'normal', { storyId: story.id })
   expect(traces.at(-1)?.request.contextUsage).toMatchObject({ unit: 'tokens', count: 2000,
-    configuredLimit: 0, effectiveLimit: 2000, capacity: 2100, reservedTokens: 100, model: 'test-instance' })
+    configuredLimit: 10000, effectiveLimit: 2000, capacity: 2100, reservedTokens: 100, model: 'test-instance' })
   await data.patchSettings({ contextUnit: 'characters', historyBudget: 5 })
   await page.reload()
   await page.getByTestId('story-tools-toggle').click()
@@ -149,7 +206,7 @@ for (const visualMode of [false, true]) {
 }
 
 test('Chrome mide cuota propia sin reserva LM Studio ni fallback de proveedor', async ({ page, data }) => {
-  await data.patchSettings({ useChromeLlm: true, contextTokenBudget: 0, maxTokens: 100000 })
+  await data.patchSettings({ useChromeLlm: true, contextTokenBudget: 3000, maxTokens: 100000 })
   await page.addInitScript(() => {
     class FakeLanguageModel {
       contextWindow = 2048
@@ -281,6 +338,11 @@ test('endpoint Nitro real mide con SDK y respeta conexión normal y privada', as
       'listLoaded', 'applyPromptTemplate', 'countTokens', 'getLoadConfig'
     ])
     expect(privateServer.calls.map(call => call.endpoint)).toEqual(['listLoaded', 'applyPromptTemplate', 'countTokens', 'getLoadConfig'])
+    const absent = await page.request.post('/api/llm/context', { data: {
+      scope: 'normal', model: 'modelo-no-cargado', messages: [{ role: 'user', content: 'Hola' }]
+    } })
+    expect(absent.status()).toBe(409)
+    expect(await absent.json()).toMatchObject({ data: { code: 'model_not_loaded' } })
   } finally {
     await data.patchSettings({ baseUrl: previous.baseUrl, privateLlmSettingsEnabled: previous.privateLlmSettingsEnabled,
       privateBaseUrl: previous.privateBaseUrl ?? null })

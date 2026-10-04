@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import type { AppSettings, Character, DatabaseBackup } from '../../shared/types'
 import { DEFAULT_CHARACTER_REFERENCE_PROMPT } from '../../app/lib/characterReferencePrompt'
 import { DEFAULT_PRESET_CONTENT } from '../../app/lib/defaultPreset'
@@ -900,6 +899,7 @@ test('no activa Chrome AI cuando navegador es incompatible', async ({ page, data
 })
 
 test('muestra, crea y restaura backups SQLite con confirmación', async ({ page, data }) => {
+  const initialBackups = await (await page.request.get('/api/backups')).json() as DatabaseBackup[]
   const character = await data.createCharacter({ name: data.unique('Original-backup') })
   const response = await page.request.post('/api/backups')
   await expect(response).toBeOK()
@@ -917,6 +917,13 @@ test('muestra, crea y restaura backups SQLite con confirmación', async ({ page,
     has: page.getByText(existing.name, { exact: true })
   })
   const backupList = page.getByTestId('backup-list')
+  await expect(backupList).toHaveCount(0)
+  await expect(page.getByTestId('latest-backup')).toContainText('Último backup:')
+  const openBackups = page.getByRole('button', { name: 'Ver todos los backups', exact: true })
+  await openBackups.click()
+  const backupDialog = page.getByRole('dialog', { name: 'Backups SQLite', exact: true })
+  await expect(backupDialog).toBeVisible()
+  await expect(backupDialog.getByRole('button', { name: 'Cerrar diálogo' })).toBeFocused()
   await expect(existingRow).toBeVisible()
   await expect(existingRow.getByText('Manual', { exact: true })).toBeVisible()
 
@@ -924,9 +931,12 @@ test('muestra, crea y restaura backups SQLite con confirmación', async ({ page,
   await existingRow.getByRole('link', { name: 'Descargar' }).click()
   const download = await downloadPromise
   expect(download.suggestedFilename()).toBe(existing.name)
-  const downloadPath = await download.path()
-  expect(downloadPath).not.toBeNull()
-  const downloadedBackup = await readFile(downloadPath!)
+  const downloadPath = test.info().outputPath(existing.name)
+  await download.saveAs(downloadPath)
+
+  await page.keyboard.press('Escape')
+  await expect(backupDialog).toBeHidden()
+  await expect(openBackups).toBeFocused()
 
   const uploadInput = page.getByTestId('backup-upload-input')
   await uploadInput.setInputFiles({
@@ -937,15 +947,14 @@ test('muestra, crea y restaura backups SQLite con confirmación', async ({ page,
   await expect(page.getByRole('alert')).toContainText(
     'no es un backup SQLite válido de Mis Historias'
   )
-  await expect(backupList.getByRole('listitem')).toHaveCount(1)
+  await openBackups.click()
+  await expect(backupList.getByRole('listitem')).toHaveCount(initialBackups.length + 1)
+  await page.keyboard.press('Escape')
 
-  await uploadInput.setInputFiles({
-    name: existing.name,
-    mimeType: 'application/vnd.sqlite3',
-    buffer: downloadedBackup
-  })
+  await uploadInput.setInputFiles(downloadPath)
   await expect(page.getByText(/^Backup subido:/)).toBeVisible()
-  const uploadedRow = page.getByRole('listitem').filter({ hasText: 'Subido' })
+  await openBackups.click()
+  const uploadedRow = page.getByRole('listitem').filter({ hasText: 'Subido' }).last()
   await expect(uploadedRow).toBeVisible()
   await expect(uploadedRow.getByText('Subido', { exact: true })).toBeVisible()
 
@@ -954,9 +963,11 @@ test('muestra, crea y restaura backups SQLite con confirmación', async ({ page,
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Crear backup' }).click()
   await expect(page.getByText(/^Backup creado:/)).toBeVisible()
-  await expect(backupList.getByRole('listitem')).toHaveCount(3)
+  await openBackups.click()
+  await expect(backupList.getByRole('listitem')).toHaveCount(initialBackups.length + 3)
 
   await existingRow.getByRole('button', { name: 'Restaurar' }).click()
   const dialog = page.getByRole('alertdialog', { name: 'Restaurar backup' })

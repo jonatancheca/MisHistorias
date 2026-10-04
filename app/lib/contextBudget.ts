@@ -17,7 +17,16 @@ export function tokenContextUsage(tokens: number, capacity: number, reservedToke
 }
 
 export function contextFits(usage: ContextUsage) {
-  return usage.effectiveLimit === 0 || usage.count <= usage.effectiveLimit
+  return (usage.effectiveLimit === 0 || usage.count <= usage.effectiveLimit) &&
+    (!usage.characters?.limit || usage.characters.count <= usage.characters.limit)
+}
+
+/** Identifica el límite excedido sin convertir caracteres a tokens. */
+export function exceededContextLimit(usage: ContextUsage) {
+  if (usage.characters?.limit && usage.characters.count > usage.characters.limit) {
+    return { count: usage.characters.count, limit: usage.characters.limit, unit: 'caracteres' }
+  }
+  return { count: usage.count, limit: usage.effectiveLimit, unit: usage.unit === 'tokens' ? 'tokens' : 'caracteres' }
 }
 
 export class CompactionCapacityError extends Error {

@@ -1,4 +1,4 @@
-import { measureLmStudioContext } from '../../utils/contextTokens'
+import { ContextMeasurementError, measureLmStudioContext } from '../../utils/contextTokens'
 import { getStorage } from '../../utils/storage'
 import { recordOperationalError } from '../../utils/errorTraces'
 
@@ -26,13 +26,17 @@ export default defineEventHandler(async (event) => {
     return await measureLmStudioContext(proxySettings, body.model, body.messages, controller.signal)
   } catch (caught) {
     if ((caught as Error).name === 'AbortError') throw caught
-    const message = 'No se pudieron medir los tokens con LM Studio. Comprueba la conexión, el token y que el modelo configurado esté cargado y permita usar su tokenizer.'
+    const failure = caught instanceof ContextMeasurementError ? caught : new ContextMeasurementError('connection')
+    const message = failure.message
+    if (failure.code === 'model_not_loaded') {
+      throw createError({ statusCode: 409, message, data: { code: failure.code } })
+    }
     recordOperationalError(event, {
       source: 'llm', operation: 'story.context', message, scope, requestSent: null,
-      request: { model: body.model, messages: body.messages }, response: null
+      request: { model: body.model, messages: body.messages }, response: { code: failure.code }
     })
     event.context.errorTraceRecorded = true
-    throw createError({ statusCode: 502, message })
+    throw createError({ statusCode: 502, message, data: { code: failure.code } })
   } finally {
     event.node.req.off('aborted', abort)
     event.node.res.off('close', closed)

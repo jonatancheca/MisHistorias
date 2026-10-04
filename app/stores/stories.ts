@@ -17,7 +17,6 @@ import type {
   StoryCharacterCustomization,
   StoryPendingImageInstruction,
   StoryGenerationAttempt,
-  ContextUnit,
   ContextUsage
 } from '#shared/types'
 import {
@@ -55,7 +54,7 @@ import { buildMockResponse } from '~/lib/mockLlm'
 import { readSwarmDiagnostic } from '../../shared/utils/swarmError.ts'
 import { fetchLlmChat, fetchLlmContext, type LlmCallError } from '~/lib/llm'
 import { fetchChromeLlmChat, measureChromeLlmContext } from '~/lib/chromeLlm'
-import { contextFits, tokenContextUsage, summarizeInBlocks, CompactionCapacityError } from '~/lib/contextBudget'
+import { contextFits, exceededContextLimit, tokenContextUsage, summarizeInBlocks, CompactionCapacityError } from '~/lib/contextBudget'
 import { hideIncompleteVisualDirectivePrefix, parseSegments } from '~/lib/streamParser'
 import { selectCharacterImage } from '~/lib/imageSelection'
 import { sanitizeTags } from '~/lib/tags'
@@ -937,7 +936,6 @@ export const useStoriesStore = defineStore('stories', () => {
     chatOptions: Parameters<typeof buildChatMessages>[0]
     historyMessages: Message[]
     historyBudget: number
-    unit: ContextUnit
     tokenBudget: number
     allowBlocks: boolean
     onUsage: (usage: ContextUsage) => void
@@ -954,16 +952,19 @@ export const useStoriesStore = defineStore('stories', () => {
     const story = chatOptions.story
     const measure = async (messages: ChatMessage[], manualLimit = true): Promise<ContextUsage> => {
       options.signal.throwIfAborted()
-      if (options.unit === 'characters') return {
+      if (options.tokenBudget === 0) return {
         unit: 'characters', count: chatContextSize(messages), configuredLimit: options.historyBudget,
-        effectiveLimit: options.historyBudget, model: options.useChromeLlm ? 'chrome-prompt-api' : options.model
+        effectiveLimit: manualLimit ? options.historyBudget : 0, model: options.useChromeLlm ? 'chrome-prompt-api' : options.model
       }
       const result = options.useChromeLlm
         ? await measureChromeLlmContext(messages, options.signal)
         : await fetchLlmContext(messages, options.model, options.scope, options.signal)
       if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
-      return tokenContextUsage(result.tokens, result.capacity, options.useChromeLlm ? 0 : options.maxTokens,
-        manualLimit ? options.tokenBudget : 0, result.model)
+      return {
+        ...tokenContextUsage(result.tokens, result.capacity, options.useChromeLlm ? 0 : options.maxTokens,
+          manualLimit ? options.tokenBudget : 0, result.model),
+        characters: { count: chatContextSize(messages), limit: manualLimit ? options.historyBudget : 0 }
+      }
     }
     const contextBefore = buildChatMessages(chatOptions)
     const beforeUsage = await measure(contextBefore)
@@ -976,17 +977,22 @@ export const useStoriesStore = defineStore('stories', () => {
     const historicalIds = new Set(options.historyMessages.map((message) => message.id))
     const pendingMessages = chatOptions.messages.filter((message) => !historicalIds.has(message.id))
     // Reserva el encabezado del resumen; el contexto final se vuelve a medir completo.
-    const summaryBudget = historyBudget - (await measure(buildChatMessages({
+    const baseline = await measure(buildChatMessages({
       ...chatOptions,
       story: { ...story, contextSummary: 'x', contextSummaryThroughMessageId: undefined },
       messages: pendingMessages
-    }))).count + 1
-    const unitLabel = options.unit === 'tokens' ? 'tokens' : 'caracteres'
-    if (summaryBudget <= 0) {
-      throw new Error(`El mensaje y las instrucciones de la historia superan el límite de ${historyBudget} ${unitLabel}. Acorta el mensaje o aumenta el límite en Ajustes.`)
+    }))
+    const summaryBudget = historyBudget > 0 ? historyBudget - baseline.count + 1 : undefined
+    const summaryCharacterBudget = baseline.characters?.limit
+      ? baseline.characters.limit - baseline.characters.count + 1 : undefined
+    if ((summaryBudget !== undefined && summaryBudget <= 0) ||
+        (summaryCharacterBudget !== undefined && summaryCharacterBudget <= 0)) {
+      const exceeded = exceededContextLimit(baseline)
+      throw new Error(`El mensaje y las instrucciones de la historia superan el límite de ${exceeded.limit} ${exceeded.unit}. Acorta el mensaje o aumenta el límite en Ajustes.`)
     }
     if (!options.historyMessages.length && !story.contextSummary?.trim()) {
-      throw new Error(`La petición supera el límite de ${historyBudget} ${unitLabel} y no hay historial anterior que compactar. Acorta el mensaje o aumenta el límite en Ajustes.`)
+      const exceeded = exceededContextLimit(beforeUsage)
+      throw new Error(`La petición supera el límite de ${exceeded.limit} ${exceeded.unit} y no hay historial anterior que compactar. Acorta el mensaje o aumenta el límite en Ajustes.`)
     }
 
     const triggerMessageId = options.historyMessages.at(-1)?.id ?? story.contextSummaryThroughMessageId
@@ -998,7 +1004,8 @@ export const useStoriesStore = defineStore('stories', () => {
       characters: chatOptions.characters,
       userName: chatOptions.userName,
       summaryBudget,
-      summaryUnit: options.unit,
+      summaryUnit: beforeUsage.unit,
+      summaryCharacterBudget,
       prompt: options.compactionPrompt
     })
     const debugRequest: LlmDebugRequest = {
@@ -1019,12 +1026,12 @@ export const useStoriesStore = defineStore('stories', () => {
         debugRequest.messages = messages
         debugRequest.contextUsage = usage
         debugRequest.model = usage.model
-        if (options.unit === 'tokens' && !contextFits(usage)) throw new CompactionCapacityError()
+        if (!contextFits(usage)) throw new CompactionCapacityError()
         const result = options.useChromeLlm
           ? await fetchChromeLlmChat({
             messages,
             operation: 'story.compaction',
-            contextLimit: options.unit === 'tokens' ? usage.effectiveLimit : undefined,
+            contextLimit: usage.unit === 'tokens' ? usage.effectiveLimit : undefined,
             signal: options.signal
           })
         : await fetchLlmChat({
@@ -1049,7 +1056,7 @@ export const useStoriesStore = defineStore('stories', () => {
         return result
       }
       let result: { content: string; finishReason: string | null }
-      if (options.allowBlocks && options.unit === 'tokens') {
+      if (options.allowBlocks && options.tokenBudget > 0) {
         const blockMessages = (previousSummary: string, history: typeof compactionMessages) => [
           compactionMessages[0]!,
           { role: 'user' as const, content: JSON.stringify({ previousSummary, history }) }
@@ -1075,7 +1082,8 @@ export const useStoriesStore = defineStore('stories', () => {
       const afterUsage = await measure(contextAfter)
       debugRequest.compaction!.afterUsage = afterUsage
       if (!contextFits(afterUsage)) {
-        throw new Error(`La compactación es insuficiente: la petición ocupa ${afterUsage.count} ${unitLabel} y el límite es ${afterUsage.effectiveLimit}. Acorta el mensaje o aumenta el límite en Ajustes.`)
+        const exceeded = exceededContextLimit(afterUsage)
+        throw new Error(`La compactación es insuficiente: la petición ocupa ${exceeded.count} ${exceeded.unit} y el límite es ${exceeded.limit}. Acorta el mensaje o aumenta el límite en Ajustes.`)
       }
       options.onUsage(afterUsage)
       await putStoryInScope(updated, options.scope, options.signal)
@@ -1696,7 +1704,6 @@ export const useStoriesStore = defineStore('stories', () => {
           chatOptions,
           historyMessages: compactableMessages,
           historyBudget,
-          unit: settingsStore.activeContextUnit,
           tokenBudget: settingsStore.activeContextTokenBudget,
           allowBlocks: options.allowCompactionBlocks === true,
           onUsage: usage => { contextUsage = usage },

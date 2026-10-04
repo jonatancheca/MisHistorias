@@ -50,5 +50,8 @@ test('SDK real en worker usa misma instancia, plantilla y capacidad cargada por 
     assert.deepEqual(server.calls.map(call => call.endpoint), ['listLoaded', 'applyPromptTemplate', 'countTokens', 'getLoadConfig'])
     assert.equal(server.calls[2]?.parameter.inputString, '<BOS><user>Hola<assistant>')
     for (const call of server.calls.slice(1)) assert.deepEqual(call.parameter.specifier, { type: 'instanceReference', instanceReference: 'instance-reference' })
+    await assert.rejects(measureLmStudioContext({ baseUrl: server.baseUrl, apiKey: '' }, 'modelo-ausente', [
+      { role: 'user', content: 'Hola' }
+    ]), { code: 'model_not_loaded' })
   } finally { await server.close() }
 })

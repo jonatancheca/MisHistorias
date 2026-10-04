@@ -311,6 +311,8 @@ export interface ContextUsage {
   model: string
   capacity?: number
   reservedTokens?: number
+  /** Límite simultáneo de caracteres; ausente en trazas antiguas. */
+  characters?: { count: number; limit: number }
 }
 
 export interface LlmDebugRequest {
@@ -452,7 +454,7 @@ export interface AppSettings {
   maxTokens: number
   /** Límite de caracteres de todo el texto enviado al modelo; 0 significa sin límite. */
   historyBudget: number
-  /** Unidad seleccionada; el presupuesto de caracteres se conserva al cambiar. */
+  /** Preferencia antigua, conservada por compatibilidad con backups; ya no selecciona el límite. */
   contextUnit: ContextUnit
   contextTokenBudget: number
   /** Versión aplicada del pack de sonidos por defecto en cada colección. */

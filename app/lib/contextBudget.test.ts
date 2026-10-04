@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { contextFits, tokenContextUsage, summarizeInBlocks } from './contextBudget.ts'
+import { contextFits, exceededContextLimit, tokenContextUsage, summarizeInBlocks } from './contextBudget.ts'
+
+test('los dos límites deben cumplirse y cero desactiva el de caracteres', () => {
+  const usage = { ...tokenContextUsage(500, 8192, 1000, 600, 'modelo'), characters: { count: 2000, limit: 2000 } }
+  assert.equal(contextFits(usage), true)
+  usage.characters.count = 2001
+  assert.equal(contextFits(usage), false)
+  assert.deepEqual(exceededContextLimit(usage), { count: 2001, limit: 2000, unit: 'caracteres' })
+  usage.characters.limit = 0
+  assert.equal(contextFits(usage), true)
+  usage.count = 601
+  assert.equal(contextFits(usage), false)
+  assert.deepEqual(exceededContextLimit(usage), { count: 601, limit: 600, unit: 'tokens' })
+})
 
 test('reserva salida sobre capacidad cargada y respeta límite manual o cero', () => {
   assert.equal(tokenContextUsage(22768, 32768, 10000, 40000, 'modelo').effectiveLimit, 22768)

@@ -6,18 +6,46 @@ import { normalizeLocalBaseUrl, type LlmProxySettings } from './llm.ts'
 
 type TextMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
+const contextErrors = {
+  model_not_loaded: 'El modelo configurado no está cargado en LM Studio. Cárgalo desde Ajustes o selecciona el modelo que tienes cargado.',
+  prompt_template: 'LM Studio no pudo aplicar la plantilla del modelo al contexto. Revisa su plantilla de conversación.',
+  tokenizer: 'LM Studio no pudo contar los tokens del modelo configurado. Revisa su tokenizer.',
+  capacity: 'LM Studio no pudo consultar la capacidad de contexto del modelo cargado.',
+  connection: 'No se pudieron medir los tokens con LM Studio. Comprueba la conexión y el token del servidor.'
+} as const
+
+export class ContextMeasurementError extends Error {
+  code: keyof typeof contextErrors
+
+  constructor(code: keyof typeof contextErrors) {
+    super(contextErrors[code])
+    this.name = 'ContextMeasurementError'
+    this.code = code
+  }
+}
+
 // Ejecutada dentro del worker: no depende del ámbito del módulo ni registra credenciales.
 export async function measureLoadedContext(Client: typeof LMStudioClient, data: {
   baseUrl: string; apiToken: string; model: string; messages: TextMessage[]
 }) {
+  let stage = 'connection'
   const client = new Client({ baseUrl: data.baseUrl, ...(data.apiToken ? { apiToken: data.apiToken } : {}) })
   try {
     const loaded = await client.llm.listLoaded()
     const model = loaded.find(item => item.identifier === data.model)
       ?? loaded.find(item => item.modelKey === data.model || item.path === data.model)
-    if (!model) throw new Error('El modelo configurado no está cargado en LM Studio.')
+    if (!model) {
+      stage = 'model_not_loaded'
+      throw new Error('El modelo configurado no está cargado en LM Studio.')
+    }
+    stage = 'prompt_template'
     const formatted = await model.applyPromptTemplate(data.messages)
-    return { tokens: await model.countTokens(formatted), capacity: await model.getContextLength(), model: model.identifier }
+    stage = 'tokenizer'
+    const tokens = await model.countTokens(formatted)
+    stage = 'capacity'
+    return { tokens, capacity: await model.getContextLength(), model: model.identifier }
+  } catch (caught) {
+    throw Object.assign(new Error(stage === 'model_not_loaded' ? 'El modelo configurado no está cargado en LM Studio.' : 'No se pudo medir el contexto.'), { code: stage, cause: caught })
   } finally {
     await client[Symbol.asyncDispose]()
   }
@@ -37,14 +65,14 @@ export function measureLmStudioContext(settings: LlmProxySettings, model: string
       const measure = ${measureLoadedContext.toString()};
       import(workerData.sdkUrl).then(({ LMStudioClient }) => measure(LMStudioClient, workerData))
         .then(value => parentPort.postMessage({ value }))
-        .catch(() => parentPort.postMessage({ error: true }));
+        .catch(error => parentPort.postMessage({ error: true, code: error.code }));
     `, {
       eval: true, execArgv: [], env: workerEnvironment,
       workerData: {
         sdkUrl: pathToFileURL(createRequire(import.meta.url).resolve('@lmstudio/sdk')).href,
         baseUrl: url.href.replace(/\/+$/, ''),
         apiToken: typeof settings.apiKey === 'string' ? settings.apiKey.replace(/[\r\n]/g, '').trim() : '',
-        model, messages
+        model: model.trim(), messages
       }
     })
     let settled = false
@@ -57,11 +85,13 @@ export function measureLmStudioContext(settings: LlmProxySettings, model: string
       if (error) reject(error)
       else resolve(value!)
     }
-    const failure = () => new Error('No se pudieron medir los tokens con LM Studio. Comprueba la conexión, el token y que el modelo configurado esté cargado y permita usar su tokenizer.')
+    const failure = (code?: string) => new ContextMeasurementError(
+      code && Object.hasOwn(contextErrors, code) ? code as keyof typeof contextErrors : 'connection'
+    )
     const abort = () => finish(new DOMException('Petición cancelada', 'AbortError'))
     const timer = setTimeout(() => finish(failure()), timeoutMs)
     signal?.addEventListener('abort', abort, { once: true })
-    worker.once('message', (result) => result.value ? finish(undefined, result.value) : finish(failure()))
+    worker.once('message', (result) => result.value ? finish(undefined, result.value) : finish(failure(result.code)))
     worker.once('error', () => finish(failure()))
     worker.once('exit', () => { if (!settled) finish(failure()) })
     if (signal?.aborted) abort()

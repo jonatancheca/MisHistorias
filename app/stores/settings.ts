@@ -84,9 +84,6 @@ export const useSettingsStore = defineStore('settings', () => {
       ? (settings.value.privateHistoryBudget ?? settings.value.historyBudget)
       : settings.value.historyBudget
   )
-  const activeContextUnit = computed(() => usePrivateLlmSettings.value
-    ? (settings.value.privateContextUnit ?? settings.value.contextUnit)
-    : settings.value.contextUnit)
   const activeContextTokenBudget = computed(() => usePrivateLlmSettings.value
     ? (settings.value.privateContextTokenBudget ?? settings.value.contextTokenBudget)
     : settings.value.contextTokenBudget)
@@ -184,7 +181,6 @@ export const useSettingsStore = defineStore('settings', () => {
     activeTemperature,
     activeMaxTokens,
     activeHistoryBudget,
-    activeContextUnit,
     activeContextTokenBudget,
     activeUserName,
     activeProtagonistPreferences,

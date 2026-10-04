@@ -105,6 +105,9 @@ function keepFocus() {
               {{ contextCharacters }} / {{ contextLimit }} {{ contextUnit }} · {{ contextPercentage }} % del límite
             </p>
             <p v-else>{{ contextCharacters }} {{ contextUnit }} · Sin límite</p>
+            <p v-if="usage?.characters">
+              {{ usage.characters.count }} / {{ usage.characters.limit || 'Sin límite' }} caracteres
+            </p>
             <p v-if="usage" class="mt-1 break-words text-xs [overflow-wrap:anywhere]">
               Modelo: {{ usage.model }} · Límite configurado: {{ usage.configuredLimit || 'Sin límite' }} {{ contextUnit }}
               <template v-if="usage.capacity !== undefined"> · Capacidad: {{ usage.capacity }} tokens · Reserva: {{ usage.reservedTokens }} tokens</template>
@@ -130,6 +133,9 @@ function keepFocus() {
                   <h3 class="font-semibold">{{ snapshot.title }}</h3>
                   <template v-if="snapshot.messages">
                     <p class="mb-3 text-xs text-[var(--color-fg-muted)]">{{ snapshot.usage?.count ?? countCharacters(snapshot.messages) }} / {{ snapshot.usage?.effectiveLimit ?? contextLimit }} {{ snapshot.usage?.unit === 'tokens' ? 'tokens' : 'caracteres' }}</p>
+                    <p v-if="snapshot.usage?.characters" class="mb-3 text-xs text-[var(--color-fg-muted)]">
+                      {{ snapshot.usage.characters.count }} / {{ snapshot.usage.characters.limit || 'Sin límite' }} caracteres
+                    </p>
                     <p v-if="snapshot.key === 'after' && !comparison.applied" class="mb-2 text-xs">Contexto propuesto; no llegó a aplicarse.</p>
                     <div class="max-h-[45dvh] space-y-3 overflow-y-auto">
                       <section v-for="(message, index) in snapshot.messages" :key="index" class="min-w-0">
