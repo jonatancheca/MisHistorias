@@ -358,6 +358,11 @@ async function submit() {
   })
 }
 
+function onComposerEnter(event: KeyboardEvent) {
+  if (!desktopStoryControls.value) return
+  onSubmitShortcut(event)
+}
+
 function onSubmitShortcut(event: KeyboardEvent) {
   if (event.repeat || event.isComposing) return
   event.preventDefault()
@@ -1812,7 +1817,7 @@ onBeforeRouteLeave(() => {
               class="story-write-input"
               rows="2"
               placeholder="Escribe lo que haces o dices…"
-              @keydown.enter.exact.prevent="submit"
+              @keydown.enter.exact="onComposerEnter"
               @keydown.ctrl.enter.exact="onSubmitShortcut"
             />
             <button
@@ -1820,7 +1825,7 @@ onBeforeRouteLeave(() => {
               type="submit"
               class="btn-primary story-send-button"
               :disabled="stories.generating"
-              aria-keyshortcuts="Enter Control+Enter"
+              :aria-keyshortcuts="desktopStoryControls ? 'Enter Control+Enter' : 'Control+Enter'"
               :title="storyControlTitle('Enviar', 'Enter / Ctrl+Enter')"
             >
               <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13" /></svg>
