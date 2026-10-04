@@ -168,3 +168,25 @@ jobs:
               --generate-notes \
               --latest
           fi
+
+  deploy:
+    name: Deploy to homelab01
+    needs: release
+    if: >-
+      github.repository == 'jonatancheca/MisHistorias' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: [homelab01, deploy-historias]
+    permissions: {}
+    timeout-minutes: 35
+    steps:
+      - name: Update installed release and verify health
+        shell: bash
+        run: |
+          if ! sudo -n /usr/bin/systemctl start homelab-deploy-historias.service; then
+            /usr/bin/python3 -c 'from pathlib import Path; print("".join(Path("/var/log/homelab-deploy/historias.log").read_text().splitlines(keepends=True)[-80:]))'
+            exit 1
+          fi
+          /usr/bin/systemctl is-active --quiet mishistorias.service
+          curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3010/api/health \
+            | /usr/bin/python3 -c 'import json,sys; result=json.load(sys.stdin); print(result); sys.exit(0 if result.get("ok") is True else 1)'
