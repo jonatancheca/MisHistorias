@@ -57,7 +57,31 @@ for (const width of [320, 390, 1280]) {
     await expect(actions.getByRole('button', { name: 'Regenerar desde este mensaje' })).toBeVisible()
     await expect(page.getByTestId('visual-novel-view').getByTestId('story-original-text')).toContainText(assistant.raw)
     await actions.getByTestId('story-original-toggle').click()
-    await expect(page.getByTestId('visual-compactions').getByTestId('story-compaction-marker')).toHaveCount(2)
+    await expect(page.getByTestId('visual-compactions')).toHaveCount(0)
+    const visual = page.getByTestId('visual-novel-view')
+    const frame = page.getByTestId('visual-novel-frame')
+    await expect(frame).toContainText('Respuesta')
+    await expect(page.getByTestId('visual-novel-counter')).toHaveText('4 / 4')
+    await page.getByTestId('visual-novel-previous').click()
+    await expect(frame).toContainText('Compactación insuficiente.')
+    await expect(visual.getByTestId('story-compaction-marker')).toContainText('Compactación fallida')
+    await expect(actions).toHaveCount(0)
+    await page.getByTestId('visual-novel-previous').click()
+    await expect(frame).toContainText('Resumen antiguo.')
+    await expect(visual.getByTestId('story-compaction-marker')).toContainText('Historial compactado')
+    await visual.getByTestId('story-compaction-marker').getByRole('button', { name: 'Ver antes / después' }).click()
+    await expect(dialog.getByTestId('compaction-summary')).toHaveText('Resumen antiguo.')
+    await dialog.getByRole('button', { name: 'Cerrar debug LLM' }).click()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.screenshot({ path: test.info().outputPath(`compactacion-novela-${width}.png`) })
+    await page.getByTestId('story-tools-toggle').click()
+    await debug.click()
+    await expect(frame).toContainText('Respuesta')
+    await expect(page.getByTestId('visual-novel-counter')).toHaveText('2 / 2')
+    await page.getByTestId('story-tools-toggle').click()
+    await debug.click()
+    await expect(frame).toContainText('Respuesta')
+    await expect(page.getByTestId('visual-novel-counter')).toHaveText('4 / 4')
     await page.getByRole('button', { name: 'Ver mensajes sin cuadro' }).click()
     const hiddenDialog = page.getByRole('dialog', { name: 'Mensajes sin cuadro' })
     const hiddenRow = hiddenDialog.locator(`[data-hidden-message-id="${hidden.id}"]`)
@@ -79,6 +103,46 @@ for (const width of [320, 390, 1280]) {
     if (width < 640) await expect(actions).toBeHidden()
     await page.reload()
     await expect(debug).toHaveAttribute('aria-pressed', 'false')
+  })
+}
+
+for (const manualAdvance of [false, true]) {
+  test(`Debug muestra compactación durante generación con avance manual ${manualAdvance}`, async ({ page, data }) => {
+    await data.patchSettings({ mockMode: false, model: 'test-model', useChromeLlm: false,
+      historyBudget: 8000, contextTokenBudget: 0, responseSpeed: 'instant',
+      visualNovelManualAdvance: manualAdvance, narrativePrompt: 'Continúa la historia.' })
+    await page.route('**/api/llm/model-status?*', route => route.fulfill({ json: { status: 'loaded' } }))
+    const story = await data.createStory({ characters: [], visualMode: true })
+    await data.createMessage({ story, role: 'assistant', raw: 'Pasado importante. '.repeat(600),
+      segments: [{ type: 'narration', text: 'Pasado importante. '.repeat(600) }] })
+    const gate = Promise.withResolvers<undefined>()
+    await page.route('**/api/llm/chat', async route => {
+      if (route.request().postDataJSON().operation === 'story.compaction') {
+        return route.fulfill({ json: { content: 'Resumen durante generación.', finishReason: 'stop' } })
+      }
+      await gate.promise
+      await route.fulfill({ json: { content: 'Respuesta nueva.', finishReason: 'stop' } })
+    })
+    await page.goto(`/stories/${story.id}`)
+    await page.getByTestId('story-tools-toggle').click()
+    await page.getByTestId('story-debug-toggle').click()
+    await page.getByTestId('continue-button').click()
+    try {
+      await expect(page.getByTestId('visual-novel-counter')).toContainText('/ 2')
+      if (manualAdvance) {
+        await expect(page.getByTestId('visual-novel-frame')).toContainText('Pasado importante.')
+        await page.getByTestId('visual-novel-next').click()
+      }
+      await expect(page.getByTestId('visual-novel-frame')).toContainText('Resumen durante generación.')
+      await expect(page.getByTestId('visual-novel-view').getByTestId('story-compaction-marker')).toBeVisible()
+      await expect(page.getByTestId('visual-novel-view').getByRole('button', { name: 'Borrar compactación' })).toHaveCount(0)
+    } finally {
+      gate.resolve(undefined)
+    }
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('Respuesta nueva.')
+    await page.getByTestId('visual-novel-previous').click()
+    await expect(page.getByTestId('visual-novel-frame')).toContainText('Resumen durante generación.')
+    await expect(page.getByTestId('visual-novel-view').getByRole('button', { name: 'Borrar compactación' })).toBeVisible()
   })
 }
 

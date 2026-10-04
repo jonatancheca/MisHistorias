@@ -714,7 +714,8 @@ const visualFrames = computed(() =>
     initialBackgroundId: stories.activeStory?.initialBackgroundId ?? null,
     initialBackgroundTag: primaryTag(initialBackground.value),
     resolveBackgroundId: (tag) => backgrounds.byTag(tag)?.id ?? null,
-    resolveSoundId: (tag) => sounds.byTag(tag)?.id ?? null
+    resolveSoundId: (tag) => sounds.byTag(tag)?.id ?? null,
+    compactionTraces: debugEnabled.value ? compactionTraces.value : []
   })
 )
 const completeVisualFrames = computed(() =>
@@ -724,7 +725,8 @@ const completeVisualFrames = computed(() =>
       initialBackgroundId: stories.activeStory?.initialBackgroundId ?? null,
       initialBackgroundTag: primaryTag(initialBackground.value),
       resolveBackgroundId: (tag) => backgrounds.byTag(tag)?.id ?? null,
-      resolveSoundId: (tag) => sounds.byTag(tag)?.id ?? null
+      resolveSoundId: (tag) => sounds.byTag(tag)?.id ?? null,
+      compactionTraces: debugEnabled.value ? compactionTraces.value : []
     }
   )
 )
@@ -793,7 +795,7 @@ const visualSoundPlayer = ref<HTMLAudioElement | null>(null)
 let visualSoundWatcherInitialized = false
 const visualSpeaker = computed(() => {
   const frame = activeVisualFrame.value
-  if (!frame || frame.kind === 'narration' || frame.kind === 'sound') return null
+  if (!frame || frame.kind === 'narration' || frame.kind === 'sound' || frame.kind === 'compaction') return null
   const speakerState = frame.characterStates[frame.characterStates.length - 1]
   if (frame.kind === 'dialogue' && speakerState) {
     return {
@@ -916,11 +918,29 @@ async function removeStorySlot(id: string) {
   }
 }
 
+let previousVisualDebugEnabled = debugEnabled.value
 watch(
-  () => visualFrames.value.length,
-  (length, previousLength) => {
-    const firstNewFrame = visualFrames.value[previousLength]
-    const previousFrame = visualFrames.value[previousLength - 1]
+  visualFrames,
+  (frames, previousFrames) => {
+    const length = frames.length
+    const previousLength = previousFrames.length
+    const currentFrame = previousFrames[visualFrameIndex.value]
+    const retainedIndex = frames.findIndex((frame) => frame.id === currentFrame?.id)
+    const debugChanged = previousVisualDebugEnabled !== debugEnabled.value
+    previousVisualDebugEnabled = debugEnabled.value
+    if (retainedIndex >= 0 && (debugChanged || retainedIndex !== visualFrameIndex.value)) {
+      visualFrameIndex.value = retainedIndex
+      return
+    }
+    if (currentFrame?.kind === 'compaction' && retainedIndex < 0) {
+      const remainingIds = new Set(frames.map((frame) => frame.id))
+      const nearest = previousFrames.slice(visualFrameIndex.value + 1).find((frame) => remainingIds.has(frame.id)) ??
+        previousFrames.slice(0, visualFrameIndex.value).findLast((frame) => remainingIds.has(frame.id))
+      visualFrameIndex.value = Math.max(0, frames.findIndex((frame) => frame.id === nearest?.id))
+      return
+    }
+    const firstNewFrame = frames[previousLength]
+    const previousFrame = previousFrames[previousLength - 1]
     const firstNewMessage = firstNewFrame
       ? stories.messages.find((message) => message.id === firstNewFrame.messageId)
       : null
@@ -1322,19 +1342,6 @@ onBeforeRouteLeave(() => {
           data-testid="visual-novel-view"
           class="visual-novel-view flex h-full min-h-0 flex-col bg-slate-950"
         >
-          <details v-if="debugEnabled && compactionTraces.length" open class="shrink-0 border-b border-white/15 text-slate-200" data-testid="visual-compactions">
-            <summary class="cursor-pointer px-3 py-2 text-sm font-semibold">Compactaciones ({{ compactionTraces.length }})</summary>
-            <div class="max-h-32 space-y-2 overflow-y-auto px-3 pb-2">
-              <StoryCompactionMarker
-                v-for="trace in compactionTraces"
-                :key="trace.id"
-                :trace="trace"
-                :editable="!stories.generating && !stories.deletingCompaction && !stories.activeStory.readOnly"
-                @inspect="selectedDebugTrace = $event"
-                @remove="removeCompaction"
-              />
-            </div>
-          </details>
           <div class="relative min-h-0 flex-1">
             <VisualNovelStage
               :character-ids="visualCharacterIds"
@@ -1342,6 +1349,15 @@ onBeforeRouteLeave(() => {
               :background-id="visualBackground.id"
               :background-tag="visualBackground.tag"
               @select-image="openImageReplacement"
+            />
+
+            <StoryCompactionMarker
+              v-if="activeVisualFrame?.compactionTrace"
+              :trace="activeVisualFrame.compactionTrace"
+              :editable="!stories.generating && !stories.deletingCompaction && !stories.activeStory.readOnly"
+              class="absolute right-3 bottom-3 left-3 z-20 border-white/15 bg-slate-950/80 text-slate-300 shadow-lg backdrop-blur-sm sm:left-auto"
+              @inspect="selectedDebugTrace = $event"
+              @remove="removeCompaction"
             />
 
             <MessageActions
@@ -1418,6 +1434,7 @@ onBeforeRouteLeave(() => {
 
               <div
                 data-testid="visual-novel-frame"
+                :data-compaction-trace-id="activeVisualFrame?.compactionTrace?.id"
                 class="h-full min-w-0 overflow-y-auto px-4 py-3 text-center sm:px-6 sm:py-4"
                 @click="onVisualFrameClick"
               >
@@ -1445,10 +1462,10 @@ onBeforeRouteLeave(() => {
                   <p
                     v-else
                     class="text-[15px] leading-relaxed whitespace-pre-wrap sm:text-base"
-                    :class="activeVisualFrame.kind === 'narration' ? 'italic text-slate-300' : ''"
+                    :class="activeVisualFrame.kind === 'narration' ? 'italic text-slate-300' : activeVisualFrame.kind === 'compaction' ? 'break-words [overflow-wrap:anywhere]' : ''"
                     :style="visualSpeaker ? { color: visualSpeaker.color } : undefined"
                   >
-                    <span v-if="visualSpeaker" class="font-semibold">{{ `${visualSpeaker.name}: ` }}</span><span>{{ activeVisualFrame.text }}</span>
+                    <span v-if="activeVisualFrame.kind === 'compaction'" class="font-semibold">Compactación: </span><span v-else-if="visualSpeaker" class="font-semibold">{{ `${visualSpeaker.name}: ` }}</span><span>{{ activeVisualFrame.text }}</span>
                   </p>
                 </template>
                 <p v-else class="text-sm text-slate-300">La historia aún no ha empezado.</p>

@@ -199,7 +199,11 @@ for (const visualMode of [false, true]) {
     if (visualMode) await page.getByRole('button', { name: 'Mostrar menú de historia' }).click()
     await page.getByTestId('story-tools-toggle').click()
     await page.getByTestId('story-debug-toggle').click()
-    await page.getByTestId(visualMode ? 'visual-compactions' : 'story-scroller').getByTestId('story-compaction-marker').last().getByRole('button').click()
+    if (visualMode) {
+      await page.getByTestId('visual-novel-previous').click()
+      await page.getByTestId('visual-novel-previous').click()
+    }
+    await page.getByTestId(visualMode ? 'visual-novel-view' : 'story-scroller').getByTestId('story-compaction-marker').last().getByRole('button', { name: 'Ver antes / después' }).click()
     await expect(page.getByRole('dialog', { name: 'Debug compactación' })).toContainText('tokens')
     await page.screenshot({ path: test.info().outputPath(visualMode ? 'tokens-debug-novela-390.png' : 'tokens-debug-chat-390.png') })
   })

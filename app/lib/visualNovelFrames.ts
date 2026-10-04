@@ -1,4 +1,4 @@
-import type { Message, MessageSegment } from '#shared/types'
+import type { LlmDebugTrace, Message, MessageSegment } from '#shared/types'
 import { isAiInstruction } from './chatInstructions.ts'
 import { stripBracketedText } from './storyDisplayText.ts'
 
@@ -14,10 +14,11 @@ export interface VisualNovelCharacterState {
 
 export interface VisualNovelFrame {
   id: string
-  messageId: string
+  messageId: string | null
   segmentIndex: number | null
-  kind: 'user' | 'dialogue' | 'protagonist-dialogue' | 'narration' | 'sound'
+  kind: 'user' | 'dialogue' | 'protagonist-dialogue' | 'narration' | 'sound' | 'compaction'
   text: string
+  compactionTrace?: LlmDebugTrace
   soundId?: string | null
   soundTag?: string | null
   backgroundId: string | null
@@ -30,6 +31,7 @@ interface BuildVisualNovelFramesOptions {
   initialBackgroundTag: string | null
   resolveBackgroundId?: (tag: string | null) => string | null
   resolveSoundId?: (tag: string | null) => string | null
+  compactionTraces?: LlmDebugTrace[]
 }
 
 function hasBackgroundId(segment: MessageSegment) {
@@ -82,7 +84,38 @@ export function buildVisualNovelFrames(
   let backgroundTag = options.initialBackgroundTag
   let characterStates: VisualNovelCharacterState[] = []
 
-  for (const message of messages) {
+  type Item = { message: Message; createdAt: number } | { trace: LlmDebugTrace; createdAt: number }
+  const items: Item[] = messages.map((message) => ({ message, createdAt: message.createdAt }))
+  const messageIds = new Set(messages.map((message) => message.id))
+  const anchored = new Map<string, Item[]>()
+  for (const trace of [...(options.compactionTraces ?? [])].sort((a, b) => a.createdAt - b.createdAt)) {
+    if (trace.request.purpose !== 'compaction') continue
+    const item = { trace, createdAt: trace.createdAt }
+    if (trace.requestMessageId && messageIds.has(trace.requestMessageId)) {
+      anchored.set(trace.requestMessageId, [...(anchored.get(trace.requestMessageId) ?? []), item])
+    } else items.push(item)
+  }
+  const timeline = items.sort((a, b) => a.createdAt - b.createdAt).flatMap((item) =>
+    'message' in item ? [item, ...(anchored.get(item.message.id) ?? [])] : [item]
+  )
+
+  for (const item of timeline) {
+    if ('trace' in item) {
+      const trace = item.trace
+      frames.push({
+        id: `${trace.id}:compaction`,
+        messageId: null,
+        segmentIndex: null,
+        kind: 'compaction',
+        text: ('content' in trace.response ? trace.response.content : trace.response.error) || 'Sin texto de compactación.',
+        compactionTrace: trace,
+        backgroundId,
+        backgroundTag,
+        characterStates: cloneCharacterStates(characterStates)
+      })
+      continue
+    }
+    const message = item.message
     if (message.swarmError) continue
     if (message.role === 'user') {
       if (isAiInstruction(message.raw)) continue

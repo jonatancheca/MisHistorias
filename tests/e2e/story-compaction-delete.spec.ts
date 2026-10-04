@@ -37,11 +37,17 @@ for (const scope of ['normal', 'private'] as const) {
       if (await showMenu.isVisible()) await showMenu.click()
       await page.getByTestId('story-tools-toggle').click()
       await page.getByTestId('story-debug-toggle').click()
-      const markers = page.getByTestId(visualMode ? 'visual-compactions' : 'story-scroller')
-      const applied = markers.locator(`[data-compaction-trace-id="${traces[0]!.id}"]`)
-      const failed = markers.locator(`[data-compaction-trace-id="${traces[1]!.id}"]`)
+      const markers = page.getByTestId(visualMode ? 'visual-novel-view' : 'story-scroller')
+      const applied = markers.locator(`[data-testid="story-compaction-marker"][data-compaction-trace-id="${traces[0]!.id}"]`)
+      const failed = markers.locator(`[data-testid="story-compaction-marker"][data-compaction-trace-id="${traces[1]!.id}"]`)
       const dialog = page.getByRole('alertdialog', { name: 'Borrar compactación' })
       const originals = await data.list<Message>('messages', scope, { storyId: story.id })
+
+      if (visualMode) {
+        await expect(page.getByTestId('visual-novel-frame')).toContainText(old.raw)
+        await page.getByTestId('visual-novel-next').click()
+        await expect(page.getByTestId('visual-novel-frame')).toContainText('RESUMEN_A_ELIMINAR')
+      }
 
       // Cancelar conserva tanto la traza como el resumen.
       await applied.getByRole('button', { name: 'Borrar compactación' }).click()
@@ -53,6 +59,10 @@ for (const scope of ['normal', 'private'] as const) {
       await expect(applied.getByRole('button', { name: 'Borrar compactación' })).toBeFocused()
       expect((await data.get<Story>('stories', story.id, scope)).contextSummary).toBe('RESUMEN_A_ELIMINAR')
 
+      if (visualMode) {
+        await page.getByTestId('visual-novel-next').click()
+        await expect(page.getByTestId('visual-novel-frame')).toContainText('Resumen insuficiente.')
+      }
       await failed.getByRole('button', { name: 'Borrar compactación' }).click()
       await expect(dialog).toContainText('El resumen activo y los mensajes originales se conservarán')
       await dialog.getByRole('button', { name: 'Borrar', exact: true }).click()

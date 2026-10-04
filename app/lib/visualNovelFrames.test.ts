@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { Message } from '#shared/types'
+import type { LlmDebugTrace, Message } from '#shared/types'
 import {
   buildVisualNovelFrames,
   resolveVisualNovelFrameIndex,
@@ -35,6 +35,45 @@ const messages: Message[] = [
 ]
 
 describe('pasos de novela visual', () => {
+  it('intercala compactaciones tras su mensaje completo y conserva la escena', () => {
+    const trace: LlmDebugTrace = {
+      id: 'compaction-1', storyId: 'story-1', requestMessageId: 'assistant-1', createdAt: 50,
+      status: 'success', request: { purpose: 'compaction', model: 'test', messages: [],
+        temperature: 0, max_tokens: 100, stream: false },
+      response: { content: 'Resumen [original] del bosque.', finishReason: 'stop' }
+    }
+    const later: Message = { ...messages[0]!, id: 'user-later', raw: 'Sigo.', createdAt: 3 }
+    const options = { initialBackgroundId: null, initialBackgroundTag: null }
+    const frames = buildVisualNovelFrames([...messages, later], { ...options, compactionTraces: [trace] })
+    const summary = frames.at(-2)!
+    assert.equal(summary.kind, 'compaction')
+    assert.equal(summary.messageId, null)
+    assert.equal(summary.text, 'Resumen [original] del bosque.')
+    assert.equal(summary.backgroundId, 'forest')
+    assert.deepEqual(summary.characterStates, frames.at(-3)?.characterStates)
+    assert.deepEqual(frames.at(-1)?.characterStates, summary.characterStates)
+    assert.equal(frames.at(-1)?.messageId, later.id)
+    assert.equal(buildVisualNovelFrames([...messages, later], options).some(frame => frame.kind === 'compaction'), false)
+  })
+
+  it('incluye fallos tras instrucciones ocultas y ordena trazas sin mensaje por fecha', () => {
+    const instruction: Message = { ...messages[0]!, id: 'instruction', raw: 'IA: resume.', createdAt: 1.5 }
+    const failure: LlmDebugTrace = {
+      id: 'failure', storyId: 'story-1', requestMessageId: instruction.id, createdAt: 10,
+      status: 'error', request: { purpose: 'compaction', model: 'test', messages: [],
+        temperature: 0, max_tokens: 100, stream: false },
+      response: { error: 'Resumen insuficiente.' }
+    }
+    const unanchored = { ...failure, id: 'unanchored', requestMessageId: 'missing', createdAt: 0 }
+    const frames = buildVisualNovelFrames([messages[0]!, instruction, messages[1]!], {
+      initialBackgroundId: 'room', initialBackgroundTag: null, compactionTraces: [failure, unanchored]
+    })
+    assert.deepEqual(frames.slice(0, 4).map(frame => frame.kind), ['compaction', 'user', 'compaction', 'narration'])
+    assert.equal(frames[0]?.compactionTrace?.id, unanchored.id)
+    assert.equal(frames[2]?.text, 'Resumen insuficiente.')
+    assert.equal(frames[2]?.backgroundId, 'room')
+  })
+
   it('omite diagnósticos incluso si contienen segmentos importados', () => {
     const failure: Message = { ...messages[1]!, id: 'failure', swarmError: {
       characterId: 'alicia', characterName: 'Alicia', tags: [], call: {
