@@ -218,10 +218,25 @@ export async function getConfiguredModelStatus(settings: LlmProxySettings, model
 export async function loadConfiguredModel(settings: LlmProxySettings, model: string) {
   const key = model.trim()
   if (!key) throw llmError('Falta el modelo configurado', 400)
-  const available = (await fetchNativeModels(settings)).find(item => item.key === key)
+  const models = await fetchNativeModels(settings)
+  const available = models.find(item => item.key === key)
   if (!available) throw llmError('El modelo configurado no está disponible en LM Studio', 400)
   const loadedInstance = available.loadedInstances[0]
   if (loadedInstance) return { status: 'already-loaded' as const, instanceId: loadedInstance }
+  const instanceIds = new Set(models.flatMap(item => item.loadedInstances))
+  for (const instanceId of instanceIds) {
+    try {
+      await unloadModelInstance(settings, instanceId)
+    } catch (caught) {
+      const error = caught as LlmProxyError
+      throw llmError(
+        `No se pudo descargar la instancia ${instanceId}. Se ha cancelado la carga del modelo. ${error.message}`,
+        error.status,
+        error.detail,
+        error.diagnostic
+      )
+    }
+  }
   const payload = await fetchNativeModelJson(settings, '/load', 'POST', { model: key })
   if (!payload || typeof payload !== 'object' ||
       !('instance_id' in payload) || typeof payload.instance_id !== 'string' ||
@@ -231,19 +246,23 @@ export async function loadConfiguredModel(settings: LlmProxySettings, model: str
   return { status: 'loaded' as const, instanceId: payload.instance_id }
 }
 
+async function unloadModelInstance(settings: LlmProxySettings, instanceId: string) {
+  const payload = await fetchNativeModelJson(settings, '/unload', 'POST', {
+    instance_id: instanceId
+  })
+  if (!payload || typeof payload !== 'object' ||
+      !('instance_id' in payload) || payload.instance_id !== instanceId) {
+    throw llmError('LM Studio no confirmó la descarga del modelo')
+  }
+}
+
 export async function unloadAllModels(settings: LlmProxySettings): Promise<LmStudioUnloadResult> {
   const models = await fetchNativeModels(settings)
   const instanceIds = [...new Set(models.flatMap(model => model.loadedInstances))]
   const failed: LmStudioUnloadResult['failed'] = []
   for (const instanceId of instanceIds) {
     try {
-      const payload = await fetchNativeModelJson(settings, '/unload', 'POST', {
-        instance_id: instanceId
-      })
-      if (!payload || typeof payload !== 'object' ||
-          !('instance_id' in payload) || payload.instance_id !== instanceId) {
-        throw llmError('LM Studio no confirmó la descarga del modelo')
-      }
+      await unloadModelInstance(settings, instanceId)
     } catch (caught) {
       failed.push({
         instanceId,

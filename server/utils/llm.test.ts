@@ -207,3 +207,95 @@ test('descarga todas las instancias y continúa si una falla', async () => {
       server.close((error) => (error ? reject(error) : resolve())))
   }
 })
+
+test('libera los demás modelos antes de cargar y no los toca si el elegido ya está cargado o no existe', async () => {
+  let loaded = false
+  const actions: string[] = []
+  const server = createServer(async (request, response) => {
+    assert.equal(request.headers.authorization, 'Bearer token')
+    response.setHeader('content-type', 'application/json')
+    if (request.method === 'GET') {
+      response.end(JSON.stringify({ models: [
+        { key: 'elegido', type: 'llm', loaded_instances: loaded ? [{ id: 'instancia-elegida' }] : [] },
+        { key: 'otro', type: 'llm', loaded_instances: [{ id: 'uno' }, { id: 'dos' }] },
+        { key: 'embedding', type: 'embedding', loaded_instances: [{ id: 'tres' }] },
+        { key: 'sin-cargar', type: 'llm', loaded_instances: [] }
+      ] }))
+      return
+    }
+    const body = await readJson(request)
+    if (request.url === '/api/v1/models/unload') {
+      actions.push(`unload:${body.instance_id}`)
+      response.end(JSON.stringify({ instance_id: body.instance_id }))
+      return
+    }
+    assert.equal(request.url, '/api/v1/models/load')
+    actions.push(`load:${body.model}`)
+    loaded = true
+    response.end(JSON.stringify({ status: 'loaded', instance_id: 'instancia-elegida' }))
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('Puerto de prueba no disponible')
+  const settings = { baseUrl: `http://127.0.0.1:${address.port}`, apiKey: 'token' }
+  try {
+    await assert.rejects(loadConfiguredModel(settings, ''), /Falta el modelo/)
+    await assert.rejects(loadConfiguredModel(settings, 'ausente'), /no está disponible/)
+    assert.deepEqual(actions, [])
+    assert.deepEqual(await loadConfiguredModel(settings, ' elegido '), {
+      status: 'loaded', instanceId: 'instancia-elegida'
+    })
+    assert.deepEqual(actions, ['unload:uno', 'unload:dos', 'unload:tres', 'load:elegido'])
+    actions.length = 0
+    assert.deepEqual(await loadConfiguredModel(settings, 'elegido'), {
+      status: 'already-loaded', instanceId: 'instancia-elegida'
+    })
+    assert.deepEqual(actions, [])
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+  }
+})
+
+for (const failure of ['http', 'confirmación', 'json'] as const) {
+  test(`aborta la carga si falla la descarga previa: ${failure}`, async () => {
+    const actions: string[] = []
+    const server = createServer(async (request, response) => {
+      response.setHeader('content-type', 'application/json')
+      if (request.method === 'GET') {
+        response.end(JSON.stringify({ models: [
+          { key: 'elegido', type: 'llm', loaded_instances: [] },
+          { key: 'otro', type: 'llm', loaded_instances: [{ id: 'uno' }, { id: 'dos' }] }
+        ] }))
+        return
+      }
+      const body = await readJson(request)
+      actions.push(`${request.url}:${body.instance_id ?? body.model}`)
+      if (body.instance_id === 'dos') {
+        response.statusCode = failure === 'http' ? 503 : 200
+        response.end(failure === 'http' ? '{"error":"ocupado"}'
+          : failure === 'confirmación' ? '{"instance_id":"incorrecta"}' : 'no es json')
+        return
+      }
+      response.end(JSON.stringify({ instance_id: body.instance_id }))
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Puerto de prueba no disponible')
+    try {
+      await assert.rejects(
+        loadConfiguredModel({ baseUrl: `http://127.0.0.1:${address.port}`, apiKey: '' }, 'elegido'),
+        (error: Error & { status?: number; diagnostic?: { response: { status: number } } }) => {
+          assert.match(error.message, /No se pudo descargar la instancia dos.*cancelado la carga/)
+          if (failure === 'http') {
+            assert.equal(error.status, 503)
+            assert.equal(error.diagnostic?.response.status, 503)
+          }
+          return true
+        }
+      )
+      assert.deepEqual(actions, ['/api/v1/models/unload:uno', '/api/v1/models/unload:dos'])
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+    }
+  })
+}

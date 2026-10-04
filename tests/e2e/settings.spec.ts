@@ -207,7 +207,7 @@ test('precarga el modelo elegido y confirma la descarga global incluso con Chrom
     await page.setViewportSize({ width: 320, height: 800 })
     await page.goto('/settings')
     const llm = page.getByTestId('llm-settings')
-    const preload = llm.getByRole('button', { name: 'Precargar modelo' })
+    const preload = llm.getByRole('button', { name: 'Load IA', exact: true })
     const unload = llm.getByRole('button', { name: 'Descargar todos de memoria' })
     await expect(preload).toBeVisible()
     await expect(unload).toBeVisible()

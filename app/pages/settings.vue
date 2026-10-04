@@ -1895,39 +1895,45 @@ onBeforeRouteLeave(async () => {
 
       <div>
         <label class="label" for="model">Modelo</label>
-        <select
-          v-if="models.length"
-          id="model"
-          v-model="form.model"
-          class="field"
-          :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
-        >
-          <option v-if="form.model && !models.includes(form.model)" :value="form.model" disabled>
-            {{ form.model }} (no disponible)
-          </option>
-          <option v-for="model in models" :key="model" :value="model">{{ model }}</option>
-        </select>
-        <input
-          v-else
-          id="model"
-          v-model="form.model"
-          :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
-          autocomplete="off"
-          class="field"
-          placeholder="nombre-del-modelo"
-        >
+        <div class="flex min-w-0 items-center gap-2">
+          <select
+            v-if="models.length"
+            id="model"
+            v-model="form.model"
+            class="field min-w-0 flex-1"
+            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
+          >
+            <option v-if="form.model && !models.includes(form.model)" :value="form.model" disabled>
+              {{ form.model }} (no disponible)
+            </option>
+            <option v-for="model in models" :key="model" :value="model">{{ model }}</option>
+          </select>
+          <input
+            v-else
+            id="model"
+            v-model="form.model"
+            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
+            autocomplete="off"
+            class="field min-w-0 flex-1"
+            placeholder="nombre-del-modelo"
+          >
+          <button
+            type="button"
+            class="btn-ghost shrink-0"
+            :disabled="testing || modelAction !== null || !form.model.trim() || configuredModelUnavailable || switchingPrivateLlmSettings"
+            :aria-busy="modelAction === 'load'"
+            @click="preloadModel"
+          >
+            {{ modelAction === 'load' ? 'Cargando IA…' : 'Load IA' }}
+          </button>
+        </div>
+        <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+          Si el modelo no está cargado, primero se descargan los demás de memoria. Si alguna descarga falla, se cancela la carga.
+        </p>
       </div>
 
       <div class="grid min-w-0 gap-2">
         <div class="flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="btn-ghost"
-            :disabled="testing || modelAction !== null || !form.model.trim() || configuredModelUnavailable"
-            @click="preloadModel"
-          >
-            {{ modelAction === 'load' ? 'Cargando modelo…' : 'Precargar modelo' }}
-          </button>
           <button
             type="button"
             class="btn-ghost"
