@@ -1230,7 +1230,7 @@ onBeforeRouteLeave(() => {
         </div>
         <div class="story-header-options">
           <Teleport defer to="#story-reader-options" :disabled="!readerOptionsInNavigation">
-          <div class="story-reader-options flex min-w-0 items-center justify-between gap-2">
+          <div class="story-reader-options flex min-w-0 items-center justify-start gap-2">
           <div v-if="!stories.activeStory.readOnly" class="story-mode-switch" role="group" aria-label="Modo de lectura">
             <button
               type="button"
@@ -1256,7 +1256,6 @@ onBeforeRouteLeave(() => {
             </button>
           </div>
           <span v-else class="text-sm text-[var(--color-fg-muted)]">Solo lectura</span>
-          <StoryContextIndicators v-if="readerOptionsInNavigation" />
           <StoryToolsMenu :active="debugEnabled" :placement="readerOptionsInNavigation ? 'top' : 'bottom'">
             <button
               v-if="!stories.activeStory.readOnly"
@@ -1351,6 +1350,7 @@ onBeforeRouteLeave(() => {
               <span>{{ copyingSharedStory ? 'Copiando…' : 'Copiar' }}</span>
             </button>
           </StoryToolsMenu>
+          <StoryContextIndicators v-if="readerOptionsInNavigation" />
           </div>
           </Teleport>
         </div>
@@ -1725,7 +1725,8 @@ onBeforeRouteLeave(() => {
       </div>
 
       <nav class="story-reader-controls" aria-label="Navegación de la historia" data-testid="story-reader-controls">
-        <div class="story-frame-navigation">
+        <div class="story-reader-leading">
+        <div class="story-frame-navigation story-frame-navigation-start">
         <button
           type="button"
           class="story-nav-button"
@@ -1755,12 +1756,6 @@ onBeforeRouteLeave(() => {
             <path d="m15 18-6-6 6-6" />
           </svg>
         <span class="hidden md:inline">Anterior</span></button>
-        <div class="min-w-0 flex-1 text-center text-xs text-[var(--color-fg-muted)]">
-          <template v-if="stories.activeStory.visualMode">
-            <span data-testid="visual-novel-counter" class="block text-sm font-bold tabular-nums text-[var(--color-fg)]">{{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrameTotal }}</span>
-          </template>
-          <span v-else>Historia</span>
-        </div>
         <StoryModelLoadButton
           v-if="modelLoadAvailable && (stories.activeStory.visualMode || modelLoadInNavigation)"
           class="story-nav-button"
@@ -1769,6 +1764,16 @@ onBeforeRouteLeave(() => {
           :disabled="stories.generating"
           @load="loadStoryModel"
         />
+        </div>
+        <div id="story-reader-options" class="story-reader-options-target" />
+        </div>
+        <div class="story-frame-position min-w-0 flex-1 text-center text-xs text-[var(--color-fg-muted)]">
+          <template v-if="stories.activeStory.visualMode">
+            <span data-testid="visual-novel-counter" class="block whitespace-nowrap text-xs sm:text-sm font-bold tabular-nums text-[var(--color-fg)]">{{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrameTotal }}</span>
+          </template>
+          <span v-else>Historia</span>
+        </div>
+        <div class="story-frame-navigation story-frame-navigation-end">
         <button
           v-if="stories.activeStory.visualMode"
           type="button"
@@ -1799,7 +1804,6 @@ onBeforeRouteLeave(() => {
           </svg>
         <span v-if="!stories.activeStory.visualMode">Final</span></button>
         </div>
-        <div id="story-reader-options" class="story-reader-options-target" />
       </nav>
 
       <footer
@@ -2066,7 +2070,8 @@ onBeforeRouteLeave(() => {
 .story-reader-controls {
   position: relative;
   z-index: 30;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   flex-shrink: 0;
   align-items: center;
   gap: 0.375rem;
@@ -2078,10 +2083,14 @@ onBeforeRouteLeave(() => {
 .story-frame-navigation {
   display: flex;
   min-width: 0;
-  flex: 1 1 18rem;
   align-items: center;
   gap: 0.375rem;
 }
+
+.story-reader-leading { display: contents; }
+.story-frame-navigation-start { grid-column: 1; flex-wrap: wrap; }
+.story-frame-navigation-end { grid-column: 3; justify-content: flex-end; }
+.story-frame-position { grid-column: 2; min-width: 2.75rem; justify-self: center; }
 
 .story-nav-button {
   display: inline-flex;
@@ -2168,12 +2177,16 @@ onBeforeRouteLeave(() => {
 
 @media (min-width: 640px) {
   .story-header { padding: 0.75rem 1.25rem; }
-  .story-reader-controls { flex-wrap: wrap; column-gap: 1rem; padding-inline: 1.25rem; }
-  .story-frame-navigation { min-width: max-content; }
-  .story-reader-options-target { display: block; min-width: max-content; flex: 1 1 22rem; }
+  .story-reader-controls { column-gap: 0.5rem; padding-inline: 1.25rem; }
+  .story-reader-options-target { display: block; grid-column: 1 / -1; grid-row: 1; min-width: 0; }
+  .story-frame-navigation-start, .story-frame-position, .story-frame-navigation-end { grid-row: 2; }
 }
 
 @media (min-width: 1280px) {
+  .story-reader-leading { display: flex; grid-column: 1; grid-row: 1; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+  .story-reader-options-target { flex: 0 1 auto; }
+  .story-frame-navigation-start { flex: 0 0 auto; }
+  .story-frame-position, .story-frame-navigation-end { grid-row: 1; }
   .story-header { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1rem; }
   .story-composer { grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; }
   .story-generation-controls { min-width: 240px; }

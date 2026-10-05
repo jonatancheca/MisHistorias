@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures'
 
-for (const width of [320, 390, 1280]) {
+for (const width of [320, 390, 639, 640, 768, 1024, 1280]) {
   test(`controles de lectura y herramientas accesibles en ambos modos a ${width}px`, async ({ page, data }) => {
     await data.patchSettings({ mockMode: true, responseSpeed: 'instant', visualNovelManualAdvance: false })
     const story = await data.createStory({ characters: [], title: 'La última luz del faro', premise: 'Una señal en el horizonte cambia el rumbo de la noche.' })
@@ -66,6 +66,31 @@ for (const width of [320, 390, 1280]) {
           await expect(page.getByTestId('visual-novel-next')).toHaveAttribute('title', /Av Pág \/ Espacio \/ Enter/)
         }
       }
+      const centered = await page.evaluate(() => {
+        const nav = document.querySelector('.story-reader-controls')!.getBoundingClientRect()
+        const counter = document.querySelector('.story-frame-position')!.getBoundingClientRect()
+        const left = document.querySelector('.story-frame-navigation-start')!.getBoundingClientRect()
+        const right = document.querySelector('.story-frame-navigation-end')!.getBoundingClientRect()
+        return { navCenter: nav.left + nav.width / 2, counterCenter: counter.left + counter.width / 2,
+          counterLeft: counter.left, counterRight: counter.right, leftRight: left.right, rightLeft: right.left }
+      })
+      expect(centered.counterCenter).toBeCloseTo(centered.navCenter, 0)
+      expect(centered.leftRight).toBeLessThanOrEqual(centered.counterLeft)
+      expect(centered.counterRight).toBeLessThanOrEqual(centered.rightLeft)
+      if (width >= 640) {
+        const adjacent = await page.evaluate(() => {
+          const options = document.querySelector('#story-reader-options')!
+          const mode = options.querySelector('.story-mode-switch')!.getBoundingClientRect()
+          const rings = options.querySelector('.story-context-indicators')?.getBoundingClientRect()
+          const tools = options.querySelector('[data-testid="story-tools-toggle"]')!.getBoundingClientRect()
+          return { modeRight: mode.right, toolsLeft: tools.left,
+            toolsRight: tools.right, ringsLeft: rings?.left ?? tools.right }
+        })
+        expect(adjacent.toolsLeft - adjacent.modeRight).toBeGreaterThanOrEqual(0)
+        expect(adjacent.toolsLeft - adjacent.modeRight).toBeLessThanOrEqual(12)
+        expect(adjacent.ringsLeft - adjacent.toolsRight).toBeGreaterThanOrEqual(0)
+        expect(adjacent.ringsLeft - adjacent.toolsRight).toBeLessThanOrEqual(12)
+      }
       await expect(page.getByTestId('story-reader-controls')).not.toContainText('Cuadros')
       const geometry = await page.evaluate(() => {
         const controls = [...document.querySelectorAll('#story-header button, .story-reader-controls button, .story-composer button')]
@@ -83,7 +108,7 @@ for (const width of [320, 390, 1280]) {
         expect(control.right).toBeLessThanOrEqual(width)
         expect(control.bottom).toBeLessThanOrEqual(844)
       }
-      await page.screenshot({ path: test.info().outputPath(`player-${visual ? 'novel' : 'chat'}-${width}.png`) })
+      await page.screenshot({ path: `.data/story-reader-buttons-${visual ? 'novel' : 'chat'}-${width}.png` })
       await page.getByLabel('Tu intervención').fill('')
     }
   })

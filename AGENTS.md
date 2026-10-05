@@ -20,6 +20,7 @@
 - Tras cambios de código, ejecuta `pnpm lint`.
 - Si `pnpm lint` supera 60 segundos, déjalo continuar y revisa después si existen directorios raíz inesperados o artefactos generados que ESLint esté recorriendo.
 - Para validar la aplicación, usa `pnpm dev` y comprobaciones reales en navegador.
+- Tras cualquier cambio visual, muestra en la sesión de IA una captura del resultado final. Guarda las capturas en un directorio ignorado por Git (por ejemplo, `.data/`), sin incluirlas en commits ni subirlas al repositorio.
 - Antes de arrancar, comprueba si `http://localhost:3069` ya responde y reutiliza ese servidor.
 - Si no responde, ejecuta siempre `pnpm dev` directamente en una sesión persistente controlada. No uses `Start-Process` ni otro lanzador en segundo plano: puede quedar bloqueado por política.
 - Ejecuta exactamente `pnpm dev`; no añadas argumentos de puerto, porque el script ya fija el puerto 3069 y esos argumentos pueden interpretarse como un directorio raíz.

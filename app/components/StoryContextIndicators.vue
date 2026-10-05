@@ -94,11 +94,11 @@ onBeforeUnmount(cancelMeasurement)
 </template>
 
 <style scoped>
-.story-context-indicators { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
+.story-context-indicators { display: flex; align-items: center; gap: 0.75rem; }
 .story-context-indicator { position: relative; display: flex; flex: 0 0 16px; width: 16px; height: 16px; border-radius: 50%; }
 .story-context-indicator:focus-visible { outline: 2px solid var(--color-brand-400); outline-offset: 3px; }
 .story-context-tooltip {
-  position: absolute; right: 0; bottom: calc(100% + 0.75rem); z-index: 60;
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 0.75rem); z-index: 60;
   width: max-content; max-width: min(24rem, calc(100vw - 2rem)); padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border-soft); border-radius: 0.5rem;
   background: var(--color-surface); color: var(--color-fg); box-shadow: 0 4px 16px #0002;

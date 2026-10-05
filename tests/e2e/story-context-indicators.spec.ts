@@ -55,19 +55,18 @@ test('mide sin bloquear, excluye borrador y muestra limites efectivos en ambos m
         await expect(chars).toBeVisible()
         const geometry = await page.evaluate(() => {
           const options = document.querySelector('#story-reader-options')!
-          const mode = options.querySelector('.story-mode-switch')!.getBoundingClientRect()
           const tools = options.querySelector('[data-testid="story-tools-toggle"]')!.getBoundingClientRect()
           const rings = [...options.querySelectorAll('.story-context-indicator')].map(el => {
             const r = el.getBoundingClientRect()
             return { width: r.width, height: r.height, left: r.left, right: r.right }
           })
-          return { modeRight: mode.right, toolsLeft: tools.left, rings }
+          return { toolsRight: tools.right, viewport: innerWidth, rings }
         })
         for (const ring of geometry.rings) {
           expect(ring.width).toBe(16)
           expect(ring.height).toBe(16)
-          expect(ring.left).toBeGreaterThanOrEqual(geometry.modeRight)
-          expect(ring.right).toBeLessThanOrEqual(geometry.toolsLeft)
+          expect(ring.left).toBeGreaterThanOrEqual(geometry.toolsRight)
+          expect(ring.right).toBeLessThanOrEqual(geometry.viewport)
         }
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
