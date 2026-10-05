@@ -13,7 +13,7 @@ interface PromptProviderSettings {
   useChromeLlm: boolean
   model: string
   temperature: number
-  maxTokens: number
+  maxTokens: number | 'auto'
 }
 
 interface PromptProviders {

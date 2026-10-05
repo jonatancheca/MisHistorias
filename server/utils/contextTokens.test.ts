@@ -56,6 +56,17 @@ test('SDK real en worker usa misma instancia, plantilla y capacidad cargada por 
   } finally { await server.close() }
 })
 
+test('consulta capacidad cargada sin plantilla, tokenizer ni carga implícita', async () => {
+  const server = await startFakeLmStudio()
+  try {
+    assert.deepEqual(await measureLmStudioContext({ baseUrl: server.baseUrl, apiKey: '' }, 'configured-key', undefined),
+      { tokens: 0, capacity: 8192, model: 'loaded-instance' })
+    assert.deepEqual(server.calls.map(call => call.endpoint), ['listLoaded', 'getLoadConfig'])
+    server.setMeasurement(7, 0)
+    await assert.rejects(measureLmStudioContext({ baseUrl: server.baseUrl, apiKey: '' }, 'configured-key', undefined), { code: 'capacity' })
+  } finally { await server.close() }
+})
+
 for (const messages of [
   [{ role: 'system' as const, content: 'Instrucciones y resumen anterior.' }],
   [{ role: 'assistant' as const, content: 'Historia anterior.' }],

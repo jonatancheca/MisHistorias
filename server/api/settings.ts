@@ -76,17 +76,19 @@ function validSetting(key: string, value: unknown) {
     case 'privateTemperature':
       return value === null || (typeof value === 'number' && value >= 0 && value <= 2)
     case 'maxTokens':
-      return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 100000
+      return value === 'auto' || (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 100000)
     case 'privateMaxTokens':
-      return value === null || (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 100000)
+      return value === null || value === 'auto' || (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 100000)
     case 'contextUnit':
       return value === 'characters' || value === 'tokens'
     case 'privateContextUnit':
       return value === null || value === 'characters' || value === 'tokens'
     case 'contextTokenBudget':
+      return value === 'auto' || (Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1000000)
     case 'historyBudget':
       return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1000000
     case 'privateContextTokenBudget':
+      return value === null || value === 'auto' || (Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1000000)
     case 'privateHistoryBudget':
       return value === null || (Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1000000)
     case 'defaultSoundVersion':

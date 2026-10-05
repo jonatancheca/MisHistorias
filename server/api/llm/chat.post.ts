@@ -1,6 +1,8 @@
 import { fetchProxyChat, type LlmMessageContent, type LlmProxyError } from '../../utils/llm'
 import { recordOperationalError } from '../../utils/errorTraces'
 import { getStorage } from '../../utils/storage'
+import { ContextMeasurementError, measureLmStudioContext } from '../../utils/contextTokens'
+import { resolveAutoResponseTokens } from '../../../shared/utils/tokenLimits'
 
 function numberInRange(value: unknown, fallback: number, min: number, max: number) {
   const parsed = Number(value)
@@ -50,6 +52,14 @@ export default defineEventHandler(async (event) => {
     ),
     apiKey: usePrivate ? settings?.privateApiKey ?? '' : settings?.apiKey ?? ''
   }
+  if (value.maxTokens === 'auto') {
+    if (!messages.length || messages.some(message => !['system', 'user', 'assistant'].includes(message.role))) {
+      throw createError({ statusCode: 400, message: 'Contexto no válido para calcular la respuesta automática.' })
+    }
+    if (messages.some(message => typeof message.content !== 'string')) {
+      throw createError({ statusCode: 422, message: 'Auto no puede medir los tokens de las imágenes. Elige un máximo de tokens de respuesta manual para esta petición.' })
+    }
+  }
   const proxyRequest = {
     model: typeof value.model === 'string' ? value.model : '',
     messages,
@@ -68,6 +78,12 @@ export default defineEventHandler(async (event) => {
   event.node.res.once('close', abortIfResponseClosed)
 
   try {
+    if (value.maxTokens === 'auto') {
+      const measured = await measureLmStudioContext(proxySettings, proxyRequest.model,
+        messages as Array<{ role: 'system' | 'user' | 'assistant'; content: string }>, abortController.signal)
+      proxyRequest.maxTokens = resolveAutoResponseTokens(measured.tokens, measured.capacity)
+      proxyRequest.model = measured.model
+    }
     const result = await fetchProxyChat(proxySettings, {
       ...proxyRequest,
       signal: abortController.signal
@@ -87,10 +103,14 @@ export default defineEventHandler(async (event) => {
       })
       event.context.errorTraceRecorded = true
     }
-    return { content: result.content, finishReason: result.finishReason }
+    return { content: result.content, finishReason: result.finishReason, maxTokens: proxyRequest.maxTokens }
   } catch (caught) {
     if ((caught as Error)?.name === 'AbortError') throw caught
+    if (caught instanceof ContextMeasurementError && caught.code === 'model_not_loaded') {
+      throw createError({ statusCode: 409, message: caught.message, data: { code: caught.code } })
+    }
     const error = caught as LlmProxyError
+    if (caught instanceof ContextMeasurementError) error.status = 502
     const diagnostic = error.diagnostic ?? {
       request: { settings: proxySettings, body: proxyRequest },
       requestSent: false,

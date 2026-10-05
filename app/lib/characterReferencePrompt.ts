@@ -22,7 +22,7 @@ export const DEFAULT_CHARACTER_REFERENCE_PROMPT = [
 interface CharacterReferencePromptOptions {
   model: string
   temperature: number
-  maxTokens: number
+  maxTokens: number | 'auto'
   systemPrompt: string
   scope: DataScope
   signal?: AbortSignal

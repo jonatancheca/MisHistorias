@@ -1,4 +1,5 @@
-import type { ContextUsage } from '../../shared/types/index.ts'
+import type { ContextUsage, TokenLimit } from '../../shared/types/index.ts'
+import { responseTokenReserve } from '../../shared/utils/tokenLimits.ts'
 
 export interface StoryContextMeasurement {
   characters: number
@@ -10,7 +11,8 @@ export interface StoryContextMeasurement {
   canCompact: boolean
 }
 
-export function tokenContextUsage(tokens: number, capacity: number, reservedTokens: number, configuredLimit: number, model: string): ContextUsage {
+export function tokenContextUsage(tokens: number, capacity: number, responseLimit: TokenLimit, configuredLimit: TokenLimit, model: string): ContextUsage {
+  const reservedTokens = responseTokenReserve(responseLimit)
   if (!Number.isInteger(tokens) || tokens < 0 || !Number.isInteger(capacity) || capacity <= 0 ||
       !Number.isInteger(reservedTokens) || reservedTokens < 0) {
     throw new Error('El modelo no devolvió una medición válida del contexto.')
@@ -21,7 +23,7 @@ export function tokenContextUsage(tokens: number, capacity: number, reservedToke
   }
   return {
     unit: 'tokens', count: tokens, configuredLimit,
-    effectiveLimit: configuredLimit > 0 ? Math.min(configuredLimit, available) : available,
+    effectiveLimit: typeof configuredLimit === 'number' && configuredLimit > 0 ? Math.min(configuredLimit, available) : available,
     capacity, reservedTokens, model
   }
 }

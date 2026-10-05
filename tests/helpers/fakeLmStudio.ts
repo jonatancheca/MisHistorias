@@ -5,8 +5,20 @@ import type { Socket } from 'node:net'
 /** Servidor de protocolo SDK. No genera texto ni usa un tokenizer estimado. */
 export async function startFakeLmStudio(options: { tokens?: number; capacity?: number; identifier?: string } = {}) {
   const calls: Array<{ endpoint: string; parameter: Record<string, unknown> }> = []
+  const chatRequests: Array<{ max_tokens: number; model: string; messages: unknown[] }> = []
   const sockets = new Set<Socket>()
-  const server = createServer()
+  const server = createServer(async (request, response) => {
+    if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
+      response.writeHead(404).end()
+      return
+    }
+    const chunks: Buffer[] = []
+    for await (const chunk of request) chunks.push(Buffer.from(chunk))
+    chatRequests.push(JSON.parse(Buffer.concat(chunks).toString()))
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+      choices: [{ message: { content: 'Respuesta con tokens automáticos.' }, finish_reason: 'stop' }]
+    }))
+  })
   const instance = {
     type: 'llm', modelKey: 'configured-key', identifier: options.identifier ?? 'loaded-instance', instanceReference: 'instance-reference',
     path: 'publisher/model.gguf', format: 'gguf', displayName: 'Test', publisher: 'publisher', sizeBytes: 1,
@@ -65,7 +77,11 @@ export async function startFakeLmStudio(options: { tokens?: number; capacity?: n
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('Missing test server address')
   return {
-    baseUrl: `http://127.0.0.1:${address.port}`, calls,
+    baseUrl: `http://127.0.0.1:${address.port}`, calls, chatRequests,
+    setMeasurement: (tokens: number, capacity: number) => {
+      results.countTokens = { tokenCount: tokens }
+      results.getLoadConfig = { fields: [{ key: 'llm.load.contextLength', value: capacity }] }
+    },
     close: async () => {
       for (const socket of sockets) socket.destroy()
       await new Promise<void>(resolve => server.close(() => resolve()))

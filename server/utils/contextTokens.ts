@@ -26,7 +26,7 @@ export class ContextMeasurementError extends Error {
 
 // Ejecutada dentro del worker: no depende del ámbito del módulo ni registra credenciales.
 export async function measureLoadedContext(Client: typeof LMStudioClient, data: {
-  baseUrl: string; apiToken: string; model: string; messages: TextMessage[]
+  baseUrl: string; apiToken: string; model: string; messages?: TextMessage[]
 }) {
   let stage = 'connection'
   const client = new Client({ baseUrl: data.baseUrl, ...(data.apiToken ? { apiToken: data.apiToken } : {}) })
@@ -38,16 +38,22 @@ export async function measureLoadedContext(Client: typeof LMStudioClient, data: 
       stage = 'model_not_loaded'
       throw new Error('El modelo configurado no está cargado en LM Studio.')
     }
-    stage = 'prompt_template'
-    // Algunas plantillas exigen un turno de usuario para medir historias narradas solo por IA.
-    // El turno vacío solo se usa al formatear; no modifica ni guarda el historial.
-    const templateMessages: TextMessage[] = data.messages.some(message => message.role === 'user')
-      ? data.messages : [...data.messages, { role: 'user', content: '' }]
-    const formatted = await model.applyPromptTemplate(templateMessages)
-    stage = 'tokenizer'
-    const tokens = await model.countTokens(formatted)
+    let tokens = 0
+    if (data.messages) {
+      stage = 'prompt_template'
+      // Algunas plantillas exigen un turno de usuario para medir historias narradas solo por IA.
+      // El turno vacío solo se usa al formatear; no modifica ni guarda el historial.
+      const templateMessages: TextMessage[] = data.messages.some(message => message.role === 'user')
+        ? data.messages : [...data.messages, { role: 'user', content: '' }]
+      const formatted = await model.applyPromptTemplate(templateMessages)
+      stage = 'tokenizer'
+      tokens = await model.countTokens(formatted)
+      if (!Number.isInteger(tokens) || tokens < 0) throw new Error('Medición de tokens no válida.')
+    }
     stage = 'capacity'
-    return { tokens, capacity: await model.getContextLength(), model: model.identifier }
+    const capacity = await model.getContextLength()
+    if (!Number.isInteger(capacity) || capacity <= 0) throw new Error('Capacidad de contexto no válida.')
+    return { tokens, capacity, model: model.identifier }
   } catch (caught) {
     throw Object.assign(new Error(stage === 'model_not_loaded' ? 'El modelo configurado no está cargado en LM Studio.' : 'No se pudo medir el contexto.'), { code: stage, cause: caught })
   } finally {
@@ -55,7 +61,7 @@ export async function measureLoadedContext(Client: typeof LMStudioClient, data: 
   }
 }
 
-export function measureLmStudioContext(settings: LlmProxySettings, model: string, messages: TextMessage[], signal?: AbortSignal, timeoutMs = 30_000) {
+export function measureLmStudioContext(settings: LlmProxySettings, model: string, messages: TextMessage[] | undefined, signal?: AbortSignal, timeoutMs = 30_000) {
   signal?.throwIfAborted()
   const url = new URL(normalizeLocalBaseUrl(settings.baseUrl))
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'

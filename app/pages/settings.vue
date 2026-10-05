@@ -5,7 +5,8 @@ import type {
   IdentityReassignmentPreview,
   IdentityReassignmentResource
 } from '#shared/types'
-import { fetchLlmModels, preloadLlmModel, unloadAllLlmModels } from '~/lib/llm'
+import { fetchLlmCapacity, fetchLlmModels, preloadLlmModel, unloadAllLlmModels } from '~/lib/llm'
+import { responseTokenReserve } from '../../shared/utils/tokenLimits'
 import {
   getChromeLlmAvailability,
   prepareChromeLlm,
@@ -242,6 +243,74 @@ let privateClickTimer: ReturnType<typeof setTimeout> | null = null
 let demoClickCount = 0
 let demoClickTimer: ReturnType<typeof setTimeout> | null = null
 
+const tokenCapacity = ref<number | null>(null)
+const tokenCapacityLoading = ref(false)
+const tokenCapacityError = ref<string | null>(null)
+const automaticContextLimit = computed(() => tokenCapacity.value === null
+  ? null : Math.max(0, tokenCapacity.value - responseTokenReserve(form.maxTokens)))
+const llmFieldsDisabled = computed(() => (privacy.isPrivate && !privateLlmSettingsEnabled.value) || switchingPrivateLlmSettings.value)
+const manualTokenLimits = { maxTokens: 10000, contextTokenBudget: 3000 }
+let tokenCapacityRevision = 0
+let tokenCapacityController: AbortController | null = null
+let tokenCapacityTimer: ReturnType<typeof setTimeout> | null = null
+
+function setAutoTokenLimit(key: 'maxTokens' | 'contextTokenBudget', event: Event) {
+  const enabled = (event.target as HTMLInputElement).checked
+  const value = form[key]
+  if (enabled && typeof value === 'number') manualTokenLimits[key] = value
+  form[key] = enabled ? 'auto' : manualTokenLimits[key]
+}
+
+function cancelTokenCapacity() {
+  tokenCapacityRevision += 1
+  tokenCapacityController?.abort()
+  tokenCapacityController = null
+  if (tokenCapacityTimer) clearTimeout(tokenCapacityTimer)
+  tokenCapacityTimer = null
+  tokenCapacity.value = null
+  tokenCapacityLoading.value = false
+  tokenCapacityError.value = null
+}
+
+async function refreshTokenCapacity() {
+  cancelTokenCapacity()
+  if (!canManageGlobal.value || chromeLlmEnabled.value) return
+  if (!form.model.trim()) {
+    tokenCapacityError.value = 'Configura primero el modelo en Ajustes.'
+    return
+  }
+  const revision = tokenCapacityRevision
+  const controller = new AbortController()
+  tokenCapacityController = controller
+  tokenCapacityLoading.value = true
+  try {
+    await flushSave()
+    if (revision !== tokenCapacityRevision) return
+    if (saveStatus.value === 'error') throw new Error('No se pudieron guardar los ajustes de LM Studio.')
+    const result = await fetchLlmCapacity(privacy.isPrivate ? 'private' : 'normal', controller.signal)
+    if (revision !== tokenCapacityRevision) return
+    tokenCapacity.value = result.capacity
+  } catch (caught) {
+    if (revision === tokenCapacityRevision && !controller.signal.aborted) {
+      tokenCapacityError.value = (caught as Error).message || 'No se pudo consultar la capacidad del modelo.'
+    }
+  } finally {
+    if (revision === tokenCapacityRevision) {
+      tokenCapacityLoading.value = false
+      tokenCapacityController = null
+    }
+  }
+}
+
+watch(() => [form.baseUrl, form.model, form.apiKey, privateLlmSettingsEnabled.value, privacy.mode,
+  chromeLlmEnabled.value, form.maxTokens === 'auto', form.contextTokenBudget === 'auto'], () => {
+  cancelTokenCapacity()
+  tokenCapacityTimer = setTimeout(() => {
+    tokenCapacityTimer = null
+    void refreshTokenCapacity()
+  }, 550)
+}, { flush: 'post' })
+
 function sectionIdFromHash(hash: string): SettingsSectionId | null {
   const id = hash.startsWith('#') ? hash.slice(1) : hash
   return settingsSections.some(section => section.id === id)
@@ -474,6 +543,7 @@ async function testConnection() {
     if (configuredModelUnavailable.value) {
       testError.value = 'El modelo configurado no está disponible. Selecciona uno de la lista.'
     }
+    void refreshTokenCapacity()
   } catch (caught) {
     if (revision !== scopeRevision) return
     const detail = caught as {
@@ -503,6 +573,7 @@ async function preloadModel() {
     modelActionMessage.value = result.status === 'already-loaded'
       ? 'El modelo configurado ya está cargado en LM Studio.'
       : 'Modelo cargado en LM Studio.'
+    void refreshTokenCapacity()
   } catch (caught) {
     if (revision === scopeRevision) {
       modelActionError.value = (caught as Error).message || 'No se pudo cargar el modelo.'
@@ -536,6 +607,7 @@ async function unloadAllModels() {
     if (result.failed.length) {
       modelActionError.value = `Fallaron: ${result.failed.map(item => item.instanceId).join(', ')}.`
     }
+    void refreshTokenCapacity()
   } catch (caught) {
     if (revision === scopeRevision) {
       modelActionError.value = (caught as Error).message || 'No se pudieron descargar los modelos.'
@@ -555,9 +627,9 @@ function settingsPatch() {
       patch.privateBaseUrl = form.baseUrl.trim()
       patch.privateModel = form.model
       patch.privateTemperature = Number(form.temperature)
-      patch.privateMaxTokens = Number(form.maxTokens)
+      patch.privateMaxTokens = form.maxTokens === 'auto' ? 'auto' : Number(form.maxTokens)
       patch.privateHistoryBudget = Number(form.historyBudget)
-      patch.privateContextTokenBudget = Number(form.contextTokenBudget)
+      patch.privateContextTokenBudget = form.contextTokenBudget === 'auto' ? 'auto' : Number(form.contextTokenBudget)
     }
     if (privateUserNameDirty) patch.privateUserName = form.userName.trim() || 'Protagonista'
     if (privateProtagonistPreferencesDirty) {
@@ -568,9 +640,9 @@ function settingsPatch() {
       patch.baseUrl = form.baseUrl.trim()
       patch.model = form.model
       patch.temperature = Number(form.temperature)
-      patch.maxTokens = Number(form.maxTokens)
+      patch.maxTokens = form.maxTokens === 'auto' ? 'auto' : Number(form.maxTokens)
       patch.historyBudget = Number(form.historyBudget)
-      patch.contextTokenBudget = Number(form.contextTokenBudget)
+      patch.contextTokenBudget = form.contextTokenBudget === 'auto' ? 'auto' : Number(form.contextTokenBudget)
     }
     patch.userName = form.userName.trim() || 'Protagonista'
     patch.protagonistPreferences = form.protagonistPreferences.trim()
@@ -1275,6 +1347,7 @@ async function onDemoTrigger() {
 }
 
 onBeforeUnmount(() => {
+  cancelTokenCapacity()
   unregisterBeforeModeChange?.()
   if (privateClickTimer) clearTimeout(privateClickTimer)
   if (demoClickTimer) clearTimeout(demoClickTimer)
@@ -1289,6 +1362,7 @@ onBeforeUnmount(() => {
 })
 
 onMounted(() => {
+  void refreshTokenCapacity()
   if (canManageGlobal.value) void loadBackups()
   unregisterBeforeModeChange = privacy.registerBeforeModeChange(async () => {
     await flushSave()
@@ -1980,15 +2054,32 @@ onBeforeRouteLeave(async () => {
         </div>
         <div>
           <label class="label" for="maxTokens">Máx. tokens de respuesta</label>
-          <input
-            id="maxTokens"
-            v-model.number="form.maxTokens"
-            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
-            type="number"
-            autocomplete="off"
-            min="64"
-            class="field"
-          >
+          <div class="flex min-w-0 items-center gap-3">
+            <input
+              v-if="form.maxTokens !== 'auto'"
+              id="maxTokens"
+              v-model.number="form.maxTokens"
+              :disabled="llmFieldsDisabled"
+              type="number"
+              autocomplete="off"
+              min="64"
+              class="field min-w-0 flex-1"
+            >
+            <input v-else id="maxTokens" value="Según contexto enviado" readonly class="field min-w-0 flex-1">
+            <label class="flex shrink-0 items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                :checked="form.maxTokens === 'auto'"
+                :disabled="llmFieldsDisabled"
+                aria-label="Auto para respuesta"
+                @change="setAutoTokenLimit('maxTokens', $event)"
+              >
+              Auto
+            </label>
+          </div>
+          <p v-if="form.maxTokens === 'auto'" class="mt-1 text-xs text-[var(--color-fg-muted)]">
+            Utiliza el espacio restante tras medir el contexto de cada petición. Para compactar se reservan 4096 tokens.
+          </p>
         </div>
         <div>
           <label class="label" for="historyBudget">Contexto enviado (caracteres)</label>
@@ -2008,16 +2099,56 @@ onBeforeRouteLeave(async () => {
         </div>
         <div>
           <label class="label" for="contextTokenBudget">Contexto enviado (tokens)</label>
-          <input
-            id="contextTokenBudget" v-model.number="form.contextTokenBudget" type="number" min="0" step="100" class="field"
-            :disabled="(privacy.isPrivate && !privateLlmSettingsEnabled) || switchingPrivateLlmSettings"
-          >
+          <div class="flex min-w-0 items-center gap-3">
+            <input
+              v-if="form.contextTokenBudget !== 'auto'"
+              id="contextTokenBudget"
+              v-model.number="form.contextTokenBudget"
+              type="number"
+              min="0"
+              step="100"
+              class="field min-w-0 flex-1"
+              :disabled="llmFieldsDisabled"
+            >
+            <input
+              v-else
+              id="contextTokenBudget"
+              :value="tokenCapacityLoading ? 'Consultando…' : automaticContextLimit === null ? 'No disponible' : automaticContextLimit === 0 ? 'Sin espacio para contexto' : `${automaticContextLimit.toLocaleString('es-ES')} tokens`"
+              readonly
+              class="field min-w-0 flex-1"
+            >
+            <label class="flex shrink-0 items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                :checked="form.contextTokenBudget === 'auto'"
+                :disabled="llmFieldsDisabled"
+                aria-label="Auto para contexto"
+                @change="setAutoTokenLimit('contextTokenBudget', $event)"
+              >
+              Auto
+            </label>
+          </div>
           <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
             Ambos límites se aplican a la vez: superar cualquiera compacta el historial.
-            0 desactiva el límite de tokens y su medición. Con un valor mayor, LM Studio reserva los tokens máximos de respuesta;
+            Auto usa la capacidad actual menos la reserva de respuesta. 0 desactiva este límite;
+            la respuesta Auto sigue necesitando medición. Con un valor manual, LM Studio reserva los tokens máximos de respuesta;
             Chrome respeta su cuota de contexto. Si no puede medirse, se conserva el borrador y se detiene el envío.
           </p>
         </div>
+      </div>
+
+      <div v-if="!chromeLlmEnabled" class="mt-4 flex min-w-0 flex-wrap items-center gap-2" data-testid="llm-token-capacity">
+        <p class="min-w-0 flex-1 text-sm" role="status">
+          <template v-if="tokenCapacityLoading">Consultando capacidad actual…</template>
+          <template v-else-if="tokenCapacity !== null">Capacidad actual: {{ tokenCapacity.toLocaleString('es-ES') }} tokens.</template>
+          <template v-else>No disponible. {{ tokenCapacityError }}</template>
+        </p>
+        <button
+          type="button"
+          class="btn-ghost shrink-0"
+          :disabled="tokenCapacityLoading || !form.model.trim() || switchingPrivateLlmSettings"
+          @click="refreshTokenCapacity"
+        >Actualizar</button>
       </div>
 
       </div>

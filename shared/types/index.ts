@@ -304,11 +304,12 @@ export interface StoryGenerationAttempt {
 }
 
 export type ContextUnit = 'characters' | 'tokens'
+export type TokenLimit = number | 'auto'
 
 export interface ContextUsage {
   unit: ContextUnit
   count: number
-  configuredLimit: number
+  configuredLimit: TokenLimit
   effectiveLimit: number
   model: string
   capacity?: number
@@ -343,7 +344,7 @@ export interface LlmDebugRequest {
   model: string
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   temperature: number
-  max_tokens: number
+  max_tokens: TokenLimit
   stream: false
 }
 
@@ -438,10 +439,10 @@ export interface AppSettings {
   privateApiKeyConfigured: boolean
   privateModel: string | null
   privateTemperature: number | null
-  privateMaxTokens: number | null
+  privateMaxTokens: TokenLimit | null
   privateHistoryBudget: number | null
   privateContextUnit: ContextUnit | null
-  privateContextTokenBudget: number | null
+  privateContextTokenBudget: TokenLimit | null
   swarmBaseUrl: string
   /** Token opcional de SwarmUI. Solo se mantiene en memoria mientras se edita. */
   swarmAuthToken: string
@@ -453,12 +454,12 @@ export interface AppSettings {
   privateUseChromeLlm: boolean | null
   model: string
   temperature: number
-  maxTokens: number
+  maxTokens: TokenLimit
   /** Límite de caracteres de todo el texto enviado al modelo; 0 significa sin límite. */
   historyBudget: number
   /** Preferencia antigua, conservada por compatibilidad con backups; ya no selecciona el límite. */
   contextUnit: ContextUnit
-  contextTokenBudget: number
+  contextTokenBudget: TokenLimit
   /** Versión aplicada del pack de sonidos por defecto en cada colección. */
   defaultSoundVersion: number
   privateDefaultSoundVersion: number

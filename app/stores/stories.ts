@@ -18,7 +18,8 @@ import type {
   StoryPendingImageInstruction,
   StoryGenerationAttempt,
   ContextUsage,
-  ContextUnit
+  ContextUnit,
+  TokenLimit
 } from '#shared/types'
 import {
   deleteMessage as dbDeleteMessage,
@@ -940,13 +941,13 @@ export const useStoriesStore = defineStore('stories', () => {
     chatOptions: Parameters<typeof buildChatMessages>[0]
     historyMessages: Message[]
     historyBudget: number
-    tokenBudget: number
+    tokenBudget: TokenLimit
     allowBlocks: boolean
     onUsage: (usage: ContextUsage) => void
     compactionPrompt: string
     model: string
     temperature: number
-    maxTokens: number
+    maxTokens: TokenLimit
     useChromeLlm: boolean
     signal: AbortSignal
     scope: DataScope
@@ -959,7 +960,7 @@ export const useStoriesStore = defineStore('stories', () => {
     const story = chatOptions.story
     const measure = options.measure ?? (async (messages: ChatMessage[], manualLimit = true): Promise<ContextUsage> => {
       options.signal.throwIfAborted()
-      if (options.tokenBudget === 0) return {
+      if (options.tokenBudget === 0 && (options.useChromeLlm || options.maxTokens !== 'auto')) return {
         unit: 'characters', count: chatContextSize(messages), configuredLimit: options.historyBudget,
         effectiveLimit: manualLimit ? options.historyBudget : 0, model: options.useChromeLlm ? 'chrome-prompt-api' : options.model
       }
@@ -1050,6 +1051,7 @@ export const useStoriesStore = defineStore('stories', () => {
             scope: options.scope,
             signal: options.signal
           })
+        if ('maxTokens' in result && result.maxTokens !== undefined) debugRequest.max_tokens = result.maxTokens
         if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
         const summary = result.content.trim()
         if (!summary) throw new Error('El modelo no devolvió un resumen visible.')
@@ -1203,7 +1205,7 @@ export const useStoriesStore = defineStore('stories', () => {
       ensureActive()
       const characters = chatContextSize(context)
       // Los indicadores no necesitan consultar el modelo si su límite está desactivado.
-      if (activeLimitsOnly && tokenBudget === 0) {
+      if (activeLimitsOnly && tokenBudget === 0 && (useChromeLlm || maxTokens !== 'auto')) {
         return { unit: 'characters', count: characters, model,
           configuredLimit: historyBudget, effectiveLimit: historyBudget }
       }
@@ -1235,7 +1237,7 @@ export const useStoriesStore = defineStore('stories', () => {
       characters: usage.characters?.count ?? usage.count,
       tokens: usage.unit === 'tokens' ? usage.count : null,
       characterLimit: historyBudget,
-      tokenLimit: usage.unit === 'tokens' && tokenBudget > 0 ? usage.effectiveLimit : 0,
+      tokenLimit: usage.unit === 'tokens' && (tokenBudget === 'auto' || tokenBudget > 0) ? usage.effectiveLimit : 0,
       model: usage.model, tokenError,
       canCompact: canCompact && !invalidCapacity &&
         (usage.unit === 'tokens' || (tokenBudget === 0 && improvementUnit !== 'tokens'))
@@ -1243,7 +1245,8 @@ export const useStoriesStore = defineStore('stories', () => {
     return { chatOptions, historyMessages, scope, isActive, measure, measurement, settings,
       model, historyBudget, tokenBudget, maxTokens, useChromeLlm, improvementUnit,
       validate: (usage: ContextUsage) => {
-        if (invalidCapacity || (usage.unit !== 'tokens' && (tokenBudget > 0 || improvementUnit === 'tokens'))) {
+        if (invalidCapacity || (usage.unit !== 'tokens' && (tokenBudget === 'auto' || tokenBudget > 0 ||
+            (!useChromeLlm && maxTokens === 'auto') || improvementUnit === 'tokens'))) {
           throw new Error(tokenError || 'No se pueden validar los límites de tokens del modelo.')
         }
         return usage
@@ -1963,6 +1966,7 @@ export const useStoriesStore = defineStore('stories', () => {
                 maxTokens,
                 signal: requestController.signal
               })
+          if ('maxTokens' in result && result.maxTokens !== undefined) debugRequest.max_tokens = result.maxTokens
           if (!generationStillActive()) return
           raw = result.content
           finishReason = result.finishReason

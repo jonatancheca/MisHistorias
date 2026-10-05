@@ -88,7 +88,7 @@ async function fileDataUrl(file: File) {
 
 export async function generateLoraCaption(
   file: File,
-  options: { model: string; temperature: number; maxTokens: number; signal?: AbortSignal }
+  options: { model: string; temperature: number; maxTokens: number | 'auto'; signal?: AbortSignal }
 ): Promise<LoraCaptionResult> {
   const messages = buildLoraCaptionMessages(await fileDataUrl(file))
   let result: Awaited<ReturnType<typeof fetchLlmChat>>

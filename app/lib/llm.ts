@@ -1,4 +1,5 @@
 import { getActiveDataScope, type DataScope } from './db.ts'
+import type { TokenLimit } from '../../shared/types/index.ts'
 
 export interface LlmCallError extends Error {
   status?: number
@@ -10,7 +11,7 @@ export interface LlmChatRequest {
   messages: LlmMessage[]
   operation?: string
   temperature?: number
-  maxTokens?: number
+  maxTokens?: TokenLimit
   scope?: DataScope
   signal?: AbortSignal
 }
@@ -99,7 +100,7 @@ export async function unloadAllLlmModels(scope: DataScope = getActiveDataScope()
 
 export async function fetchLlmChat(request: LlmChatRequest) {
   try {
-    return await $fetch<{ content: string; finishReason: string | null }>('/api/llm/chat', {
+    return await $fetch<{ content: string; finishReason: string | null; maxTokens?: number }>('/api/llm/chat', {
       method: 'POST',
       body: {
         model: request.model,
@@ -111,6 +112,14 @@ export async function fetchLlmChat(request: LlmChatRequest) {
       },
       signal: request.signal
     })
+  } catch (caught) {
+    throw normalizeError(caught)
+  }
+}
+
+export async function fetchLlmCapacity(scope: DataScope = getActiveDataScope(), signal?: AbortSignal) {
+  try {
+    return await $fetch<{ capacity: number; model: string }>('/api/llm/capacity', { query: { scope }, signal })
   } catch (caught) {
     throw normalizeError(caught)
   }

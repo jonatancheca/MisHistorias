@@ -72,6 +72,10 @@ _Evitar_: Solo historial, límite del mensaje, máximo de tokens de respuesta
 Proporción del contexto enviado de una historia respecto a cada límite activo de caracteres o tokens, sin incluir el borrador de escritura. En tokens utiliza el límite efectivo de entrada, que respeta la capacidad del modelo tras reservar su respuesta; una medición no disponible no equivale a una ocupación del cero por ciento.
 _Evitar_: Tamaño del borrador, porcentaje libre, ocupación de la respuesta
 
+**Límite automático de tokens**:
+Preferencia que adapta el contexto enviado o la respuesta a la ventana actual del modelo cargado. El contexto automático descuenta la reserva de respuesta; la respuesta automática utiliza el espacio restante tras medir la entrada y reserva 4096 tokens al decidir cuándo compactar.
+_Evitar_: Límite desactivado, capacidad máxima teórica, número detectado una sola vez
+
 **Compactación por bloques**:
 Resumen progresivo del historial solicitado expresamente cuando una única petición de compactación no cabe en el modelo. Conserva el checkpoint anterior hasta que el resumen completo permite preparar una nueva respuesta dentro del límite.
 _Evitar_: Recorte del historial, checkpoint parcial
