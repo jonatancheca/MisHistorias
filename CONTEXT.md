@@ -64,6 +64,10 @@ _Evitar_: Texto visible, traza LLM, respuesta del proveedor
 Conjunto de textos que recibe el narrador para responder: instrucciones, personajes y recursos disponibles, resumen anterior, historial pendiente y nueva intervención. Cada ámbito permite limitarlo simultáneamente por caracteres y por tokens del modelo: superar cualquiera requiere compactar el historial; cero desactiva cada límite por separado y el límite activo de tokens respeta la capacidad disponible para la entrada.
 _Evitar_: Solo historial, límite del mensaje, máximo de tokens de respuesta
 
+**Ocupación del contexto**:
+Proporción del contexto enviado de una historia respecto a cada límite activo de caracteres o tokens, sin incluir el borrador de escritura. En tokens utiliza el límite efectivo de entrada, que respeta la capacidad del modelo tras reservar su respuesta; una medición no disponible no equivale a una ocupación del cero por ciento.
+_Evitar_: Tamaño del borrador, porcentaje libre, ocupación de la respuesta
+
 **Compactación por bloques**:
 Resumen progresivo del historial solicitado expresamente cuando una única petición de compactación no cabe en el modelo. Conserva el checkpoint anterior hasta que el resumen completo permite preparar una nueva respuesta dentro del límite.
 _Evitar_: Recorte del historial, checkpoint parcial

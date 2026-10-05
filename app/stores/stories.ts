@@ -1142,7 +1142,7 @@ export const useStoriesStore = defineStore('stories', () => {
     }
   }
 
-  async function prepareManualCompaction(signal: AbortSignal) {
+  async function prepareManualCompaction(signal: AbortSignal, activeLimitsOnly = false) {
     const story = activeStory.value
     if (!story || story.readOnly) throw new Error('Esta historia no permite compactar su historial.')
     const scope = getActiveDataScope()
@@ -1202,6 +1202,11 @@ export const useStoriesStore = defineStore('stories', () => {
     const measure = async (context: ChatMessage[], manualLimit = true): Promise<ContextUsage> => {
       ensureActive()
       const characters = chatContextSize(context)
+      // Los indicadores no necesitan consultar el modelo si su límite está desactivado.
+      if (activeLimitsOnly && tokenBudget === 0) {
+        return { unit: 'characters', count: characters, model,
+          configuredLimit: historyBudget, effectiveLimit: historyBudget }
+      }
       try {
         if (settings.settings.mockMode) throw new Error('Tokens no disponibles en modo mock.')
         if (!useChromeLlm && !model) throw new Error('Configura primero el modelo en Ajustes.')
@@ -1229,6 +1234,8 @@ export const useStoriesStore = defineStore('stories', () => {
     const measurement = (usage: ContextUsage): StoryContextMeasurement => ({
       characters: usage.characters?.count ?? usage.count,
       tokens: usage.unit === 'tokens' ? usage.count : null,
+      characterLimit: historyBudget,
+      tokenLimit: usage.unit === 'tokens' && tokenBudget > 0 ? usage.effectiveLimit : 0,
       model: usage.model, tokenError,
       canCompact: canCompact && !invalidCapacity &&
         (usage.unit === 'tokens' || (tokenBudget === 0 && improvementUnit !== 'tokens'))
@@ -1243,8 +1250,8 @@ export const useStoriesStore = defineStore('stories', () => {
       } }
   }
 
-  async function measureStoryContext(signal: AbortSignal): Promise<StoryContextMeasurement> {
-    const context = await prepareManualCompaction(signal)
+  async function measureStoryContext(signal: AbortSignal, activeLimitsOnly = false): Promise<StoryContextMeasurement> {
+    const context = await prepareManualCompaction(signal, activeLimitsOnly)
     return context.measurement(await context.measure(buildChatMessages(context.chatOptions)))
   }
 

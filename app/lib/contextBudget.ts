@@ -3,6 +3,8 @@ import type { ContextUsage } from '../../shared/types/index.ts'
 export interface StoryContextMeasurement {
   characters: number
   tokens: number | null
+  characterLimit: number
+  tokenLimit: number
   model: string
   tokenError?: string
   canCompact: boolean

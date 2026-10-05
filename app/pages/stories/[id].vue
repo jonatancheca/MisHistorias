@@ -1256,6 +1256,7 @@ onBeforeRouteLeave(() => {
             </button>
           </div>
           <span v-else class="text-sm text-[var(--color-fg-muted)]">Solo lectura</span>
+          <StoryContextIndicators v-if="readerOptionsInNavigation" />
           <StoryToolsMenu :active="debugEnabled" :placement="readerOptionsInNavigation ? 'top' : 'bottom'">
             <button
               v-if="!stories.activeStory.readOnly"
