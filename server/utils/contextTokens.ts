@@ -39,7 +39,11 @@ export async function measureLoadedContext(Client: typeof LMStudioClient, data: 
       throw new Error('El modelo configurado no está cargado en LM Studio.')
     }
     stage = 'prompt_template'
-    const formatted = await model.applyPromptTemplate(data.messages)
+    // Algunas plantillas exigen un turno de usuario para medir historias narradas solo por IA.
+    // El turno vacío solo se usa al formatear; no modifica ni guarda el historial.
+    const templateMessages: TextMessage[] = data.messages.some(message => message.role === 'user')
+      ? data.messages : [...data.messages, { role: 'user', content: '' }]
+    const formatted = await model.applyPromptTemplate(templateMessages)
     stage = 'tokenizer'
     const tokens = await model.countTokens(formatted)
     stage = 'capacity'

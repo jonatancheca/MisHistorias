@@ -55,3 +55,32 @@ test('SDK real en worker usa misma instancia, plantilla y capacidad cargada por 
     ]), { code: 'model_not_loaded' })
   } finally { await server.close() }
 })
+
+for (const messages of [
+  [{ role: 'system' as const, content: 'Instrucciones y resumen anterior.' }],
+  [{ role: 'assistant' as const, content: 'Historia anterior.' }],
+  [{ role: 'system' as const, content: 'Instrucciones.' },
+    { role: 'assistant' as const, content: 'Primera escena.' },
+    { role: 'assistant' as const, content: 'Segunda escena.' }]
+]) {
+  test('mide contexto sin usuario sin alterar el historial: ' + messages.map(message => message.role).join(', '), async () => {
+    const original = structuredClone(messages)
+    let disposed = false
+    class Client {
+      llm = { listLoaded: async () => [{ identifier: 'modelo',
+        applyPromptTemplate: async (input: unknown) => {
+          assert.deepEqual(input, [...original, { role: 'user', content: '' }])
+          return '<plantilla-del-modelo>'
+        },
+        countTokens: async (text: string) => { assert.equal(text, '<plantilla-del-modelo>'); return 42 },
+        getContextLength: async () => 15104
+      }] }
+      async [Symbol.asyncDispose]() { disposed = true }
+    }
+    assert.deepEqual(await measureLoadedContext(Client as unknown as typeof LMStudioClient, {
+      baseUrl: 'ws://localhost:1234', apiToken: '', model: 'modelo', messages
+    }), { tokens: 42, capacity: 15104, model: 'modelo' })
+    assert.deepEqual(messages, original)
+    assert.equal(disposed, true)
+  })
+}
