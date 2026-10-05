@@ -40,6 +40,8 @@ for (const scope of ['normal', 'private'] as const) {
       const markers = page.getByTestId(visualMode ? 'visual-novel-view' : 'story-scroller')
       const applied = markers.locator(`[data-testid="story-compaction-marker"][data-compaction-trace-id="${traces[0]!.id}"]`)
       const failed = markers.locator(`[data-testid="story-compaction-marker"][data-compaction-trace-id="${traces[1]!.id}"]`)
+      const contextRing = page.getByTestId('story-context-characters')
+      await expect(contextRing).toHaveAttribute('aria-label', /Compactada 1 vez$/)
       const dialog = page.getByRole('alertdialog', { name: 'Borrar compactación' })
       const originals = await data.list<Message>('messages', scope, { storyId: story.id })
 
@@ -67,6 +69,7 @@ for (const scope of ['normal', 'private'] as const) {
       await expect(dialog).toContainText('El resumen activo y los mensajes originales se conservarán')
       await dialog.getByRole('button', { name: 'Borrar', exact: true }).click()
       await expect(failed).toHaveCount(0)
+      await expect(contextRing).toHaveAttribute('aria-label', /Compactada 1 vez$/)
       expect((await data.get<Story>('stories', story.id, scope)).contextSummary).toBe('RESUMEN_A_ELIMINAR')
 
       // Un fallo deja los datos intactos y permite reintentar.
@@ -81,6 +84,7 @@ for (const scope of ['normal', 'private'] as const) {
       await applied.getByRole('button', { name: 'Borrar compactación' }).click()
       await dialog.getByRole('button', { name: 'Borrar', exact: true }).click()
       await expect(applied).toHaveCount(0)
+      await expect(contextRing).toHaveAttribute('aria-label', /Compactada 0 veces$/)
       const saved = await data.get<Story>('stories', story.id, scope)
       expect(saved.contextSummary).toBe('')
       expect(saved.contextSummaryThroughMessageId).toBeUndefined()

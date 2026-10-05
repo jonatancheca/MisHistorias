@@ -219,13 +219,20 @@ export const useStoriesStore = defineStore('stories', () => {
   const activeStory = ref<Story | null>(null)
   const messages = ref<Message[]>([])
   const debugTraces = ref<LlmDebugTrace[]>([])
+  const debugTracesLoading = ref(false)
+  const debugTracesError = ref<string | null>(null)
+  const compactionTraces = computed(() => activeStory.value?.readOnly ? [] : debugTraces.value.filter(
+    trace => trace.request.purpose === 'compaction'
+  ))
+  const compactionCount = computed(() => compactionTraces.value.filter(
+    trace => trace.status === 'success' && trace.request.compaction?.applied !== false
+  ).length)
   const saveSlots = ref<StorySaveSlot[]>([])
   const saveSlotsLoading = ref(false)
   const saveSlotsError = ref<string | null>(null)
   let storyOpenRevision = 0
   let auxiliaryController: AbortController | null = null
   let pendingTraceLoad: Promise<void> | null = null
-  let debugLoadError: string | null = null
   const removedMessageIds = new Set<string>()
   const removedSaveIds = new Set<string>()
   const generating = ref(false)
@@ -639,6 +646,8 @@ export const useStoriesStore = defineStore('stories', () => {
     auxiliaryController?.abort()
     auxiliaryController = null
     pendingTraceLoad = null
+    debugTracesLoading.value = false
+    debugTracesError.value = null
     saveSlotsLoading.value = false
   }
 
@@ -648,6 +657,7 @@ export const useStoriesStore = defineStore('stories', () => {
     const current = () => !controller.signal.aborted && opening === storyOpenRevision &&
       scope === getActiveDataScope() && activeStory.value?.id === id
     saveSlotsLoading.value = true
+    debugTracesLoading.value = true
     const traces = listLlmDebugTraces(id, scope, controller.signal)
       .then(stored => {
         if (!current()) return
@@ -658,9 +668,12 @@ export const useStoriesStore = defineStore('stories', () => {
       })
       .catch((caught: unknown) => {
         if (!current()) return
-        debugLoadError = (caught as Error).message || 'No se pudieron cargar los datos de Debug.'
+        debugTracesError.value = (caught as Error).message || 'No se pudieron cargar los datos de Debug.'
         void reportClientErrorTrace({ source: 'client', operation: 'stories.debug.load', scope,
-          message: debugLoadError, response: caught })
+          message: debugTracesError.value, response: caught })
+      })
+      .finally(() => {
+        if (current()) debugTracesLoading.value = false
       })
     pendingTraceLoad = traces
     const saves = listStorySaves(id, scope, controller.signal)
@@ -700,7 +713,7 @@ export const useStoriesStore = defineStore('stories', () => {
     debugTraces.value = []
     saveSlots.value = []
     saveSlotsError.value = null
-    debugLoadError = null
+    debugTracesError.value = null
     removedMessageIds.clear()
     removedSaveIds.clear()
     const storedMessages = activeStory.value ? await listMessages(id, scope) : []
@@ -1341,7 +1354,7 @@ export const useStoriesStore = defineStore('stories', () => {
     try {
       await pendingTraceLoad
       if (!current()) return
-      if (debugLoadError) throw new Error(debugLoadError)
+      if (debugTracesError.value) throw new Error(debugTracesError.value)
       const trace = debugTraces.value.find((item) => item.id === id && item.request.purpose === 'compaction')
       if (!trace) return
       const updated = await dbDeleteStoryCompaction(story.id, id, scope)
@@ -2340,7 +2353,7 @@ export const useStoriesStore = defineStore('stories', () => {
     const opening = storyOpenRevision
     await pendingTraceLoad
     if (opening !== storyOpenRevision || generating.value || deletingCompaction.value) return
-    if (debugLoadError) throw new Error(debugLoadError)
+    if (debugTracesError.value) throw new Error(debugTracesError.value)
     const index = messages.value.findIndex((message) => message.id === id)
     if (index < 0 || messages.value[index]?.role !== 'user') return
     const absentCharacterIds = [...(messages.value[index]?.absentCharacterIds ?? [])]
@@ -2366,6 +2379,10 @@ export const useStoriesStore = defineStore('stories', () => {
     activeStory,
     messages,
     debugTraces,
+    debugTracesLoading,
+    debugTracesError,
+    compactionTraces,
+    compactionCount,
     saveSlots,
     saveSlotsLoading,
     saveSlotsError,

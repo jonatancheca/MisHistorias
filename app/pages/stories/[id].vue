@@ -59,6 +59,7 @@ const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
 const compactionDeleteError = ref<string | null>(null)
 const manualCompactionOpen = ref(false)
+const compactionHistoryOpen = ref(false)
 const charactersDialogOpen = ref(false)
 const presenceBusy = ref(false)
 const presenceError = ref<string | null>(null)
@@ -104,6 +105,7 @@ watch(() => stories.activeStory?.id, () => {
   selectedDebugTrace.value = null
   compactionDeleteError.value = null
   manualCompactionOpen.value = false
+  compactionHistoryOpen.value = false
   charactersDialogOpen.value = false
   presenceError.value = null
   originalTextOpenIds.value = new Set()
@@ -192,9 +194,7 @@ type TimelineItem =
   | { kind: 'trace'; id: string; createdAt: number; trace: LlmDebugTrace }
   | { kind: 'compaction'; id: string; createdAt: number; trace: LlmDebugTrace }
 
-const compactionTraces = computed(() => stories.activeStory?.readOnly ? [] : stories.debugTraces.filter(
-  (trace) => trace.request.purpose === 'compaction'
-))
+const compactionTraces = computed(() => stories.compactionTraces)
 
 const timeline = computed<TimelineItem[]>(() => {
   const items: TimelineItem[] = [
@@ -1110,7 +1110,7 @@ function onStoryKeydown(event: KeyboardEvent) {
   if (!stories.activeStory || event.defaultPrevented) return
   if (
     storyPreferencesOpen.value || selectedDebugTrace.value || imagePickerTarget.value || editingVisualMessage.value ||
-    storySavesOpen.value || charactersDialogOpen.value || hiddenMessagesDialogOpen.value || confirmDialog.dialog
+    storySavesOpen.value || compactionHistoryOpen.value || charactersDialogOpen.value || hiddenMessagesDialogOpen.value || confirmDialog.dialog
   ) return
 
   const target = event.target
@@ -1382,7 +1382,7 @@ onBeforeRouteLeave(() => {
             </button>
           </StoryToolsMenu>
           <Teleport defer to="#story-mobile-context" :disabled="readerOptionsInNavigation">
-            <StoryContextIndicators :placement="readerOptionsInNavigation ? 'top' : 'bottom'" />
+            <StoryContextIndicators :placement="readerOptionsInNavigation ? 'top' : 'bottom'" @history="compactionHistoryOpen = true" />
           </Teleport>
           </div>
           </Teleport>
@@ -1983,6 +1983,7 @@ onBeforeRouteLeave(() => {
     />
 
     <StoryCompactionDialog :open="manualCompactionOpen" @close="manualCompactionOpen = false" />
+    <StoryCompactionHistoryDialog :open="compactionHistoryOpen" @close="compactionHistoryOpen = false" />
 
     <StorySavesDialog
       :open="storySavesOpen"

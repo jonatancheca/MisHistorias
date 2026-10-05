@@ -2,6 +2,7 @@
 import type { StoryContextMeasurement } from '~/lib/contextBudget'
 
 withDefaults(defineProps<{ placement?: 'top' | 'bottom' }>(), { placement: 'top' })
+const emit = defineEmits<{ history: [] }>()
 
 const stories = useStoriesStore()
 const settings = useSettingsStore()
@@ -10,6 +11,11 @@ const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
 const sounds = useSoundsStore()
 const modelPreload = useLlmModelPreloadStore()
+const compactionLabel = computed(() => {
+  if (stories.debugTracesLoading) return 'Compactaciones: cargando…'
+  if (stories.debugTracesError) return 'Compactaciones: no disponibles'
+  return `Compactada ${stories.compactionCount} ${stories.compactionCount === 1 ? 'vez' : 'veces'}`
+})
 const measurement = shallowRef<StoryContextMeasurement | null>(null)
 let controller: AbortController | null = null
 let timer: ReturnType<typeof setTimeout> | null = null
@@ -25,7 +31,7 @@ const indicators = computed(() => {
     if (count === null || !Number.isFinite(count) || count < 0 || limit <= 0) return []
     const percent = count / limit * 100
     const format = (value: number) => value.toLocaleString('es-ES')
-    const tooltip = `${label}: ${percent.toLocaleString('es-ES', { maximumFractionDigits: 1 })} % ocupado · ${format(count)} / ${format(limit)}`
+    const tooltip = `${label}: ${percent.toLocaleString('es-ES', { maximumFractionDigits: 1 })} % ocupado · ${format(count)} / ${format(limit)} · ${compactionLabel.value}`
     return [{ unit, percent, tooltip }]
   })
 })
@@ -72,15 +78,16 @@ onBeforeUnmount(cancelMeasurement)
 
 <template>
   <div v-if="indicators.length" class="story-context-indicators" :class="{ 'story-context-indicators-below': placement === 'bottom' }" role="group" aria-label="Ocupación del contexto">
-    <span
+    <button
       v-for="indicator in indicators"
       :key="indicator.unit"
+      type="button"
       class="story-context-indicator"
       :data-testid="`story-context-${indicator.unit}`"
       :aria-label="indicator.tooltip"
       :title="indicator.tooltip"
-      role="img"
-      tabindex="0"
+      aria-haspopup="dialog"
+      @click="emit('history')"
     >
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none">
         <circle cx="10" cy="10" r="8" stroke="#cbd5e1" stroke-width="3" />
@@ -91,13 +98,13 @@ onBeforeUnmount(cancelMeasurement)
         />
       </svg>
       <span class="story-context-tooltip" role="tooltip">{{ indicator.tooltip }}</span>
-    </span>
+    </button>
   </div>
 </template>
 
 <style scoped>
 .story-context-indicators { display: flex; align-items: center; gap: 0.75rem; }
-.story-context-indicator { position: relative; display: flex; flex: 0 0 16px; width: 16px; height: 16px; border-radius: 50%; }
+.story-context-indicator { position: relative; display: flex; flex: 0 0 16px; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
 .story-context-indicator:focus-visible { outline: 2px solid var(--color-brand-400); outline-offset: 3px; }
 .story-context-tooltip {
   position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 0.75rem); z-index: 60;
@@ -111,5 +118,6 @@ onBeforeUnmount(cancelMeasurement)
 .story-context-indicator:focus .story-context-tooltip { visibility: visible; opacity: 1; }
 .story-context-indicators-below .story-context-tooltip {
   top: calc(100% + 0.75rem); bottom: auto; left: auto; right: 0; transform: none;
+  max-width: min(24rem, calc(100vw - 4rem));
 }
 </style>

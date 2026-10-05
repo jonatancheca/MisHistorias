@@ -1,4 +1,4 @@
-import type { Story } from '../../shared/types'
+import type { LlmDebugTrace, Story } from '../../shared/types'
 import { test, expect } from './fixtures'
 
 test.beforeEach(async ({ page, data }) => {
@@ -33,13 +33,13 @@ test('mide sin bloquear, excluye borrador y muestra limites efectivos en ambos m
   release!()
   const tokens = page.getByTestId('story-context-tokens')
   const chars = page.getByTestId('story-context-characters')
-  await expect(tokens).toHaveAttribute('aria-label', 'Contexto (tokens): 50 % ocupado · 500 / 1000')
+  await expect(tokens).toHaveAttribute('aria-label', 'Contexto (tokens): 50 % ocupado · 500 / 1000 · Compactada 0 veces')
   await expect(chars).toHaveAttribute('aria-label', new RegExp(`${characters.toLocaleString('es-ES')} / 12[.]000`))
   await tokens.press('Tab')
   await chars.press('Shift+Tab')
   await expect(tokens).toBeFocused()
   await expect(tokens.getByRole('tooltip')).toBeVisible()
-  await expect(tokens.getByRole('tooltip')).toHaveText('Contexto (tokens): 50 % ocupado · 500 / 1000')
+  await expect(tokens.getByRole('tooltip')).toHaveText('Contexto (tokens): 50 % ocupado · 500 / 1000 · Compactada 0 veces')
   await page.getByLabel('Tu intervención').fill('Otro borrador.')
   expect(calls).toBe(1)
 
@@ -71,7 +71,7 @@ test('mide sin bloquear, excluye borrador y muestra limites efectivos en ambos m
         expect(ring.right).toBeLessThanOrEqual(geometry.viewport)
       }
       if (width < 640) {
-        await tokens.click()
+        await tokens.focus()
         await expect(tokens.getByRole('tooltip')).toBeVisible()
         const tooltip = await tokens.getByRole('tooltip').boundingBox()
         expect(tooltip!.x).toBeGreaterThanOrEqual(0)
@@ -141,6 +141,7 @@ test('refresca tras generar y compactar', async ({ page, data }) => {
   await expect(dialog.getByTestId('manual-compaction-after')).toBeVisible()
   await expect(ring).toBeVisible()
   await expect(ring).not.toHaveAttribute('aria-label', afterGeneration!)
+  await expect(ring).toHaveAttribute('aria-label', /Compactada 1 vez$/)
 })
 
 test('oculta indicadores en solo lectura y no consulta tokens', async ({ page, data }) => {
@@ -158,7 +159,7 @@ test('oculta indicadores en solo lectura y no consulta tokens', async ({ page, d
   expect(calls).toBe(0)
 })
 
-test('móvil y tablet táctiles muestran ambos anillos y tooltip al tocar', async ({ browser, data }) => {
+test('móvil y tablet táctiles muestran ambos anillos y abren historial al tocar', async ({ browser, data }) => {
   const story = await data.createStory({ characters: [], visualMode: true })
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
   const tablet = await context.newPage()
@@ -172,9 +173,12 @@ test('móvil y tablet táctiles muestran ambos anillos y tooltip al tocar', asyn
       await expect(tablet.getByTestId('story-context-tokens')).toBeVisible()
       await expect(tablet.getByTestId('story-context-characters')).toBeVisible()
       await tablet.getByTestId('story-context-tokens').tap()
-      await expect(tablet.getByTestId('story-context-tokens').getByRole('tooltip')).toBeVisible()
+      const history = tablet.getByRole('dialog', { name: 'Compactaciones de la historia' })
+      await expect(history).toBeVisible()
+      await expect(history).toContainText('No hay compactaciones conservadas')
       expect(await tablet.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
       await tablet.screenshot({ path: `.data/context-touch-${width}.png` })
+      await history.getByRole('button', { name: 'Cerrar diálogo' }).tap()
     }
   } finally {
     await context.close()
@@ -196,7 +200,7 @@ test('ignora medicion tardia cuando otra actualizacion ya obtuvo resultados', as
   await expect.poll(() => calls).toBe(1)
   await page.getByTestId('visual-mode-toggle').click()
   const ring = page.getByTestId('story-context-tokens')
-  const label = 'Contexto (tokens): 20 % ocupado · 200 / 1000'
+  const label = 'Contexto (tokens): 20 % ocupado · 200 / 1000 · Compactada 0 veces'
   await expect(ring).toHaveAttribute('aria-label', label)
   release!()
   await page.getByLabel('Tu intervención').fill('Borrador conservado.')
@@ -217,7 +221,132 @@ test('usa limites y modelo privados; porcentaje mayor de 100 no altera el limite
   await expect(page.locator('html')).toHaveClass(/private-scope/)
   await page.locator(`a[href="/stories/${story.id}"]`).first().click()
   const tokens = page.getByTestId('story-context-tokens')
-  await expect(tokens).toHaveAttribute('aria-label', 'Contexto (tokens): 150 % ocupado · 900 / 600')
+  await expect(tokens).toHaveAttribute('aria-label', 'Contexto (tokens): 150 % ocupado · 900 / 600 · Compactada 0 veces')
   await expect(tokens.locator('circle').last()).toHaveAttribute('stroke-dasharray', '100 100')
-  await expect(page.getByTestId('story-context-characters')).toHaveAttribute('aria-label', /\/ 20[.]000$/)
+  await expect(page.getByTestId('story-context-characters')).toHaveAttribute('aria-label', /\/ 20[.]000 · Compactada 0 veces$/)
+})
+
+for (const scope of ['normal', 'private'] as const) {
+  for (const visualMode of [false, true]) {
+    test(`anillos cuentan correctas y consultan historial sin Debug en ${visualMode ? 'Novela' : 'Chat'} ${scope}`, async ({ page, data }) => {
+      const story = await data.createStory({ title: 'El faro y la llave azul', characters: [], scope, visualMode })
+      const narration = await data.createMessage({ story, scope, role: 'assistant', raw: 'La luz del faro vuelve a encenderse.',
+        segments: [{ type: 'narration', text: 'La luz del faro vuelve a encenderse.' }] })
+      const base: LlmDebugTrace = {
+        id: data.unique('compaction'), storyId: story.id, status: 'success', createdAt: Date.UTC(2026, 9, 5, 12),
+        request: { purpose: 'compaction', model: 'test-model', temperature: 0.7, max_tokens: 100, stream: false, messages: [],
+          compaction: { before: [{ role: 'assistant', content: 'HISTORIAL_ANTES_DE_COMPACTAR' }],
+            after: [{ role: 'assistant', content: 'RESUMEN_DESPUES_DE_COMPACTAR' }], historyBudget: 12000, applied: true,
+            beforeUsage: { unit: 'characters', count: 1000, configuredLimit: 12000, effectiveLimit: 12000, model: 'test-model' },
+            afterUsage: { unit: 'characters', count: 100, configuredLimit: 12000, effectiveLimit: 12000, model: 'test-model' },
+            blocks: [1, 2].map(() => ({ messages: [], summary: 'Resumen de bloque.',
+              contextUsage: { unit: 'characters', count: 500, configuredLimit: 12000, effectiveLimit: 12000, model: 'test-model' } })) } },
+        response: { content: 'RESUMEN_DESPUES_DE_COMPACTAR', finishReason: 'stop' }
+      }
+      const traces: LlmDebugTrace[] = [
+        base,
+        { ...base, id: data.unique('legacy'), createdAt: base.createdAt - 1000,
+          request: { ...base.request, compaction: undefined } },
+        { ...base, id: data.unique('unapplied'), createdAt: base.createdAt - 2000,
+          request: { ...base.request, compaction: { ...base.request.compaction!, applied: false } } },
+        { ...base, id: data.unique('failed'), createdAt: base.createdAt - 3000, status: 'error',
+          request: { ...base.request, compaction: { ...base.request.compaction!, applied: false, after: undefined } },
+          response: { error: 'Compactador no disponible.' } },
+        { ...base, id: data.unique('narration'), responseMessageId: narration.id,
+          request: { ...base.request, purpose: 'chat', compaction: undefined },
+          response: { content: narration.raw, finishReason: 'stop' } }
+      ]
+      for (const trace of traces) await expect(await page.request.put(`/api/data/llmDebugTraces/${trace.id}?scope=${scope}`, { data: trace })).toBeOK()
+      await page.route('**/api/llm/context', route => route.fulfill({ json: { tokens: 500, capacity: 1100, model: 'test-instance' } }))
+      if (scope === 'private') {
+        await page.goto('/')
+        await page.locator('main').press('Control+Alt+p')
+        await expect(page.locator('html')).toHaveClass(/private-scope/)
+        await page.locator(`a[href="/stories/${story.id}"]`).first().click()
+      } else await page.goto(`/stories/${story.id}`)
+      const tokens = page.getByTestId('story-context-tokens')
+      const chars = page.getByTestId('story-context-characters')
+      const history = page.getByRole('dialog', { name: 'Compactaciones de la historia' })
+      for (const ring of [tokens, chars]) await expect(ring).toHaveAttribute('aria-label', /Compactada 2 veces$/)
+      await expect(page.getByTestId('story-compaction-marker')).toHaveCount(0)
+      await page.getByLabel('Tu intervención').fill('BORRADOR_CONSERVADO')
+      for (const width of [320, 390, 640, 768, 1280]) {
+        await page.setViewportSize({ width, height: 844 })
+        for (const ring of [tokens, chars]) {
+          await ring.hover()
+          const tooltip = await ring.getByRole('tooltip').boundingBox()
+          expect(tooltip!.x).toBeGreaterThanOrEqual(0)
+          expect(tooltip!.x + tooltip!.width).toBeLessThanOrEqual(width)
+        }
+        if (scope === 'normal' && width === 390) {
+          await page.screenshot({ path: `.data/issue-252-tooltip-${visualMode ? 'novel' : 'chat'}-${width}.png` })
+        }
+        await tokens.click()
+        await expect(history).toBeVisible()
+        const items = history.getByRole('listitem')
+        await expect(items).toHaveCount(4)
+        await expect(items.first()).toHaveAttribute('data-compaction-trace-id', base.id)
+        await expect(items.first()).toContainText('1000 caracteres antes · 100 después')
+        await expect(items.last()).toContainText('Compactación fallida')
+        await expect(history.getByRole('button', { name: 'Borrar compactación' })).toHaveCount(0)
+        await expect(history.locator('time')).toHaveCount(4)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+        if (scope === 'normal' && [390, 1280].includes(width)) {
+          await page.screenshot({ path: `.data/issue-252-${visualMode ? 'novel' : 'chat'}-${width}.png` })
+        }
+        await items.first().getByRole('button', { name: 'Ver antes / después' }).click()
+        const detail = page.getByRole('dialog', { name: 'Debug compactación' })
+        await expect(detail).toContainText('HISTORIAL_ANTES_DE_COMPACTAR')
+        await expect(detail).toContainText('RESUMEN_DESPUES_DE_COMPACTAR')
+        await expect(detail).toContainText('Compactación en 2 bloques')
+        await expect(history).toBeHidden()
+        await page.keyboard.press('Escape')
+        await expect(detail).toHaveCount(0)
+        await expect(history).toBeVisible()
+        await page.keyboard.press('Escape')
+        await expect(history).toBeHidden()
+        await expect(tokens).toBeFocused()
+        await chars.press('Enter')
+        await expect(history).toBeVisible()
+        await history.getByRole('button', { name: 'Cerrar diálogo' }).click()
+        await expect(chars).toBeFocused()
+      }
+      await expect(page.getByLabel('Tu intervención')).toHaveValue('BORRADOR_CONSERVADO')
+      await page.reload()
+      if (scope === 'private') {
+        await page.goto('/')
+        await page.locator('main').press('Control+Alt+p')
+        await expect(page.locator('html')).toHaveClass(/private-scope/)
+        await page.locator(`a[href="/stories/${story.id}"]`).first().click()
+      }
+      await expect(tokens).toHaveAttribute('aria-label', /Compactada 2 veces$/)
+    })
+  }
+}
+
+test('historial distingue carga pendiente, error y cero compactaciones', async ({ page, data }) => {
+  const story = await data.createStory({ characters: [] })
+  await page.route('**/api/llm/context', route => route.fulfill({ json: { tokens: 500, capacity: 1100, model: 'test-instance' } }))
+  let release: (() => void) | undefined
+  const pending = new Promise<void>(resolve => { release = resolve })
+  const url = `**/api/data/llmDebugTraces?storyId=${story.id}&scope=normal`
+  await page.route(url, async route => {
+    await pending
+    await route.fulfill({ status: 502, json: { message: 'Fallo de prueba.' } })
+  })
+  await page.goto(`/stories/${story.id}`)
+  const tokens = page.getByTestId('story-context-tokens')
+  await expect(tokens).toHaveAttribute('aria-label', /Compactaciones: cargando…$/)
+  await tokens.click()
+  const history = page.getByRole('dialog', { name: 'Compactaciones de la historia' })
+  await expect(history.getByRole('status')).toHaveText('Cargando compactaciones…')
+  release!()
+  await expect(history.getByRole('alert')).toContainText('No se pudieron cargar las compactaciones')
+  await expect(tokens).toHaveAttribute('aria-label', /Compactaciones: no disponibles$/)
+  await expect(history).not.toContainText('No hay compactaciones conservadas')
+  await page.unroute(url)
+  await page.reload()
+  await expect(tokens).toHaveAttribute('aria-label', /Compactada 0 veces$/)
+  await tokens.click()
+  await expect(history).toContainText('No hay compactaciones conservadas')
 })
