@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { TestDataResetResult } from '~/lib/testData'
-import { DEFAULT_SOUND_VERSION } from '~/lib/defaultSounds'
 
 if (!import.meta.dev) {
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
@@ -26,7 +25,7 @@ async function run(seed: boolean) {
     if (privacy.isPrivate) throw new Error('Sal del modo privado antes de continuar.')
     const { resetNormalTestData } = await import('~/lib/testData')
     const next = await resetNormalTestData(seed)
-    settings.settings.defaultSoundVersion = seed ? 0 : DEFAULT_SOUND_VERSION
+    Object.assign(settings.settings, next.settings)
 
     await stories.resetForScope()
     characters.resetForScope()
@@ -57,7 +56,7 @@ async function run(seed: boolean) {
   <div class="mx-auto max-w-2xl px-4 py-8">
     <h1 class="text-2xl font-bold">Datos de prueba</h1>
     <p class="mt-2 text-sm text-[var(--color-fg-muted)]">
-      Solo colección normal. Ajustes y colección privada permanecen intactos.
+      Solo colección normal. Cargar datos de prueba configura LM Studio en http://jona-pc-25:1234 con qwen3.8-27b y sin token API.
     </p>
 
     <div class="mt-6 flex flex-wrap gap-3">

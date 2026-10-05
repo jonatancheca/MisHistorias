@@ -29,14 +29,14 @@ export default defineEventHandler(async (event) => {
     const failure = caught instanceof ContextMeasurementError ? caught : new ContextMeasurementError('connection')
     const message = failure.message
     if (failure.code === 'model_not_loaded') {
-      throw createError({ statusCode: 409, message, data: { code: failure.code } })
+      throw createError({ statusCode: 409, message, data: { code: failure.code, message } })
     }
     recordOperationalError(event, {
       source: 'llm', operation: 'story.context', message, scope, requestSent: null,
       request: { model: body.model, messages: body.messages }, response: { code: failure.code }
     })
     event.context.errorTraceRecorded = true
-    throw createError({ statusCode: 502, message, data: { code: failure.code } })
+    throw createError({ statusCode: 502, message, data: { code: failure.code, message } })
   } finally {
     event.node.req.off('aborted', abort)
     event.node.res.off('close', closed)

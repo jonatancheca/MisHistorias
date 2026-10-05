@@ -5,7 +5,7 @@ import { startFakeLmStudio } from '../helpers/fakeLmStudio'
 test.beforeEach(async ({ page, data }) => {
   await data.patchSettings({ maxTokens: 1000, contextTokenBudget: 3000, historyBudget: 0,
     privateMaxTokens: null, privateContextTokenBudget: null, privateLlmSettingsEnabled: false,
-    model: 'configured-key', useChromeLlm: false, privateUseChromeLlm: null,
+    model: 'configured-key', apiKey: '', useChromeLlm: false, privateUseChromeLlm: null,
     mockMode: false, responseSpeed: 'instant', narrativePrompt: 'Narra la historia.' })
   await page.route('**/api/llm/model-status?*', route => route.fulfill({ json: { loaded: true } }))
 })
@@ -26,11 +26,11 @@ test('ambos Auto persisten, muestran capacidad actual y conservan herencia priva
   await page.reload()
   await expect(page.getByRole('checkbox', { name: 'Auto para respuesta', exact: true })).toBeChecked()
   await expect(page.getByRole('checkbox', { name: 'Auto para contexto', exact: true })).toBeChecked()
-  await expect(page.getByLabel('Contexto enviado (tokens)', { exact: true })).toHaveValue('4096 tokens')
+  await expect(page.getByLabel('MÁX. CONTEXTO ENVIADO (TOKENS)', { exact: true })).toHaveValue('4096 tokens')
   await expect(page.getByTestId('llm-token-capacity')).toContainText('8192 tokens')
   capacity = 32768
   await page.getByTestId('llm-token-capacity').getByRole('button', { name: 'Actualizar' }).click()
-  await expect(page.getByLabel('Contexto enviado (tokens)', { exact: true })).toHaveValue('28.672 tokens')
+  await expect(page.getByLabel('MÁX. CONTEXTO ENVIADO (TOKENS)', { exact: true })).toHaveValue('28.672 tokens')
   for (const width of [320, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 })
     await expect.poll(() => page.locator('#maxTokens').evaluate(input => {
@@ -53,7 +53,7 @@ test('ambos Auto persisten, muestran capacidad actual y conservan herencia priva
   await page.getByLabel('Máx. tokens de respuesta', { exact: true }).fill('2000')
   await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).privateMaxTokens).toBe(2000)
   expect((await (await page.request.get('/api/settings')).json()).maxTokens).toBe('auto')
-  await expect(page.getByLabel('Contexto enviado (tokens)', { exact: true })).toHaveValue('30.768 tokens')
+  await expect(page.getByLabel('MÁX. CONTEXTO ENVIADO (TOKENS)', { exact: true })).toHaveValue('30.768 tokens')
   await page.getByRole('checkbox', { name: /Personalizar ajustes de LMStudio/ }).uncheck()
   await expect(page.getByRole('checkbox', { name: 'Auto para respuesta', exact: true })).toBeChecked()
 })
@@ -86,6 +86,37 @@ test('API consulta instancia actual, recalcula salida y no genera con medición 
     expect(server.chatRequests).toHaveLength(2)
     expect((await request.post('/api/llm/chat', { data: { ...body, maxTokens: 1000, messages: [image] } })).ok()).toBe(true)
   } finally { await server.close() }
+})
+
+test('Ajustes identifica token inválido y recupera cálculo al quitarlo', async ({ page, data }) => {
+  const server = await startFakeLmStudio()
+  try {
+    await data.patchSettings({ baseUrl: server.baseUrl, apiKey: 'token-de-pruebas-invalido' })
+    const response = await page.request.get('/api/llm/capacity?scope=normal')
+    expect(response.status()).toBe(502)
+    expect(await response.json()).toMatchObject({ data: { code: 'api_token' } })
+    await page.goto('/settings#llm')
+    const capacity = page.getByTestId('llm-token-capacity')
+    await capacity.getByRole('button', { name: 'Actualizar' }).click()
+    await expect(capacity).toContainText('El token configurado no es un token API válido de LM Studio.')
+    await expect(capacity).not.toContainText('token-de-pruebas-invalido')
+    await page.getByRole('button', { name: 'Quitar token', exact: true }).click()
+    await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).apiKeyConfigured).toBe(false)
+    await capacity.getByRole('button', { name: 'Actualizar' }).click()
+    await expect(capacity).toContainText('Capacidad actual: 8192 tokens.')
+  } finally { await server.close() }
+})
+
+test('Ajustes conserva diagnóstico de capacidad aunque producción oculte el mensaje de error', async ({ page }) => {
+  await page.route('**/api/llm/capacity?*', route => route.fulfill({ status: 502, json: {
+    statusCode: 502, statusMessage: 'Server Error', data: {
+      code: 'sdk_unavailable', message: 'No se pudo localizar el SDK de LM Studio incluido en la aplicación.'
+    }
+  } }))
+  await page.goto('/settings#llm')
+  const capacity = page.getByTestId('llm-token-capacity')
+  await capacity.getByRole('button', { name: 'Actualizar', exact: true }).click()
+  await expect(capacity).toContainText('No se pudo localizar el SDK de LM Studio incluido en la aplicación.')
 })
 
 for (const visualMode of [false, true]) {

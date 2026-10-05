@@ -1251,6 +1251,7 @@ onBeforeRouteLeave(() => {
             Historia demo compartida · solo lectura
           </p>
         </div>
+          <div id="story-mobile-context" class="shrink-0 sm:hidden" />
         </div>
         <div class="story-header-options">
           <Teleport defer to="#story-reader-options" :disabled="!readerOptionsInNavigation">
@@ -1380,7 +1381,9 @@ onBeforeRouteLeave(() => {
               <span>{{ copyingSharedStory ? 'Copiando…' : 'Copiar' }}</span>
             </button>
           </StoryToolsMenu>
-          <StoryContextIndicators v-if="readerOptionsInNavigation" />
+          <Teleport defer to="#story-mobile-context" :disabled="readerOptionsInNavigation">
+            <StoryContextIndicators :placement="readerOptionsInNavigation ? 'top' : 'bottom'" />
+          </Teleport>
           </div>
           </Teleport>
         </div>

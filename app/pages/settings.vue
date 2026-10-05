@@ -2099,7 +2099,7 @@ onBeforeRouteLeave(async () => {
           </p>
         </div>
         <div>
-          <label class="label" for="historyBudget">Contexto enviado (caracteres)</label>
+          <label class="label" for="historyBudget">MÁX. CONTEXTO ENVIADO (CARACTERES)</label>
           <input
             id="historyBudget"
             v-model.number="form.historyBudget"
@@ -2115,7 +2115,7 @@ onBeforeRouteLeave(async () => {
           </p>
         </div>
         <div>
-          <label class="label" for="contextTokenBudget">Contexto enviado (tokens)</label>
+          <label class="label" for="contextTokenBudget">MÁX. CONTEXTO ENVIADO (TOKENS)</label>
           <div class="flex min-w-0 items-center gap-3">
             <input
               v-if="form.contextTokenBudget !== 'auto'"

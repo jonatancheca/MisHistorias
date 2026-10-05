@@ -37,7 +37,7 @@ function normalizeError(caught: unknown): LlmCallError {
       statusCode?: number
       message?: string
       statusMessage?: string
-      data?: { detail?: string }
+      data?: { detail?: string; message?: string }
       detail?: string
     }
   }
@@ -46,7 +46,7 @@ function normalizeError(caught: unknown): LlmCallError {
   }
   return Object.assign(
     new Error(
-      error.data?.message || error.data?.statusMessage || error.statusMessage || error.message ||
+      error.data?.data?.message || error.data?.message || error.data?.statusMessage || error.statusMessage || error.message ||
       'Fallo del modelo'
     ),
     {

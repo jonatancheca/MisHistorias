@@ -1,4 +1,5 @@
 import type {
+  AppSettings,
   Character,
   LlmDebugTrace,
   Message,
@@ -56,6 +57,7 @@ export interface TestDataCounts {
 export interface TestDataResetResult {
   counts: TestDataCounts
   seeded: boolean
+  settings: AppSettings
 }
 
 function assertDevelopmentNormalScope() {
@@ -413,9 +415,10 @@ export async function resetNormalTestData(seed: boolean): Promise<TestDataResetR
   await clearAll('normal')
   if (seed) await seedNormalData()
 
-  await writeSettings({
+  const settings = await writeSettings({
+    ...(seed ? { baseUrl: 'http://jona-pc-25:1234', model: 'qwen3.8-27b', apiKey: '' } : {}),
     defaultSoundVersion: seed ? 0 : DEFAULT_SOUND_VERSION
   })
 
-  return { counts: await countNormalTestData(), seeded: seed }
+  return { counts: await countNormalTestData(), seeded: seed, settings }
 }

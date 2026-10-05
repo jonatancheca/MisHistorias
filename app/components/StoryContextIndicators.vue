@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { StoryContextMeasurement } from '~/lib/contextBudget'
 
+withDefaults(defineProps<{ placement?: 'top' | 'bottom' }>(), { placement: 'top' })
+
 const stories = useStoriesStore()
 const settings = useSettingsStore()
 const privacy = usePrivacyStore()
@@ -69,7 +71,7 @@ onBeforeUnmount(cancelMeasurement)
 </script>
 
 <template>
-  <div v-if="indicators.length" class="story-context-indicators" role="group" aria-label="Ocupación del contexto">
+  <div v-if="indicators.length" class="story-context-indicators" :class="{ 'story-context-indicators-below': placement === 'bottom' }" role="group" aria-label="Ocupación del contexto">
     <span
       v-for="indicator in indicators"
       :key="indicator.unit"
@@ -107,4 +109,7 @@ onBeforeUnmount(cancelMeasurement)
 }
 .story-context-indicator:hover .story-context-tooltip,
 .story-context-indicator:focus .story-context-tooltip { visibility: visible; opacity: 1; }
+.story-context-indicators-below .story-context-tooltip {
+  top: calc(100% + 0.75rem); bottom: auto; left: auto; right: 0; transform: none;
+}
 </style>

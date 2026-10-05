@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
   } catch (caught) {
     if ((caught as Error).name === 'AbortError') throw caught
     const failure = caught instanceof ContextMeasurementError ? caught : new ContextMeasurementError('connection')
-    throw createError({ statusCode: failure.code === 'model_not_loaded' ? 409 : 502, message: failure.message, data: { code: failure.code } })
+    throw createError({ statusCode: failure.code === 'model_not_loaded' ? 409 : 502, message: failure.message, data: { code: failure.code, message: failure.message } })
   } finally {
     event.node.req.off('aborted', abort)
     event.node.res.off('close', closed)

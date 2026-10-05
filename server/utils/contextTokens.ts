@@ -1,5 +1,5 @@
 import { Worker } from 'node:worker_threads'
-import { createRequire } from 'node:module'
+import { findPackageJSON } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { LMStudioClient } from '@lmstudio/sdk'
 import { normalizeLocalBaseUrl, type LlmProxySettings } from './llm.ts'
@@ -7,6 +7,8 @@ import { normalizeLocalBaseUrl, type LlmProxySettings } from './llm.ts'
 type TextMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
 const contextErrors = {
+  sdk_unavailable: 'No se pudo localizar el SDK de LM Studio incluido en la aplicación. Revisa que la instalación esté completa.',
+  api_token: 'El token configurado no es un token API válido de LM Studio. Sustitúyelo en Ajustes o bórralo si el servidor no exige autenticación.',
   model_not_loaded: 'El modelo configurado no está cargado en LM Studio. Cárgalo desde Ajustes o selecciona el modelo que tienes cargado.',
   prompt_template: 'LM Studio no pudo aplicar la plantilla del modelo al contexto. Revisa su plantilla de conversación.',
   tokenizer: 'LM Studio no pudo contar los tokens del modelo configurado. Revisa su tokenizer.',
@@ -24,13 +26,26 @@ export class ContextMeasurementError extends Error {
   }
 }
 
+export function resolveLmStudioSdkUrl(base = import.meta.url) {
+  try {
+    const packagePath = findPackageJSON('@lmstudio/sdk', base)
+    if (!packagePath) throw new Error('Paquete no encontrado.')
+    // Nitro incluye la entrada ESM usada por la importación estática, no la entrada CJS.
+    return new URL('./dist/index.mjs', pathToFileURL(packagePath)).href
+  } catch {
+    throw new ContextMeasurementError('sdk_unavailable')
+  }
+}
+
 // Ejecutada dentro del worker: no depende del ámbito del módulo ni registra credenciales.
 export async function measureLoadedContext(Client: typeof LMStudioClient, data: {
   baseUrl: string; apiToken: string; model: string; messages?: TextMessage[]
 }) {
-  let stage = 'connection'
-  const client = new Client({ baseUrl: data.baseUrl, ...(data.apiToken ? { apiToken: data.apiToken } : {}) })
+  let stage = data.apiToken ? 'api_token' : 'connection'
+  let client: LMStudioClient | undefined
   try {
+    client = new Client({ baseUrl: data.baseUrl, ...(data.apiToken ? { apiToken: data.apiToken } : {}) })
+    stage = 'connection'
     const loaded = await client.llm.listLoaded()
     const model = loaded.find(item => item.identifier === data.model)
       ?? loaded.find(item => item.modelKey === data.model || item.path === data.model)
@@ -57,7 +72,7 @@ export async function measureLoadedContext(Client: typeof LMStudioClient, data: 
   } catch (caught) {
     throw Object.assign(new Error(stage === 'model_not_loaded' ? 'El modelo configurado no está cargado en LM Studio.' : 'No se pudo medir el contexto.'), { code: stage, cause: caught })
   } finally {
-    await client[Symbol.asyncDispose]()
+    await client?.[Symbol.asyncDispose]()
   }
 }
 
@@ -79,7 +94,7 @@ export function measureLmStudioContext(settings: LlmProxySettings, model: string
     `, {
       eval: true, execArgv: [], env: workerEnvironment,
       workerData: {
-        sdkUrl: pathToFileURL(createRequire(import.meta.url).resolve('@lmstudio/sdk')).href,
+        sdkUrl: resolveLmStudioSdkUrl(),
         baseUrl: url.href.replace(/\/+$/, ''),
         apiToken: typeof settings.apiKey === 'string' ? settings.apiKey.replace(/[\r\n]/g, '').trim() : '',
         model: model.trim(), messages

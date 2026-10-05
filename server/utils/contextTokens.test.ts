@@ -1,8 +1,32 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { join, resolve, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { LMStudioClient } from '@lmstudio/sdk'
-import { measureLoadedContext, measureLmStudioContext } from './contextTokens.ts'
+import { measureLoadedContext, measureLmStudioContext, resolveLmStudioSdkUrl } from './contextTokens.ts'
 import { startFakeLmStudio } from '../../tests/helpers/fakeLmStudio.ts'
+
+test('paquete portátil con solo ESM resuelve el SDK sin requerir index.cjs', () => {
+  const root = resolve('.data')
+  mkdirSync(root, { recursive: true })
+  const directory = mkdtempSync(join(root, 'context-sdk-'))
+  try {
+    const sdk = join(directory, 'node_modules', '@lmstudio', 'sdk')
+    mkdirSync(join(sdk, 'dist'), { recursive: true })
+    writeFileSync(join(sdk, 'package.json'), JSON.stringify({ name: '@lmstudio/sdk', exports: {
+      '.': { require: './dist/index.cjs', import: './dist/index.mjs' }
+    } }))
+    writeFileSync(join(sdk, 'dist', 'index.mjs'), 'export class LMStudioClient {}')
+    const base = pathToFileURL(join(directory, 'index.mjs')).href
+    assert.throws(() => createRequire(base).resolve('@lmstudio/sdk'), { code: 'MODULE_NOT_FOUND' })
+    assert.equal(resolveLmStudioSdkUrl(base), pathToFileURL(join(sdk, 'dist', 'index.mjs')).href)
+  } finally {
+    assert.ok(resolve(directory).startsWith(root + sep))
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
 
 test('mide plantilla e instancia configuradas sin cargar cualquier otro modelo', async () => {
   let disposed = false
@@ -39,6 +63,16 @@ test('worker se termina con timeout o cancelación y no expone la credencial', a
   ], controller.signal)
   controller.abort()
   await assert.rejects(pending, { name: 'AbortError' })
+})
+
+test('token inválido devuelve diagnóstico de ajustes sin exponer la credencial', async () => {
+  await assert.rejects(measureLmStudioContext({ baseUrl: 'http://localhost:1234', apiKey: 'credencial-de-pruebas' },
+    'modelo', undefined), error => {
+    assert.equal((error as { code: string }).code, 'api_token')
+    assert.match((error as Error).message, /token API válido de LM Studio/)
+    assert.equal((error as Error).message.includes('credencial-de-pruebas'), false)
+    return true
+  })
 })
 
 test('SDK real en worker usa misma instancia, plantilla y capacidad cargada por WebSocket', async () => {
