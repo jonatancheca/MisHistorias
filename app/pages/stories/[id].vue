@@ -1773,13 +1773,13 @@ onBeforeRouteLeave(() => {
         </div>
         <div id="story-reader-options" class="story-reader-options-target" />
         </div>
-        <div class="story-frame-position min-w-0 flex-1 text-center text-xs text-[var(--color-fg-muted)]">
+        <div class="story-frame-navigation story-frame-navigation-end">
+        <div class="story-frame-position shrink-0 text-right text-xs text-[var(--color-fg-muted)]">
           <template v-if="stories.activeStory.visualMode">
             <span data-testid="visual-novel-counter" class="block whitespace-nowrap text-xs sm:text-sm font-bold tabular-nums text-[var(--color-fg)]">{{ visualFrames.length ? visualFrameIndex + 1 : 0 }} / {{ visualFrameTotal }}</span>
           </template>
           <span v-else>Historia</span>
         </div>
-        <div class="story-frame-navigation story-frame-navigation-end">
         <button
           v-if="stories.activeStory.visualMode"
           type="button"
@@ -2077,7 +2077,7 @@ onBeforeRouteLeave(() => {
   position: relative;
   z-index: 30;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   flex-shrink: 0;
   align-items: center;
   gap: 0.375rem;
@@ -2095,8 +2095,8 @@ onBeforeRouteLeave(() => {
 
 .story-reader-leading { display: contents; }
 .story-frame-navigation-start { grid-column: 1; flex-wrap: wrap; }
-.story-frame-navigation-end { grid-column: 3; justify-content: flex-end; }
-.story-frame-position { grid-column: 2; min-width: 2.75rem; justify-self: center; }
+.story-frame-navigation-end { grid-column: 2; justify-content: flex-end; }
+.story-frame-position { min-width: 2.75rem; }
 
 .story-nav-button {
   display: inline-flex;
@@ -2185,14 +2185,14 @@ onBeforeRouteLeave(() => {
   .story-header { padding: 0.75rem 1.25rem; }
   .story-reader-controls { column-gap: 0.5rem; padding-inline: 1.25rem; }
   .story-reader-options-target { display: block; grid-column: 1 / -1; grid-row: 1; min-width: 0; }
-  .story-frame-navigation-start, .story-frame-position, .story-frame-navigation-end { grid-row: 2; }
+  .story-frame-navigation-start, .story-frame-navigation-end { grid-row: 2; }
 }
 
 @media (min-width: 1280px) {
   .story-reader-leading { display: flex; grid-column: 1; grid-row: 1; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
   .story-reader-options-target { flex: 0 1 auto; }
   .story-frame-navigation-start { flex: 0 0 auto; }
-  .story-frame-position, .story-frame-navigation-end { grid-row: 1; }
+  .story-frame-navigation-end { grid-row: 1; }
   .story-header { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1rem; }
   .story-composer { grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; }
   .story-generation-controls { min-width: 240px; }

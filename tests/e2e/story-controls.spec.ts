@@ -66,17 +66,24 @@ for (const width of [320, 390, 639, 640, 768, 1024, 1280]) {
           await expect(page.getByTestId('visual-novel-next')).toHaveAttribute('title', /Av Pág \/ Espacio \/ Enter/)
         }
       }
-      const centered = await page.evaluate(() => {
-        const nav = document.querySelector('.story-reader-controls')!.getBoundingClientRect()
+      const position = await page.evaluate(() => {
         const counter = document.querySelector('.story-frame-position')!.getBoundingClientRect()
-        const left = document.querySelector('.story-frame-navigation-start')!.getBoundingClientRect()
-        const right = document.querySelector('.story-frame-navigation-end')!.getBoundingClientRect()
-        return { navCenter: nav.left + nav.width / 2, counterCenter: counter.left + counter.width / 2,
-          counterLeft: counter.left, counterRight: counter.right, leftRight: left.right, rightLeft: right.left }
+        const next = (document.querySelector('[data-testid="visual-novel-next"]') ?? document.querySelector('[data-testid="story-end-button"]'))!.getBoundingClientRect()
+        return { counterRight: counter.right, nextLeft: next.left,
+          counterCenterY: counter.top + counter.height / 2, nextCenterY: next.top + next.height / 2 }
       })
-      expect(centered.counterCenter).toBeCloseTo(centered.navCenter, 0)
-      expect(centered.leftRight).toBeLessThanOrEqual(centered.counterLeft)
-      expect(centered.counterRight).toBeLessThanOrEqual(centered.rightLeft)
+      expect(position.nextLeft - position.counterRight).toBeGreaterThanOrEqual(0)
+      expect(position.nextLeft - position.counterRight).toBeLessThanOrEqual(12)
+      expect(Math.abs(position.counterCenterY - position.nextCenterY)).toBeLessThan(1)
+      if (width >= 1280) {
+        const row = await page.evaluate(() => {
+          const buttons = [...document.querySelectorAll('.story-reader-controls button')]
+            .filter(button => button.getClientRects().length > 0)
+            .map(button => button.getBoundingClientRect().top)
+          return Math.max(...buttons) - Math.min(...buttons)
+        })
+        expect(row).toBeLessThan(1)
+      }
       if (width >= 640) {
         const adjacent = await page.evaluate(() => {
           const options = document.querySelector('#story-reader-options')!
