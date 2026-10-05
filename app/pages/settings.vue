@@ -2422,17 +2422,11 @@ onBeforeRouteLeave(async () => {
               {{ appUpdate.error.value }}
             </p>
           </div>
-          <div class="flex shrink-0 flex-wrap gap-2">
-            <button
-              type="button"
-              class="btn-ghost"
-              :disabled="appUpdate.pending.value"
-              @click="refreshAppUpdate"
-            >
-              {{ appUpdate.pending.value ? 'Comprobando…' : 'Comprobar ahora' }}
-            </button>
+          <div
+            v-if="appUpdate.info.value?.updateAvailable && appUpdate.info.value.updaterUrl"
+            class="flex shrink-0 flex-wrap gap-2"
+          >
             <a
-              v-if="appUpdate.info.value?.updateAvailable && appUpdate.info.value.updaterUrl"
               class="btn-primary"
               :href="appUpdate.info.value.updaterUrl"
               rel="noopener noreferrer"
@@ -2441,8 +2435,22 @@ onBeforeRouteLeave(async () => {
             </a>
           </div>
         </div>
-        <div class="mt-5 border-t border-[var(--color-border-soft)] pt-4">
+        <div class="mt-5 flex flex-wrap gap-2 border-t border-[var(--color-border-soft)] pt-4">
+          <button
+            type="button"
+            class="btn-ghost"
+            :disabled="appUpdate.pending.value"
+            @click="refreshAppUpdate"
+          >
+            <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 0 1 15.36-6.36L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.36 6.36L3 16M8 16H3v5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            {{ appUpdate.pending.value ? 'Comprobando…' : 'Comprobar ahora' }}
+          </button>
           <NuxtLink to="/changelog" class="btn-ghost">
+            <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke-linecap="round" />
+            </svg>
             Ver historial de cambios
           </NuxtLink>
         </div>
