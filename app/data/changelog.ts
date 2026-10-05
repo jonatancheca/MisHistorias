@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 244, completedAt: '2026-10-05', summary: 'Compactación manual desde Más opciones en Chat y Novela Visual, con tokens y caracteres antes/después, reducción y bloques bajo demanda; conserva mensajes, intervenciones pendientes y borrador sin continuar la historia.' },
   { issue: 243, completedAt: '2026-10-05', summary: 'Enter inserta saltos de línea en el cuadro de escritura móvil de Chat y Novela Visual; envío mediante botón o Ctrl+Enter, conservando los atajos de escritorio.' },
   { issue: 239, completedAt: '2026-10-05', summary: 'Selector Chat/Novela y Más opciones trasladados a la barra inferior en pantallas no móviles, con menú desplegable hacia arriba y contador del cuadro actual en Novela Visual; controles móviles conservados.' },
   { issue: 241, completedAt: '2026-10-05', summary: 'Compactaciones de Debug integradas como cuadros de texto navegables en Novela Visual, con resumen o error, consulta antes/después y borrado con confirmación, conservando la escena y la respuesta visible al cambiar Debug.' },

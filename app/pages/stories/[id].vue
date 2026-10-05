@@ -57,6 +57,7 @@ const canScrollToTop = ref(false)
 const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
 const compactionDeleteError = ref<string | null>(null)
+const manualCompactionOpen = ref(false)
 const editingVisualMessage = ref<Message | null>(null)
 const desktopStoryControls = useStoryDesktopControls()
 const readerOptionsInNavigation = ref(false)
@@ -86,6 +87,7 @@ watch(() => stories.activeStory?.id, () => {
   debugEnabled.value = false
   selectedDebugTrace.value = null
   compactionDeleteError.value = null
+  manualCompactionOpen.value = false
   originalTextOpenIds.value = new Set()
   hiddenMessagesOpen.value = false
 })
@@ -1258,6 +1260,18 @@ onBeforeRouteLeave(() => {
             <button
               v-if="!stories.activeStory.readOnly"
               type="button"
+              class="btn-ghost"
+              :disabled="stories.generating || stories.deletingCompaction || settings.settings.mockMode"
+              @click="manualCompactionOpen = true"
+            >
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 3h16v18H4zM8 8h8M8 12h8M8 16h4" />
+              </svg>
+              <span>Compactar historia</span>
+            </button>
+            <button
+              v-if="!stories.activeStory.readOnly"
+              type="button"
               class="btn-ghost h-10 shrink-0 px-2 sm:px-3"
               aria-label="Partidas"
               title="Partidas"
@@ -1909,6 +1923,8 @@ onBeforeRouteLeave(() => {
       @resend="hiddenMessagesOpen = false; resendFrom($event)"
       @debug="selectedDebugTrace = $event"
     />
+
+    <StoryCompactionDialog :open="manualCompactionOpen" @close="manualCompactionOpen = false" />
 
     <StorySavesDialog
       :open="storySavesOpen"

@@ -1,5 +1,13 @@
 import type { ContextUsage } from '../../shared/types/index.ts'
 
+export interface StoryContextMeasurement {
+  characters: number
+  tokens: number | null
+  model: string
+  tokenError?: string
+  canCompact: boolean
+}
+
 export function tokenContextUsage(tokens: number, capacity: number, reservedTokens: number, configuredLimit: number, model: string): ContextUsage {
   if (!Number.isInteger(tokens) || tokens < 0 || !Number.isInteger(capacity) || capacity <= 0 ||
       !Number.isInteger(reservedTokens) || reservedTokens < 0) {

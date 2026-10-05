@@ -10,7 +10,8 @@ const panelId = useId()
 
 function close(restoreFocus = false) {
   open.value = false
-  if (restoreFocus) trigger.value?.focus()
+  const focusInDialog = document.activeElement instanceof Element && document.activeElement.closest('[role="dialog"]')
+  if (restoreFocus && !focusInDialog) trigger.value?.focus()
 }
 
 function onOutside(event: Event) {

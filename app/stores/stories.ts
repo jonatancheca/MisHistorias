@@ -17,7 +17,8 @@ import type {
   StoryCharacterCustomization,
   StoryPendingImageInstruction,
   StoryGenerationAttempt,
-  ContextUsage
+  ContextUsage,
+  ContextUnit
 } from '#shared/types'
 import {
   deleteMessage as dbDeleteMessage,
@@ -55,7 +56,7 @@ import { buildMockResponse } from '~/lib/mockLlm'
 import { readSwarmDiagnostic } from '../../shared/utils/swarmError.ts'
 import { fetchLlmChat, fetchLlmContext, type LlmCallError } from '~/lib/llm'
 import { fetchChromeLlmChat, measureChromeLlmContext } from '~/lib/chromeLlm'
-import { contextFits, exceededContextLimit, tokenContextUsage, summarizeInBlocks, CompactionCapacityError } from '~/lib/contextBudget'
+import { contextFits, exceededContextLimit, tokenContextUsage, summarizeInBlocks, CompactionCapacityError, type StoryContextMeasurement } from '~/lib/contextBudget'
 import { hideIncompleteVisualDirectivePrefix, parseSegments } from '~/lib/streamParser'
 import { selectCharacterImage } from '~/lib/imageSelection'
 import { sanitizeTags } from '~/lib/tags'
@@ -228,6 +229,7 @@ export const useStoriesStore = defineStore('stories', () => {
   const waitingForResponse = ref(false)
   const retryingEmptyResponse = ref(false)
   const compacting = ref(false)
+  const compactionSaving = ref(false)
   const deletingCompaction = ref(false)
   const canCompactInBlocks = ref(false)
   let blockRetry: (() => Promise<void>) | null = null
@@ -949,10 +951,13 @@ export const useStoriesStore = defineStore('stories', () => {
     signal: AbortSignal
     scope: DataScope
     isActive: () => boolean
+    force?: boolean
+    improvementUnit?: ContextUnit
+    measure?: (messages: ChatMessage[], manualLimit?: boolean) => Promise<ContextUsage>
   }) {
     const { chatOptions } = options
     const story = chatOptions.story
-    const measure = async (messages: ChatMessage[], manualLimit = true): Promise<ContextUsage> => {
+    const measure = options.measure ?? (async (messages: ChatMessage[], manualLimit = true): Promise<ContextUsage> => {
       options.signal.throwIfAborted()
       if (options.tokenBudget === 0) return {
         unit: 'characters', count: chatContextSize(messages), configuredLimit: options.historyBudget,
@@ -967,12 +972,12 @@ export const useStoriesStore = defineStore('stories', () => {
           manualLimit ? options.tokenBudget : 0, result.model),
         characters: { count: chatContextSize(messages), limit: manualLimit ? options.historyBudget : 0 }
       }
-    }
+    })
     const contextBefore = buildChatMessages(chatOptions)
     const beforeUsage = await measure(contextBefore)
     options.onUsage(beforeUsage)
     const historyBudget = beforeUsage.effectiveLimit
-    if (contextFits(beforeUsage)) {
+    if (!options.force && contextFits(beforeUsage)) {
       return story
     }
 
@@ -1058,7 +1063,7 @@ export const useStoriesStore = defineStore('stories', () => {
         return result
       }
       let result: { content: string; finishReason: string | null }
-      if (options.allowBlocks && options.tokenBudget > 0) {
+      if (options.allowBlocks && beforeUsage.unit === 'tokens') {
         const blockMessages = (previousSummary: string, history: typeof compactionMessages) => [
           compactionMessages[0]!,
           { role: 'user' as const, content: JSON.stringify({ previousSummary, history }) }
@@ -1083,11 +1088,20 @@ export const useStoriesStore = defineStore('stories', () => {
       debugRequest.compaction!.after = contextAfter
       const afterUsage = await measure(contextAfter)
       debugRequest.compaction!.afterUsage = afterUsage
+      if (options.force) {
+        const beforeCount = options.improvementUnit === 'tokens' ? beforeUsage.count : chatContextSize(contextBefore)
+        const afterCount = options.improvementUnit === 'tokens' ? afterUsage.count : chatContextSize(contextAfter)
+        if (afterCount >= beforeCount) {
+          throw new Error('La compactación no reduce el contexto. Se ha conservado el resumen anterior.')
+        }
+      }
       if (!contextFits(afterUsage)) {
         const exceeded = exceededContextLimit(afterUsage)
         throw new Error(`La compactación es insuficiente: la petición ocupa ${exceeded.count} ${exceeded.unit} y el límite es ${exceeded.limit}. Acorta el mensaje o aumenta el límite en Ajustes.`)
       }
       options.onUsage(afterUsage)
+      if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
+      if (options.force) compactionSaving.value = true
       await putStoryInScope(updated, options.scope, options.signal)
       if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
       activeStory.value = updated
@@ -1124,7 +1138,145 @@ export const useStoriesStore = defineStore('stories', () => {
       error.value = message
       throw caught
     } finally {
-      compacting.value = false
+      if (options.isActive()) compacting.value = false
+    }
+  }
+
+  async function prepareManualCompaction(signal: AbortSignal) {
+    const story = activeStory.value
+    if (!story || story.readOnly) throw new Error('Esta historia no permite compactar su historial.')
+    const scope = getActiveDataScope()
+    const opening = storyOpenRevision
+    const isActive = () => !signal.aborted && opening === storyOpenRevision &&
+      scope === getActiveDataScope() && activeStory.value?.id === story.id
+    const ensureActive = () => {
+      if (!isActive()) throw new DOMException('Petición cancelada', 'AbortError')
+    }
+    const settings = useSettingsStore()
+    const characters = useCharactersStore()
+    const backgrounds = useBackgroundsStore()
+    const sounds = useSoundsStore()
+    await Promise.all([settings.load(), characters.load(), backgrounds.load(), sounds.load()])
+    ensureActive()
+    const storyCharacters = storyCharactersWithCustomNames(story, characters.characters)
+    const referencedBackgrounds = new Set(messages.value.flatMap(message =>
+      message.segments.flatMap(segment => segment.backgroundId ? [segment.backgroundId] : [])
+    ))
+    if (story.initialBackgroundId) referencedBackgrounds.add(story.initialBackgroundId)
+    const storyBackgrounds = backgrounds.backgrounds.filter(background =>
+      matchesBackgroundStyle(background, story.backgroundStyle) &&
+      (!background.archived || referencedBackgrounds.has(background.id)) &&
+      (!usePrivacyStore().isDemo || background.visibleInDemo || referencedBackgrounds.has(background.id))
+    )
+    const storySounds = sounds.sounds.filter(sound =>
+      (!usePrivacyStore().isDemo && !sound.characterId && !sound.backgroundId) ||
+      Boolean(sound.characterId && storyCharacters.some(character => character.id === sound.characterId)) ||
+      Boolean(sound.backgroundId && storyBackgrounds.some(background => background.id === sound.backgroundId))
+    )
+    const catalog = buildStoryImageCatalog(story.characterIds, characters.characters, characters.images)
+    const catalogChange = story.imageCatalogSnapshot ? compareStoryImageCatalogs(story.imageCatalogSnapshot, catalog) : null
+    const chatOptions: Parameters<typeof buildChatMessages>[0] = {
+      story, presetContent: settings.activeNarrativePrompt, characters: storyCharacters,
+      images: characters.images, backgrounds: storyBackgrounds, sounds: storySounds,
+      messages: [...messages.value], historyBudget: 0, userName: settings.activeUserName,
+      protagonistPreferences: resolveProtagonistPreferences(settings.activeProtagonistPreferences,
+        story.protagonistPreferences ?? '', story.protagonistPreferencesMode ?? 'append'),
+      generationMode: 'normal', imageCatalogChange: catalogChange ? formatStoryImageCatalogChange(catalogChange) : null,
+      pendingImageInstructions: validPendingImageInstructions(story, characters.images)
+    }
+    const history = messages.value.filter(message => !message.swarmError)
+    const historyMessages = history.slice(0, history.findLastIndex(message => message.role === 'assistant') + 1)
+    const canCompact = !settings.settings.mockMode && Boolean(
+      story.contextSummary?.trim() || historyMessages.some(message => message.raw.trim() || message.segments.length)
+    )
+    const model = settings.activeUseChromeLlm ? 'chrome-prompt-api' : settings.activeModel
+    const historyBudget = settings.activeHistoryBudget
+    const tokenBudget = settings.activeContextTokenBudget
+    const maxTokens = settings.activeMaxTokens
+    const useChromeLlm = settings.activeUseChromeLlm
+    const improvementUnit = scope === 'private' && settings.settings.privateLlmSettingsEnabled
+      ? settings.settings.privateContextUnit ?? settings.settings.contextUnit : settings.settings.contextUnit
+    let tokenError: string | undefined
+    let invalidCapacity = false
+    const tokenMeasurements = new Map<string, ReturnType<typeof fetchLlmContext>>()
+    const measure = async (context: ChatMessage[], manualLimit = true): Promise<ContextUsage> => {
+      ensureActive()
+      const characters = chatContextSize(context)
+      try {
+        if (settings.settings.mockMode) throw new Error('Tokens no disponibles en modo mock.')
+        if (!useChromeLlm && !model) throw new Error('Configura primero el modelo en Ajustes.')
+        const key = JSON.stringify(context)
+        let pending = tokenMeasurements.get(key)
+        if (!pending) {
+          pending = useChromeLlm ? measureChromeLlmContext(context, signal) : fetchLlmContext(context, model, scope, signal)
+          tokenMeasurements.set(key, pending)
+        }
+        const result = await pending
+        ensureActive()
+        invalidCapacity = true
+        const usage = tokenContextUsage(result.tokens, result.capacity, useChromeLlm ? 0 : maxTokens,
+          manualLimit ? tokenBudget : 0, result.model)
+        invalidCapacity = false
+        tokenError = undefined
+        return { ...usage, characters: { count: characters, limit: manualLimit ? historyBudget : 0 } }
+      } catch (caught) {
+        ensureActive()
+        tokenError = (caught as Error).message || 'No se pudieron medir los tokens del modelo.'
+        return { unit: 'characters', count: characters, model,
+          configuredLimit: historyBudget, effectiveLimit: manualLimit ? historyBudget : 0 }
+      }
+    }
+    const measurement = (usage: ContextUsage): StoryContextMeasurement => ({
+      characters: usage.characters?.count ?? usage.count,
+      tokens: usage.unit === 'tokens' ? usage.count : null,
+      model: usage.model, tokenError,
+      canCompact: canCompact && !invalidCapacity &&
+        (usage.unit === 'tokens' || (tokenBudget === 0 && improvementUnit !== 'tokens'))
+    })
+    return { chatOptions, historyMessages, scope, isActive, measure, measurement, settings,
+      model, historyBudget, tokenBudget, maxTokens, useChromeLlm, improvementUnit,
+      validate: (usage: ContextUsage) => {
+        if (invalidCapacity || (usage.unit !== 'tokens' && (tokenBudget > 0 || improvementUnit === 'tokens'))) {
+          throw new Error(tokenError || 'No se pueden validar los límites de tokens del modelo.')
+        }
+        return usage
+      } }
+  }
+
+  async function measureStoryContext(signal: AbortSignal): Promise<StoryContextMeasurement> {
+    const context = await prepareManualCompaction(signal)
+    return context.measurement(await context.measure(buildChatMessages(context.chatOptions)))
+  }
+
+  async function compactStory(allowBlocks = false, signal?: AbortSignal) {
+    if (generating.value || deletingCompaction.value || !activeStory.value || activeStory.value.readOnly) return null
+    const requestController = new AbortController()
+    controller = requestController
+    const requestSignal = signal ? AbortSignal.any([signal, requestController.signal]) : requestController.signal
+    generating.value = true
+    compacting.value = true
+    compactionSaving.value = false
+    error.value = null
+    try {
+      const context = await prepareManualCompaction(requestSignal)
+      const beforeUsage = await context.measure(buildChatMessages(context.chatOptions))
+      const before = context.measurement(beforeUsage)
+      if (!before.canCompact) throw new Error(before.tokenError || 'No hay historial anterior que compactar.')
+      let afterUsage = beforeUsage
+      await compactHistoryIfNeeded({
+        ...context, force: true, allowBlocks, signal: requestSignal,
+        temperature: context.settings.activeTemperature, compactionPrompt: context.settings.effectiveCompactionPrompt,
+        measure: async (messages, manualLimit) => context.validate(await context.measure(messages, manualLimit)),
+        onUsage: usage => { afterUsage = usage }
+      })
+      return { before, after: context.measurement(afterUsage) }
+    } finally {
+      if (controller === requestController) {
+        generating.value = false
+        compacting.value = false
+        compactionSaving.value = false
+        controller = null
+      }
     }
   }
 
@@ -1295,6 +1447,7 @@ export const useStoriesStore = defineStore('stories', () => {
     waitingForResponse.value = false
     retryingEmptyResponse.value = false
     compacting.value = false
+    compactionSaving.value = false
     cancelAnimation()
     animationDraft = null
     pendingAssistantMessage.value = null
@@ -2163,10 +2316,13 @@ export const useStoriesStore = defineStore('stories', () => {
     waitingForResponse,
     retryingEmptyResponse,
     compacting,
+    compactionSaving,
     deletingCompaction,
     removeCompaction,
     canCompactInBlocks,
     compactInBlocks,
+    measureStoryContext,
+    compactStory,
     pendingAssistantMessage,
     visualRevealWaitingForAdvance,
     error,

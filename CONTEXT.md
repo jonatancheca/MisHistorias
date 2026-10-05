@@ -72,6 +72,10 @@ _Evitar_: Recorte del historial, checkpoint parcial
 Resumen independiente de los hechos anteriores de una historia, preparado antes de pedir una nueva respuesta cuando el contexto enviado supera su límite. No avanza la historia ni resume la nueva intervención pendiente.
 _Evitar_: Continuación de historia, recorte del historial, respuesta del narrador
 
+**Compactación manual de la historia**:
+Resumen del historial solicitado expresamente, incluso cuando el contexto está dentro de sus límites. Conserva los mensajes originales y las intervenciones pendientes, no continúa la historia y permite comparar el contexto del narrador antes y después, sin incluir el borrador de escritura.
+_Evitar_: Continuar historia, borrar historial, compactación automática
+
 **Prompt de compactación**:
 Instrucción que orienta el resumen independiente del historial de una historia. Puede personalizarse con un único valor compartido entre las colecciones normal y privada, o utilizar su versión predeterminada.
 _Evitar_: Prompt narrativo, prompt privado de compactación, checkpoint de historia compactada
