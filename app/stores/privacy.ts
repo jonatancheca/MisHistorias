@@ -4,12 +4,35 @@ import { getActiveDataScope, setActiveDataScope, type DataScope } from '~/lib/db
 export type PrivacyMode = 'normal' | 'private' | 'demo'
 
 export const usePrivacyStore = defineStore('privacy', () => {
-  const mode = ref<PrivacyMode>('normal')
+  const rememberedMode = useCookie<PrivacyMode | null>('mishistorias-mode', {
+    default: () => null,
+    maxAge: 365 * 24 * 60 * 60,
+    path: '/',
+    sameSite: 'lax',
+    secure: import.meta.client && window.location.protocol === 'https:'
+  })
+  const initialMode = rememberedMode.value === 'private' || rememberedMode.value === 'demo'
+    ? rememberedMode.value
+    : 'normal'
+  if (initialMode === 'normal') rememberedMode.value = null
+  const mode = ref<PrivacyMode>(initialMode)
+  setActiveDataScope(scopeFor(initialMode))
   const switching = ref(false)
   const beforeModeChange = new Set<() => Promise<boolean | undefined> | boolean | undefined>()
   const isPrivate = computed(() => mode.value !== 'normal')
   const isPrivateMode = computed(() => mode.value === 'private')
   const isDemo = computed(() => mode.value === 'demo')
+  const isModeRemembered = computed(
+    () => mode.value !== 'normal' && rememberedMode.value === mode.value
+  )
+
+  function rememberMode() {
+    if (mode.value !== 'normal' && !switching.value) rememberedMode.value = mode.value
+  }
+
+  function forgetMode() {
+    rememberedMode.value = null
+  }
 
   watch(
     mode,
@@ -45,6 +68,7 @@ export const usePrivacyStore = defineStore('privacy', () => {
       await stories.stop()
       const nextScope = scopeFor(nextMode)
       const scopeChanged = getActiveDataScope() !== nextScope
+      forgetMode()
       setActiveDataScope(nextScope)
       mode.value = nextMode
 
@@ -116,6 +140,9 @@ export const usePrivacyStore = defineStore('privacy', () => {
     isPrivate,
     isPrivateMode,
     isDemo,
+    isModeRemembered,
+    rememberMode,
+    forgetMode,
     switching,
     registerBeforeModeChange,
     activate,

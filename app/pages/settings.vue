@@ -1441,6 +1441,15 @@ onBeforeRouteLeave(async () => {
           :disabled="privacy.switching || privacy.isPrivateMode"
           @click="onPrivateTrigger"
         />
+        <button
+          v-if="privacy.isPrivateMode"
+          type="button"
+          class="btn-ghost"
+          :disabled="privacy.switching"
+          @click="privacy.isModeRemembered ? privacy.forgetMode() : privacy.rememberMode()"
+        >
+          {{ privacy.isModeRemembered ? 'Olvidar modo oculto' : 'Mantener modo oculto' }}
+        </button>
       </div>
       <div class="mt-5 max-w-sm">
         <label class="label" for="responseSpeed">Velocidad de escritura</label>
@@ -2323,7 +2332,7 @@ onBeforeRouteLeave(async () => {
           Todo se guarda en SQLite y se comparte con los equipos que usan este servidor.
         </template>
       </p>
-      <div class="flex flex-wrap gap-2">
+      <div class="flex flex-wrap items-start gap-2">
         <div class="flex shrink-0 flex-col items-center gap-1">
           <button type="button" class="btn-ghost" @click="doExport">Exportar JSON</button>
           <button
@@ -2333,6 +2342,15 @@ onBeforeRouteLeave(async () => {
             :disabled="privacy.switching"
             @click="onDemoTrigger"
           />
+          <button
+            v-if="privacy.isDemo"
+            type="button"
+            class="btn-ghost"
+            :disabled="privacy.switching"
+            @click="privacy.isModeRemembered ? privacy.forgetMode() : privacy.rememberMode()"
+          >
+            {{ privacy.isModeRemembered ? 'Olvidar modo demo' : 'Mantener modo demo' }}
+          </button>
         </div>
         <input ref="importInput" type="file" accept="application/json" autocomplete="off" class="hidden" @change="onImportFile" >
         <button type="button" class="btn-ghost" :disabled="importing" @click="importInput?.click()">

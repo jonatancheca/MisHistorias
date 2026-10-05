@@ -112,6 +112,10 @@ _Evitar_: Efecto de sonido, fondo visual
 Preferencia de una historia que orienta cuántos cuadros de diálogo y de narración aparecen en cada respuesta del narrador. Cada tipo puede quedar sin indicación y no obliga a incluirlo cuando la escena no lo pide.
 _Evitar_: Modo de visualización, límite de texto
 
+**Modo recordado**:
+Elección explícita de un único modo oculto o demo que este navegador recupera al volver a abrir Mis Historias, compartida entre sus sesiones y usuarios. Olvidar esa elección conserva el modo de la sesión actual; salir o cambiar de modo elimina también su recuerdo.
+_Evitar_: Modo permanente, preferencia del propietario
+
 **Modo demo**:
 Vista de presentación de una selección de la colección privada. No es una colección independiente ni un acceso público; una historia visible concede dentro de ella acceso contextual a los recursos que utiliza.
 _Evitar_: Colección demo, modo público
