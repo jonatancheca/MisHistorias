@@ -409,3 +409,24 @@ describe('pasos de novela visual', () => {
     assert.equal(frames[2]?.soundTag, 'lluvia')
   })
 })
+
+it('pensamientos forman cuadros y actualizan el personaje activo sin convertirlos en diálogo', () => {
+  const message: Message = {
+    id: 'thoughts', storyId: 'story-1', role: 'assistant', raw: '', createdAt: 1,
+    segments: [
+      { type: 'dialogue', characterId: 'alicia', tag: 'neutral', imageId: 'neutral', text: 'Hola.' },
+      { type: 'dialogue', characterId: 'bruno', tag: 'serio', imageId: 'bruno', text: 'Habla.' },
+      { type: 'thought', characterId: 'alicia', tag: 'feliz', tags: ['feliz', 'capa'], imageId: 'happy', text: 'No lo diré [secreto].' },
+      { type: 'protagonist-thought', characterId: null, tag: null, text: 'Espero.' },
+      { type: 'thought', characterId: null, tag: null, text: 'Sin personaje.' }
+    ]
+  }
+  const frames = buildVisualNovelFrames([message], { initialBackgroundId: null, initialBackgroundTag: null })
+  assert.deepEqual(frames.map(frame => frame.kind), ['dialogue', 'dialogue', 'thought', 'protagonist-thought', 'narration'])
+  assert.equal(frames[2]?.text, 'No lo diré .')
+  assert.deepEqual(frames[2]?.characterStates.map(state => state.characterId), ['bruno', 'alicia'])
+  assert.equal(frames[2]?.characterStates.at(-1)?.imageId, 'happy')
+  assert.deepEqual(frames[2]?.characterStates.at(-1)?.tags, ['feliz', 'capa'])
+  assert.deepEqual(frames[3]?.characterStates, frames[2]?.characterStates)
+  assert.equal(frames[1]?.characterStates[0]?.imageId, 'neutral')
+})

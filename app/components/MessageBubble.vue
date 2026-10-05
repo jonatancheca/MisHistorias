@@ -49,8 +49,8 @@ const hiddenMessage = computed(() =>
       ? !visibleUserText.value
       : !props.message.segments.some((segment) =>
           segment.type === 'background' || segment.type === 'sound' ||
-          (segment.type === 'dialogue' && Boolean(segment.characterId)) ||
-          segment.type === 'protagonist-dialogue' || stripBracketedText(segment.text)
+          ((segment.type === 'dialogue' || segment.type === 'thought') && Boolean(segment.characterId)) ||
+          segment.type === 'protagonist-dialogue' || segment.type === 'protagonist-thought' || stripBracketedText(segment.text)
         )
   )
 )
@@ -60,6 +60,7 @@ interface FlowRow {
   background: boolean
   sound: boolean
   narration: boolean
+  thought?: boolean
   text: string
   name: string
   color: string
@@ -142,13 +143,14 @@ const rows = computed<FlowRow[]>(() => {
         soundUrl: sounds.urlFor(sound?.id)
       }
     }
-    if (segment.type === 'protagonist-dialogue') {
+    if (segment.type === 'protagonist-dialogue' || segment.type === 'protagonist-thought') {
       return {
         key: String(index),
         background: false,
         sound: false,
         narration: false,
         text: stripBracketedText(segment.text),
+        thought: segment.type === 'protagonist-thought',
         name: userName.value,
         color: userColor.value,
         tag: null,
@@ -159,7 +161,7 @@ const rows = computed<FlowRow[]>(() => {
         soundUrl: null
       }
     }
-    if (segment.type !== 'dialogue' || !segment.characterId) {
+    if ((segment.type !== 'dialogue' && segment.type !== 'thought') || !segment.characterId) {
       return {
         key: String(index),
         background: false,
@@ -194,6 +196,7 @@ const rows = computed<FlowRow[]>(() => {
       sound: false,
       narration: false,
       text: stripBracketedText(segment.text),
+      thought: segment.type === 'thought',
       name: props.characterNames?.[segment.characterId] ?? characters.byId(segment.characterId)?.name ?? 'Personaje',
       color: props.characterColors?.[segment.characterId] ?? characters.colorOf(segment.characterId),
       tag: primaryTag(image) ?? requestedTags[0] ?? null,
@@ -313,7 +316,12 @@ function confirmEdit() {
               <p class="text-[15px] leading-relaxed">
                 <span class="font-semibold" :style="{ color: row.color }">{{ row.name }}</span>
                 <span class="font-semibold" :style="{ color: row.color }">:</span>
-                <span class="ml-1 whitespace-pre-wrap" :style="{ color: row.color }">{{ row.text }}</span>
+                <span
+                  class="ml-1 whitespace-pre-wrap"
+                  :class="{ italic: row.thought }"
+                  :data-testid="row.thought ? 'story-thought' : undefined"
+                  :style="{ color: row.color }"
+                >{{ row.thought ? `(${row.text})` : row.text }}</span>
               </p>
               <figure v-if="row.imageUrl && !visualMode" class="group/image mt-2 mb-3 w-40">
                 <ImageLightbox

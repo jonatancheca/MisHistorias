@@ -240,7 +240,7 @@ const lastDialogue = computed(() => {
     const message = stories.messages[index]!
     for (let cursor = message.segments.length - 1; cursor >= 0; cursor -= 1) {
       const segment = message.segments[cursor]!
-      if (segment.type === 'dialogue' && segment.characterId) return segment
+      if ((segment.type === 'dialogue' || segment.type === 'thought') && segment.characterId) return segment
     }
   }
   return null
@@ -800,11 +800,14 @@ const visualSoundUrl = computed(() =>
 )
 const visualSoundPlayer = ref<HTMLAudioElement | null>(null)
 let visualSoundWatcherInitialized = false
+const visualIsThought = computed(() =>
+  activeVisualFrame.value?.kind === 'thought' || activeVisualFrame.value?.kind === 'protagonist-thought'
+)
 const visualSpeaker = computed(() => {
   const frame = activeVisualFrame.value
   if (!frame || frame.kind === 'narration' || frame.kind === 'sound' || frame.kind === 'compaction') return null
   const speakerState = frame.characterStates[frame.characterStates.length - 1]
-  if (frame.kind === 'dialogue' && speakerState) {
+  if ((frame.kind === 'dialogue' || frame.kind === 'thought') && speakerState) {
     return {
       name: storyCharacterNames.value[speakerState.characterId] ?? 'Personaje',
       color: storyCharacterColors.value[speakerState.characterId] ?? characters.colorOf(speakerState.characterId)
@@ -1485,7 +1488,10 @@ onBeforeRouteLeave(() => {
                     :class="activeVisualFrame.kind === 'narration' ? 'italic text-slate-300' : activeVisualFrame.kind === 'compaction' ? 'break-words [overflow-wrap:anywhere]' : ''"
                     :style="visualSpeaker ? { color: visualSpeaker.color } : undefined"
                   >
-                    <span v-if="activeVisualFrame.kind === 'compaction'" class="font-semibold">Compactación: </span><span v-else-if="visualSpeaker" class="font-semibold">{{ `${visualSpeaker.name}: ` }}</span><span>{{ activeVisualFrame.text }}</span>
+                    <span v-if="activeVisualFrame.kind === 'compaction'" class="font-semibold">Compactación: </span><span v-else-if="visualSpeaker" class="font-semibold">{{ `${visualSpeaker.name}: ` }}</span><span
+                      :class="{ italic: visualIsThought }"
+                      :data-testid="visualIsThought ? 'story-thought' : undefined"
+                    >{{ visualIsThought ? `(${activeVisualFrame.text})` : activeVisualFrame.text }}</span>
                   </p>
                 </template>
                 <p v-else class="text-sm text-slate-300">La historia aún no ha empezado.</p>

@@ -219,3 +219,35 @@ describe('parser de etiquetas visuales', () => {
     assert.equal(serializeSegments(parsed, characters), 'Sonido [campana]:')
   })
 })
+
+describe('pensamientos explícitos del personaje', () => {
+  it('conserva tipo, personaje, etiquetas e imagen al serializar y volver a leer', () => {
+    const raw = 'Pensamiento Alicia [feliz][sonrisa]: No debo decirlo.\nPensamiento Vera: Debo esperar.'
+    const segments = parseSegments(raw, characters, [], 'Vera', images, 'thought-1')
+    assert.equal(segments[0]?.type, 'thought')
+    assert.equal(segments[0]?.characterId, 'alicia')
+    assert.deepEqual(segments[0]?.tags, ['feliz', 'sonrisa'])
+    assert.equal(segments[0]?.imageId, 'happy')
+    assert.equal(segments[1]?.type, 'protagonist-thought')
+    assert.equal(segments[1]?.characterId, null)
+    assert.equal(serializeSegments(segments, characters, 'Vera'), raw)
+    assert.deepEqual(parseSegments(serializeSegments(segments, characters, 'Vera'), characters, [], 'Vera', images, 'thought-1'), segments)
+  })
+
+  it('no reinterpreta paréntesis ni pensamientos de nombres desconocidos', () => {
+    const segments = parseSegments('(La puerta cruje.)\nAlicia: (Lo dije en voz alta.)\nPensamiento Extraño [feliz]: No reconocido.\npensamiento ALICIA: Sin etiqueta.', characters, [], '', images)
+    assert.deepEqual(segments.map(segment => segment.type), ['narration', 'dialogue', 'narration', 'thought'])
+    assert.equal(segments[2]?.text, 'Pensamiento Extraño [feliz]: No reconocido.')
+    assert.equal(segments[3]?.imageId, 'neutral')
+  })
+
+  it('oculta todo el prefijo mientras se revela, también para el protagonista', () => {
+    for (const raw of ['Pensamiento Alicia [feliz]: Secreto.', 'Pensamiento Vera: Espero.']) {
+      for (let length = 1; length <= raw.indexOf(':'); length++) {
+        assert.equal(hideIncompleteVisualDirectivePrefix(raw.slice(0, length), raw, characters, 'Vera'), '')
+      }
+      const body = raw.slice(0, raw.indexOf(':') + 2)
+      assert.equal(hideIncompleteVisualDirectivePrefix(body, raw, characters, 'Vera'), body)
+    }
+  })
+})

@@ -16,7 +16,7 @@ export interface VisualNovelFrame {
   id: string
   messageId: string | null
   segmentIndex: number | null
-  kind: 'user' | 'dialogue' | 'protagonist-dialogue' | 'narration' | 'sound' | 'compaction'
+  kind: 'user' | 'dialogue' | 'protagonist-dialogue' | 'thought' | 'protagonist-thought' | 'narration' | 'sound' | 'compaction'
   text: string
   compactionTrace?: LlmDebugTrace
   soundId?: string | null
@@ -162,7 +162,7 @@ export function buildVisualNovelFrames(
       }
 
       let kind: VisualNovelFrame['kind'] = segment.type
-      if (segment.type === 'dialogue' && segment.characterId) {
+      if ((segment.type === 'dialogue' || segment.type === 'thought') && segment.characterId) {
         const characterState = {
           characterId: segment.characterId,
           tag: segment.tag,
@@ -176,13 +176,13 @@ export function buildVisualNovelFrames(
           ...characterStates.filter((state) => state.characterId !== segment.characterId),
           characterState
         ]
-      } else if (segment.type === 'dialogue') {
+      } else if (segment.type === 'dialogue' || segment.type === 'thought') {
         kind = 'narration'
       }
 
       const isRecognizedDialogue = (
-        (segment.type === 'dialogue' && Boolean(segment.characterId)) ||
-        segment.type === 'protagonist-dialogue'
+        ((segment.type === 'dialogue' || segment.type === 'thought') && Boolean(segment.characterId)) ||
+        segment.type === 'protagonist-dialogue' || segment.type === 'protagonist-thought'
       )
       const visibleText = stripBracketedText(segment.text)
       if (!visibleText && !isRecognizedDialogue) return

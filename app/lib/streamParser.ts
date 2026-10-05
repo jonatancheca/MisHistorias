@@ -5,6 +5,7 @@ import { normalizeRequestedImageTags, selectCharacterImage } from '~/lib/imageSe
 const LINE_RE = /^\s*([^:[\]\n]{1,60}?)\s*((?:\s*\[[^\]\n]{1,40}\])*)\s*:\s*([\s\S]*)$/
 const BACKGROUND_RE = /^\s*Fondo\s*\[([^\]\n]{1,80})\]\s*:\s*([\s\S]*)$/i
 const SOUND_RE = /^\s*Sonido\s*\[([^\]\n]{1,80})\]\s*:\s*([\s\S]*)$/i
+const THOUGHT_PREFIX_RE = /^Pensamiento\s+/i
 const DIALOGUE_TAG_RE = /\[([^\]\n]{1,40})\]/g
 
 function normalize(value: string) {
@@ -19,7 +20,7 @@ function isVisualDirectiveLine(
   const trimmed = line.trim()
   if (BACKGROUND_RE.test(trimmed) || SOUND_RE.test(trimmed)) return true
 
-  const match = LINE_RE.exec(trimmed)
+  const match = LINE_RE.exec(trimmed.replace(THOUGHT_PREFIX_RE, ''))
   if (!match) return false
   const name = normalize(match[1] ?? '')
   return (
@@ -62,8 +63,9 @@ export function parseDialogueTags(value: string) {
 }
 
 /**
- * Parser tolerante: `Nombre [etiqueta]: texto` es diálogo, cualquier otra línea
- * es narración. Se reejecuta sobre el texto completo en cada chunk del stream.
+ * Parser tolerante: `Nombre [etiqueta]: texto` es diálogo y el prefijo
+ * `Pensamiento` identifica un pensamiento. Las líneas no reconocidas son narración.
+ * Se reejecuta sobre el texto completo en cada chunk del stream.
  */
 export function parseSegments(
   raw: string,
@@ -118,14 +120,15 @@ export function parseSegments(
       continue
     }
 
-    const match = LINE_RE.exec(trimmed)
+    const match = LINE_RE.exec(trimmed.replace(THOUGHT_PREFIX_RE, ''))
     if (match) {
+      const thought = THOUGHT_PREFIX_RE.test(trimmed)
       const [, rawName, rawTagBlock, rest] = match
       const character = byName.get(normalize(rawName ?? ''))
       if (character) {
         const tags = parseDialogueTags(rawTagBlock ?? '')
         segments.push({
-          type: 'dialogue',
+          type: thought ? 'thought' : 'dialogue',
           characterId: character.id,
           tag: tags[0] ?? null,
           tags: tags.length ? tags : undefined,
@@ -141,7 +144,7 @@ export function parseSegments(
       }
       if (normalizedProtagonistName && normalize(rawName ?? '') === normalizedProtagonistName) {
         segments.push({
-          type: 'protagonist-dialogue',
+          type: thought ? 'protagonist-thought' : 'protagonist-dialogue',
           characterId: null,
           tag: null,
           text: (rest ?? '').trim()
@@ -170,11 +173,12 @@ export function serializeSegments(
       if (segment.type === 'sound') {
         return `Sonido [${segment.tag ?? ''}]:${segment.text ? ` ${segment.text}` : ''}`
       }
-      if (segment.type === 'protagonist-dialogue') {
-        return `${protagonistName}: ${segment.text}`
+      const prefix = segment.type === 'thought' || segment.type === 'protagonist-thought' ? 'Pensamiento ' : ''
+      if (segment.type === 'protagonist-dialogue' || segment.type === 'protagonist-thought') {
+        return `${prefix}${protagonistName}: ${segment.text}`
       }
-      if (segment.type !== 'dialogue' || !segment.characterId) return segment.text
-      const name = byId.get(segment.characterId)?.name ?? 'Personaje'
+      if ((segment.type !== 'dialogue' && segment.type !== 'thought') || !segment.characterId) return segment.text
+      const name = `${prefix}${byId.get(segment.characterId)?.name ?? 'Personaje'}`
       const tags = normalizeRequestedImageTags(
         segment.tags?.length ? segment.tags : segment.tag
       )

@@ -627,3 +627,35 @@ test('mantiene instrucciones IA y Narrador solo hasta una respuesta válida', ()
     { role: 'system', content: 'Instrucción del usuario para la IA:\nResponde brevemente.' }
   ])
 })
+
+test('instruye pensamientos con un preset personalizado y protege al protagonista fuera de Auto', () => {
+  const options = {
+    presetContent: 'Mi preset personalizado.', story, characters: [character], images: [],
+    backgrounds: [], sounds: [], messages: [], historyBudget: 0, userName: 'Vera', protagonistPreferences: ''
+  }
+  for (const generationMode of ['normal', 'continue', 'auto'] as const) {
+    const prompt = buildChatMessages({ ...options, generationMode })[0]!.content
+    assert.match(prompt, /Pensamiento Nombre \[etiqueta\]\[otra etiqueta\]: texto/)
+    assert.match(prompt, /Los demás personajes no lo oyen/)
+    assert.match(prompt, /sin exigir uno en cada respuesta/)
+    if (generationMode === 'auto') {
+      assert.match(prompt, /Pensamiento Vera: texto/)
+      assert.doesNotMatch(prompt, /No inventes sus pensamientos/)
+    } else assert.match(prompt, /No inventes sus pensamientos/)
+    if (generationMode === 'continue') assert.match(prompt, /No inventes acciones, decisiones, diálogo ni pensamientos/)
+  }
+})
+
+test('historial y compactación distinguen pensamientos del diálogo', () => {
+  const messages: Message[] = [{
+    id: 'thought-message', storyId: story.id, role: 'assistant', raw: 'Original.', createdAt: 1,
+    segments: [
+      { type: 'thought', characterId: character.id, tag: 'feliz', tags: ['feliz', 'capa'], text: 'No lo saben.' },
+      { type: 'protagonist-thought', characterId: null, tag: null, text: 'Debo esperar.' }
+    ]
+  }]
+  const content = 'Pensamiento Alicia [feliz][capa]: No lo saben.\nPensamiento Vera: Debo esperar.'
+  assert.equal(buildHistory(messages, [character], 0, 'Vera')[0]?.content, content)
+  const compacted = buildCompactionMessages({ messages, characters: [character], userName: 'Vera' })
+  assert.equal(JSON.parse(compacted[1]!.content).history[0].content, content)
+})

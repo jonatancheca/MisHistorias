@@ -707,7 +707,7 @@ export const useStoriesStore = defineStore('stories', () => {
       if (message.role !== 'assistant' || message.swarmError) return message
       let didChange = false
       const segments = message.segments.map((segment, index) => {
-        if (segment.type !== 'dialogue' || !segment.characterId || segment.imageId !== undefined) {
+        if ((segment.type !== 'dialogue' && segment.type !== 'thought') || !segment.characterId || segment.imageId !== undefined) {
           return segment
         }
         didChange = true
@@ -852,7 +852,7 @@ export const useStoriesStore = defineStore('stories', () => {
   async function replaceMessageSegmentImage(messageId: string, segmentIndex: number, imageId: string) {
     const current = messages.value.find((message) => message.id === messageId)
     const segment = current?.segments[segmentIndex]
-    if (!current || current.swarmError || current.role !== 'assistant' || segment?.type !== 'dialogue' || !segment.characterId) {
+    if (!current || current.swarmError || current.role !== 'assistant' || (segment?.type !== 'dialogue' && segment?.type !== 'thought') || !segment.characterId) {
       return false
     }
     const charactersStore = useCharactersStore()

@@ -48,8 +48,12 @@ _Evitar_: Fondo eliminado, fondo de solo lectura, fondo no disponible
 Preferencia de cada historia para presentar el mismo contenido como Chat o Novela Visual, incluso durante su creación.
 _Evitar_: Tipo de historia, modo de generación
 
+**Pensamiento del personaje**:
+Intervención interior no pronunciada de un personaje, distinta de su diálogo y de la narración. Los demás personajes no la oyen; el narrador solo puede inventar pensamientos del protagonista en Auto.
+_Evitar_: Diálogo, razonamiento de la IA, narración
+
 **Cuadro de respuesta**:
-Intervención independiente de diálogo o narración producida por el narrador. Se muestra como cuadro en Novela Visual y como intervención separada en Chat; las directivas de fondo y sonido no cuentan como cuadros de estos tipos.
+Intervención independiente de diálogo, pensamiento del personaje o narración producida por el narrador. Se muestra como cuadro en Novela Visual y como intervención separada en Chat; las directivas de fondo y sonido no cuentan como cuadros de estos tipos.
 _Evitar_: Línea visual, párrafo de pantalla
 
 **Cuadro de escritura**:

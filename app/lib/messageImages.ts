@@ -14,13 +14,13 @@ export function replaceFollowingMatchingDialogueImages(
   imageId: string
 ) {
   const target = segments[segmentIndex]
-  if (target?.type !== 'dialogue' || !target.characterId) return segments
+  if ((target?.type !== 'dialogue' && target?.type !== 'thought') || !target.characterId) return segments
   const targetTags = visualTagKey(target)
 
   return segments.map((segment, index) => {
     const matches = index >= segmentIndex && (
       index === segmentIndex || (
-        segment.type === 'dialogue' &&
+        (segment.type === 'dialogue' || segment.type === 'thought') &&
         segment.characterId === target.characterId &&
         visualTagKey(segment) === targetTags
       )

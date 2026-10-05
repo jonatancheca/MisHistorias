@@ -236,13 +236,15 @@ export type GenerationMode = 'normal' | 'continue' | 'auto'
 export type SegmentType =
   | 'dialogue'
   | 'protagonist-dialogue'
+  | 'thought'
+  | 'protagonist-thought'
   | 'narration'
   | 'background'
   | 'sound'
 
 export interface MessageSegment {
   type: SegmentType
-  /** id del personaje que habla, null si es narración */
+  /** id del personaje que habla o piensa, null si no corresponde a un personaje */
   characterId: string | null
   /** Fondo resuelto al parsear; null si la etiqueta no existe */
   backgroundId?: string | null
@@ -250,7 +252,7 @@ export interface MessageSegment {
   soundId?: string | null
   /** etiqueta emitida por el modelo (puede no existir entre las imágenes) */
   tag: string | null
-  /** Etiquetas visuales emitidas para un diálogo, en orden y sin duplicados. */
+  /** Etiquetas visuales emitidas para un diálogo o pensamiento, en orden y sin duplicados. */
   tags?: string[]
   /** Imagen de personaje elegida para este segmento; queda estable al recargar. */
   imageId?: string | null

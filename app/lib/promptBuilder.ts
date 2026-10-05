@@ -45,7 +45,7 @@ function formatReminder(
 ) {
   const protagonistFormat =
     generationMode === 'auto'
-      ? ` El protagonista es la única excepción al catálogo: escribe su diálogo como \`${userName}: texto\`, sin etiqueta visual.`
+      ? ` El protagonista es la única excepción al catálogo: escribe su diálogo como \`${userName}: texto\` y su pensamiento como \`Pensamiento ${userName}: texto\`, sin etiqueta visual.`
       : ''
   const imageGenerationFormat = autoGenerateImages
     ? ' Puedes incluir como máximo una línea independiente `Imagen Nombre [etiqueta]: prompt en inglés` por personaje y respuesta. Esa línea solo describe postura, ropa, expresión y escena; no es relato ni diálogo.'
@@ -53,15 +53,15 @@ function formatReminder(
   const catalogRule = autoGenerateImages
     ? ' usa solo personajes, fondos, sonidos y etiquetas listados para las líneas normales; para una imagen nueva utiliza la directiva Imagen indicada.'
     : ' usa solo personajes, fondos, sonidos y etiquetas listados.'
-  return `Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa \`Nombre [etiqueta][otra etiqueta]: texto\` para diálogo, con cada etiqueta visual en sus propios corchetes, \`Fondo [etiqueta]:\` solo cuando cambie el fondo y \`Sonido [etiqueta]:\` cuando deba reproducirse un sonido disponible. Las etiquetas combinadas deben pertenecer a la misma imagen del personaje.${imageGenerationFormat} Usa una línea sin prefijo para narración y${catalogRule}${protagonistFormat} Las etiquetas visuales representan el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje las últimas etiquetas usadas mientras su aspecto no cambie; no vuelvas a \`[neutral]\` por defecto en intervenciones posteriores. Usa otras etiquetas solo cuando la historia cambie realmente su aspecto o ropa.`
+  return `Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa \`Nombre [etiqueta][otra etiqueta]: texto\` para diálogo, con cada etiqueta visual en sus propios corchetes, y \`Pensamiento Nombre [etiqueta][otra etiqueta]: texto\` para pensamientos interiores no pronunciados de ese personaje. Los pensamientos son opcionales y usan las mismas etiquetas visuales que el diálogo; escribe solo su texto, sin paréntesis ni cursiva, porque la aplicación los presenta. Son pensamientos ficticios del personaje, nunca tu análisis o razonamiento. Usa \`Fondo [etiqueta]:\` solo cuando cambie el fondo y \`Sonido [etiqueta]:\` cuando deba reproducirse un sonido disponible. Las etiquetas combinadas deben pertenecer a la misma imagen del personaje.${imageGenerationFormat} Usa una línea sin prefijo para narración y${catalogRule}${protagonistFormat} Las etiquetas visuales representan el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje las últimas etiquetas usadas mientras su aspecto no cambie; no vuelvas a \`[neutral]\` por defecto en intervenciones posteriores. Usa otras etiquetas solo cuando la historia cambie realmente su aspecto o ropa.`
 }
 
 function continuationInstruction(generationMode: GenerationMode, userName: string) {
   if (generationMode === 'continue') {
-    return `Continúa la historia con el siguiente turno. Haz avanzar la escena mediante narración y acciones o diálogo de los otros personajes. No inventes acciones, decisiones ni diálogo para el protagonista "${userName}".`
+    return `Continúa la historia con el siguiente turno. Haz avanzar la escena mediante narración y acciones o diálogo de los otros personajes. No inventes acciones, decisiones, diálogo ni pensamientos para el protagonista "${userName}".`
   }
   if (generationMode === 'auto') {
-    return `Continúa la historia con el siguiente turno. Puedes inventar acciones, decisiones y diálogo para el protagonista "${userName}", además de hacer avanzar a los otros personajes.`
+    return `Continúa la historia con el siguiente turno. Puedes inventar acciones, decisiones, diálogo y pensamientos para el protagonista "${userName}", además de hacer avanzar a los otros personajes.`
   }
   return null
 }
@@ -228,8 +228,12 @@ export function buildSystemPrompt(options: {
       ? `Preferencias del protagonista:\n${protagonistPreferences.trim()}`
       : 'Preferencias del protagonista: (sin preferencias adicionales)',
     generationMode === 'auto'
-      ? `Puedes hablar y decidir por el protagonista. Escribe su diálogo como \`${userName}: texto\`, sin etiqueta visual, y sus acciones como narración.`
-      : 'No hables ni decidas por el protagonista; reacciona a lo que hace.',
+      ? `Puedes hablar y decidir por el protagonista. Escribe su diálogo como \`${userName}: texto\`, sin etiqueta visual, sus pensamientos como \`Pensamiento ${userName}: texto\`, también sin etiqueta visual, y sus acciones como narración.`
+      : 'No hables ni decidas por el protagonista; reacciona a lo que hace. No inventes sus pensamientos.',
+    '',
+    '## PENSAMIENTOS DE LOS PERSONAJES',
+    'Puedes mostrar un pensamiento interior no pronunciado de un personaje cuando encaje con la escena, sin exigir uno en cada respuesta. Usa una línea independiente `Pensamiento Nombre [etiqueta][otra etiqueta]: texto`, con el nombre exacto y las mismas etiquetas visuales que el diálogo.',
+    'Escribe el texto del pensamiento sin paréntesis ni markdown; la aplicación lo muestra en cursiva, entre paréntesis y con el color del personaje. Los demás personajes no lo oyen. No confundas estos pensamientos ficticios con tu propio análisis o razonamiento.',
     '',
     '## PERSONAJES',
     characters

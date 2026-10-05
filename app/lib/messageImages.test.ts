@@ -71,3 +71,17 @@ describe('reemplazo manual de imágenes en mensajes', () => {
     assert.deepEqual(result.map((segment) => segment.imageId), ['selected', 'selected'])
   })
 })
+
+it('reemplaza imágenes entre pensamientos y diálogos con las mismas etiquetas', () => {
+  const segments: MessageSegment[] = [
+    { type: 'dialogue', characterId: 'a', tag: 'feliz', imageId: 'before', text: 'Antes.' },
+    { type: 'thought', characterId: 'a', tag: 'feliz', imageId: 'old', text: 'Pienso.' },
+    { type: 'dialogue', characterId: 'a', tag: 'FELIZ', imageId: 'old', text: 'Hablo.' },
+    { type: 'thought', characterId: 'a', tag: 'seria', imageId: 'other', text: 'Cambio.' }
+  ]
+  const result = replaceFollowingMatchingDialogueImages(segments, 1, 'selected')
+  assert.deepEqual(result.map(segment => segment.imageId), ['before', 'selected', 'selected', 'other'])
+  assert.equal(result[1]?.imageIdOverride, true)
+  assert.equal(result[2]?.imageIdOverride, true)
+  assert.equal(result[1]?.type, 'thought')
+})

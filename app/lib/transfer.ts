@@ -590,7 +590,7 @@ export async function importBundle(raw: string) {
         segments: importSegments(message.segments ?? []).map((segment) => ({
           ...segment,
           tags:
-            segment.type === 'dialogue'
+            segment.type === 'dialogue' || segment.type === 'thought'
               ? sanitizeTags(segment.tags, segment.tag)
               : undefined,
           tag:
