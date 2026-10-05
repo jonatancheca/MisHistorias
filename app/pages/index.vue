@@ -177,42 +177,57 @@ async function reload() {
           <span class="mr-auto text-xs text-[var(--color-fg-muted)]">
             Editada {{ dateFormatter.format(story.updatedAt) }}
           </span>
-          <NuxtLink
-            v-if="!story.readOnly"
-            :to="{ path: '/stories/new', query: { copyFrom: story.id } }"
-            class="btn-ghost min-h-9 px-2.5 py-1.5"
-          >
-            Copiar
-          </NuxtLink>
-          <span v-if="!story.readOnly" class="group relative inline-flex">
-            <button
-              type="button"
-              class="btn-ghost inline-flex min-h-9 shrink-0 items-center px-2.5 py-1.5"
-              :aria-label="story.archived ? 'Desarchivar' : 'Archivar'"
-              :aria-describedby="`story-archive-tooltip-${story.id}`"
-              @click="setArchived(story.id, !story.archived)"
+          <div v-if="!story.readOnly" class="ml-auto flex shrink-0 items-center gap-2">
+            <NuxtLink
+              :to="{ path: '/stories/new', query: { copyFrom: story.id } }"
+              class="btn-ghost min-h-9 px-2.5 py-1.5"
             >
-              <svg v-if="story.archived" aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M4 7h16v13H4zM3 3h18v4H3zM12 16v-5m0 0-3 3m3-3 3 3" />
-              </svg>
-              <svg v-else aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
-              </svg>
-            </button>
-            <span
-              :id="`story-archive-tooltip-${story.id}`"
-              role="tooltip"
-              class="pointer-events-none invisible absolute right-0 bottom-full z-30 mb-2 w-max max-w-[calc(100vw-3rem)] rounded-lg bg-slate-950 px-3 py-2 text-xs leading-snug text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
-            >
-              {{ story.archived ? 'Desarchivar historia' : 'Archivar historia' }}
+              Copiar
+            </NuxtLink>
+            <span class="group relative inline-flex">
+              <button
+                type="button"
+                class="btn-ghost inline-flex min-h-9 shrink-0 items-center px-2.5 py-1.5"
+                :aria-label="story.archived ? 'Desarchivar' : 'Archivar'"
+                :aria-describedby="`story-archive-tooltip-${story.id}`"
+                @click="setArchived(story.id, !story.archived)"
+              >
+                <svg v-if="story.archived" aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 7h16v13H4zM3 3h18v4H3zM12 16v-5m0 0-3 3m3-3 3 3" />
+                </svg>
+                <svg v-else aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
+                </svg>
+              </button>
+              <span
+                :id="`story-archive-tooltip-${story.id}`"
+                role="tooltip"
+                class="pointer-events-none invisible absolute right-0 bottom-full z-30 mb-2 w-max max-w-[calc(100vw-3rem)] rounded-lg bg-slate-950 px-3 py-2 text-xs leading-snug text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+              >
+                {{ story.archived ? 'Desarchivar historia' : 'Archivar historia' }}
+              </span>
             </span>
-          </span>
-          <button
-            v-if="!story.readOnly"
-            type="button"
-            class="btn-danger min-h-9 px-2.5 py-1.5"
-            @click="remove(story.id)"
-          >Borrar</button>
+            <span class="group relative inline-flex">
+              <button
+                type="button"
+                class="btn-danger inline-flex min-h-9 shrink-0 items-center px-2.5 py-1.5"
+                aria-label="Borrar"
+                :aria-describedby="`story-delete-tooltip-${story.id}`"
+                @click="remove(story.id)"
+              >
+                <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6m4-6v6" />
+                </svg>
+              </button>
+              <span
+                :id="`story-delete-tooltip-${story.id}`"
+                role="tooltip"
+                class="pointer-events-none invisible absolute right-0 bottom-full z-30 mb-2 w-max max-w-[calc(100vw-3rem)] rounded-lg bg-slate-950 px-3 py-2 text-xs leading-snug text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+              >
+                Borrar historia
+              </span>
+            </span>
+          </div>
         </div>
       </li>
     </ul>

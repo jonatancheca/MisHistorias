@@ -1904,7 +1904,7 @@ onBeforeRouteLeave(() => {
               @click="generateContinuation('continue')"
             >
               <svg aria-hidden="true" class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 5 7 7-7 7" /></svg>
-              <span><strong>Sigue</strong><small>Tú decides</small></span>
+              <span><strong>Más</strong><small>Explica más</small></span>
             </button>
             <button
               type="button"
