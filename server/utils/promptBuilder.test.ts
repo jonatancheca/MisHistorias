@@ -659,3 +659,26 @@ test('historial y compactación distinguen pensamientos del diálogo', () => {
   const compacted = buildCompactionMessages({ messages, characters: [character], userName: 'Vera' })
   assert.equal(JSON.parse(compacted[1]!.content).history[0].content, content)
 })
+
+test('ausentes conservan descripción y omiten imágenes, prefijo de generación, sonidos e indicaciones pendientes', () => {
+  const options = {
+    presetContent: 'Narra.', story: { ...story, absentCharacterIds: [character.id], autoGenerateImages: true },
+    characters: [character],
+    images: [{ id: 'hidden-image', position: 0, characterId: character.id, tags: ['etiqueta-secreta'], isDefault: true, mimeType: 'image/png', createdAt: 1 }],
+    backgrounds: [],
+    sounds: [{ id: 'hidden-sound', characterId: character.id, backgroundId: null, tags: ['sonido-secreto'], mimeType: 'audio/ogg', createdAt: 1 }],
+    userName: 'Vera', protagonistPreferences: '', generationMode: 'normal' as const
+  }
+  const system = buildSystemPrompt(options)
+  assert.match(system, /Prompt exclusivo de la historia/)
+  assert.match(system, /misteriosa/)
+  assert.match(system, /AUSENTE de la escena/)
+  assert.match(system, /El protagonista está siempre presente/)
+  assert.doesNotMatch(system, /etiqueta-secreta|sonido-secreto|Etiqueta por defecto/)
+  const chat = buildChatMessages({ ...options, messages: [], historyBudget: 0, pendingImageInstructions: [{ characterId: character.id, imageId: 'hidden-image', tags: ['pendiente-secreta'] }] })
+  assert.ok(chat.every((message) => !message.content.includes('pendiente-secreta')))
+  const present = buildSystemPrompt({ ...options, story })
+  assert.match(present, /PRESENTE en la escena/)
+  assert.match(present, /etiqueta-secreta/)
+  assert.match(present, /sonido-secreto/)
+})

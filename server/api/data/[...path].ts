@@ -126,6 +126,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         (value.narrationStyle === undefined || value.narrationStyle === 'unspecified' ||
           value.narrationStyle === 'few' || value.narrationStyle === 'many') &&
         hasStringArray(value, 'characterIds') &&
+        (value.absentCharacterIds === undefined || hasStringArray(value, 'absentCharacterIds')) &&
         hasCharacterCustomizations(value) &&
         (value.initialBackgroundId === null || typeof value.initialBackgroundId === 'string') &&
         (value.backgroundStyle === undefined || value.backgroundStyle === null ||
@@ -144,6 +145,7 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         (value.role === 'user' || value.role === 'assistant') &&
         hasString(value, 'raw') &&
         Array.isArray(value.segments) &&
+        (value.absentCharacterIds === undefined || hasStringArray(value, 'absentCharacterIds')) &&
         (value.swarmError === undefined || Boolean(readStorySwarmError(value.swarmError))) &&
         hasNumber(value, 'createdAt')
       break

@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 251, completedAt: '2026-10-05', summary: 'Presencia manual de personajes desde la creación y durante la historia, con controles en Chat y Más opciones; ausentes descritos al LLM sin imágenes ni sonidos ni intervención en escena, ocultos en Novela Visual sin alterar cuadros anteriores y conservados en partidas, transferencias y backups.' },
   { issue: 250, completedAt: '2026-10-05', summary: 'Avisos sonoros distintos al recibir texto del narrador o un error definitivo tras más de un segundo, en Chat y Novela Visual y también en segundo plano; ajuste personal compartido entre normal y privado, sin avisos por cancelación ni reintentos intermedios.' },
   { issue: 249, completedAt: '2026-10-05', summary: 'Texto original de respuestas completas del narrador en Chat y Novela Visual, incluidas directivas de imagen; se conserva tras editar, recargar, guardar partidas o transferir historias y recupera respuestas antiguas desde sus trazas disponibles.' },
   { issue: 246, completedAt: '2026-10-05', summary: 'Botones Comprobar ahora y Ver historial de cambios agrupados al pie de Actualizaciones, con iconos y salto de línea en móvil.' },

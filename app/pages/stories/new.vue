@@ -67,6 +67,7 @@ const selected = ref<string[]>(
     )
   }) ?? []
 )
+const absentCharacterIds = ref<string[]>((copiedStory?.absentCharacterIds ?? []).filter((id) => selected.value.includes(id)))
 const characterCustomizations = ref<StoryCharacterCustomization[]>(copiedCustomizations)
 const initialBackgroundId = ref<string | null>(
   copiedStory && backgrounds.byId(copiedStory.initialBackgroundId)
@@ -94,6 +95,7 @@ async function submit() {
       dialogueStyle: dialogueStyle.value,
       narrationStyle: narrationStyle.value,
       characterIds: selected.value,
+      absentCharacterIds: absentCharacterIds.value,
       characterCustomizations: characterCustomizations.value.map((customization) => ({
         ...customization,
         tags: [...customization.tags]
@@ -130,9 +132,11 @@ async function submit() {
         v-model:dialogue-style="dialogueStyle"
         v-model:narration-style="narrationStyle"
         v-model:character-ids="selected"
+        v-model:absent-character-ids="absentCharacterIds"
         v-model:character-customizations="characterCustomizations"
         v-model:initial-background-id="initialBackgroundId"
         v-model:background-style="backgroundStyle"
+        show-presence
         id-prefix="story-character"
       />
 

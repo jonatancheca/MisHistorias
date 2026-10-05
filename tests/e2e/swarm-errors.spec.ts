@@ -62,7 +62,10 @@ test('selecciona y persiste el modelo real; diagnóstico único, copiable y tran
   const llmBodies: unknown[] = []
   await page.route('**/api/llm/chat', (route) => {
     llmBodies.push(route.request().postDataJSON())
-    return route.fulfill({ json: { content: llmBodies.length === 1 ? DIRECTIVE : 'La historia continúa.', finishReason: 'stop' } })
+    const body = route.request().postDataJSON()
+    const continuing = body.messages.at(-1)?.content.endsWith('Sigue.')
+    // La respuesta solo Imagen se mantiene también durante el reintento automático sin texto.
+    return route.fulfill({ json: { content: continuing ? 'La historia continúa.' : DIRECTIVE, finishReason: 'stop' } })
   })
   await page.goto(`/characters/${character.id}`)
   await page.getByTestId('character-swarm-toggle').click()
@@ -108,8 +111,8 @@ test('selecciona y persiste el modelo real; diagnóstico único, copiable y tran
   await page.getByPlaceholder('Escribe lo que haces o dices…').fill('Sigue.')
   await page.getByRole('button', { name: 'Enviar', exact: true }).click()
   await expect(page.getByText('La historia continúa.', { exact: true })).toBeVisible()
-  expect(JSON.stringify(llmBodies[1])).not.toContain('No model input given.')
-  expect(JSON.stringify(llmBodies[1])).not.toContain('/API/GenerateText2Image')
+  expect(JSON.stringify(llmBodies.at(-1))).not.toContain('No model input given.')
+  expect(JSON.stringify(llmBodies.at(-1))).not.toContain('/API/GenerateText2Image')
   const slotResponse = await page.request.post(`/api/data/storySaves/${story.id}/create?scope=normal`, {
     data: { name: 'Diagnóstico 146', thumbnailDataUrl: 'data:image/webp;base64,UklGRg==' }
   })
@@ -127,7 +130,7 @@ test('selecciona y persiste el modelo real; diagnóstico único, copiable y tran
   const downloadEvent = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Exportar JSON', exact: true }).click()
   const bundle = JSON.parse(await readFile((await (await downloadEvent).path())!, 'utf8'))
-  expect(bundle.version).toBe(26)
+  expect(bundle.version).toBe(27)
   const exportedStory = bundle.stories.find((item: Story) => item.title === story.title)
   expect(exportedStory.archived).toBe(true)
   expect(exportedStory.messages.find((message: Message) => message.swarmError).swarmError).toEqual(diagnostic.swarmError)

@@ -189,7 +189,7 @@ Nombre que identifica a un personaje del elenco o al protagonista dentro de una 
 _Evitar_: Nombre del catálogo, etiqueta de imagen
 
 **Elenco activo**:
-Personajes que participan en las nuevas respuestas de una historia, en el orden en que fueron añadidos.
+Personajes vinculados actualmente a una historia, en el orden en que fueron añadidos. Pueden estar presentes o ausentes en su escena.
 _Evitar_: Todos los personajes personalizados, catálogo de personajes
 
 **Personalización recordada**:
@@ -203,3 +203,11 @@ _Evitar_: Error de conexión, texto oculto en pantalla
 **Reintento de respuesta**:
 Repetición de la última acción del narrador que falló, iniciada automáticamente ante una respuesta narrativa vacía o solicitada por el usuario. Conserva el historial válido anterior y no duplica el mensaje del usuario.
 _Evitar_: Reenvío de mensaje, regeneración de respuesta
+
+**Presencia en escena**:
+Condición de un personaje del elenco activo que distingue si participa en la situación narrativa actual o permanece fuera de ella. La decide el usuario y se mantiene hasta que vuelva a cambiarla; el protagonista está siempre presente.
+_Evitar_: Pertenencia al elenco, imagen visible
+
+**Personaje ausente**:
+Personaje del elenco activo conocido por la historia, pero que no interviene con acciones, diálogos ni pensamientos en su escena actual. Puede ser mencionado sin estar presente.
+_Evitar_: Personaje eliminado, personaje desconocido, personaje oculto por falta de espacio

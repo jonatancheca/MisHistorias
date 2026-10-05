@@ -11,8 +11,12 @@ const props = defineProps<{
   backgroundId: string | null
   backgroundTag: string | null
   characterNames?: Record<string, string>
+  absentCharacterIds?: string[]
+  presenceDisabled?: boolean
+  presenceEditable?: boolean
 }>()
 
+const emit = defineEmits<{ changePresence: [characterId: string, present: boolean] }>()
 const characters = useCharactersStore()
 const backgrounds = useBackgroundsStore()
 const currentBackground = computed(() => backgrounds.byId(props.backgroundId))
@@ -77,8 +81,9 @@ function galleryItems(characterId: string) {
     <div
       v-for="character in cast"
       :key="character.id"
+      :data-character-id="character.id"
       class="rounded-xl border p-2 transition"
-      :class="character.id === activeCharacterId ? '' : 'border-[var(--color-border-soft)] opacity-60'"
+      :class="absentCharacterIds?.includes(character.id) ? 'border-[var(--color-border-soft)] opacity-40 grayscale' : character.id === activeCharacterId ? '' : 'border-[var(--color-border-soft)] opacity-60'"
       :style="
         character.id === activeCharacterId
           ? { borderColor: characters.colorOf(character.id), backgroundColor: `${characters.colorOf(character.id)}1a` }
@@ -98,6 +103,16 @@ function galleryItems(characterId: string) {
       <p class="mt-2 truncate text-sm font-semibold" :style="{ color: characters.colorOf(character.id) }">
         {{ characterName(character.id) }}
       </p>
+      <button
+        v-if="presenceEditable"
+        type="button"
+        role="switch"
+        :aria-label="'Presencia de ' + characterName(character.id)"
+        :aria-checked="!absentCharacterIds?.includes(character.id)"
+        :disabled="presenceDisabled"
+        class="btn-ghost mt-2 min-h-11 w-full text-xs"
+        @click="emit('changePresence', character.id, absentCharacterIds?.includes(character.id) === true)"
+      >{{ absentCharacterIds?.includes(character.id) ? 'Ausente' : 'Presente' }}</button>
       <p class="truncate text-xs text-[var(--color-fg-muted)]">
         {{ currentTag(character.id) ? `[${currentTag(character.id)}]` : 'sin imagen' }}
       </p>

@@ -12,6 +12,7 @@ import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path'
 import { DatabaseSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite'
 import { inspectBackupDatabase, inspectBackupsInBackground } from './backupInspection.ts'
 import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
+import { normalizeAbsentCharacterIds } from '../../shared/utils/characterPresence.ts'
 import { readStorySwarmError } from '../../shared/utils/swarmError.ts'
 import type {
   AccessConfiguration,
@@ -124,7 +125,7 @@ type SqliteRow<Columns extends string = never> = Record<string, SQLOutputValue> 
     scope: DataScope
   }
 
-const SCHEMA_VERSION = 45
+const SCHEMA_VERSION = 46
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 const ERROR_TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
@@ -421,6 +422,7 @@ function rowToStory(row: SqliteRow): Story {
       ? row.narration_style
       : 'unspecified',
     characterIds: parseJson<string[]>(row.character_ids_json, []),
+    absentCharacterIds: normalizeAbsentCharacterIds(parseJson(row.absent_character_ids_json, []), parseJson<string[]>(row.character_ids_json, [])),
     characterCustomizations: parseJson<Story['characterCustomizations']>(row.character_customizations_json, []),
     initialBackgroundId:
       typeof row.initial_background_id === 'string' ? row.initial_background_id : null,
@@ -451,6 +453,7 @@ function rowToMessage(row: SqliteRow): Message & { readOnly?: boolean } {
     raw: text(row.raw),
     ...(typeof row.original_raw === 'string' ? { originalRaw: row.original_raw } : {}),
     segments: parseJson<Message['segments']>(row.segments_json, []),
+    ...(row.absent_character_ids_json != null ? { absentCharacterIds: stringArray(parseJson(row.absent_character_ids_json, [])) } : {}),
     ...(swarmError ? { swarmError } : {}),
     createdAt: integer(row.created_at)
   }
@@ -1797,6 +1800,17 @@ export class MisHistoriasStorage {
         `)
       }
 
+      if (version.user_version < 46) {
+        const storyColumns = this.database.prepare('PRAGMA table_info(stories)').all() as Array<{ name: string }>
+        if (!storyColumns.some((column) => column.name === 'absent_character_ids_json')) {
+          this.database.exec("ALTER TABLE stories ADD COLUMN absent_character_ids_json TEXT NOT NULL DEFAULT '[]'")
+        }
+        const messageColumns = this.database.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
+        if (!messageColumns.some((column) => column.name === 'absent_character_ids_json')) {
+          this.database.exec('ALTER TABLE messages ADD COLUMN absent_character_ids_json TEXT')
+        }
+      }
+
       this.database.exec(`
         CREATE TRIGGER IF NOT EXISTS images_cleanup_blob_after_delete
         AFTER DELETE ON images
@@ -2913,6 +2927,7 @@ export class MisHistoriasStorage {
           storyId,
           raw: rewriteDirectives(message.raw),
           segments: mappedSegments,
+          ...(message.absentCharacterIds ? { absentCharacterIds: message.absentCharacterIds.flatMap((id) => characterIdMap.get(id) ?? []) } : {}),
           swarmError
         }
       }
@@ -2928,6 +2943,7 @@ export class MisHistoriasStorage {
             const mapped = characterIdMap.get(id)
             return mapped ? [mapped] : []
           }),
+          absentCharacterIds: (story.absentCharacterIds ?? []).flatMap((id) => characterIdMap.get(id) ?? []),
           characterCustomizations: story.characterCustomizations.flatMap((customization) => {
             const mapped = characterIdMap.get(customization.characterId)
             return mapped ? [{ ...customization, characterId: mapped }] : []
@@ -3030,8 +3046,8 @@ export class MisHistoriasStorage {
           character_ids_json, character_customizations_json, initial_background_id,
           background_style, preset_id, image_catalog_snapshot_json,
           pending_image_instructions_json, context_summary,
-          context_summary_through_message_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          context_summary_through_message_id, created_at, updated_at, absent_character_ids_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         scope, access.ownerId, copiedStory.id, copiedStory.title, copiedStory.premise,
         bool(copiedStory.visualMode), bool(copiedStory.autoGenerateImages), bool(copiedStory.archived),
@@ -3043,19 +3059,21 @@ export class MisHistoriasStorage {
         copiedStory.backgroundStyle ?? null, copiedStory.presetId ?? null,
         copiedStory.imageCatalogSnapshot === undefined ? null : json(copiedStory.imageCatalogSnapshot),
         json(copiedStory.pendingImageInstructions ?? []), copiedStory.contextSummary ?? '',
-        copiedStory.contextSummaryThroughMessageId ?? null, copiedStory.createdAt, copiedStory.updatedAt
+        copiedStory.contextSummaryThroughMessageId ?? null, copiedStory.createdAt, copiedStory.updatedAt,
+        json(copiedStory.absentCharacterIds ?? [])
       )
 
       const copiedMessages = sourceMessages.map(mapMessage)
       const insertMessage = this.database.prepare(`
         INSERT INTO messages(
-          scope, owner_id, id, story_id, role, raw, original_raw, segments_json, swarm_error_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          scope, owner_id, id, story_id, role, raw, original_raw, segments_json, swarm_error_json, created_at, absent_character_ids_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const message of copiedMessages) {
         insertMessage.run(
           scope, access.ownerId, message.id, storyId, message.role, message.raw, message.originalRaw ?? null,
-          json(message.segments), message.swarmError ? json(message.swarmError) : null, message.createdAt
+          json(message.segments), message.swarmError ? json(message.swarmError) : null, message.createdAt,
+          message.absentCharacterIds ? json(message.absentCharacterIds) : null
         )
       }
 
@@ -3281,8 +3299,8 @@ export class MisHistoriasStorage {
               dialogue_style, narration_style,
               initial_background_id, background_style, preset_id, image_catalog_snapshot_json,
               pending_image_instructions_json, context_summary,
-              context_summary_through_message_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              context_summary_through_message_id, created_at, updated_at, absent_character_ids_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
@@ -3295,6 +3313,7 @@ export class MisHistoriasStorage {
               dialogue_style = excluded.dialogue_style,
               narration_style = excluded.narration_style,
               character_ids_json = excluded.character_ids_json,
+              absent_character_ids_json = excluded.absent_character_ids_json,
               character_customizations_json = excluded.character_customizations_json,
               initial_background_id = excluded.initial_background_id,
               background_style = excluded.background_style,
@@ -3336,20 +3355,22 @@ export class MisHistoriasStorage {
               ? value.contextSummaryThroughMessageId
               : null,
             integer(value.createdAt),
-            integer(value.updatedAt)
+            integer(value.updatedAt),
+            json(normalizeAbsentCharacterIds(value.absentCharacterIds, stringArray(value.characterIds)))
           )
         break
       case 'messages':
         this.database
           .prepare(`
-            INSERT INTO messages(scope, owner_id, id, story_id, role, raw, original_raw, segments_json, swarm_error_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO messages(scope, owner_id, id, story_id, role, raw, original_raw, segments_json, swarm_error_json, created_at, absent_character_ids_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               story_id = excluded.story_id,
               role = excluded.role,
               raw = excluded.raw,
               original_raw = COALESCE(messages.original_raw, excluded.original_raw),
               segments_json = excluded.segments_json,
+              absent_character_ids_json = excluded.absent_character_ids_json,
               swarm_error_json = excluded.swarm_error_json,
               created_at = excluded.created_at
           `)
@@ -3363,7 +3384,8 @@ export class MisHistoriasStorage {
             typeof value.originalRaw === 'string' ? value.originalRaw : null,
             json(Array.isArray(value.segments) ? value.segments : []),
             readStorySwarmError(value.swarmError) ? json(readStorySwarmError(value.swarmError)) : null,
-            integer(value.createdAt)
+            integer(value.createdAt),
+            Array.isArray(value.absentCharacterIds) ? json(stringArray(value.absentCharacterIds)) : null
           )
         break
       case 'llmDebugTraces':

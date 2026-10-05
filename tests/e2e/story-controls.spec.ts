@@ -21,7 +21,7 @@ for (const width of [320, 390, 639, 640, 768, 1024, 1280]) {
       await tools.press('Enter')
       await expect(panel).toBeVisible()
       await tools.press('Tab')
-      await expect(page.getByRole('button', { name: 'Partidas', exact: true })).toBeFocused()
+      await expect(page.getByRole('button', { name: 'Personajes', exact: true })).toBeFocused()
       await page.keyboard.press('Escape')
       await expect(panel).toBeHidden()
       await expect(tools).toBeFocused()

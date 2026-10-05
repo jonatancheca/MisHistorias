@@ -12,6 +12,7 @@ withDefaults(defineProps<{
   idPrefix: string
   titleRequired?: boolean
   showVisibleInDemo?: boolean
+  showPresence?: boolean
 }>(), {
   titleRequired: false,
   showVisibleInDemo: false
@@ -25,6 +26,7 @@ const protagonistPreferences = defineModel<string>('protagonistPreferences', { r
 const protagonistPreferencesMode = defineModel<'append' | 'replace'>('protagonistPreferencesMode', { required: true })
 const dialogueStyle = defineModel<ResponseStyleAmount>('dialogueStyle', { required: true })
 const narrationStyle = defineModel<ResponseStyleAmount>('narrationStyle', { required: true })
+const absentCharacterIds = defineModel<string[]>('absentCharacterIds', { default: () => [] })
 const characterIds = defineModel<string[]>('characterIds', { required: true })
 const characterCustomizations = defineModel<StoryCharacterCustomization[]>('characterCustomizations', { required: true })
 const initialBackgroundId = defineModel<string | null>('initialBackgroundId', { required: true })
@@ -202,6 +204,7 @@ function characterLabel(characterId: string) {
 }
 
 watch(characterIds, (ids) => {
+  absentCharacterIds.value = absentCharacterIds.value.filter((id) => ids.includes(id))
   ids.forEach(ensureCustomization)
 }, { immediate: true })
 </script>
@@ -425,6 +428,16 @@ watch(characterIds, (ids) => {
               </button>
             </div>
           </div>
+          <label v-if="showPresence" class="flex min-h-11 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              class="h-4 w-4"
+              :aria-label="'Presente al comenzar: ' + characterLabel(character.id)"
+              :checked="!absentCharacterIds.includes(character.id)"
+              @change="absentCharacterIds = ($event.target as HTMLInputElement).checked ? absentCharacterIds.filter((id) => id !== character.id) : [...absentCharacterIds, character.id]"
+            >
+            {{ absentCharacterIds.includes(character.id) ? 'Ausente al comenzar' : 'Presente al comenzar' }}
+          </label>
           <div class="flex flex-wrap gap-1 text-[0.68rem] text-[var(--color-fg-muted)]">
             <span v-if="character.archived" class="rounded-full border border-[var(--color-border-soft)] px-1.5 py-0.5">Archivado</span>
             <span class="rounded-full bg-brand-500/15 px-1.5 py-0.5 text-brand-600">En el elenco</span>

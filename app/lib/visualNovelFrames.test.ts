@@ -430,3 +430,30 @@ it('pensamientos forman cuadros y actualizan el personaje activo sin convertirlo
   assert.deepEqual(frames[3]?.characterStates, frames[2]?.characterStates)
   assert.equal(frames[1]?.characterStates[0]?.imageId, 'neutral')
 })
+
+describe('presencia histórica y vista previa de continuación', () => {
+  it('mantiene snapshots anteriores, fondo y aspecto al salir y regresar sin reescribir mensajes', () => {
+    const first = { ...messages[1]!, absentCharacterIds: [] }
+    const second: Message = { ...first, id: 'second', createdAt: 3, absentCharacterIds: ['alicia'], segments: [{ type: 'narration', characterId: null, tag: null, text: 'Una pausa.' }] }
+    const frames = buildVisualNovelFrames([first, second], { initialBackgroundId: null, initialBackgroundTag: null, currentAbsentCharacterIds: [] })
+    assert.deepEqual(frames[0]?.absentCharacterIds, [])
+    assert.deepEqual(frames.at(-2)?.absentCharacterIds, ['alicia'])
+    assert.equal(frames.at(-1)?.kind, 'presence')
+    assert.deepEqual(frames.at(-1)?.absentCharacterIds, [])
+    assert.equal(frames.at(-1)?.backgroundId, 'forest')
+    assert.deepEqual(frames.at(-1)?.characterStates, frames.at(-2)?.characterStates)
+    assert.equal(second.absentCharacterIds?.[0], 'alicia')
+  })
+  it('historias antiguas implican todos presentes y no añaden vista previa innecesaria', () => {
+    const frames = buildVisualNovelFrames(messages, { initialBackgroundId: null, initialBackgroundTag: null, currentAbsentCharacterIds: [] })
+    assert.ok(frames.every((frame) => frame.kind !== 'presence'))
+    assert.ok(frames.every((frame) => frame.absentCharacterIds?.length === 0))
+  })
+})
+
+it('mantiene vista previa si una instrucción oculta ya tiene la presencia actual', () => {
+  const instruction: Message = { ...messages[0]!, id: 'hidden-presence', createdAt: 3, raw: 'IA: espera.', absentCharacterIds: ['alicia'] }
+  const frames = buildVisualNovelFrames([messages[1]!, instruction], { initialBackgroundId: null, initialBackgroundTag: null, currentAbsentCharacterIds: ['alicia'] })
+  assert.equal(frames.at(-1)?.kind, 'presence')
+  assert.deepEqual(frames.at(-1)?.absentCharacterIds, ['alicia'])
+})

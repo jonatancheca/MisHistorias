@@ -1,0 +1,3 @@
+# Presencia manual de personajes conservada en el historial
+
+La presencia en escena pertenece a cada historia y la decide el usuario, desde su creación y durante su continuación, sin retirar personajes del elenco ni permitir que el narrador cambie ese estado. Cada respuesta conserva la presencia vigente en su momento para que una salida posterior no altere cuadros anteriores; el estado actual se conserva en partidas, exportaciones y backups, y un cambio de fondo no lo restablece. Los personajes ausentes siguen siendo conocidos por sus descripciones, pero no intervienen ni aportan sus catálogos de imágenes y sonidos al narrador, y el protagonista permanece siempre presente.

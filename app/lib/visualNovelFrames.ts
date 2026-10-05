@@ -16,7 +16,7 @@ export interface VisualNovelFrame {
   id: string
   messageId: string | null
   segmentIndex: number | null
-  kind: 'user' | 'dialogue' | 'protagonist-dialogue' | 'thought' | 'protagonist-thought' | 'narration' | 'sound' | 'compaction'
+  kind: 'presence' | 'user' | 'dialogue' | 'protagonist-dialogue' | 'thought' | 'protagonist-thought' | 'narration' | 'sound' | 'compaction'
   text: string
   compactionTrace?: LlmDebugTrace
   soundId?: string | null
@@ -24,6 +24,7 @@ export interface VisualNovelFrame {
   backgroundId: string | null
   backgroundTag: string | null
   characterStates: VisualNovelCharacterState[]
+  absentCharacterIds?: string[]
 }
 
 interface BuildVisualNovelFramesOptions {
@@ -32,6 +33,7 @@ interface BuildVisualNovelFramesOptions {
   resolveBackgroundId?: (tag: string | null) => string | null
   resolveSoundId?: (tag: string | null) => string | null
   compactionTraces?: LlmDebugTrace[]
+  currentAbsentCharacterIds?: string[]
 }
 
 function hasBackgroundId(segment: MessageSegment) {
@@ -83,6 +85,7 @@ export function buildVisualNovelFrames(
   let backgroundId = options.initialBackgroundId
   let backgroundTag = options.initialBackgroundTag
   let characterStates: VisualNovelCharacterState[] = []
+  let absentCharacterIds: string[] = []
 
   type Item = { message: Message; createdAt: number } | { trace: LlmDebugTrace; createdAt: number }
   const items: Item[] = messages.map((message) => ({ message, createdAt: message.createdAt }))
@@ -111,12 +114,14 @@ export function buildVisualNovelFrames(
         compactionTrace: trace,
         backgroundId,
         backgroundTag,
-        characterStates: cloneCharacterStates(characterStates)
+        characterStates: cloneCharacterStates(characterStates),
+        absentCharacterIds: [...absentCharacterIds]
       })
       continue
     }
     const message = item.message
     if (message.swarmError) continue
+    absentCharacterIds = [...(message.absentCharacterIds ?? [])]
     if (message.role === 'user') {
       if (isAiInstruction(message.raw)) continue
       const visibleText = stripBracketedText(message.raw)
@@ -129,7 +134,8 @@ export function buildVisualNovelFrames(
           text: visibleText,
           backgroundId,
           backgroundTag,
-          characterStates: cloneCharacterStates(characterStates)
+          characterStates: cloneCharacterStates(characterStates),
+          absentCharacterIds: [...absentCharacterIds]
         })
       }
       continue
@@ -156,7 +162,8 @@ export function buildVisualNovelFrames(
           soundTag: segment.tag,
           backgroundId,
           backgroundTag,
-          characterStates: cloneCharacterStates(characterStates)
+          characterStates: cloneCharacterStates(characterStates),
+          absentCharacterIds: [...absentCharacterIds]
         })
         return
       }
@@ -195,10 +202,21 @@ export function buildVisualNovelFrames(
         text: visibleText,
         backgroundId,
         backgroundTag,
-        characterStates: cloneCharacterStates(characterStates)
+        characterStates: cloneCharacterStates(characterStates),
+        absentCharacterIds: [...absentCharacterIds]
       })
     })
   }
 
+  const current = options.currentAbsentCharacterIds
+  const lastFrameAbsent = frames.at(-1)?.absentCharacterIds ?? []
+  if (frames.length && current && (current.length !== lastFrameAbsent.length || current.some((id) => !lastFrameAbsent.includes(id)))) {
+    frames.push({
+      id: 'presence:current', messageId: null, segmentIndex: null, kind: 'presence',
+      text: 'Presencia en escena para la próxima respuesta.',
+      backgroundId, backgroundTag, characterStates: cloneCharacterStates(characterStates),
+      absentCharacterIds: [...current]
+    })
+  }
   return frames
 }

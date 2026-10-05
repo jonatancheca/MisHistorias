@@ -122,7 +122,7 @@ test('exporta e importa el archivado y acepta fondos antiguos como activos', asy
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Exportar JSON', exact: true }).click()
   const bundle = JSON.parse(await readFile((await (await download).path())!, 'utf8'))
-  expect(bundle.version).toBe(26)
+  expect(bundle.version).toBe(27)
   const exported = bundle.backgrounds.find((item: Background) => item.id === background.id)
   expect(exported.archived).toBe(true)
   const importedTag = data.unique('importado-archivado')

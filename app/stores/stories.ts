@@ -1,3 +1,4 @@
+import { normalizeAbsentCharacterIds, presentCharacterIds } from '#shared/utils/characterPresence'
 import { defineStore } from 'pinia'
 import { reportClientErrorTrace } from '~/lib/errorTraces'
 import type {
@@ -150,7 +151,7 @@ function validPendingImageInstructions(
   story: Story,
   images: CharacterImage[]
 ): StoryPendingImageInstruction[] {
-  const storyCharacters = new Set(story.characterIds)
+  const storyCharacters = new Set(presentCharacterIds(story))
   const imagesById = new Map(images.map((image) => [image.id, image]))
   return (story.pendingImageInstructions ?? []).filter((instruction) => {
     const image = imagesById.get(instruction.imageId)
@@ -539,6 +540,7 @@ export const useStoriesStore = defineStore('stories', () => {
     dialogueStyle: ResponseStyleAmount
     narrationStyle: ResponseStyleAmount
     characterIds: string[]
+    absentCharacterIds?: string[]
     characterCustomizations: StoryCharacterCustomization[]
     initialBackgroundId: string | null
     backgroundStyle: string | null
@@ -559,6 +561,7 @@ export const useStoriesStore = defineStore('stories', () => {
       dialogueStyle: input.dialogueStyle,
       narrationStyle: input.narrationStyle,
       characterIds: [...input.characterIds],
+      absentCharacterIds: normalizeAbsentCharacterIds(input.absentCharacterIds, input.characterIds),
       characterCustomizations: normalizeCharacterCustomizations(
         input.characterIds,
         charactersStore.characters,
@@ -567,7 +570,7 @@ export const useStoriesStore = defineStore('stories', () => {
       initialBackgroundId: input.initialBackgroundId,
       backgroundStyle: normalizeBackgroundStyle(input.backgroundStyle) || null,
       imageCatalogSnapshot: buildStoryImageCatalog(
-        input.characterIds,
+        presentCharacterIds(input),
         charactersStore.characters,
         charactersStore.images
       ),
@@ -808,6 +811,7 @@ export const useStoriesStore = defineStore('stories', () => {
       id: newId(),
       storyId: activeStory.value.id,
       role: 'user',
+      absentCharacterIds: [...(activeStory.value.absentCharacterIds ?? [])],
       raw: text.trim(),
       segments: [],
       createdAt: Date.now()
@@ -1174,11 +1178,11 @@ export const useStoriesStore = defineStore('stories', () => {
     )
     const storySounds = sounds.sounds.filter(sound =>
       (!usePrivacyStore().isDemo && !sound.characterId && !sound.backgroundId) ||
-      Boolean(sound.characterId && storyCharacters.some(character => character.id === sound.characterId)) ||
+      Boolean(sound.characterId && presentCharacterIds(story).includes(sound.characterId) && storyCharacters.some(character => character.id === sound.characterId)) ||
       Boolean(sound.backgroundId && storyBackgrounds.some(background => background.id === sound.backgroundId))
     )
-    const catalog = buildStoryImageCatalog(story.characterIds, characters.characters, characters.images)
-    const catalogChange = story.imageCatalogSnapshot ? compareStoryImageCatalogs(story.imageCatalogSnapshot, catalog) : null
+    const catalog = buildStoryImageCatalog(presentCharacterIds(story), characters.characters, characters.images)
+    const catalogChange = story.imageCatalogSnapshot ? compareStoryImageCatalogs(story.imageCatalogSnapshot.filter((entry) => presentCharacterIds(story).includes(entry.characterId)), catalog) : null
     const chatOptions: Parameters<typeof buildChatMessages>[0] = {
       story, presetContent: settings.activeNarrativePrompt, characters: storyCharacters,
       images: characters.images, backgrounds: storyBackgrounds, sounds: storySounds,
@@ -1383,6 +1387,7 @@ export const useStoriesStore = defineStore('stories', () => {
       dialogueStyle,
       narrationStyle,
       characterIds: [...characterIds],
+      absentCharacterIds: normalizeAbsentCharacterIds(activeStory.value.absentCharacterIds, characterIds),
       characterCustomizations: normalizeCharacterCustomizations(
         characterIds,
         charactersStore.characters,
@@ -1397,6 +1402,25 @@ export const useStoriesStore = defineStore('stories', () => {
     await putStory(updated)
     activeStory.value = updated
     stories.value = stories.value.map((story) => (story.id === updated.id ? updated : story))
+  }
+
+  async function setCharacterPresence(characterId: string, present: boolean) {
+    const story = activeStory.value
+    if (!story || story.readOnly || generating.value || deletingCompaction.value || !story.characterIds.includes(characterId)) return
+    const scope = getActiveDataScope()
+    const absent = new Set(normalizeAbsentCharacterIds(story.absentCharacterIds, story.characterIds))
+    if (present) absent.delete(characterId)
+    else absent.add(characterId)
+    const updated: Story = {
+      ...story,
+      absentCharacterIds: normalizeAbsentCharacterIds([...absent], story.characterIds),
+      pendingImageInstructions: (story.pendingImageInstructions ?? []).filter((instruction) => !absent.has(instruction.characterId)),
+      updatedAt: Date.now()
+    }
+    await putStoryInScope(updated, scope)
+    if (scope !== getActiveDataScope() || activeStory.value?.id !== story.id) return
+    activeStory.value = updated
+    stories.value = stories.value.map((entry) => entry.id === story.id ? updated : entry)
   }
 
   async function setVisualMode(visualMode: boolean) {
@@ -1747,6 +1771,7 @@ export const useStoriesStore = defineStore('stories', () => {
       role: 'assistant',
       raw: '',
       segments: [],
+      absentCharacterIds: [...(story.absentCharacterIds ?? [])],
       generationMode,
       createdAt: Date.now()
     }
@@ -1770,7 +1795,7 @@ export const useStoriesStore = defineStore('stories', () => {
       if (scope !== getActiveDataScope() || activeStory.value?.id !== story.id) return
       await persistImageCatalogSnapshot(
         story,
-        buildStoryImageCatalog(story.characterIds, charactersStore.characters, charactersStore.images),
+        buildStoryImageCatalog(presentCharacterIds(story), charactersStore.characters, charactersStore.images),
         scope,
         signal
       )
@@ -1844,7 +1869,7 @@ export const useStoriesStore = defineStore('stories', () => {
           (!privacy.isDemo && !sound.characterId && !sound.backgroundId) ||
           Boolean(
             sound.characterId &&
-            story.characterIds.includes(sound.characterId) &&
+            presentCharacterIds(story).includes(sound.characterId) &&
             storyCharacters.some((character) => character.id === sound.characterId)
           ) ||
           Boolean(
@@ -1853,18 +1878,18 @@ export const useStoriesStore = defineStore('stories', () => {
           )
       )
       const currentImageCatalog = buildStoryImageCatalog(
-        story.characterIds,
+        presentCharacterIds(story),
         charactersStore.characters,
         charactersStore.images
       )
       const imageCatalogChange = story.imageCatalogSnapshot
-        ? compareStoryImageCatalogs(story.imageCatalogSnapshot, currentImageCatalog)
+        ? compareStoryImageCatalogs(story.imageCatalogSnapshot.filter((entry) => presentCharacterIds(story).includes(entry.characterId)), currentImageCatalog)
         : null
       if (!story.imageCatalogSnapshot) {
         await persistImageCatalogSnapshot(story, currentImageCatalog, scope)
       }
 
-      imageCharacters = storyCharacters
+      imageCharacters = storyCharacters.filter((character) => presentCharacterIds(story).includes(character.id))
 
       const requestMessages = options.pendingUserMessage
         ? [...messages.value, options.pendingUserMessage]
@@ -1936,7 +1961,7 @@ export const useStoriesStore = defineStore('stories', () => {
 
       if (mock) {
         raw = buildMockResponse(
-          storyCharacters,
+          imageCharacters,
           charactersStore.images,
           storyBackgrounds,
           storySounds,
@@ -2029,7 +2054,7 @@ export const useStoriesStore = defineStore('stories', () => {
       if (!generationStillActive()) return
       const parsedImageResponse = parseStoryImageRequests(
         raw,
-        storyCharacters,
+        imageCharacters,
         story.autoGenerateImages === true
       )
       assistantMessage.originalRaw = raw
@@ -2096,7 +2121,7 @@ export const useStoriesStore = defineStore('stories', () => {
             if (!generationStillActive()) return
             await persistImageCatalogSnapshot(
               story,
-              buildStoryImageCatalog(story.characterIds, charactersStore.characters, charactersStore.images),
+              buildStoryImageCatalog(presentCharacterIds(story), charactersStore.characters, charactersStore.images),
               scope,
               requestController.signal
             )
@@ -2288,7 +2313,7 @@ export const useStoriesStore = defineStore('stories', () => {
       consumePendingImageInstructions: true,
       pendingUserMessage: {
         id: newId(), storyId: activeStory.value.id, role: 'user',
-        raw: text.trim(), segments: [], createdAt: Date.now()
+        raw: text.trim(), segments: [], absentCharacterIds: [...(activeStory.value.absentCharacterIds ?? [])], createdAt: Date.now()
       },
       onUserMessageStored
     })
@@ -2299,12 +2324,14 @@ export const useStoriesStore = defineStore('stories', () => {
     const index = messages.value.findIndex((message) => message.id === id)
     if (index < 0 || messages.value[index]?.role !== 'assistant' || messages.value[index]?.swarmError) return
     const generationMode = messages.value[index]?.generationMode ?? 'normal'
+    const absentCharacterIds = [...(messages.value[index]?.absentCharacterIds ?? [])]
     const ids = messages.value.slice(index).map((message) => message.id)
     await invalidateContextSummaryFromIndex(index)
     await dbDeleteMessages(ids)
     messages.value = messages.value.slice(0, index)
     removeLocalTracesForMessages(ids)
     await touchStory()
+    if (activeStory.value) await persistStoryState({ ...activeStory.value, absentCharacterIds, updatedAt: Date.now() })
     await generate(generationMode)
   }
 
@@ -2316,6 +2343,7 @@ export const useStoriesStore = defineStore('stories', () => {
     if (debugLoadError) throw new Error(debugLoadError)
     const index = messages.value.findIndex((message) => message.id === id)
     if (index < 0 || messages.value[index]?.role !== 'user') return
+    const absentCharacterIds = [...(messages.value[index]?.absentCharacterIds ?? [])]
     const ids = messages.value.slice(index + 1).map((message) => message.id)
     const traceIds = debugTraces.value
       .filter((trace) => trace.requestMessageId === id)
@@ -2328,6 +2356,7 @@ export const useStoriesStore = defineStore('stories', () => {
     debugTraces.value = debugTraces.value.filter((trace) => !traceIdSet.has(trace.id))
     removeLocalTracesForMessages(ids)
     await touchStory()
+    if (activeStory.value) await persistStoryState({ ...activeStory.value, absentCharacterIds, updatedAt: Date.now() })
     await generate('normal')
   }
 
@@ -2365,6 +2394,7 @@ export const useStoriesStore = defineStore('stories', () => {
     createStory,
     updateStorySettings,
     setVisualMode,
+    setCharacterPresence,
     setArchived,
     setDemoVisibility,
     removeStory,

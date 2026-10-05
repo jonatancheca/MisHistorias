@@ -97,6 +97,7 @@ interface StoryInput {
   protagonistPreferences?: string
   protagonistPreferencesMode?: 'append' | 'replace'
   characters: Character[]
+  absentCharacterIds?: string[]
   background?: Background | null
   backgroundStyle?: string | null
   preset?: PromptPreset | null
@@ -107,6 +108,7 @@ interface MessageInput {
   story: Story
   role: 'user' | 'assistant'
   raw: string
+  absentCharacterIds?: string[]
   originalRaw?: string
   segments?: Message['segments']
   generationMode?: Message['generationMode']
@@ -282,6 +284,7 @@ export const test = base.extend<{ data: TestDataFactory; contextLimits: undefine
           autoGenerateImages: input.autoGenerateImages ?? false,
           protagonistPreferences: input.protagonistPreferences ?? '',
           protagonistPreferencesMode: input.protagonistPreferencesMode ?? 'append',
+          absentCharacterIds: input.absentCharacterIds ?? [],
           characterIds: input.characters.map((character) => character.id),
           characterCustomizations: input.characters.map((character) => ({
             characterId: character.id,
@@ -307,6 +310,7 @@ export const test = base.extend<{ data: TestDataFactory; contextLimits: undefine
           role: input.role,
           raw: input.raw,
           originalRaw: input.originalRaw,
+          absentCharacterIds: input.absentCharacterIds ?? input.story.absentCharacterIds ?? [],
           segments: input.segments ?? [],
           generationMode: input.generationMode,
           createdAt: Date.now() + sequence

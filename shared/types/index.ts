@@ -147,6 +147,8 @@ export interface Story {
   /** Número orientativo de cuadros narrativos por respuesta del narrador. */
   narrationStyle?: ResponseStyleAmount
   characterIds: string[]
+  /** Personajes del elenco ausentes en la continuación actual; el protagonista siempre está presente. */
+  absentCharacterIds?: string[]
   /** Personalizaciones recordadas, incluidas las de personajes fuera del elenco activo. */
   characterCustomizations: StoryCharacterCustomization[]
   /** Fondo inicial; null permite que el modelo decida */
@@ -270,6 +272,8 @@ export interface Message {
   /** Respuesta completa recibida del narrador, conservada antes de retirar directivas de imagen y de editar. */
   originalRaw?: string
   segments: MessageSegment[]
+  /** Presencia vigente al crear este mensaje, independiente de cambios posteriores. */
+  absentCharacterIds?: string[]
   /** Modo que originó una respuesta del asistente; permite regenerarla con las mismas reglas. */
   generationMode?: GenerationMode
   /** Diagnóstico técnico visible en el chat, excluido de la narración y del LLM. */

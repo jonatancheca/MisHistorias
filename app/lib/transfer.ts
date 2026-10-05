@@ -53,7 +53,7 @@ import {
   importImageGenerationSeed
 } from '~/lib/characterTransfer'
 
-const EXPORT_VERSION = 26
+const EXPORT_VERSION = 27
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_SOUND_BYTES = 10 * 1024 * 1024
 
@@ -121,13 +121,14 @@ interface ExportedStory {
   dialogueStyle?: ResponseStyleAmount
   narrationStyle?: ResponseStyleAmount
   characterIds: string[]
+  absentCharacterIds?: string[]
   characterCustomizations?: StoryCharacterCustomization[]
   pendingImageInstructions?: Story['pendingImageInstructions']
   contextSummary?: string
   contextSummaryThroughMessageId?: string
   initialBackgroundId?: string | null
   backgroundStyle?: string | null
-  messages: Array<Pick<Message, 'id' | 'role' | 'raw' | 'originalRaw' | 'segments' | 'generationMode' | 'swarmError' | 'createdAt'>>
+  messages: Array<Pick<Message, 'id' | 'role' | 'raw' | 'originalRaw' | 'absentCharacterIds' | 'segments' | 'generationMode' | 'swarmError' | 'createdAt'>>
   saves?: Array<Omit<StorySaveSlot, 'messages'> & { messages: ExportedStory['messages'] }>
 }
 
@@ -222,6 +223,7 @@ export async function exportBundle(
           (segment) => segment.type !== 'sound' || Boolean(segment.soundId && includedSoundIds.has(segment.soundId))
         )
       : message.segments,
+    absentCharacterIds: message.absentCharacterIds,
     generationMode: message.generationMode,
     swarmError: options.demo ? undefined : readStorySwarmError(message.swarmError),
     createdAt: message.createdAt
@@ -265,6 +267,7 @@ export async function exportBundle(
       dialogueStyle: responseStyleAmount(story.dialogueStyle),
       narrationStyle: responseStyleAmount(story.narrationStyle),
       characterIds: story.characterIds,
+      absentCharacterIds: story.absentCharacterIds ?? [],
       characterCustomizations: exportCharacterCustomizations(story),
       pendingImageInstructions: story.pendingImageInstructions ?? [],
       contextSummary: story.contextSummary ?? '',
@@ -328,7 +331,7 @@ export function downloadBundle(bundle: ExportBundle) {
 function assertBundle(value: unknown): asserts value is ExportBundle {
   const bundle = value as ExportBundle
   if (!bundle || typeof bundle !== 'object') throw new Error('Fichero no válido')
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, EXPORT_VERSION].includes(bundle.version)) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, EXPORT_VERSION].includes(bundle.version)) {
     throw new Error('Versión de exportación no compatible')
   }
   if (bundle.swarmPrompts !== undefined && (!Array.isArray(bundle.swarmPrompts) || bundle.swarmPrompts.some((item) =>
@@ -457,7 +460,8 @@ export async function importBundle(raw: string) {
   )
   for (const item of parsed.sounds ?? []) {
     if (typeof item.dataUrl !== 'string' || item.dataUrl.length > MAX_SOUND_BYTES * 1.4) continue
-    const blob = await dataUrlToBlob(item.dataUrl)
+    if (!/^data:audio\//.test(item.dataUrl)) throw new Error('Data URL de sonido no válida')
+    const blob = await (await fetch(item.dataUrl)).blob()
     if (!blob.size || blob.size > MAX_SOUND_BYTES) continue
     const characterId = item.characterId
       ? (characterIdMap.get(String(item.characterId)) ?? null)
@@ -558,6 +562,7 @@ export async function importBundle(raw: string) {
       dialogueStyle: responseStyleAmount(item.dialogueStyle),
       narrationStyle: responseStyleAmount(item.narrationStyle),
       characterIds: storyCharacterIds,
+      absentCharacterIds: (item.absentCharacterIds ?? []).flatMap((id) => characterIdMap.get(String(id)) ?? []).filter((id) => storyCharacterIds.includes(id)),
       characterCustomizations,
       pendingImageInstructions: (item.pendingImageInstructions ?? []).flatMap((instruction) => {
         const characterId = characterIdMap.get(String(instruction.characterId))
@@ -587,6 +592,7 @@ export async function importBundle(raw: string) {
         storyId: story.id,
         role: message.role === 'assistant' ? 'assistant' : 'user',
         raw: importRaw(message.raw),
+        ...(message.absentCharacterIds ? { absentCharacterIds: message.absentCharacterIds.flatMap((id) => characterIdMap.get(String(id)) ?? []) } : {}),
         ...(typeof message.originalRaw === 'string' ? { originalRaw: message.originalRaw } : {}),
         swarmError: importSwarmError(message.swarmError),
         generationMode:
@@ -657,6 +663,7 @@ export async function importBundle(raw: string) {
         dialogueStyle: responseStyleAmount(save.story.dialogueStyle),
         narrationStyle: responseStyleAmount(save.story.narrationStyle),
         characterIds: savedCharacterIds,
+        absentCharacterIds: (save.story.absentCharacterIds ?? []).flatMap((id) => characterIdMap.get(String(id)) ?? []).filter((id) => savedCharacterIds.includes(id)),
         characterCustomizations: storyCustomizationIds(
           (save.story.characterIds ?? []).map((sourceId) => String(sourceId)),
           save.story.characterCustomizations ?? []
@@ -705,6 +712,7 @@ export async function importBundle(raw: string) {
           storyId: story.id,
           role: message.role === 'assistant' ? 'assistant' : 'user',
           raw: importRaw(message.raw),
+          ...(message.absentCharacterIds ? { absentCharacterIds: message.absentCharacterIds.flatMap((id) => characterIdMap.get(String(id)) ?? []) } : {}),
           ...(typeof message.originalRaw === 'string' ? { originalRaw: message.originalRaw } : {}),
           swarmError: importSwarmError(message.swarmError),
           generationMode:

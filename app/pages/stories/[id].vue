@@ -59,6 +59,21 @@ const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
 const compactionDeleteError = ref<string | null>(null)
 const manualCompactionOpen = ref(false)
+const charactersDialogOpen = ref(false)
+const presenceBusy = ref(false)
+const presenceError = ref<string | null>(null)
+async function changeCharacterPresence(characterId: string, present: boolean) {
+  if (presenceBusy.value || stories.generating || stories.activeStory?.readOnly) return
+  presenceBusy.value = true
+  presenceError.value = null
+  try {
+    await stories.setCharacterPresence(characterId, present)
+    await nextTick()
+    visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
+  } catch {
+    presenceError.value = 'No se pudo guardar la presencia. Inténtalo de nuevo.'
+  } finally { presenceBusy.value = false }
+}
 const editingVisualMessage = ref<Message | null>(null)
 const desktopStoryControls = useStoryDesktopControls()
 const readerOptionsInNavigation = ref(false)
@@ -89,6 +104,8 @@ watch(() => stories.activeStory?.id, () => {
   selectedDebugTrace.value = null
   compactionDeleteError.value = null
   manualCompactionOpen.value = false
+  charactersDialogOpen.value = false
+  presenceError.value = null
   originalTextOpenIds.value = new Set()
   hiddenMessagesOpen.value = false
 })
@@ -341,7 +358,7 @@ async function toggleVisualNovelManualAdvance() {
 }
 
 async function submit() {
-  if (stories.activeStory?.readOnly) return
+  if (stories.activeStory?.readOnly || presenceBusy.value) return
   void sounds.unlock()
   const text = input.value
   if (!text.trim() || stories.generating) return
@@ -373,7 +390,7 @@ function onSubmitShortcut(event: KeyboardEvent) {
 }
 
 async function generateOpening() {
-  if (stories.activeStory?.readOnly) return
+  if (stories.activeStory?.readOnly || presenceBusy.value) return
   void sounds.unlock()
   followingBottom.value = true
   scheduleFollowBottom()
@@ -381,7 +398,7 @@ async function generateOpening() {
 }
 
 async function retryFailedGeneration() {
-  if (stories.generating || stories.activeStory?.readOnly) return
+  if (stories.generating || presenceBusy.value || stories.activeStory?.readOnly) return
   void sounds.unlock()
   followingBottom.value = true
   followingVisualReveal.value = true
@@ -391,7 +408,7 @@ async function retryFailedGeneration() {
 }
 
 async function compactInBlocks() {
-  if (stories.generating || stories.activeStory?.readOnly) return
+  if (stories.generating || presenceBusy.value || stories.activeStory?.readOnly) return
   void sounds.unlock()
   followingBottom.value = true
   followingVisualReveal.value = true
@@ -401,7 +418,7 @@ async function compactInBlocks() {
 }
 
 async function generateContinuation(mode: Exclude<GenerationMode, 'normal'>) {
-  if (stories.activeStory?.readOnly) return
+  if (stories.activeStory?.readOnly || presenceBusy.value) return
   void sounds.unlock()
   if (stories.generating) return
   followingBottom.value = true
@@ -427,7 +444,7 @@ function openImageReplacement(target: {
   sourceSegmentIndex?: number
   imageId: string | null
 }) {
-  if (stories.activeStory?.readOnly) return
+  if (stories.activeStory?.readOnly || presenceBusy.value) return
   imagePickerTarget.value = {
     mode: 'replace',
     characterId: target.characterId,
@@ -633,7 +650,7 @@ async function removeCompaction(trace: LlmDebugTrace) {
 }
 
 async function removeMessage(id: string) {
-  if (stories.activeStory?.readOnly) return
+  if (stories.activeStory?.readOnly || presenceBusy.value) return
   const accepted = await confirmDialog.ask({
     title: 'Borrar mensaje',
     message: 'Este mensaje se borrará definitivamente.'
@@ -642,7 +659,7 @@ async function removeMessage(id: string) {
 }
 
 async function regenerateFrom(id: string) {
-  if (stories.activeStory?.readOnly) return
+  if (stories.activeStory?.readOnly || presenceBusy.value) return
   const index = stories.messages.findIndex((message) => message.id === id)
   if (index < 0) return
   const following = stories.messages.length - index - 1
@@ -661,7 +678,7 @@ async function regenerateFrom(id: string) {
 }
 
 async function resendFrom(id: string) {
-  if (stories.activeStory?.readOnly) return
+  if (stories.activeStory?.readOnly || presenceBusy.value) return
   const index = stories.messages.findIndex((message) => message.id === id)
   if (index < 0) return
   const following = stories.messages.length - index - 1
@@ -723,7 +740,8 @@ const visualFrames = computed(() =>
     initialBackgroundTag: primaryTag(initialBackground.value),
     resolveBackgroundId: (tag) => backgrounds.byTag(tag)?.id ?? null,
     resolveSoundId: (tag) => sounds.byTag(tag)?.id ?? null,
-    compactionTraces: debugEnabled.value ? compactionTraces.value : []
+    compactionTraces: debugEnabled.value ? compactionTraces.value : [],
+    currentAbsentCharacterIds: stories.activeStory?.absentCharacterIds ?? []
   })
 )
 const completeVisualFrames = computed(() =>
@@ -734,7 +752,8 @@ const completeVisualFrames = computed(() =>
       initialBackgroundTag: primaryTag(initialBackground.value),
       resolveBackgroundId: (tag) => backgrounds.byTag(tag)?.id ?? null,
       resolveSoundId: (tag) => sounds.byTag(tag)?.id ?? null,
-      compactionTraces: debugEnabled.value ? compactionTraces.value : []
+      compactionTraces: debugEnabled.value ? compactionTraces.value : [],
+      currentAbsentCharacterIds: stories.activeStory?.absentCharacterIds ?? []
     }
   )
 )
@@ -792,7 +811,8 @@ const visualCharacterStates = computed(() =>
   activeVisualFrame.value?.characterStates ?? []
 )
 const visualCharacterIds = computed(() =>
-  visualCharacterStates.value.map((state) => state.characterId)
+  (activeVisualFrame.value ? visualCharacterStates.value.map((state) => state.characterId) : stories.activeStory?.characterIds ?? [])
+    .filter((id) => !(activeVisualFrame.value?.absentCharacterIds ?? stories.activeStory?.absentCharacterIds ?? []).includes(id))
 )
 const visualSoundUrl = computed(() =>
   activeVisualFrame.value?.kind === 'sound'
@@ -806,7 +826,7 @@ const visualIsThought = computed(() =>
 )
 const visualSpeaker = computed(() => {
   const frame = activeVisualFrame.value
-  if (!frame || frame.kind === 'narration' || frame.kind === 'sound' || frame.kind === 'compaction') return null
+  if (!frame || frame.kind === 'narration' || frame.kind === 'sound' || frame.kind === 'compaction' || frame.kind === 'presence') return null
   const speakerState = frame.characterStates[frame.characterStates.length - 1]
   if ((frame.kind === 'dialogue' || frame.kind === 'thought') && speakerState) {
     return {
@@ -841,7 +861,7 @@ watch(
 
 const thumbnailCharacterUrls = computed(() => {
   if (stories.activeStory?.visualMode) {
-    return visualCharacterStates.value.map((state) => {
+    return visualCharacterStates.value.filter((state) => visualCharacterIds.value.includes(state.characterId)).map((state) => {
       const image = characters.resolveImage(
         state.characterId,
         state.tags?.length ? state.tags : state.tag,
@@ -852,7 +872,7 @@ const thumbnailCharacterUrls = computed(() => {
       return characters.urlFor(image?.id)
     })
   }
-  return (stories.activeStory?.characterIds ?? []).map((characterId) => {
+  return (stories.activeStory?.characterIds ?? []).filter((id) => !(stories.activeStory?.absentCharacterIds ?? []).includes(id)).map((characterId) => {
     const active = lastDialogue.value?.characterId === characterId ? lastDialogue.value : null
     const image = characters.resolveImage(
       characterId,
@@ -1090,7 +1110,7 @@ function onStoryKeydown(event: KeyboardEvent) {
   if (!stories.activeStory || event.defaultPrevented) return
   if (
     storyPreferencesOpen.value || selectedDebugTrace.value || imagePickerTarget.value || editingVisualMessage.value ||
-    storySavesOpen.value || hiddenMessagesDialogOpen.value || confirmDialog.dialog
+    storySavesOpen.value || charactersDialogOpen.value || hiddenMessagesDialogOpen.value || confirmDialog.dialog
   ) return
 
   const target = event.target
@@ -1242,6 +1262,7 @@ onBeforeRouteLeave(() => {
               :data-testid="stories.activeStory.visualMode ? 'visual-mode-toggle' : undefined"
               aria-label="Desactivar modo novela visual"
               :aria-pressed="!stories.activeStory.visualMode"
+              :disabled="presenceBusy"
               @click="stories.activeStory.visualMode && toggleVisualMode()"
             >
               <svg aria-hidden="true" class="hidden h-4 w-4 sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11a8 8 0 0 1-8 8H7l-5 3 2-6a8 8 0 1 1 17-5Z" /></svg>
@@ -1253,6 +1274,7 @@ onBeforeRouteLeave(() => {
               :data-testid="!stories.activeStory.visualMode ? 'visual-mode-toggle' : undefined"
               aria-label="Activar modo novela visual"
               :aria-pressed="stories.activeStory.visualMode"
+              :disabled="presenceBusy"
               @click="!stories.activeStory.visualMode && toggleVisualMode()"
             >
               <svg aria-hidden="true" class="hidden h-4 w-4 sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m3 15 5-5 4 4 3-3 6 6M8 8h.01" /></svg>
@@ -1261,6 +1283,10 @@ onBeforeRouteLeave(() => {
           </div>
           <span v-else class="text-sm text-[var(--color-fg-muted)]">Solo lectura</span>
           <StoryToolsMenu :active="debugEnabled" :placement="readerOptionsInNavigation ? 'top' : 'bottom'">
+            <button v-if="!stories.activeStory.readOnly" type="button" class="btn-ghost" :disabled="stories.generating || presenceBusy" data-testid="story-presence-button" @click="charactersDialogOpen = true">
+              <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="3" /><path d="M3 21v-3a6 6 0 0 1 12 0v3M17 4a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-4-5" /></svg>
+              <span>Personajes</span>
+            </button>
             <button
               v-if="!stories.activeStory.readOnly"
               type="button"
@@ -1279,7 +1305,7 @@ onBeforeRouteLeave(() => {
               class="btn-ghost h-10 shrink-0 px-2 sm:px-3"
               aria-label="Partidas"
               title="Partidas"
-              :disabled="stories.generating"
+              :disabled="stories.generating || presenceBusy"
               @click="storySavesOpen = true; storySavesError = null"
             >
               <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1294,7 +1320,7 @@ onBeforeRouteLeave(() => {
               class="btn-ghost"
               aria-label="Ajustes de la historia"
               title="Ajustes de la historia"
-              :disabled="stories.generating"
+              :disabled="stories.generating || presenceBusy"
               @click="openStoryPreferences"
             >
               <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1378,7 +1404,7 @@ onBeforeRouteLeave(() => {
             <StoryCompactionMarker
               v-if="activeVisualFrame?.compactionTrace"
               :trace="activeVisualFrame.compactionTrace"
-              :editable="!stories.generating && !stories.deletingCompaction && !stories.activeStory.readOnly"
+              :editable="!stories.generating && !presenceBusy && !stories.deletingCompaction && !stories.activeStory.readOnly"
               class="absolute right-3 bottom-3 left-3 z-20 border-white/15 bg-slate-950/80 text-slate-300 shadow-lg backdrop-blur-sm sm:left-auto"
               @inspect="selectedDebugTrace = $event"
               @remove="removeCompaction"
@@ -1387,7 +1413,7 @@ onBeforeRouteLeave(() => {
             <MessageActions
               v-if="activeVisualMessage"
               :message="activeVisualMessage"
-              :editable="!stories.generating && !stories.activeStory.readOnly"
+              :editable="!stories.generating && !presenceBusy && !stories.activeStory.readOnly"
               :debug-trace="!stories.activeStory.readOnly ? debugForMessage(activeVisualMessage.id) : null"
               :compaction-trace="!stories.activeStory.readOnly ? compactionDebugForMessage(activeVisualMessage.id) : null"
               :original-text-available="originalTextAvailable"
@@ -1551,7 +1577,7 @@ onBeforeRouteLeave(() => {
             <StoryCompactionMarker
               v-if="item.kind === 'compaction'"
               :trace="item.trace"
-              :editable="!stories.generating && !stories.deletingCompaction && !stories.activeStory.readOnly"
+              :editable="!stories.generating && !presenceBusy && !stories.deletingCompaction && !stories.activeStory.readOnly"
               @inspect="selectedDebugTrace = $event"
               @remove="removeCompaction"
             />
@@ -1562,7 +1588,7 @@ onBeforeRouteLeave(() => {
               :character-colors="storyCharacterColors"
               :debug-trace="!stories.activeStory.readOnly ? debugForMessage(item.message.id) : null"
               :compaction-trace="!stories.activeStory.readOnly ? compactionDebugForMessage(item.message.id) : null"
-              :editable="!stories.generating && !stories.activeStory.readOnly"
+              :editable="!stories.generating && !presenceBusy && !stories.activeStory.readOnly"
               :visual-mode="stories.activeStory.visualMode"
               :debug-enabled="debugEnabled"
               :original-text-available="originalTextAvailable && !item.message.swarmError"
@@ -1589,7 +1615,7 @@ onBeforeRouteLeave(() => {
                 <StoryModelLoadButton
                   v-if="modelLoadAvailable && !stories.activeStory.visualMode && item.id === modelLoadTargetId"
                   :loading="modelLoading"
-                  :disabled="stories.generating"
+                  :disabled="stories.generating || presenceBusy"
                   @load="loadStoryModel"
                 />
                 <button
@@ -1768,7 +1794,7 @@ onBeforeRouteLeave(() => {
           class="story-nav-button"
           compact-on-mobile
           :loading="modelLoading"
-          :disabled="stories.generating"
+          :disabled="stories.generating || presenceBusy"
           @load="loadStoryModel"
         />
         </div>
@@ -1850,7 +1876,7 @@ onBeforeRouteLeave(() => {
               v-if="!stories.generating"
               type="submit"
               class="btn-primary story-send-button"
-              :disabled="stories.generating"
+              :disabled="stories.generating || presenceBusy"
               :aria-keyshortcuts="desktopStoryControls ? 'Enter Control+Enter' : 'Control+Enter'"
               :title="storyControlTitle('Enviar', 'Enter / Ctrl+Enter')"
             >
@@ -1874,7 +1900,7 @@ onBeforeRouteLeave(() => {
               data-testid="continue-button"
               aria-label="Continuar sin decidir por el protagonista"
               title="Continúa la historia sin que la IA hable ni decida por el protagonista."
-              :disabled="stories.generating"
+              :disabled="stories.generating || presenceBusy"
               @click="generateContinuation('continue')"
             >
               <svg aria-hidden="true" class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 5 7 7-7 7" /></svg>
@@ -1886,7 +1912,7 @@ onBeforeRouteLeave(() => {
               data-testid="auto-button"
               aria-label="Continuar permitiendo que la IA decida por el protagonista"
               title="Continúa la historia y permite que la IA decida acciones o diálogos del protagonista."
-              :disabled="stories.generating"
+              :disabled="stories.generating || presenceBusy"
               @click="generateContinuation('auto')"
             >
               <svg aria-hidden="true" class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6L12 3Z" /></svg>
@@ -1917,15 +1943,32 @@ onBeforeRouteLeave(() => {
         :background-id="currentBackground.id"
         :background-tag="currentBackground.tag"
         :character-names="storyCharacterNames"
+        :absent-character-ids="stories.activeStory.absentCharacterIds ?? []"
+        :presence-editable="!stories.activeStory.readOnly"
+        :presence-disabled="stories.generating || presenceBusy"
+        @change-presence="changeCharacterPresence"
       />
+      <p v-if="presenceError" role="alert" class="mt-2 text-sm text-red-500">{{ presenceError }}</p>
     </div>
+
+    <StoryPresenceDialog
+      :open="charactersDialogOpen"
+      :character-ids="stories.activeStory.characterIds"
+      :absent-character-ids="stories.activeStory.absentCharacterIds ?? []"
+      :character-names="storyCharacterNames"
+      :protagonist-name="settings.activeUserName"
+      :disabled="stories.generating || presenceBusy || stories.activeStory.readOnly === true"
+      :error="presenceError"
+      @close="charactersDialogOpen = false"
+      @change="changeCharacterPresence"
+    />
 
     <StoryHiddenMessagesDialog
       :open="hiddenMessagesDialogOpen"
       :messages="messagesWithoutVisualFrame"
       :expanded-ids="originalTextOpenIds"
       :debug-enabled="debugEnabled"
-      :editable="!stories.generating && !stories.activeStory.readOnly"
+      :editable="!stories.generating && !presenceBusy && !stories.activeStory.readOnly"
       :debug-traces="!stories.activeStory.readOnly ? stories.debugTraces : []"
       @close="hiddenMessagesOpen = false"
       @toggle-original="toggleStoryOriginal"
@@ -2000,7 +2043,7 @@ onBeforeRouteLeave(() => {
 
     <MessageEditDialog
       :message="editingVisualMessage"
-      :disabled="stories.generating"
+      :disabled="stories.generating || presenceBusy"
       @close="editingVisualMessage = null"
       @save="saveVisualMessage"
     />

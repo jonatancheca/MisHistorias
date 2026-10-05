@@ -9,6 +9,7 @@ import type {
   StoryCharacterCustomization,
   StoryPendingImageInstruction
 } from '#shared/types'
+import { normalizeAbsentCharacterIds } from '#shared/utils/characterPresence'
 import { extractAiInstruction, isAiInstruction } from '~/lib/chatInstructions'
 import { serializeSegments } from '~/lib/streamParser'
 import { primaryTag, sanitizeTags, tagKey } from '~/lib/tags'
@@ -90,8 +91,15 @@ function characterSheet(
   character: Character,
   images: CharacterImage[],
   customization?: StoryCharacterCustomization,
-  autoGenerateImages = false
+  autoGenerateImages = false,
+  absent = false
 ) {
+  if (absent) return [
+    `### ${customization?.name?.trim() || character.name}`,
+    (customization?.prompt ?? character.prompt).trim() || '(sin descripción)',
+    `Etiquetas descriptivas del personaje (no son etiquetas de imagen): ${(customization?.tags ?? character.tags ?? []).join(', ') || '(ninguna)'}`,
+    'Estado: AUSENTE de la escena. Puede ser mencionado, pero no actúa, habla ni piensa en ella. Sin imágenes ni sonidos disponibles.'
+  ].join('\n')
   const own = images.filter((image) => image.characterId === character.id)
   const fallback = own.find((image) => image.isDefault) ?? own[0]
   const tags = own.length
@@ -111,6 +119,7 @@ function characterSheet(
     `### ${customization?.name?.trim() || character.name}`,
     (customization?.prompt ?? character.prompt).trim() || '(sin descripción)',
     `Etiquetas descriptivas del personaje (no son etiquetas de imagen): ${(customization?.tags ?? character.tags ?? []).join(', ') || '(ninguna)'}`,
+    'Estado: PRESENTE en la escena.',
     'Etiquetas de imagen disponibles:',
     tags,
     fallback ? `Etiqueta por defecto: [${primaryTag(fallback)}]` : 'Etiqueta por defecto: [neutral]',
@@ -203,6 +212,7 @@ export function buildSystemPrompt(options: {
   const characterCustomizations = new Map(
     (story.characterCustomizations ?? []).map((item) => [item.characterId, item])
   )
+  const absent = new Set(normalizeAbsentCharacterIds(story.absentCharacterIds, story.characterIds))
   return [
     presetContent.trim(),
     ...responseStyleInstructions(story),
@@ -235,6 +245,9 @@ export function buildSystemPrompt(options: {
     'Puedes mostrar un pensamiento interior no pronunciado de un personaje cuando encaje con la escena, sin exigir uno en cada respuesta. Usa una línea independiente `Pensamiento Nombre [etiqueta][otra etiqueta]: texto`, con el nombre exacto y las mismas etiquetas visuales que el diálogo.',
     'Escribe el texto del pensamiento sin paréntesis ni markdown; la aplicación lo muestra en cursiva, entre paréntesis y con el color del personaje. Los demás personajes no lo oyen. No confundas estos pensamientos ficticios con tu propio análisis o razonamiento.',
     '',
+    '## PRESENCIA EN LA ESCENA',
+    'El protagonista está siempre presente. La presencia la decide únicamente el usuario y no cambia al cambiar de fondo. Los personajes AUSENTES siguen siendo conocidos y pueden mencionarse, pero no deben actuar, dialogar ni pensar en la escena. No los reincorpores ni solicites imágenes o sonidos para ellos. Esta presencia actual prevalece sobre el historial y su resumen.',
+    '',
     '## PERSONAJES',
     characters
       .map((character) =>
@@ -242,7 +255,8 @@ export function buildSystemPrompt(options: {
           character,
           images,
           characterCustomizations.get(character.id),
-          story.autoGenerateImages === true
+          story.autoGenerateImages === true,
+          absent.has(character.id)
         )
       )
       .join('\n\n'),
@@ -251,7 +265,7 @@ export function buildSystemPrompt(options: {
     backgroundSheet(story, backgrounds),
     '',
     '## SONIDOS',
-    soundSheet(sounds, characters, backgrounds)
+    soundSheet(sounds.filter((sound) => !sound.characterId || !absent.has(sound.characterId)), characters, backgrounds)
   ].join('\n')
 }
 
@@ -377,7 +391,7 @@ export function buildChatMessages(options: {
     ? [{ role: 'system', content: continuation }]
     : []
   const pendingImageInstruction = pendingImageInstructionMessage(
-    options.pendingImageInstructions ?? [],
+    (options.pendingImageInstructions ?? []).filter((instruction) => !(options.story.absentCharacterIds ?? []).includes(instruction.characterId)),
     options.characters
   )
   const pendingImageMessages: ChatMessage[] = pendingImageInstruction
