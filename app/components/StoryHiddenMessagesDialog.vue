@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { LlmDebugTrace, Message } from '#shared/types'
+import { storyOriginalText } from '~/lib/storyOriginalText'
 
 const props = defineProps<{
   open: boolean
@@ -72,7 +73,7 @@ useDialogEscape(() => props.open, () => emit('close'))
             <StoryOriginalText
               v-if="expandedIds.has(message.id)"
               :id="`hidden-original-${message.id}`"
-              :text="message.raw"
+              :text="storyOriginalText(message, debugTraces)"
               class="mt-2"
             />
           </li>

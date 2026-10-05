@@ -127,7 +127,7 @@ interface ExportedStory {
   contextSummaryThroughMessageId?: string
   initialBackgroundId?: string | null
   backgroundStyle?: string | null
-  messages: Array<Pick<Message, 'id' | 'role' | 'raw' | 'segments' | 'generationMode' | 'swarmError' | 'createdAt'>>
+  messages: Array<Pick<Message, 'id' | 'role' | 'raw' | 'originalRaw' | 'segments' | 'generationMode' | 'swarmError' | 'createdAt'>>
   saves?: Array<Omit<StorySaveSlot, 'messages'> & { messages: ExportedStory['messages'] }>
 }
 
@@ -212,6 +212,11 @@ export async function exportBundle(
     raw: options.demo
       ? filterSoundDirectives(message.raw, includedSoundTags)
       : message.raw,
+    ...(message.originalRaw !== undefined ? {
+      originalRaw: options.demo
+        ? filterSoundDirectives(message.originalRaw, includedSoundTags)
+        : message.originalRaw
+    } : {}),
     segments: options.demo
       ? message.segments.filter(
           (segment) => segment.type !== 'sound' || Boolean(segment.soundId && includedSoundIds.has(segment.soundId))
@@ -582,6 +587,7 @@ export async function importBundle(raw: string) {
         storyId: story.id,
         role: message.role === 'assistant' ? 'assistant' : 'user',
         raw: importRaw(message.raw),
+        ...(typeof message.originalRaw === 'string' ? { originalRaw: message.originalRaw } : {}),
         swarmError: importSwarmError(message.swarmError),
         generationMode:
           message.generationMode === 'continue' || message.generationMode === 'auto'
@@ -699,6 +705,7 @@ export async function importBundle(raw: string) {
           storyId: story.id,
           role: message.role === 'assistant' ? 'assistant' : 'user',
           raw: importRaw(message.raw),
+          ...(typeof message.originalRaw === 'string' ? { originalRaw: message.originalRaw } : {}),
           swarmError: importSwarmError(message.swarmError),
           generationMode:
             message.generationMode === 'continue' || message.generationMode === 'auto'

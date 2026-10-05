@@ -107,6 +107,7 @@ interface MessageInput {
   story: Story
   role: 'user' | 'assistant'
   raw: string
+  originalRaw?: string
   segments?: Message['segments']
   generationMode?: Message['generationMode']
   scope?: DataScope
@@ -305,6 +306,7 @@ export const test = base.extend<{ data: TestDataFactory; contextLimits: undefine
           storyId: input.story.id,
           role: input.role,
           raw: input.raw,
+          originalRaw: input.originalRaw,
           segments: input.segments ?? [],
           generationMode: input.generationMode,
           createdAt: Date.now() + sequence

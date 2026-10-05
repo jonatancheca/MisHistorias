@@ -54,6 +54,7 @@ import {
   resolveProtagonistPreferences
 } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
+import { storyOriginalText } from '~/lib/storyOriginalText'
 import { readSwarmDiagnostic } from '../../shared/utils/swarmError.ts'
 import { fetchLlmChat, fetchLlmContext, type LlmCallError } from '~/lib/llm'
 import { fetchChromeLlmChat, measureChromeLlmContext } from '~/lib/chromeLlm'
@@ -833,6 +834,7 @@ export const useStoriesStore = defineStore('stories', () => {
       : backgrounds.backgrounds
     const updated: Message = {
       ...current,
+      ...(current.role === 'assistant' ? { originalRaw: storyOriginalText(current, debugTraces.value) } : {}),
       raw,
       segments:
         current.role === 'assistant'
@@ -2017,6 +2019,7 @@ export const useStoriesStore = defineStore('stories', () => {
         storyCharacters,
         story.autoGenerateImages === true
       )
+      assistantMessage.originalRaw = raw
       visibleRaw = parsedImageResponse.visibleRaw
       imageBatchWarnings = [...parsedImageResponse.warnings]
       if (debugRequest) {

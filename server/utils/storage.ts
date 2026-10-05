@@ -124,7 +124,7 @@ type SqliteRow<Columns extends string = never> = Record<string, SQLOutputValue> 
     scope: DataScope
   }
 
-const SCHEMA_VERSION = 44
+const SCHEMA_VERSION = 45
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 const ERROR_TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
@@ -448,6 +448,7 @@ function rowToMessage(row: SqliteRow): Message & { readOnly?: boolean } {
     storyId: text(row.story_id),
     role: row.role === 'assistant' ? 'assistant' : 'user',
     raw: text(row.raw),
+    ...(typeof row.original_raw === 'string' ? { originalRaw: row.original_raw } : {}),
     segments: parseJson<Message['segments']>(row.segments_json, []),
     ...(swarmError ? { swarmError } : {}),
     createdAt: integer(row.created_at)
@@ -973,6 +974,7 @@ export class MisHistoriasStorage {
           story_id TEXT NOT NULL,
           role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
           raw TEXT NOT NULL,
+          original_raw TEXT,
           segments_json TEXT NOT NULL,
           swarm_error_json TEXT,
           created_at INTEGER NOT NULL,
@@ -1773,6 +1775,25 @@ export class MisHistoriasStorage {
             'ALTER TABLE backgrounds ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'
           )
         }
+      }
+
+      if (version.user_version < 45) {
+        const messageColumns = this.database.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
+        if (!messageColumns.some((column) => column.name === 'original_raw')) {
+          this.database.exec('ALTER TABLE messages ADD COLUMN original_raw TEXT')
+        }
+        this.database.exec(`
+          UPDATE messages SET original_raw = (
+            SELECT json_extract(trace.response_json, '$.content')
+            FROM llm_debug_traces trace
+            WHERE trace.scope = messages.scope AND trace.owner_id IS messages.owner_id
+              AND trace.story_id = messages.story_id AND trace.response_message_id = messages.id
+              AND trace.status = 'success'
+              AND COALESCE(json_extract(trace.request_json, '$.purpose'), '') <> 'compaction'
+              AND json_type(trace.response_json, '$.content') = 'text'
+            ORDER BY trace.created_at DESC LIMIT 1
+          ) WHERE role = 'assistant' AND original_raw IS NULL;
+        `)
       }
 
       this.database.exec(`
@@ -3027,12 +3048,12 @@ export class MisHistoriasStorage {
       const copiedMessages = sourceMessages.map(mapMessage)
       const insertMessage = this.database.prepare(`
         INSERT INTO messages(
-          scope, owner_id, id, story_id, role, raw, segments_json, swarm_error_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          scope, owner_id, id, story_id, role, raw, original_raw, segments_json, swarm_error_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       for (const message of copiedMessages) {
         insertMessage.run(
-          scope, access.ownerId, message.id, storyId, message.role, message.raw,
+          scope, access.ownerId, message.id, storyId, message.role, message.raw, message.originalRaw ?? null,
           json(message.segments), message.swarmError ? json(message.swarmError) : null, message.createdAt
         )
       }
@@ -3320,12 +3341,13 @@ export class MisHistoriasStorage {
       case 'messages':
         this.database
           .prepare(`
-            INSERT INTO messages(scope, owner_id, id, story_id, role, raw, segments_json, swarm_error_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO messages(scope, owner_id, id, story_id, role, raw, original_raw, segments_json, swarm_error_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               story_id = excluded.story_id,
               role = excluded.role,
               raw = excluded.raw,
+              original_raw = COALESCE(messages.original_raw, excluded.original_raw),
               segments_json = excluded.segments_json,
               swarm_error_json = excluded.swarm_error_json,
               created_at = excluded.created_at
@@ -3337,6 +3359,7 @@ export class MisHistoriasStorage {
             text(value.storyId),
             value.role === 'assistant' ? 'assistant' : 'user',
             text(value.raw),
+            typeof value.originalRaw === 'string' ? value.originalRaw : null,
             json(Array.isArray(value.segments) ? value.segments : []),
             readStorySwarmError(value.swarmError) ? json(readStorySwarmError(value.swarmError)) : null,
             integer(value.createdAt)

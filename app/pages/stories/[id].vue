@@ -9,6 +9,7 @@ import type {
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
 import { primaryTag } from '~/lib/tags'
 import { isAiInstruction } from '~/lib/chatInstructions'
+import { storyOriginalText } from '~/lib/storyOriginalText'
 import { createStoryThumbnail } from '~/lib/storyThumbnail'
 import {
   buildVisualNovelFrames,
@@ -1406,7 +1407,7 @@ onBeforeRouteLeave(() => {
             <StoryOriginalText
               v-if="originalTextAvailable && activeVisualMessage && originalTextOpenIds.has(activeVisualMessage.id)"
               :id="`visual-original-${activeVisualMessage.id}`"
-              :text="originalMessagesById.get(activeVisualMessage.id)?.raw ?? activeVisualMessage.raw"
+              :text="storyOriginalText(originalMessagesById.get(activeVisualMessage.id) ?? activeVisualMessage, stories.debugTraces)"
               class="absolute inset-x-3 bottom-14 z-20 max-h-[calc(100%-4rem)] overflow-y-auto"
             />
 
@@ -1566,7 +1567,7 @@ onBeforeRouteLeave(() => {
               :debug-enabled="debugEnabled"
               :original-text-available="originalTextAvailable && !item.message.swarmError"
               :original-text-open="originalTextOpenIds.has(item.message.id)"
-              :original-text="originalMessagesById.get(item.message.id)?.raw"
+              :original-text="storyOriginalText(originalMessagesById.get(item.message.id) ?? item.message, stories.debugTraces)"
               :model-load-available="modelLoadAvailable && !stories.activeStory.visualMode && item.id === modelLoadTargetId"
               :model-loading="modelLoading"
               :model-load-disabled="stories.generating"

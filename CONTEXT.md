@@ -61,7 +61,7 @@ Campo de una historia donde se prepara la siguiente intervención antes de envia
 _Evitar_: Cuadro de respuesta, mensaje enviado
 
 **Texto original del mensaje**:
-Contenido textual de una intervención conservado por la historia, antes de ocultar anotaciones y representar sus directivas como personajes, fondos o sonidos. Incluye instrucciones al narrador y puede consultarse sin modificar la intervención.
+Contenido completo de una intervención antes de ocultar anotaciones y representar sus directivas. En una respuesta del narrador conserva el texto recibido, incluidas las solicitudes de imagen, aunque después se edite la historia; en una intervención del usuario corresponde a su texto guardado.
 _Evitar_: Texto visible, traza LLM, respuesta del proveedor
 
 **Contexto enviado**:

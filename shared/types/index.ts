@@ -265,8 +265,10 @@ export interface Message {
   id: string
   storyId: string
   role: MessageRole
-  /** Texto crudo tal cual lo escribió el usuario o devolvió el modelo */
+  /** Texto de la historia utilizado para representar y preparar el contexto narrativo. */
   raw: string
+  /** Respuesta completa recibida del narrador, conservada antes de retirar directivas de imagen y de editar. */
+  originalRaw?: string
   segments: MessageSegment[]
   /** Modo que originó una respuesta del asistente; permite regenerarla con las mismas reglas. */
   generationMode?: GenerationMode

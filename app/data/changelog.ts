@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 249, completedAt: '2026-10-05', summary: 'Texto original de respuestas completas del narrador en Chat y Novela Visual, incluidas directivas de imagen; se conserva tras editar, recargar, guardar partidas o transferir historias y recupera respuestas antiguas desde sus trazas disponibles.' },
   { issue: 246, completedAt: '2026-10-05', summary: 'Botones Comprobar ahora y Ver historial de cambios agrupados al pie de Actualizaciones, con iconos y salto de línea en móvil.' },
   { issue: 248, completedAt: '2026-10-05', summary: 'Auto independiente para tokens de respuesta y contexto, con capacidad actual de LM Studio, reserva de 4096 tokens y recálculo por petición; conserva valores normales y privados y detiene el envío si no puede medir.' },
   { issue: 245, completedAt: '2026-10-05', summary: 'Recuerdo opcional del modo oculto o demo por navegador durante un año, con botones Mantener y Olvidar en Ajustes; olvidar conserva la sesión actual y salir o cambiar de modo elimina el recuerdo.' },
