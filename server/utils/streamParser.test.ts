@@ -251,3 +251,86 @@ describe('pensamientos explícitos del personaje', () => {
     }
   })
 })
+
+describe('nombres narrativos sin acentos', () => {
+  it('reconoce diálogo, pensamientos y protagonista conservando nombre, etiquetas e imagen', () => {
+    const cast = [{ ...characters[0]!, name: 'Júlia' }]
+    const raw = ' JULIA [feliz]: Hola.\nPensamiento Julia [feliz]: Espero.\nAlex: Te sigo.\nPensamiento ALEX: Confío.'
+    const segments = parseSegments(raw, cast, [], 'Álex', images)
+    assert.deepEqual(segments.map(segment => segment.type), [
+      'dialogue', 'thought', 'protagonist-dialogue', 'protagonist-thought'
+    ])
+    assert.equal(segments[0]?.characterId, 'alicia')
+    assert.equal(segments[1]?.imageId, 'happy')
+    assert.equal(serializeSegments(segments, cast, 'Álex'),
+      'Júlia [feliz]: Hola.\nPensamiento Júlia [feliz]: Espero.\nÁlex: Te sigo.\nPensamiento Álex: Confío.')
+    assert.equal(cast[0]?.name, 'Júlia')
+  })
+
+  it('ignora otros diacríticos y acepta Unicode descompuesto sin confundir ñ con n', () => {
+    const cast = [
+      { ...characters[0]!, name: 'Àçü' },
+      { ...characters[0]!, id: 'nino', name: 'Niño' },
+      { ...characters[0]!, id: 'julia', name: 'Júlia' }
+    ]
+    const segments = parseSegments('ACU: Hola.\nNino: Desconocido.\nNIÑO: Bien.\nNin\u0303o: También.\nJu\u0301lia: Aquí.', cast)
+    assert.deepEqual(segments.map(segment => segment.characterId), ['alicia', null, 'nino', 'nino', 'julia'])
+    assert.equal(segments[1]?.type, 'narration')
+  })
+
+  it('prioriza nombres exactos y mantiene narración ante alternativas ambiguas', () => {
+    const cast = [
+      { ...characters[0]!, id: 'julia', name: 'Julia' },
+      { ...characters[0]!, id: 'accented-julia', name: 'Júlia' },
+      { ...characters[0]!, id: 'jose-one', name: 'Jóse' },
+      { ...characters[0]!, id: 'jose-two', name: 'José' }
+    ]
+    for (const ordered of [cast, [...cast].reverse()]) {
+      const segments = parseSegments('JULIA: Una.\nJúlia: Otra.\nJose: Ambiguo.\nPensamiento Jose: Ambiguo también.', ordered)
+      assert.deepEqual(segments.map(segment => segment.characterId), ['julia', 'accented-julia', null, null])
+      assert.deepEqual(segments.slice(2).map(segment => segment.type), ['narration', 'narration'])
+      assert.equal(segments[2]?.text, 'Jose: Ambiguo.')
+    }
+  })
+
+  it('considera al protagonista en la prioridad exacta y en la ambigüedad', () => {
+    const cast = [{ ...characters[0]!, name: 'Jóse' }]
+    const segments = parseSegments('José: Protagonista.\nJóse: Elenco.\nJose: Ambiguo.', cast, [], 'José')
+    assert.deepEqual(segments.map(segment => segment.type), ['protagonist-dialogue', 'dialogue', 'narration'])
+    assert.equal(segments[1]?.characterId, 'alicia')
+    assert.equal(parseSegments('Julia: Exacto.', [{ ...characters[0]!, name: 'Júlia' }], [], 'Julia')[0]?.type,
+      'protagonist-dialogue')
+    assert.equal(parseSegments('Júlia: Exacto.', [{ ...characters[0]!, name: 'Julia' }], [], 'Júlia')[0]?.type,
+      'protagonist-dialogue')
+    assert.equal(parseSegments('Alicia: Compartido.', characters, [], 'Alicia')[0]?.characterId, 'alicia')
+  })
+
+  it('oculta prefijos reconocidos durante el revelado y conserva los ambiguos', () => {
+    const cast = [{ ...characters[0]!, name: 'Júlia' }]
+    for (const raw of ['Julia [feliz]: Hola.', 'Pensamiento Julia: Espero.', 'Alex: Te sigo.', 'Pensamiento Alex: Confío.']) {
+      for (let length = 1; length <= raw.indexOf(':'); length++) {
+        assert.equal(hideIncompleteVisualDirectivePrefix(raw.slice(0, length), raw, cast, 'Álex'), '')
+      }
+    }
+    const ambiguous = [{ ...characters[0]!, name: 'Jóse' }, { ...characters[0]!, id: 'other', name: 'José' }]
+    assert.equal(hideIncompleteVisualDirectivePrefix('Jose', 'Jose: Hola.', ambiguous), 'Jose')
+  })
+
+  it('conserva distinción de espacios interiores y etiquetas de fondos, sonidos e imágenes', () => {
+    const cast = [{ ...characters[0]!, name: 'María Sol' }]
+    assert.equal(parseSegments('Maria  Sol: Desconocido.', cast)[0]?.type, 'narration')
+    assert.equal(parseSegments(' maria sol : Bien.', cast)[0]?.characterId, 'alicia')
+    const backgrounds = [{ id: 'cafe', tags: ['café'], description: '', mimeType: 'image/png',
+      archived: false, visibleInDemo: false, createdAt: 1 }]
+    const sounds = [{ id: 'bell', tags: ['música'], characterId: null, backgroundId: null,
+      mimeType: 'audio/ogg', createdAt: 1 }]
+    const taggedImages = [images[0]!, { ...images[1]!, tags: ['felíz'] }]
+    const segments = parseSegments('Fondo [cafe]:\nFondo [café]:\nSonido [musica]:\nSonido [música]:\nMaria Sol [feliz]: Hola.',
+      cast, backgrounds, '', taggedImages, '', sounds)
+    assert.equal(segments[0]?.backgroundId, null)
+    assert.equal(segments[1]?.backgroundId, 'cafe')
+    assert.equal(segments[2]?.soundId, null)
+    assert.equal(segments[3]?.soundId, 'bell')
+    assert.equal(segments[4]?.imageId, 'neutral')
+  })
+})

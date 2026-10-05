@@ -72,3 +72,32 @@ test('ordena primeras imágenes de todos los personajes antes de variantes', () 
   assert.equal(result.jobs[0]?.generation.seed, 42)
   assert.equal(result.jobs[2]?.generation.variationSeedStrength, 0.5)
 })
+
+test('peticiones de imagen reconocen diacríticos y alias conservando nombre, etiquetas y duplicados por personaje', () => {
+  const characters = [character('julia', 'Júlia'), character('acu', 'Àçü'), character('nino', 'Niño')]
+  const result = parseStoryImageRequests([
+    'Imagen JULIA [felíz]: portrait',
+    'Imagen Ju\u0301lia [otra]: duplicate',
+    'Imagen ACU [nueva]: landscape',
+    'Imagen Nino [nueva]: unknown',
+    'Imagen Nin\u0303o [nueva]: portrait'
+  ].join('\n'), characters, true)
+  assert.deepEqual(result.requests.map(request => [request.characterId, request.characterName, request.tags]), [
+    ['julia', 'Júlia', ['felíz']], ['acu', 'Àçü', ['nueva']], ['nino', 'Niño', ['nueva']]
+  ])
+  assert.equal(result.warnings.length, 2)
+  assert.equal(result.visibleRaw, '')
+})
+
+test('peticiones de imagen priorizan coincidencia exacta y descartan nombres ambiguos', () => {
+  const characters = [character('julia', 'Julia'), character('accented', 'Júlia'),
+    character('jose-one', 'Jóse'), character('jose-two', 'José')]
+  for (const cast of [characters, [...characters].reverse()]) {
+    const result = parseStoryImageRequests([
+      'Imagen Julia [nueva]: first', 'Imagen Júlia [nueva]: second', 'Imagen Jose [nueva]: ambiguous'
+    ].join('\n'), cast, true)
+    assert.deepEqual(result.requests.map(request => request.characterId), ['julia', 'accented'])
+    assert.equal(result.warnings.length, 1)
+    assert.match(result.warnings[0]!, /Jose/)
+  }
+})

@@ -1,6 +1,7 @@
 import type { Background, Character, CharacterImage, MessageSegment, Sound } from '#shared/types'
 import { tagKey } from '~/lib/tags'
 import { normalizeRequestedImageTags, selectCharacterImage } from '~/lib/imageSelection'
+import { createStoryNameResolver } from './storyNameMatching.ts'
 
 const LINE_RE = /^\s*([^:[\]\n]{1,60}?)\s*((?:\s*\[[^\]\n]{1,40}\])*)\s*:\s*([\s\S]*)$/
 const BACKGROUND_RE = /^\s*Fondo\s*\[([^\]\n]{1,80})\]\s*:\s*([\s\S]*)$/i
@@ -10,6 +11,14 @@ const DIALOGUE_TAG_RE = /\[([^\]\n]{1,40})\]/g
 
 function normalize(value: string) {
   return tagKey(value)
+}
+
+function createSpeakerResolver(characters: Character[], protagonistName: string) {
+  const speakers: Array<{ name: string; character: Character | null }> = characters.map(
+    (character) => ({ name: character.name, character })
+  )
+  if (protagonistName.trim()) speakers.unshift({ name: protagonistName, character: null })
+  return createStoryNameResolver(speakers)
 }
 
 function isVisualDirectiveLine(
@@ -22,11 +31,7 @@ function isVisualDirectiveLine(
 
   const match = LINE_RE.exec(trimmed.replace(THOUGHT_PREFIX_RE, ''))
   if (!match) return false
-  const name = normalize(match[1] ?? '')
-  return (
-    characters.some((character) => normalize(character.name) === name) ||
-    (Boolean(protagonistName.trim()) && normalize(protagonistName) === name)
-  )
+  return Boolean(createSpeakerResolver(characters, protagonistName)(match[1] ?? ''))
 }
 
 export function hideIncompleteVisualDirectivePrefix(
@@ -76,8 +81,7 @@ export function parseSegments(
   selectionSeed = '',
   sounds: Sound[] = []
 ): MessageSegment[] {
-  const byName = new Map(characters.map((character) => [normalize(character.name), character]))
-  const normalizedProtagonistName = normalize(protagonistName)
+  const resolveSpeaker = createSpeakerResolver(characters, protagonistName)
   const backgroundsByTag = new Map(
     backgrounds.flatMap((background) =>
       background.tags.map((tag) => [normalize(tag), background] as const)
@@ -124,7 +128,8 @@ export function parseSegments(
     if (match) {
       const thought = THOUGHT_PREFIX_RE.test(trimmed)
       const [, rawName, rawTagBlock, rest] = match
-      const character = byName.get(normalize(rawName ?? ''))
+      const speaker = resolveSpeaker(rawName ?? '')
+      const character = speaker?.character
       if (character) {
         const tags = parseDialogueTags(rawTagBlock ?? '')
         segments.push({
@@ -142,7 +147,7 @@ export function parseSegments(
         })
         continue
       }
-      if (normalizedProtagonistName && normalize(rawName ?? '') === normalizedProtagonistName) {
+      if (speaker) {
         segments.push({
           type: thought ? 'protagonist-thought' : 'protagonist-dialogue',
           characterId: null,

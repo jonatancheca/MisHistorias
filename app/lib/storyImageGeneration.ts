@@ -2,6 +2,7 @@ import type { Character, ImageGenerationMetadata } from '#shared/types'
 import { createSwarmBatch, runSwarmBatch, type SwarmBatchJob } from './swarmBatch.ts'
 import { fetchSwarmImage } from './swarm.ts'
 import { sanitizeTags } from './tags.ts'
+import { createStoryNameResolver } from './storyNameMatching.ts'
 
 export interface StoryImageRequest {
   characterId: string
@@ -34,10 +35,6 @@ export interface CharacterImageBatchInput {
 const IMAGE_DIRECTIVE_RE = /^\s*Imagen\s+([^:\n\]]{1,100}?)\s*((?:\s*\[[^\]\n]{1,80}\])+?)\s*:\s*(.*)$/i
 const IMAGE_DIRECTIVE_PREFIX_RE = /^\s*Imagen\b/i
 
-function normalizeName(value: string) {
-  return value.trim().toLocaleLowerCase('es')
-}
-
 function directiveTags(value: string) {
   return sanitizeTags(Array.from(value.matchAll(/\[([^\]\n]{1,80})\]/g), (match) => match[1] ?? ''))
 }
@@ -49,7 +46,7 @@ export function parseStoryImageRequests(
 ): StoryImageRequestParseResult {
   if (!enabled) return { visibleRaw: raw, requests: [], warnings: [] }
 
-  const byName = new Map(characters.map((character) => [normalizeName(character.name), character]))
+  const resolveCharacter = createStoryNameResolver(characters)
   const requests: StoryImageRequest[] = []
   const warnings: string[] = []
   const seen = new Set<string>()
@@ -60,7 +57,7 @@ export function parseStoryImageRequests(
       warnings.push('Se descartó una solicitud de imagen con formato no válido.')
       return []
     }
-    const character = byName.get(normalizeName(match[1] ?? ''))
+    const character = resolveCharacter(match[1] ?? '')
     const tags = directiveTags(match[2] ?? '')
     const prompt = (match[3] ?? '').trim()
     if (!character || !tags.length || !prompt) {

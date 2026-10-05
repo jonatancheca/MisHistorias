@@ -172,6 +172,10 @@ _Evitar_: Traza LLM de historia, historial de actividad, auditoría de usuario
 Historia, personaje o fondo privado visible para otros Usuarios Access en modo privado o demo, junto con las imágenes y sonidos necesarios para consultarlo, sin conceder propiedad ni permiso de edición.
 _Evitar_: Recurso público, recurso sin propietario
 
+**Nombre narrativo**:
+Nombre que identifica a un personaje del elenco o al protagonista dentro de una historia, incluida su personalización. Conserva la escritura elegida para esa historia.
+_Evitar_: Nombre del catálogo, etiqueta de imagen
+
 **Elenco activo**:
 Personajes que participan en las nuevas respuestas de una historia, en el orden en que fueron añadidos.
 _Evitar_: Todos los personajes personalizados, catálogo de personajes
