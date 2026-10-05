@@ -293,6 +293,35 @@ export const useSoundsStore = defineStore('sounds', () => {
     void audio.play().catch(release)
   }
 
+  function playResponseNotification(outcome: 'success' | 'error') {
+    const context = audioContext
+    if (!context || context.state !== 'running') return
+    try {
+      const frequencies = outcome === 'success' ? [660, 880] : [330, 247]
+      const start = context.currentTime
+      frequencies.forEach((frequency, index) => {
+        const oscillator = context.createOscillator()
+        const gain = context.createGain()
+        const at = start + index * 0.13
+        oscillator.type = 'sine'
+        oscillator.frequency.value = frequency
+        gain.gain.setValueAtTime(0, at)
+        gain.gain.linearRampToValueAtTime(0.08, at + 0.01)
+        gain.gain.linearRampToValueAtTime(0, at + 0.1)
+        oscillator.connect(gain)
+        gain.connect(context.destination)
+        oscillator.onended = () => {
+          oscillator.disconnect()
+          gain.disconnect()
+        }
+        oscillator.start(at)
+        oscillator.stop(at + 0.11)
+      })
+    } catch {
+      // Un navegador sin audio disponible no debe interrumpir la respuesta del narrador.
+    }
+  }
+
   function playBackground(id: string) {
     const sound = byId(id)
     const url = urlFor(id)
@@ -328,6 +357,7 @@ export const useSoundsStore = defineStore('sounds', () => {
     removeSound,
     unlock,
     play,
+    playResponseNotification,
     playBackground,
     stopBackground,
     resetForScope

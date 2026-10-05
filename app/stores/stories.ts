@@ -1702,6 +1702,7 @@ export const useStoriesStore = defineStore('stories', () => {
     } = {}
   ) {
     if (!activeStory.value || activeStory.value.readOnly || generating.value || deletingCompaction.value) return
+    const generationStartedAt = performance.now()
     let story = activeStory.value
     const scope = getActiveDataScope()
     const generationLifecycle = imageGenerationLifecycle
@@ -1710,6 +1711,7 @@ export const useStoriesStore = defineStore('stories', () => {
     const backgroundsStore = useBackgroundsStore()
     const soundsStore = useSoundsStore()
     const previousFeedback = generationFeedback.value
+    void soundsStore.unlock().catch(() => {})
     const attempt: StoryGenerationAttempt = {
       mode: generationMode,
       consumePendingImageInstructions: options.consumePendingImageInstructions === true,
@@ -1731,6 +1733,14 @@ export const useStoriesStore = defineStore('stories', () => {
       generationLifecycle === imageGenerationLifecycle &&
       scope === getActiveDataScope() &&
       activeStory.value?.id === story.id
+    let responseNotified = false
+    const notifyResponse = (outcome: 'success' | 'error') => {
+      if (responseNotified || !generationStillActive()) return
+      responseNotified = true
+      if (settingsStore.settings.narratorResponseSound && performance.now() - generationStartedAt > 1000) {
+        soundsStore.playResponseNotification(outcome)
+      }
+    }
     const assistantMessage: Message = {
       id: newId(),
       storyId: story.id,
@@ -1977,7 +1987,10 @@ export const useStoriesStore = defineStore('stories', () => {
             storyCharacters,
             story.autoGenerateImages === true
           ).visibleRaw.trim()
-          if (!responseIsEmpty || responseAttempt === 1) break
+          if (!responseIsEmpty || responseAttempt === 1) {
+            notifyResponse(responseIsEmpty ? 'error' : 'success')
+            break
+          }
 
           // El primer resultado vacío no crea imágenes ni consume instrucciones pendientes.
           const stored = await persistDebugTrace({
@@ -2176,6 +2189,7 @@ export const useStoriesStore = defineStore('stories', () => {
       }
     } catch (caught) {
       if ((caught as Error).name !== 'AbortError' && generationStillActive()) {
+        notifyResponse('error')
         const callError = caught as LlmCallError
         const message = callError.message || 'Fallo al generar la respuesta'
         if (preparingContext) {

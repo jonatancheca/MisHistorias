@@ -108,6 +108,10 @@ _Evitar_: Historial eliminado, comparación de mensajes visibles
 Audio puntual que acompaña un suceso de la historia y termina por sí mismo.
 _Evitar_: Sonido de fondo
 
+**Aviso de respuesta del narrador**:
+Señal sonora breve que distingue la llegada de una respuesta del narrador de un fallo definitivo después de una espera. Es independiente de los efectos y del ambiente de la historia.
+_Evitar_: Efecto de sonido, sonido de fondo
+
 **Sonido de fondo**:
 Audio de ambiente de una escena que se reproduce una vez al aparecer. Termina al acabar el archivo, al comenzar otro sonido de fondo o al pulsar Stop.
 _Evitar_: Efecto de sonido, fondo visual

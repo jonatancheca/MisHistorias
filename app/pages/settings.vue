@@ -620,6 +620,7 @@ async function unloadAllModels() {
 function settingsPatch() {
   const patch: Partial<AppSettings> = {
     responseSpeed: form.responseSpeed,
+    narratorResponseSound: form.narratorResponseSound,
     userColor: form.userColor
   }
   if (privacy.isPrivate) {
@@ -1020,6 +1021,7 @@ watch(
     form.historyBudget,
     form.contextTokenBudget,
     form.responseSpeed,
+    form.narratorResponseSound,
     form.userName,
     form.userColor,
     form.protagonistPreferences
@@ -1537,6 +1539,21 @@ onBeforeRouteLeave(async () => {
           Preferencia personal para mostrar las respuestas recibidas.
         </p>
       </div>
+      <label class="mt-5 flex min-h-11 cursor-pointer items-start gap-3">
+        <input
+          id="narratorResponseSound"
+          v-model="form.narratorResponseSound"
+          type="checkbox"
+          class="mt-1 h-4 w-4 shrink-0 accent-[var(--color-brand-500)]"
+        >
+        <span>
+          <span class="block text-sm font-semibold">Avisos sonoros del narrador</span>
+          <span class="block text-xs text-[var(--color-fg-muted)]">
+            Sonidos distintos para respuesta y error tras esperar más de un segundo, también en otra pestaña.
+            Preferencia compartida entre los modos normal y privado.
+          </span>
+        </span>
+      </label>
     </section>
 
     <section

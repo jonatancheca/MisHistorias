@@ -159,6 +159,7 @@ const IDENTITY_RESOURCE_TABLES = [
 const PERSONAL_SETTING_KEYS = [
   'theme',
   'responseSpeed',
+  'narratorResponseSound',
   'visualNovelManualAdvance',
   'defaultSoundVersion',
   'privateDefaultSoundVersion',

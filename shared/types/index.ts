@@ -468,6 +468,8 @@ export interface AppSettings {
   theme: Theme
   /** Velocidad de revelado visual de las respuestas del asistente */
   responseSpeed: ResponseSpeed
+  /** Avisos de respuesta del narrador compartidos entre los ámbitos normal y privado. */
+  narratorResponseSound: boolean
   /** En novela visual, espera una acción antes de mostrar el siguiente texto. */
   visualNovelManualAdvance: boolean
   /** Modo prueba: responde texto aleatorio sin llamar al LLM */

@@ -37,6 +37,7 @@ const DEFAULTS: AppSettings = {
   privateDefaultSoundVersion: 0,
   theme: 'system',
   responseSpeed: 'high',
+  narratorResponseSound: true,
   visualNovelManualAdvance: false,
   mockMode: false,
   userName: 'Protagonista',

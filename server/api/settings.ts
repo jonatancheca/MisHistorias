@@ -27,6 +27,7 @@ const ALLOWED_SETTINGS = new Set([
   'privateDefaultSoundVersion',
   'theme',
   'responseSpeed',
+  'narratorResponseSound',
   'visualNovelManualAdvance',
   'mockMode',
   'userName',
@@ -41,6 +42,7 @@ const ALLOWED_SETTINGS = new Set([
 const PERSONAL_SETTINGS = new Set([
   'theme',
   'responseSpeed',
+  'narratorResponseSound',
   'visualNovelManualAdvance',
   'defaultSoundVersion',
   'privateDefaultSoundVersion',
@@ -99,6 +101,7 @@ function validSetting(key: string, value: unknown) {
     case 'responseSpeed':
       return value === 'slow' || value === 'medium' || value === 'high' || value === 'instant'
     case 'visualNovelManualAdvance':
+    case 'narratorResponseSound':
     case 'mockMode':
       return typeof value === 'boolean'
     case 'userName':
@@ -132,6 +135,7 @@ function publicSettings(row: ReturnType<ReturnType<typeof getStorage>['readSetti
     narrativePrompt: null,
     compactionPrompt: null,
     characterReferencePrompt: null,
+    narratorResponseSound: true,
     ...row.value,
     apiKey: '',
     apiKeyConfigured: Boolean(row.apiKey),

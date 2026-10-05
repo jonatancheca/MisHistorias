@@ -2409,10 +2409,12 @@ test('activa multiusuario, reclama el legado y aísla propietarios compartiendo 
 
     storage.writeUserSettings(
       { id: 'visitor-sub', email: 'visitor@example.com' },
-      { userName: 'Visitante', theme: 'light' }
+      { userName: 'Visitante', theme: 'light', narratorResponseSound: false }
     )
     assert.equal(storage.readSettings('visitor-sub')?.value.userName, 'Visitante')
     assert.equal(storage.readSettings('visitor-sub')?.value.theme, 'light')
+    assert.equal(storage.readSettings('visitor-sub')?.value.narratorResponseSound, false)
+    assert.notEqual(storage.readSettings('admin-sub')?.value.narratorResponseSound, false)
     assert.equal(storage.readSettings('admin-sub')?.value.userName, 'Administradora')
 
     storage.clear('private', visitor)
