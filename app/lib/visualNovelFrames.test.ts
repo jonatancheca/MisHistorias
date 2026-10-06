@@ -465,3 +465,19 @@ it('actualiza la escena del último texto sin añadir un cuadro por una instrucc
   assert.equal(frames.length, 5)
   assert.deepEqual(frames.at(-1)?.absentCharacterIds, ['alicia'])
 })
+
+it('representa retorno guardado desde su intervención sin alterar escenas ni mensajes anteriores', () => {
+  const earlier: Message = { ...messages[1]!, absentCharacterIds: ['alicia', 'bruno'] }
+  const returned: Message = { ...earlier, id: 'return', createdAt: 3, segments: [
+    { type: 'narration', characterId: null, tag: null, text: 'Antes del retorno.' },
+    { type: 'thought', characterId: 'alicia', tag: 'feliz', imageId: 'alicia-feliz', text: 'Estoy aquí.', returnsToScene: true },
+    { type: 'narration', characterId: null, tag: null, text: 'Después del retorno.' }
+  ] }
+  const frames = buildVisualNovelFrames([earlier, returned], { initialBackgroundId: null, initialBackgroundTag: null })
+  assert.ok(frames.filter((frame) => frame.messageId === earlier.id).every((frame) => frame.absentCharacterIds?.includes('alicia')))
+  assert.deepEqual(frames.at(-3)?.absentCharacterIds, ['alicia', 'bruno'])
+  assert.deepEqual(frames.at(-2)?.absentCharacterIds, ['bruno'])
+  assert.deepEqual(frames.at(-1)?.absentCharacterIds, ['bruno'])
+  assert.equal(frames.at(-2)?.characterStates.at(-1)?.imageId, 'alicia-feliz')
+  assert.deepEqual(returned.absentCharacterIds, ['alicia', 'bruno'])
+})

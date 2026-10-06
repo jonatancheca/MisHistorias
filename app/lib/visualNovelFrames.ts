@@ -168,6 +168,10 @@ export function buildVisualNovelFrames(
         return
       }
 
+      const visibleText = stripBracketedText(segment.text)
+      if (segment.returnsToScene && visibleText && (segment.type === 'dialogue' || segment.type === 'thought') && segment.characterId) {
+        absentCharacterIds = absentCharacterIds.filter((id) => id !== segment.characterId)
+      }
       let kind: VisualNovelFrame['kind'] = segment.type
       if ((segment.type === 'dialogue' || segment.type === 'thought') && segment.characterId) {
         const characterState = {
@@ -191,7 +195,6 @@ export function buildVisualNovelFrames(
         ((segment.type === 'dialogue' || segment.type === 'thought') && Boolean(segment.characterId)) ||
         segment.type === 'protagonist-dialogue' || segment.type === 'protagonist-thought'
       )
-      const visibleText = stripBracketedText(segment.text)
       if (!visibleText && !isRecognizedDialogue) return
 
       frames.push({

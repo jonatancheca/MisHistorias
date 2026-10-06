@@ -260,6 +260,8 @@ export interface MessageSegment {
   imageId?: string | null
   /** La imagen fue elegida manualmente y prevalece sobre las etiquetas del segmento. */
   imageIdOverride?: boolean
+  /** Esta intervención guardada reincorporó al personaje ausente a la escena. */
+  returnsToScene?: boolean
   text: string
 }
 

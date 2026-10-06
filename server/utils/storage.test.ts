@@ -3312,3 +3312,81 @@ test('migra v45 con presencia predeterminada y snapshots antiguos sin retroactiv
     } finally { migrated.close() }
   })
 })
+
+for (const scope of ['normal', 'private'] as const) {
+  test(`respuesta nueva reincorpora solo diálogo y pensamiento con texto y conserva su presencia inicial (${scope})`, () => {
+    withStorage((storage) => {
+      for (const id of ['a', 'b', 'c', 'outside']) storage.put('characters', scope, id, character(id))
+      const initial = { ...story('return'), characterIds: ['a', 'b', 'c'], absentCharacterIds: ['a', 'b', 'c'] }
+      storage.put('stories', scope, initial.id, initial)
+      const message = {
+        id: 'returned', storyId: initial.id, role: 'assistant', raw: 'Texto del narrador.', absentCharacterIds: initial.absentCharacterIds,
+        segments: [
+          { type: 'narration', characterId: 'c', tag: null, text: 'Se menciona a c.', returnsToScene: true },
+          { type: 'dialogue', characterId: 'c', tag: null, text: '  ' },
+          { type: 'thought', characterId: 'c', tag: null, text: '[anotación]' },
+          { type: 'dialogue', characterId: 'outside', tag: null, text: 'No pertenece al elenco.' },
+          { type: 'dialogue', characterId: 'a', tag: null, text: 'Regreso.' },
+          { type: 'thought', characterId: 'b', tag: null, text: 'Estoy aquí.' },
+          { type: 'dialogue', characterId: 'a', tag: null, text: 'Sigo aquí.' }
+        ], createdAt: 5
+      }
+      const result = storage.putGeneratedMessage(scope, message.id, message)
+      assert.deepEqual(result.story.absentCharacterIds, ['c'])
+      assert.deepEqual(result.message.absentCharacterIds, ['a', 'b', 'c'])
+      assert.deepEqual(result.message.segments.flatMap((segment, index) => segment.returnsToScene ? [index] : []), [4, 5])
+      assert.deepEqual(storage.get('stories', scope, initial.id)?.absentCharacterIds, ['c'])
+      const repeated = storage.putGeneratedMessage(scope, message.id, message)
+      assert.deepEqual(repeated, result)
+      const save = storage.createStorySave(scope, initial.id, 'Retorno', 'data:image/webp;base64,UklGRg==')!
+      assert.deepEqual(save.story.absentCharacterIds, ['c'])
+      assert.equal(save.messages[0]?.segments[4]?.returnsToScene, true)
+    })
+  })
+}
+
+test('guardar o editar mensaje ordinario no provoca retorno ni reinterpreta historias anteriores', () => {
+  withStorage((storage) => {
+    storage.put('characters', 'normal', 'a', character('a'))
+    const initial = { ...story('legacy-return'), characterIds: ['a'], absentCharacterIds: ['a'] }
+    storage.put('stories', 'normal', initial.id, initial)
+    storage.put('messages', 'normal', 'old', { id: 'old', storyId: initial.id, role: 'assistant',
+      raw: 'a: Hola.', segments: [{ type: 'dialogue', characterId: 'a', tag: null, text: 'Hola.' }], createdAt: 5 })
+    assert.deepEqual(storage.get('stories', 'normal', initial.id)?.absentCharacterIds, ['a'])
+    assert.equal(storage.get('messages', 'normal', 'old')?.segments[0]?.returnsToScene, undefined)
+  })
+})
+
+test('fallo al guardar presencia revierte mensaje y retorno en la misma transacción', () => {
+  withStorage((storage, path) => {
+    storage.put('characters', 'normal', 'a', character('a'))
+    const initial = { ...story('failed-return'), characterIds: ['a'], absentCharacterIds: ['a'] }
+    storage.put('stories', 'normal', initial.id, initial)
+    const database = new DatabaseSync(path)
+    try {
+      database.exec("CREATE TRIGGER fail_return BEFORE UPDATE ON stories BEGIN SELECT RAISE(ABORT, 'return failure'); END")
+      assert.throws(() => storage.putGeneratedMessage('normal', 'new', { id: 'new', storyId: initial.id, role: 'assistant',
+        raw: 'a: Regreso.', segments: [{ type: 'dialogue', characterId: 'a', tag: null, text: 'Regreso.' }], createdAt: 5 }), /return failure/)
+      assert.equal(storage.get('messages', 'normal', 'new'), null)
+      assert.deepEqual(storage.get('stories', 'normal', initial.id)?.absentCharacterIds, ['a'])
+    } finally {
+      database.close()
+    }
+  })
+})
+
+test('retorno respeta ámbito y propietario y rechaza mensajes del usuario', () => {
+  withStorage((storage) => {
+    const owner = { ownerId: 'owner' }
+    storage.put('characters', 'private', 'a', character('a'), owner)
+    const initial = { ...story('owned-return'), characterIds: ['a'], absentCharacterIds: ['a'] }
+    storage.put('stories', 'private', initial.id, initial, owner)
+    const message = { id: 'new', storyId: initial.id, role: 'assistant', raw: 'a: Regreso.',
+      segments: [{ type: 'dialogue', characterId: 'a', tag: null, text: 'Regreso.' }], createdAt: 5 }
+    assert.throws(() => storage.putGeneratedMessage('normal', message.id, message, owner), /no pertenece/)
+    assert.throws(() => storage.putGeneratedMessage('private', message.id, message, { ownerId: 'other', includeSharedDemo: true }), /no pertenece/)
+    assert.throws(() => storage.putGeneratedMessage('private', message.id, { ...message, role: 'user' }, owner), /no válida/)
+    assert.deepEqual(storage.get('stories', 'private', initial.id, owner)?.absentCharacterIds, ['a'])
+    assert.equal(storage.get('messages', 'private', message.id, owner), null)
+  })
+})

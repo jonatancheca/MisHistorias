@@ -411,6 +411,9 @@ async function readCharacterImport(event: H3Event) {
 function mapStorageError(caught: unknown, event: H3Event): never {
   if (caught && typeof caught === 'object' && 'statusCode' in caught) throw caught
   const error = caught as { code?: string; errcode?: number; message?: string }
+  if (error.code === 'ERR_INVALID_RESOURCE') {
+    throw createError({ statusCode: 400, message: error.message || 'Datos no válidos' })
+  }
   if (error.code === 'ERR_READ_ONLY_RESOURCE') {
     throw createError({ statusCode: 404, statusMessage: 'Registro no encontrado' })
   }
@@ -665,11 +668,15 @@ export default defineEventHandler(async (event) => {
         payload.metadata = validatePayload(resource, payload.metadata)
         return storage.putBinary(resource, scope, resourceId, payload, access)
       }
+      const value = validatePayload(resource, await readBody(event))
+      if (resource === 'messages' && query.generated === '1') {
+        return storage.putGeneratedMessage(scope, resourceId, value, access)
+      }
       return storage.put(
         resource,
         scope,
         resourceId,
-        validatePayload(resource, await readBody(event)),
+        value,
         access
       )
     }

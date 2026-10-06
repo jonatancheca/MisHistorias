@@ -1,4 +1,4 @@
-import { normalizeAbsentCharacterIds, presentCharacterIds } from '#shared/utils/characterPresence'
+import { normalizeAbsentCharacterIds, presentCharacterIds, preserveCharacterReturns } from '#shared/utils/characterPresence'
 import { defineStore } from 'pinia'
 import { reportClientErrorTrace } from '~/lib/errorTraces'
 import type {
@@ -39,6 +39,7 @@ import {
   newId,
   putLlmDebugTrace,
   putMessage,
+  putGeneratedMessage,
   putStory,
   putStoryInScope,
   getActiveDataScope,
@@ -790,8 +791,15 @@ export const useStoriesStore = defineStore('stories', () => {
       .sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
-  async function persist(message: Message) {
-    await putMessage(message)
+  async function persist(message: Message, generated = false) {
+    const scope = getActiveDataScope()
+    if (generated) {
+      const stored = await putGeneratedMessage(message, scope)
+      if (scope !== getActiveDataScope() || activeStory.value?.id !== message.storyId) return
+      message = { ...message, ...stored.message }
+      activeStory.value = stored.story
+      stories.value = stories.value.map((story) => story.id === stored.story.id ? stored.story : story)
+    } else await putMessage(message, scope)
     const index = messages.value.findIndex((item) => item.id === message.id)
     if (index >= 0) messages.value[index] = message
     else messages.value.push(message)
@@ -866,7 +874,7 @@ export const useStoriesStore = defineStore('stories', () => {
             )
           : []
     }
-    await persist(updated)
+    await persist(preserveCharacterReturns(updated, current))
   }
 
   async function replaceMessageSegmentImage(messageId: string, segmentIndex: number, imageId: string) {
@@ -1514,7 +1522,7 @@ export const useStoriesStore = defineStore('stories', () => {
 
     try {
       if (draft?.raw.trim()) {
-        await persist(draft)
+        await persist(draft, true)
         await touchStory()
       } else if (draft) {
         messages.value = messages.value.filter((message) => message.id !== draft.id)
@@ -2190,20 +2198,12 @@ export const useStoriesStore = defineStore('stories', () => {
         if (settings.responseSpeed === 'instant' && !activeStory.value?.visualMode) {
           playNewSounds(segments, new Set<string>(), soundsStore)
         }
-        await persist(completedMessage)
+        await persist(completedMessage, true)
         pendingAssistantMessage.value = null
-        if (!generationStillActive()) {
-          await dbDeleteMessage(assistantMessage.id)
-          messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
-          return
-        }
+        if (!generationStillActive()) return
         if (pendingForRequest.length) await consumePendingImageInstructions(pendingForRequest)
         else await touchStory()
-        if (!generationStillActive()) {
-          await dbDeleteMessage(assistantMessage.id)
-          messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
-          return
-        }
+        if (!generationStillActive()) return
       }
       if (pendingVariantJobs.length && imageProgress && !imageProgress.error && !imageProgress.canceled) {
         const variantJobs = pendingVariantJobs

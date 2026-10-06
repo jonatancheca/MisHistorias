@@ -12,7 +12,7 @@ import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path'
 import { DatabaseSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite'
 import { inspectBackupDatabase, inspectBackupsInBackground } from './backupInspection.ts'
 import { readImageGeneration } from '../../shared/utils/imageGeneration.ts'
-import { normalizeAbsentCharacterIds } from '../../shared/utils/characterPresence.ts'
+import { normalizeAbsentCharacterIds, restoreAbsentCharacters } from '../../shared/utils/characterPresence.ts'
 import { readStorySwarmError } from '../../shared/utils/swarmError.ts'
 import type {
   AccessConfiguration,
@@ -3188,6 +3188,35 @@ export class MisHistoriasStorage {
         sounds: this.list('sounds', scope, {}, access)
           .filter((sound) => sound.characterId === characterId)
       }
+    })
+  }
+
+  putGeneratedMessage(scope: DataScope, id: string, rawValue: unknown, access?: StorageAccess) {
+    const value = record(rawValue)
+    if (value.role !== 'assistant' || readStorySwarmError(value.swarmError) ||
+        !Array.isArray(value.segments) || value.segments.some((segment) => !segment || typeof segment !== 'object' || typeof segment.text !== 'string')) {
+      throw Object.assign(new Error('Respuesta del narrador no válida'), { code: 'ERR_INVALID_RESOURCE' })
+    }
+    return this.transaction(() => {
+      this.assertWritable('messages', scope, id, access)
+      const ownAccess = access ? { ownerId: access.ownerId } : undefined
+      const story = this.get('stories', scope, text(value.storyId), ownAccess)
+      if (!story) {
+        throw Object.assign(new Error('La historia no pertenece al usuario'), { code: 'ERR_READ_ONLY_RESOURCE' })
+      }
+      const existing = this.get('messages', scope, id, ownAccess)
+      if (existing) {
+        if (existing.storyId !== story.id || existing.role !== 'assistant') {
+          throw Object.assign(new Error('Respuesta del narrador no válida'), { code: 'ERR_INVALID_RESOURCE' })
+        }
+        return { message: existing, story }
+      }
+      const restored = restoreAbsentCharacters({ ...value, id } as unknown as Message, story)
+      const message = this.put('messages', scope, id, restored.message, access)
+      const updatedStory = restored.story === story
+        ? story
+        : this.put('stories', scope, story.id, restored.story, access)
+      return { message, story: updatedStory }
     })
   }
 

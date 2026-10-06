@@ -370,6 +370,13 @@ export async function putMessage(message: Message, scope: DataScope = activeData
   return putJson('messages', message, scope)
 }
 
+export async function putGeneratedMessage(message: Message, scope: DataScope = activeDataScope.value) {
+  return $fetch<{ message: Message; story: Story }>(
+    dataUrl(`messages/${encodeURIComponent(message.id)}?generated=1`, scope),
+    { method: 'PUT', body: unwrap(message) }
+  )
+}
+
 export async function deleteMessage(id: string, scope: DataScope = activeDataScope.value) {
   await $fetch(dataUrl(`messages/${encodeURIComponent(id)}`, scope), { method: 'DELETE' })
 }

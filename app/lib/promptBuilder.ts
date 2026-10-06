@@ -94,11 +94,12 @@ function characterSheet(
   autoGenerateImages = false,
   absent = false
 ) {
+  const name = customization?.name?.trim() || character.name
   if (absent) return [
     `### ${customization?.name?.trim() || character.name}`,
     (customization?.prompt ?? character.prompt).trim() || '(sin descripción)',
     `Etiquetas descriptivas del personaje (no son etiquetas de imagen): ${(customization?.tags ?? character.tags ?? []).join(', ') || '(ninguna)'}`,
-    'Estado: AUSENTE de la escena. Puede ser mencionado, pero no actúa, habla ni piensa en ella. Sin imágenes ni sonidos disponibles.'
+    `Estado: AUSENTE de la escena. ${name} no debe hablar, dialogar, pensar ni actuar en esta respuesta. No escribas líneas de diálogo de ${name} ni líneas de Pensamiento ${name}. Puede ser mencionado por el narrador o los personajes presentes sin intervenir ni regresar. Sin imágenes ni sonidos disponibles.`
   ].join('\n')
   const own = images.filter((image) => image.characterId === character.id)
   const fallback = own.find((image) => image.isDefault) ?? own[0]
@@ -246,7 +247,7 @@ export function buildSystemPrompt(options: {
     'Escribe el texto del pensamiento sin paréntesis ni markdown; la aplicación lo muestra en cursiva, entre paréntesis y con el color del personaje. Los demás personajes no lo oyen. No confundas estos pensamientos ficticios con tu propio análisis o razonamiento.',
     '',
     '## PRESENCIA EN LA ESCENA',
-    'El protagonista está siempre presente. La presencia la decide únicamente el usuario y no cambia al cambiar de fondo. Los personajes AUSENTES siguen siendo conocidos y pueden mencionarse, pero no deben actuar, dialogar ni pensar en la escena. No los reincorpores ni solicites imágenes o sonidos para ellos. Esta presencia actual prevalece sobre el historial y su resumen.',
+    'El protagonista está siempre presente. Respeta la presencia actual indicada por la historia; no cambia al cambiar de fondo. Está prohibido escribir diálogo, pensamientos o acciones de cualquier personaje marcado AUSENTE, aunque hablase en el historial o en el resumen. Los ausentes siguen siendo conocidos y pueden mencionarse, pero no intervienen en esta respuesta. No los reincorpores ni solicites imágenes o sonidos para ellos. Esta presencia actual prevalece sobre el historial y su resumen.',
     '',
     '## PERSONAJES',
     characters
