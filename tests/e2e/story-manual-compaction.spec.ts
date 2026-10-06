@@ -87,7 +87,8 @@ for (const failure of ['vacío', 'truncado', 'sin reducción', 'guardado', 'lím
     await expect(await page.request.put(`/api/data/stories/${story.id}?scope=normal`, { data: {
       ...story, contextSummary: 'Checkpoint anterior extenso. '.repeat(200), contextSummaryThroughMessageId: old.id
     } })).toBeOK()
-    if (failure === 'límite') await data.patchSettings({ historyBudget: 3000 })
+    // El límite admite las instrucciones actuales, pero no el resumen de 4000 caracteres.
+    if (failure === 'límite') await data.patchSettings({ historyBudget: 6000 })
     await page.reload()
     let fail = true
     await page.route(`**/api/data/stories/${story.id}?scope=normal`, async route => {

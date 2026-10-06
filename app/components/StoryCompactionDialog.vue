@@ -11,7 +11,7 @@ const after = ref<StoryContextMeasurement | null>(null)
 const measuring = ref(false)
 const busy = ref(false)
 const error = ref<string | null>(null)
-const offerBlocks = ref(false)
+const offerAlternatives = ref(false)
 let request: AbortController | null = null
 const format = (value: number) => value.toLocaleString('es-ES')
 const tokenCount = (value: StoryContextMeasurement) => value.tokens === null ? 'Tokens no disponibles' : `${format(value.tokens)} tokens`
@@ -24,7 +24,7 @@ async function refresh() {
   error.value = null
   before.value = null
   after.value = null
-  offerBlocks.value = false
+  offerAlternatives.value = false
   try {
     const result = await stories.measureStoryContext(current.signal)
     if (!current.signal.aborted) before.value = result
@@ -35,23 +35,22 @@ async function refresh() {
   }
 }
 
-async function compact(blocks = false) {
+async function compact(blocks = false, allowOverCapacity = false) {
   if (busy.value || stories.generating || !before.value?.canCompact) return
   request?.abort()
   const current = new AbortController()
   request = current
   busy.value = true
   error.value = null
-  offerBlocks.value = false
   try {
-    const result = await stories.compactStory(blocks, current.signal)
+    const result = await stories.compactStory({ allowBlocks: blocks, allowOverCapacity }, current.signal)
     if (current.signal.aborted || !result) return
     before.value = result.before
     after.value = result.after
   } catch (caught) {
     if (current.signal.aborted) return
     error.value = (caught as Error).message
-    offerBlocks.value = caught instanceof CompactionCapacityError
+    offerAlternatives.value ||= caught instanceof CompactionCapacityError
   } finally {
     if (request === current) busy.value = false
   }
@@ -103,11 +102,17 @@ onBeforeUnmount(() => request?.abort())
     <p v-if="busy" class="mt-4 text-sm" role="status">{{ stories.compactionSaving ? 'Guardando compactación…' : 'El Narrador está compactando el historial…' }}</p>
     <p v-if="after" class="mt-4 text-sm" role="status">Historia compactada. No se ha generado ninguna continuación.</p>
     <p v-if="error" class="mt-4 break-words text-sm text-red-500" role="alert">{{ error }}</p>
+    <p v-if="offerAlternatives && !busy && !after" class="mt-3 text-sm text-[var(--color-fg-muted)]">
+      Al compactar igualmente, la petición puede superar la capacidad del modelo y fallar.
+    </p>
     <div class="mt-5 flex flex-wrap justify-end gap-2">
       <button v-if="busy" type="button" class="btn-ghost" :disabled="stories.compactionSaving" @click="cancel">Cancelar compactación</button>
       <template v-else-if="!after">
         <button type="button" class="btn-ghost" :disabled="measuring || stories.generating" @click="refresh">Actualizar medidas</button>
-        <button v-if="offerBlocks" type="button" class="btn-primary" :disabled="stories.generating" @click="compact(true)">Compactar por bloques</button>
+        <template v-if="offerAlternatives">
+          <button type="button" class="btn-primary" :disabled="measuring || stories.generating || !before?.canCompact" @click="compact(true)">Compactar por bloques</button>
+          <button type="button" class="btn-ghost" :disabled="measuring || stories.generating || !before?.canCompact" @click="compact(false, true)">Compactar igualmente</button>
+        </template>
         <button v-else type="button" class="btn-primary" :disabled="measuring || stories.generating || !before?.canCompact" data-dialog-autofocus @click="compact()">Compactar</button>
       </template>
     </div>

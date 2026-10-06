@@ -972,10 +972,12 @@ export const useStoriesStore = defineStore('stories', () => {
     scope: DataScope
     isActive: () => boolean
     force?: boolean
+    allowOverCapacity?: boolean
     improvementUnit?: ContextUnit
     measure?: (messages: ChatMessage[], manualLimit?: boolean) => Promise<ContextUsage>
   }) {
     const { chatOptions } = options
+    const allowOverCapacity = options.force === true && options.allowOverCapacity === true && !options.allowBlocks
     const story = chatOptions.story
     const measure = options.measure ?? (async (messages: ChatMessage[], manualLimit = true): Promise<ContextUsage> => {
       options.signal.throwIfAborted()
@@ -1053,12 +1055,12 @@ export const useStoriesStore = defineStore('stories', () => {
         debugRequest.messages = messages
         debugRequest.contextUsage = usage
         debugRequest.model = usage.model
-        if (!contextFits(usage)) throw new CompactionCapacityError()
+        if (!allowOverCapacity && !contextFits(usage)) throw new CompactionCapacityError()
         const result = options.useChromeLlm
           ? await fetchChromeLlmChat({
             messages,
             operation: 'story.compaction',
-            contextLimit: usage.unit === 'tokens' ? usage.effectiveLimit : undefined,
+            contextLimit: !allowOverCapacity && usage.unit === 'tokens' ? usage.effectiveLimit : undefined,
             signal: options.signal
           })
         : await fetchLlmChat({
@@ -1277,7 +1279,7 @@ export const useStoriesStore = defineStore('stories', () => {
     return context.measurement(await context.measure(buildChatMessages(context.chatOptions)))
   }
 
-  async function compactStory(allowBlocks = false, signal?: AbortSignal) {
+  async function compactStory(options: { allowBlocks?: boolean; allowOverCapacity?: boolean } = {}, signal?: AbortSignal) {
     if (generating.value || deletingCompaction.value || !activeStory.value || activeStory.value.readOnly) return null
     const requestController = new AbortController()
     controller = requestController
@@ -1293,7 +1295,8 @@ export const useStoriesStore = defineStore('stories', () => {
       if (!before.canCompact) throw new Error(before.tokenError || 'No hay historial anterior que compactar.')
       let afterUsage = beforeUsage
       await compactHistoryIfNeeded({
-        ...context, force: true, allowBlocks, signal: requestSignal,
+        ...context, force: true, allowBlocks: options.allowBlocks === true,
+        allowOverCapacity: options.allowOverCapacity === true, signal: requestSignal,
         temperature: context.settings.activeTemperature, compactionPrompt: context.settings.effectiveCompactionPrompt,
         measure: async (messages, manualLimit) => context.validate(await context.measure(messages, manualLimit)),
         onUsage: usage => { afterUsage = usage }
