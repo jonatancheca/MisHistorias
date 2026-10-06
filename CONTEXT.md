@@ -81,7 +81,7 @@ Número total de tokens que admite la ventana actual del modelo de historias car
 _Evitar_: Límite de contexto enviado, máximo de tokens de respuesta
 
 **Compactación por bloques**:
-Resumen progresivo del historial solicitado expresamente cuando una única petición de compactación no cabe en el modelo. Conserva el checkpoint anterior hasta que el resumen completo permite preparar una nueva respuesta dentro del límite.
+Resumen progresivo del historial solicitado expresamente cuando una única petición de compactación no cabe en el modelo, dividido en bloques cronológicos que aprovechan el espacio disponible junto a las instrucciones y el resumen acumulado, sin omitir texto. Conserva el checkpoint anterior hasta que el resumen completo permite preparar una nueva respuesta dentro del límite.
 _Evitar_: Recorte del historial, checkpoint parcial
 
 **Compactación del historial**:

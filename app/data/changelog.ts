@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 258, completedAt: '2026-10-06', summary: 'Compactación por bloques con búsqueda por grupos de mensajes y reutilización de mediciones dentro de cada operación: reduce llamadas de tokenización en historiales extensos, conserva el texto completo y valida un único checkpoint final en ambos proveedores y ámbitos.' },
   { issue: 257, completedAt: '2026-10-06', summary: 'Opción Compactar igualmente junto a la compactación por bloques en el diálogo manual: intenta una petición completa pese a la medición de capacidad, también en Chrome, y conserva el resumen anterior y las opciones ante fallos; solo aplica resultados reducidos y dentro de los límites.' },
   { issue: 256, completedAt: '2026-10-06', summary: 'Cambios de presencia en Novela Visual sin tarjetas ni pasos adicionales: conservan el texto y el cuadro visible, actualizan los personajes de la última escena y respetan la presencia histórica, también en Debug y tras recargar.' },
   { issue: 255, completedAt: '2026-10-06', summary: 'Máximo real de contexto del modelo cargado junto a Load IA en Ajustes normales y privados, compartido entre entrada y respuesta; actualización tras cargar o detectar una instancia ya cargada, con estados de consulta y fallos sin cifras obsoletas.' },

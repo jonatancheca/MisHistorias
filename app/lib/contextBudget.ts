@@ -56,39 +56,54 @@ export async function summarizeInBlocks(options: {
   fits: (previousSummary: string, history: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>) => Promise<boolean>
   signal: AbortSignal
 }) {
+  options.signal.throwIfAborted()
   let summary = options.previousSummary
   const remaining = options.history.map(message => ({ ...message }))
-  while (remaining.length) {
+  const fits = async (history: typeof remaining) => {
     options.signal.throwIfAborted()
-    const block: typeof remaining = []
-    while (remaining.length) {
-      const next = remaining[0]!
-      if (await options.fits(summary, [...block, next])) {
-        block.push(remaining.shift()!)
-        continue
+    const result = await options.fits(summary, history)
+    options.signal.throwIfAborted()
+    return result
+  }
+  while (remaining.length) {
+    // Prueba el resto completo y busca la frontera por grupos, no mensaje a mensaje.
+    let length = 0
+    if (await fits(remaining)) length = remaining.length
+    else {
+      let low = 1
+      let high = remaining.length - 1
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2)
+        if (await fits(remaining.slice(0, middle))) {
+          length = middle
+          low = middle + 1
+        } else high = middle - 1
       }
-      if (block.length) break
+    }
+    let block: typeof remaining
+    if (length) block = remaining.splice(0, length)
+    else {
       // Un mensaje individual también puede superar la capacidad. No se omite texto.
+      const next = remaining[0]!
       const characters = Array.from(next.content)
       let low = 1
       let high = characters.length - 1
-      let length = 0
       while (low <= high) {
-        options.signal.throwIfAborted()
         const middle = Math.floor((low + high) / 2)
-        if (await options.fits(summary, [{ ...next, content: characters.slice(0, middle).join('') }])) {
+        if (await fits([{ ...next, content: characters.slice(0, middle).join('') }])) {
           length = middle
           low = middle + 1
         } else high = middle - 1
       }
       if (!length) throw new Error('El resumen acumulado y las instrucciones no dejan espacio para compactar el historial por bloques. Aumenta la capacidad del modelo o reduce los tokens máximos de respuesta.')
-      block.push({ ...next, content: characters.slice(0, length).join('') })
+      block = [{ ...next, content: characters.slice(0, length).join('') }]
       next.content = characters.slice(length).join('')
-      break
     }
     summary = await options.summarize(summary, block)
+    options.signal.throwIfAborted()
   }
   // Un checkpoint sin historial posterior puede necesitar una nueva compactación.
   if (!options.history.length) summary = await options.summarize(summary, [])
+  options.signal.throwIfAborted()
   return summary
 }

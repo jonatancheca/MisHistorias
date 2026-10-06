@@ -979,15 +979,23 @@ export const useStoriesStore = defineStore('stories', () => {
     const { chatOptions } = options
     const allowOverCapacity = options.force === true && options.allowOverCapacity === true && !options.allowBlocks
     const story = chatOptions.story
+    const tokenMeasurements = new Map<string, ReturnType<typeof fetchLlmContext>>()
     const measure = options.measure ?? (async (messages: ChatMessage[], manualLimit = true): Promise<ContextUsage> => {
       options.signal.throwIfAborted()
       if (options.tokenBudget === 0 && (options.useChromeLlm || options.maxTokens !== 'auto')) return {
         unit: 'characters', count: chatContextSize(messages), configuredLimit: options.historyBudget,
         effectiveLimit: manualLimit ? options.historyBudget : 0, model: options.useChromeLlm ? 'chrome-prompt-api' : options.model
       }
-      const result = options.useChromeLlm
-        ? await measureChromeLlmContext(messages, options.signal)
-        : await fetchLlmContext(messages, options.model, options.scope, options.signal)
+      // El mismo bloque se valida al elegirlo y antes de enviarlo. Reutiliza su medición.
+      const key = JSON.stringify(messages)
+      let pending = tokenMeasurements.get(key)
+      if (!pending) {
+        pending = options.useChromeLlm
+          ? measureChromeLlmContext(messages, options.signal)
+          : fetchLlmContext(messages, options.model, options.scope, options.signal)
+        tokenMeasurements.set(key, pending)
+      }
+      const result = await pending
       if (!options.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
       return {
         ...tokenContextUsage(result.tokens, result.capacity, options.useChromeLlm ? 0 : options.maxTokens,

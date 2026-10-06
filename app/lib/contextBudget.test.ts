@@ -68,3 +68,64 @@ test('bloques rechazan falta de espacio y respetan cancelación entre llamadas',
   controller.abort()
   await assert.rejects(summarizeInBlocks(options), { name: 'AbortError' })
 })
+
+
+test('330 mensajes con 33000 tokens de prueba se agrupan con pocas mediciones y sin perder historial', async () => {
+  const history: Parameters<typeof summarizeInBlocks>[0]['history'] = Array.from({ length: 330 }, (_, index) => ({
+    role: index % 2 ? 'assistant' as const : 'user' as const,
+    content: `${index} ${'dato '.repeat(99)}`
+  }))
+  const original = structuredClone(history)
+  const tokens = (text: string) => text.trim().split(/\s+/u).filter(Boolean).length
+  assert.equal(history.reduce((sum, message) => sum + tokens(message.content), 0), 33000)
+  let measurements = 0
+  const blocks: typeof history[] = []
+  const summaries: string[] = []
+  const result = await summarizeInBlocks({
+    history, previousSummary: '', signal: new AbortController().signal,
+    fits: async (previous, messages) => {
+      measurements += 1
+      return tokens(previous) + messages.reduce((sum, message) => sum + tokens(message.content), 0) <= 12000
+    },
+    summarize: async (previous, messages) => {
+      summaries.push(previous)
+      blocks.push(structuredClone(messages))
+      return `Resumen ${blocks.length}`
+    }
+  })
+  assert.deepEqual(blocks.flat(), original)
+  assert.deepEqual(history, original)
+  assert.equal(blocks.length, 3)
+  assert.ok(measurements <= 30, `${measurements} mediciones para 330 mensajes`)
+  assert.deepEqual(summaries, ['', 'Resumen 1', 'Resumen 2'])
+  assert.equal(result, 'Resumen 3')
+})
+
+test('el resto que cabe completo necesita una sola medición', async () => {
+  const history = Array.from({ length: 500 }, () => ({ role: 'assistant' as const, content: 'Hecho.' }))
+  let measurements = 0
+  let generations = 0
+  await summarizeInBlocks({
+    history, previousSummary: 'Previo', signal: new AbortController().signal,
+    fits: async () => { measurements += 1; return true },
+    summarize: async (previous, messages) => {
+      generations += 1
+      assert.equal(previous, 'Previo')
+      assert.deepEqual(messages, history)
+      return 'Resumen final'
+    }
+  })
+  assert.equal(measurements, 1)
+  assert.equal(generations, 1)
+})
+
+test('cancelar durante una medición impide generar el siguiente bloque', async () => {
+  const controller = new AbortController()
+  let generations = 0
+  await assert.rejects(summarizeInBlocks({
+    history: [{ role: 'user', content: 'Historial' }], previousSummary: '', signal: controller.signal,
+    fits: async () => { controller.abort(); return true },
+    summarize: async () => { generations += 1; return 'Resumen' }
+  }), { name: 'AbortError' })
+  assert.equal(generations, 0)
+})
