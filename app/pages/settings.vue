@@ -302,8 +302,14 @@ async function refreshTokenCapacity() {
   }
 }
 
-watch(() => [form.baseUrl, form.model, form.apiKey, privateLlmSettingsEnabled.value, privacy.mode,
-  chromeLlmEnabled.value, form.maxTokens === 'auto', form.contextTokenBudget === 'auto'], () => {
+watch([
+  () => form.baseUrl,
+  () => form.model,
+  () => form.apiKey,
+  () => privateLlmSettingsEnabled.value,
+  () => privacy.mode,
+  () => chromeLlmEnabled.value
+], () => {
   cancelTokenCapacity()
   tokenCapacityTimer = setTimeout(() => {
     tokenCapacityTimer = null

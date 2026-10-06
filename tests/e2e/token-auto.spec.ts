@@ -58,6 +58,87 @@ test('ambos Auto persisten, muestran capacidad actual y conservan herencia priva
   await expect(page.getByRole('checkbox', { name: 'Auto para respuesta', exact: true })).toBeChecked()
 })
 
+for (const scope of ['normal', 'private'] as const) {
+  test('editar límites y Auto conserva capacidad sin consultas en ámbito ' + scope, async ({ page }) => {
+    let capacity = 8192
+    let capacityRequests = 0
+    await page.route('**/api/llm/capacity?*', route => {
+      capacityRequests += 1
+      return route.fulfill({ json: { capacity, model: 'loaded-instance' } })
+    })
+    await page.goto('/settings#llm')
+    const capacityCard = page.getByTestId('llm-token-capacity')
+    await expect(capacityCard).toContainText('8192 tokens')
+    if (scope === 'private') {
+      await page.locator('main').press('Control+Alt+p')
+      await expect(page.locator('html')).toHaveClass(/private-scope/)
+      await page.getByRole('checkbox', { name: /Personalizar ajustes de LMStudio/ }).check()
+      await expect(page.getByLabel('Máx. tokens de respuesta', { exact: true })).toBeEnabled()
+      await expect(capacityCard).toContainText('8192 tokens')
+    }
+    await page.waitForTimeout(700)
+    const initialRequests = capacityRequests
+    const responseLimit = page.getByLabel('Máx. tokens de respuesta', { exact: true })
+    const contextLimit = page.getByLabel('MÁX. CONTEXTO ENVIADO (TOKENS)', { exact: true })
+    const responseAuto = page.getByRole('checkbox', { name: 'Auto para respuesta', exact: true })
+    const contextAuto = page.getByRole('checkbox', { name: 'Auto para contexto', exact: true })
+    const savedLimits = async () => {
+      const saved = await (await page.request.get('/api/settings')).json()
+      return scope === 'private'
+        ? [saved.privateMaxTokens, saved.privateContextTokenBudget]
+        : [saved.maxTokens, saved.contextTokenBudget]
+    }
+    const expectCachedCapacity = async () => {
+      await page.waitForTimeout(700)
+      await expect(capacityCard).toContainText('8192 tokens')
+      expect(capacityRequests).toBe(initialRequests)
+    }
+
+    await responseLimit.fill('')
+    await responseLimit.pressSequentially('2000')
+    await contextLimit.fill('')
+    await contextLimit.pressSequentially('5000')
+    await expect.poll(savedLimits).toEqual([2000, 5000])
+    await expectCachedCapacity()
+
+    await contextAuto.check()
+    await expect(contextLimit).toHaveValue('6192 tokens')
+    await expect.poll(savedLimits).toEqual([2000, 'auto'])
+    await expectCachedCapacity()
+
+    await responseLimit.fill('1000')
+    await expect(contextLimit).toHaveValue('7192 tokens')
+    await expect.poll(savedLimits).toEqual([1000, 'auto'])
+    await expectCachedCapacity()
+
+    await responseAuto.check()
+    await expect(contextLimit).toHaveValue('4096 tokens')
+    await expect.poll(savedLimits).toEqual(['auto', 'auto'])
+    await expectCachedCapacity()
+
+    await responseAuto.uncheck()
+    await contextAuto.uncheck()
+    await expect(responseLimit).toHaveValue('1000')
+    await expect(contextLimit).toHaveValue('5000')
+    await expect.poll(savedLimits).toEqual([1000, 5000])
+    await expectCachedCapacity()
+
+    capacity = 16384
+    await capacityCard.getByRole('button', { name: 'Actualizar' }).click()
+    await expect(capacityCard).toContainText('16.384 tokens')
+    expect(capacityRequests).toBe(initialRequests + 1)
+
+    capacity = 32768
+    await page.getByLabel('Modelo', { exact: true }).fill('nuevo')
+    await expect(capacityCard).toContainText('32.768 tokens')
+    expect(capacityRequests).toBe(initialRequests + 2)
+    if (scope === 'normal') {
+      await capacityCard.scrollIntoViewIfNeeded()
+      await page.screenshot({ path: '.data/issue-253-settings.png', animations: 'disabled' })
+    }
+  })
+}
+
 test('API consulta instancia actual, recalcula salida y no genera con medición inválida', async ({ request, data }) => {
   const server = await startFakeLmStudio()
   try {
