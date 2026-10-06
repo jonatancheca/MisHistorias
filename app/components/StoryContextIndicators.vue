@@ -1,5 +1,13 @@
 <script setup lang="ts">
 import type { StoryContextMeasurement } from '~/lib/contextBudget'
+import type { ContextUnit } from '#shared/types'
+
+interface ContextIndicator {
+  unit: ContextUnit
+  percent: number | null
+  state: 'measuring' | 'unavailable' | 'measured'
+  tooltip: string
+}
 
 withDefaults(defineProps<{ placement?: 'top' | 'bottom' }>(), { placement: 'top' })
 const emit = defineEmits<{ history: [] }>()
@@ -30,8 +38,8 @@ const indicators = computed(() => {
   const candidates = [
     { unit: 'tokens', label: 'Contexto (tokens)', count: current?.tokens ?? null, limit: current?.tokenLimit ?? 0 },
     { unit: 'characters', label: 'Contexto (caracteres)', count: current?.characters ?? null, limit: current?.characterLimit ?? 0 }
-  ]
-  return candidates.flatMap(({ unit, label, count, limit }) => {
+  ] as const
+  return candidates.flatMap<ContextIndicator>(({ unit, label, count, limit }) => {
     if (unit === 'tokens' && settings.activeContextTokenBudget !== 0 && (count === null || limit <= 0)) {
       const status = tokenError.value ? `No disponible. ${tokenError.value}` : 'Midiendo…'
       return [{ unit, percent: null, state: tokenError.value ? 'unavailable' : 'measuring',

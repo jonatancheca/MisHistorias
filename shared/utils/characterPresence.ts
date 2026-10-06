@@ -15,7 +15,7 @@ export function presentCharacterIds(story: Pick<Story, 'characterIds' | 'absentC
 
 function markCharacterReturns(message: Message, absent: Set<string>) {
   let changed = false
-  const segments = message.segments.map((segment) => {
+  const segments: Message['segments'] = message.segments.map((segment) => {
     const { returnsToScene: _previousReturn, ...original } = segment
     if (message.role !== 'assistant' || message.swarmError ||
         (segment.type !== 'dialogue' && segment.type !== 'thought') ||
