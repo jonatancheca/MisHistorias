@@ -69,8 +69,6 @@ async function changeCharacterPresence(characterId: string, present: boolean) {
   presenceError.value = null
   try {
     await stories.setCharacterPresence(characterId, present)
-    await nextTick()
-    visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
   } catch {
     presenceError.value = 'No se pudo guardar la presencia. Inténtalo de nuevo.'
   } finally { presenceBusy.value = false }
@@ -826,7 +824,7 @@ const visualIsThought = computed(() =>
 )
 const visualSpeaker = computed(() => {
   const frame = activeVisualFrame.value
-  if (!frame || frame.kind === 'narration' || frame.kind === 'sound' || frame.kind === 'compaction' || frame.kind === 'presence') return null
+  if (!frame || frame.kind === 'narration' || frame.kind === 'sound' || frame.kind === 'compaction') return null
   const speakerState = frame.characterStates[frame.characterStates.length - 1]
   if ((frame.kind === 'dialogue' || frame.kind === 'thought') && speakerState) {
     return {

@@ -209,7 +209,7 @@ Repetición de la última acción del narrador que falló, iniciada automáticam
 _Evitar_: Reenvío de mensaje, regeneración de respuesta
 
 **Presencia en escena**:
-Condición de un personaje del elenco activo que distingue si participa en la situación narrativa actual o permanece fuera de ella. La decide el usuario y se mantiene hasta que vuelva a cambiarla; el protagonista está siempre presente.
+Condición de un personaje del elenco activo que distingue si participa en la situación narrativa actual o permanece fuera de ella. La decide el usuario y se mantiene hasta que vuelva a cambiarla; el protagonista está siempre presente y un cambio de presencia no constituye una intervención narrativa.
 _Evitar_: Pertenencia al elenco, imagen visible
 
 **Personaje ausente**:

@@ -16,7 +16,7 @@ export interface VisualNovelFrame {
   id: string
   messageId: string | null
   segmentIndex: number | null
-  kind: 'presence' | 'user' | 'dialogue' | 'protagonist-dialogue' | 'thought' | 'protagonist-thought' | 'narration' | 'sound' | 'compaction'
+  kind: 'user' | 'dialogue' | 'protagonist-dialogue' | 'thought' | 'protagonist-thought' | 'narration' | 'sound' | 'compaction'
   text: string
   compactionTrace?: LlmDebugTrace
   soundId?: string | null
@@ -208,15 +208,9 @@ export function buildVisualNovelFrames(
     })
   }
 
-  const current = options.currentAbsentCharacterIds
-  const lastFrameAbsent = frames.at(-1)?.absentCharacterIds ?? []
-  if (frames.length && current && (current.length !== lastFrameAbsent.length || current.some((id) => !lastFrameAbsent.includes(id)))) {
-    frames.push({
-      id: 'presence:current', messageId: null, segmentIndex: null, kind: 'presence',
-      text: 'Presencia en escena para la próxima respuesta.',
-      backgroundId, backgroundTag, characterStates: cloneCharacterStates(characterStates),
-      absentCharacterIds: [...current]
-    })
+  const lastFrame = frames.at(-1)
+  if (lastFrame && options.currentAbsentCharacterIds) {
+    lastFrame.absentCharacterIds = [...options.currentAbsentCharacterIds]
   }
   return frames
 }

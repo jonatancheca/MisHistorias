@@ -37,6 +37,76 @@ test('crea historia con ausentes y permite reincorporarlos desde Más opciones e
   await expect(page.getByTestId('visual-novel-cast').locator('figure')).toHaveCount(1)
 })
 
+for (const width of [320, 390, 1280]) {
+  for (const lastRole of ['user', 'assistant'] as const) {
+    test(`cambiar presencia conserva texto ${lastRole}, navegación y aspecto a ${width} px`, async ({ page, data }) => {
+      const character = await data.createCharacter({ name: 'Bruno' })
+      await data.createImage(character, ['neutral'])
+      const story = await data.createStory({ characters: [character], visualMode: true })
+      const earlier = await data.createMessage({ story, role: 'assistant', raw: 'Bruno [neutral]: Hola.\nLa escena continúa.', segments: [
+        { type: 'dialogue', characterId: character.id, tag: 'neutral', text: 'Hola.' },
+        { type: 'narration', characterId: null, tag: null, text: 'La escena continúa.' }
+      ] })
+      const lastText = lastRole === 'user' ? 'Me quedo esperando.' : 'Esperamos junto a la puerta.'
+      const latest = await data.createMessage({ story, role: lastRole, raw: lastText, segments: lastRole === 'assistant'
+        ? [{ type: 'narration', characterId: null, tag: null, text: lastText }]
+        : [] })
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/stories/' + story.id)
+      const frame = page.getByTestId('visual-novel-frame')
+      const counter = page.getByTestId('visual-novel-counter')
+      const sprite = page.getByTestId('visual-novel-cast').locator('[data-character-id="' + character.id + '"]')
+      await expect(frame).toContainText(lastText)
+      await expect(counter).toHaveText('3 / 3')
+      await expect(sprite.locator('img')).toBeVisible()
+      const imageUrl = await sprite.locator('img').getAttribute('src')
+      const changePresence = async () => {
+        await page.getByTestId('story-tools-toggle').click()
+        await page.getByTestId('story-presence-button').click()
+        const toggle = page.getByRole('switch', { name: 'Presencia de Bruno' })
+        const wasPresent = await toggle.getAttribute('aria-checked') === 'true'
+        await toggle.click()
+        await expect(toggle).toHaveAttribute('aria-checked', String(!wasPresent))
+        await page.getByRole('button', { name: 'Cerrar personajes' }).click()
+      }
+      await changePresence()
+      await expect(frame).toContainText(lastText)
+      await expect(counter).toHaveText('3 / 3')
+      await expect(sprite).toHaveCount(0)
+      await page.getByTestId('story-tools-toggle').click()
+      await page.getByTestId('story-debug-toggle').click()
+      await expect(frame).toContainText(lastText)
+      await expect(counter).toHaveText('3 / 3')
+      await expect(page.getByText('Presencia en escena para la próxima respuesta.', { exact: true })).toHaveCount(0)
+      await changePresence()
+      await expect(sprite.locator('img')).toHaveAttribute('src', imageUrl!)
+      await expect(frame).toContainText(lastText)
+      await expect(counter).toHaveText('3 / 3')
+      await page.reload()
+      await expect(frame).toContainText(lastText)
+      await expect(counter).toHaveText('3 / 3')
+      await page.getByTestId('visual-novel-previous').click()
+      await expect(frame).toContainText('La escena continúa.')
+      await changePresence()
+      await expect(frame).toContainText('La escena continúa.')
+      await expect(counter).toHaveText('2 / 3')
+      await expect(sprite.locator('img')).toHaveAttribute('src', imageUrl!)
+      await page.getByTestId('story-end-button').click()
+      await expect(frame).toContainText(lastText)
+      await expect(counter).toHaveText('3 / 3')
+      await expect(sprite).toHaveCount(0)
+      await page.reload()
+      await expect(frame).toContainText(lastText)
+      await expect(counter).toHaveText('3 / 3')
+      await expect(sprite).toHaveCount(0)
+      expect((await data.get<Message>('messages', earlier.id)).absentCharacterIds).toEqual([])
+      expect((await data.get<Message>('messages', latest.id)).absentCharacterIds).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await page.screenshot({ path: resolve(`.data/issue-256-${lastRole}-${width}.png`) })
+    })
+  }
+}
+
 test('presencia manual filtra recursos, conserva cuadros anteriores, partidas y transferencias', async ({ page, data }) => {
   const alicia = await data.createCharacter({ name: 'Alicia', prompt: 'Exploradora presente.' })
   const bruno = await data.createCharacter({ name: 'Bruno', prompt: 'Hermano conocido aunque esté fuera.' })
@@ -45,9 +115,10 @@ test('presencia manual filtra recursos, conserva cuadros anteriores, partidas y 
   await data.createSound(bruno, ['sonido-exclusivo-bruno'])
   const background = await data.createBackground({ tags: ['bosque'] })
   const story = await data.createStory({ characters: [alicia, bruno], background, title: 'Presencia conservada' })
-  const earlier = await data.createMessage({ story, role: 'assistant', raw: 'Alicia [neutral]: Hola.\nBruno [imagen-exclusiva-bruno]: Buenos días.', segments: [
+  const earlier = await data.createMessage({ story, role: 'assistant', raw: 'Alicia [neutral]: Hola.\nBruno [imagen-exclusiva-bruno]: Buenos días.\nLa charla termina.', segments: [
     { type: 'dialogue', characterId: alicia.id, tag: 'neutral', text: 'Hola.' },
-    { type: 'dialogue', characterId: bruno.id, tag: 'imagen-exclusiva-bruno', text: 'Buenos días.' }
+    { type: 'dialogue', characterId: bruno.id, tag: 'imagen-exclusiva-bruno', text: 'Buenos días.' },
+    { type: 'narration', characterId: null, tag: null, text: 'La charla termina.' }
   ] })
   const requests: Array<Array<{ role: string; content: string }>> = []
   await page.route('**/api/llm/chat', async route => {
@@ -60,7 +131,7 @@ test('presencia manual filtra recursos, conserva cuadros anteriores, partidas y 
   await expect.poll(async () => (await data.get<Story>('stories', story.id)).absentCharacterIds).toEqual([bruno.id])
   await page.screenshot({ path: resolve('.data/issue-251-chat.png') })
   await page.getByTestId('visual-mode-toggle').click()
-  await expect(page.getByTestId('visual-novel-frame')).toContainText('Presencia en escena')
+  await expect(page.getByTestId('visual-novel-frame')).toContainText('La charla termina.')
   const sprites = page.getByTestId('visual-novel-cast')
   await expect(sprites.locator('[data-character-id="' + bruno.id + '"]')).toHaveCount(0)
   await page.getByTestId('visual-novel-previous').click()
@@ -169,7 +240,7 @@ test('guardado lento bloquea generación y la espera del narrador no hace reapar
   await page.getByTestId('continue-button').click()
   await expect.poll(() => requesting).toBe(true)
   await expect(page.getByTestId('visual-novel-cast').locator('figure')).toHaveCount(0)
-  await expect(page.getByTestId('visual-novel-frame')).toContainText('Presencia en escena')
+  await expect(page.getByTestId('visual-novel-frame')).toContainText('Hola.')
   releaseReply()
   await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toBeVisible()
   await expect(page.getByTestId('visual-novel-cast').locator('figure')).toHaveCount(0)

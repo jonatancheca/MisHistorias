@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 256, completedAt: '2026-10-06', summary: 'Cambios de presencia en Novela Visual sin tarjetas ni pasos adicionales: conservan el texto y el cuadro visible, actualizan los personajes de la última escena y respetan la presencia histórica, también en Debug y tras recargar.' },
   { issue: 255, completedAt: '2026-10-06', summary: 'Máximo real de contexto del modelo cargado junto a Load IA en Ajustes normales y privados, compartido entre entrada y respuesta; actualización tras cargar o detectar una instancia ya cargada, con estados de consulta y fallos sin cifras obsoletas.' },
   { issue: 253, completedAt: '2026-10-06', summary: 'Edición de límites de contexto y respuesta, incluidos Auto, sin volver a consultar LM Studio en Ajustes normales y privados; conserva la capacidad conocida, recalcula el contexto localmente y mantiene los refrescos por conexión, modelo, ámbito y acciones explícitas.' },
   { issue: 252, completedAt: '2026-10-05', summary: 'Anillos de contexto en tokens y caracteres con contador de compactaciones correctas conservadas y acceso al historial en Chat y Novela Visual, sin activar Debug; lista por fecha con fallos identificados y consulta de datos antes/después.' },
