@@ -2052,7 +2052,7 @@ onBeforeRouteLeave(async () => {
         <p class="text-xs text-[var(--color-fg-muted)]">
           Descarga modelos de la memoria de LM Studio; no borra sus archivos.
         </p>
-        <p v-if="modelActionMessage" class="text-xs text-brand-600" role="status">
+        <p v-if="modelActionMessage" class="text-xs text-brand-600" role="status" data-testid="llm-model-action-status">
           {{ modelActionMessage }}
         </p>
         <p v-if="modelActionError" class="text-xs text-red-500" role="alert">

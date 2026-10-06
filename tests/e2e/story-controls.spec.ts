@@ -2,13 +2,13 @@ import { expect, test } from './fixtures'
 
 for (const width of [320, 390, 639, 640, 768, 1024, 1280]) {
   test(`controles de lectura y herramientas accesibles en ambos modos a ${width}px`, async ({ page, data }) => {
-    await data.patchSettings({ mockMode: true, responseSpeed: 'instant', visualNovelManualAdvance: false })
+    await data.patchSettings({ mockMode: true, responseSpeed: 'instant', visualNovelManualAdvance: false, historyBudget: 0 })
     const story = await data.createStory({ characters: [], title: 'La última luz del faro', premise: 'Una señal en el horizonte cambia el rumbo de la noche.' })
     for (let i = 0; i < 12; i++) {
       const text = `Escena ${i + 1}. El viento trae una señal desde el otro lado de la bahía. La luz del faro vuelve a encenderse.`
       await data.createMessage({ story, role: 'assistant', raw: text, segments: [{ type: 'narration', text }] })
     }
-    await page.setViewportSize({ width, height: 844 })
+    await page.setViewportSize({ width, height: 760 })
     await page.goto(`/stories/${story.id}`)
     const tools = page.getByTestId('story-tools-toggle')
     const panel = page.getByTestId('story-tools-panel')
@@ -34,6 +34,9 @@ for (const width of [320, 390, 639, 640, 768, 1024, 1280]) {
       await expect(panel).toBeHidden()
       await page.keyboard.press('Escape')
       await tools.click()
+      if (width === 320 || width === 390) {
+        await page.screenshot({ path: '.data/story-tools-' + (visual ? 'novel' : 'chat') + '-' + width + '.png' })
+      }
       await page.getByTestId('story-debug-toggle').click()
       await expect(page.getByTestId('story-debug-toggle')).toHaveAttribute('aria-pressed', 'true')
       await expect(panel).toBeHidden()
@@ -113,7 +116,7 @@ for (const width of [320, 390, 639, 640, 768, 1024, 1280]) {
         expect(control.height, control.text ?? '').toBeGreaterThanOrEqual(44)
         expect(control.x).toBeGreaterThanOrEqual(0)
         expect(control.right).toBeLessThanOrEqual(width)
-        expect(control.bottom).toBeLessThanOrEqual(844)
+        expect(control.bottom).toBeLessThanOrEqual(760)
       }
       await page.screenshot({ path: `.data/story-reader-buttons-${visual ? 'novel' : 'chat'}-${width}.png` })
       await page.getByLabel('Tu intervención').fill('')

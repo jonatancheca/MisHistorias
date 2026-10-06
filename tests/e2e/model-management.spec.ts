@@ -61,6 +61,7 @@ for (const scope of ['normal', 'private'] as const) {
         await expect(page.locator('html')).toHaveClass(/private-scope/)
       }
       const llm = page.getByTestId('llm-settings')
+      const modelStatus = llm.getByTestId('llm-model-action-status')
       const load = llm.getByRole('button', { name: 'Load IA', exact: true })
       await expect(load).toBeVisible()
       await llm.getByRole('button', { name: 'Probar conexión' }).click()
@@ -89,12 +90,12 @@ for (const scope of ['normal', 'private'] as const) {
       await expect(busy).toHaveAttribute('aria-busy', 'true')
       await expect.poll(() => actions).toEqual(['unload:otra-instancia'])
       releaseUnload.resolve(undefined)
-      await expect(llm.getByRole('status')).toHaveText('Modelo cargado en LM Studio.')
+      await expect(modelStatus).toHaveText('Modelo cargado en LM Studio.')
       expect(actions).toEqual(['unload:otra-instancia', 'unload:embedding-instancia', `load:${model}`])
 
       actions.length = 0
       await load.click()
-      await expect(llm.getByRole('status')).toHaveText('El modelo configurado ya está cargado en LM Studio.')
+      await expect(modelStatus).toHaveText('El modelo configurado ya está cargado en LM Studio.')
       expect(actions).toEqual([])
 
       loaded = false
@@ -106,7 +107,7 @@ for (const scope of ['normal', 'private'] as const) {
       actions.length = 0
       failUnload = false
       await load.click()
-      await expect(llm.getByRole('status')).toHaveText('Modelo cargado en LM Studio.')
+      await expect(modelStatus).toHaveText('Modelo cargado en LM Studio.')
       expect(actions).toEqual(['unload:otra-instancia', 'unload:embedding-instancia', `load:${model}`])
     } finally {
       releaseUnload.resolve(undefined)

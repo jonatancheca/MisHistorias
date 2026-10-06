@@ -2,6 +2,9 @@ import type { LlmDebugTrace, Message, Story } from '../../shared/types'
 import { test, expect } from './fixtures'
 import { startFakeLmStudio } from '../helpers/fakeLmStudio'
 
+// El presupuesto debe admitir las instrucciones obligatorias y seguir siendo menor que el historial de prueba.
+const characterBudget = 6000
+
 test.beforeEach(async ({ page, data }) => {
   await data.patchSettings({
     mockMode: false, model: 'test-model', useChromeLlm: false, privateUseChromeLlm: null,
@@ -19,9 +22,9 @@ test.afterEach(async ({ data }) => {
 })
 
 for (const limits of [
-  { name: 'caracteres con tokens por debajo', characters: 3000, tokens: 20000, compact: true },
+  { name: 'caracteres con tokens por debajo', characters: characterBudget, tokens: 20000, compact: true },
   { name: 'tokens con caracteres por debajo', characters: 100000, tokens: 1500, compact: true },
-  { name: 'solo caracteres', characters: 3000, tokens: 0, compact: true },
+  { name: 'solo caracteres', characters: characterBudget, tokens: 0, compact: true },
   { name: 'solo tokens', characters: 0, tokens: 1500, compact: true },
   { name: 'ambos desactivados', characters: 0, tokens: 0, compact: false }
 ]) {
@@ -48,6 +51,10 @@ for (const limits of [
         }
         return route.fulfill({ json: { content: 'Resumen breve.', finishReason: 'stop' } })
       }
+      if (limits.characters) {
+        const characters = request.messages.reduce((total: number, message: { content: string }) => total + message.content.length, 0)
+        expect(characters).toBeLessThanOrEqual(limits.characters)
+      }
       await route.fulfill({ json: { content: 'Respuesta con límites comprobados.', finishReason: 'stop' } })
     })
     await page.goto(`/stories/${story.id}`)
@@ -60,7 +67,7 @@ for (const limits of [
 }
 
 test('rechaza resumen que cabe en tokens pero sigue excediendo caracteres', async ({ page, data }) => {
-  await data.patchSettings({ historyBudget: 3000, contextTokenBudget: 20000 })
+  await data.patchSettings({ historyBudget: characterBudget, contextTokenBudget: 20000 })
   const story = await data.createStory({ characters: [] })
   await data.createMessage({ story, role: 'assistant', raw: 'Historia anterior. '.repeat(600) })
   await page.route('**/api/llm/context', route => route.fulfill({ json: { tokens: 1000, capacity: 30000, model: 'test-instance' } }))
@@ -68,13 +75,13 @@ test('rechaza resumen que cabe en tokens pero sigue excediendo caracteres', asyn
   await page.route('**/api/llm/chat', async route => {
     calls += 1
     expect(route.request().postDataJSON().operation).toBe('story.compaction')
-    await route.fulfill({ json: { content: 'R'.repeat(4000), finishReason: 'stop' } })
+    await route.fulfill({ json: { content: 'R'.repeat(characterBudget + 1000), finishReason: 'stop' } })
   })
   await page.goto(`/stories/${story.id}`)
   const composer = page.getByPlaceholder(/Escribe lo que haces/)
   await composer.fill('Borrador intacto.')
   await page.getByRole('button', { name: 'Enviar', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('caracteres y el límite es 3000')
+  await expect(page.getByRole('alert')).toContainText('caracteres y el límite es ' + characterBudget)
   await expect(composer).toHaveValue('Borrador intacto.')
   expect(calls).toBe(1)
   expect((await data.get<Story>('stories', story.id)).contextSummary).toBeFalsy()

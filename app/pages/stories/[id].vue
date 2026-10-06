@@ -2073,7 +2073,7 @@ onBeforeRouteLeave(() => {
 
 .story-header {
   position: relative;
-  z-index: 30;
+  z-index: 40;
   display: grid;
   flex-shrink: 0;
   gap: 0.625rem;
