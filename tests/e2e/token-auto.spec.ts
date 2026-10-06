@@ -139,6 +139,100 @@ for (const scope of ['normal', 'private'] as const) {
   })
 }
 
+for (const scope of ['normal', 'private'] as const) {
+  test('Load IA muestra máximo real junto al modelo y descarta capacidad anterior en ámbito ' + scope, async ({ page, data }) => {
+    await data.patchSettings({ privateLlmSettingsEnabled: true, privateModel: 'configured-key' })
+    let capacity = 8192
+    let loaded = true
+    let status = 'loaded'
+    let failCapacity = false
+    let failLoad = false
+    let holdCapacity = false
+    const capacityScopes: string[] = []
+    const finishLoad = Promise.withResolvers<undefined>()
+    const finishCapacity = Promise.withResolvers<undefined>()
+    await page.route('**/api/llm/capacity?*', async route => {
+      capacityScopes.push(new URL(route.request().url()).searchParams.get('scope')!)
+      if (holdCapacity) await finishCapacity.promise
+      if (failCapacity || !loaded) {
+        await route.fulfill({ status: 502, json: { data: { message: 'Capacidad no disponible.' } } })
+      } else await route.fulfill({ json: { capacity, model: 'loaded-instance' } })
+    })
+    await page.route('**/api/llm/model-management', async route => {
+      const body = route.request().postDataJSON()
+      expect(body.scope).toBe(scope)
+      await finishLoad.promise
+      if (body.action === 'unload-all') {
+        loaded = false
+        await route.fulfill({ json: { total: 1, unloaded: 1, failed: [] } })
+      } else if (failLoad) {
+        await route.fulfill({ status: 503, json: { data: { message: 'No se pudo cargar el modelo.' } } })
+      } else await route.fulfill({ json: { status, instanceId: 'loaded-instance' } })
+    })
+    await page.goto('/settings#llm')
+    if (scope === 'private') {
+      await page.locator('main').press('Control+Alt+p')
+      await expect(page.locator('html')).toHaveClass(/private-scope/)
+    }
+    const card = page.getByTestId('llm-token-capacity')
+    const load = page.getByRole('button', { name: 'Load IA', exact: true })
+    await expect(card).toContainText('Máximo de contexto del modelo: 8192 tokens.')
+    expect(capacityScopes.at(-1)).toBe(scope)
+    await load.click()
+    await expect(card.getByRole('status')).toHaveText('Cargando IA…')
+    await expect(card).not.toContainText('8192')
+    await expect(card.getByRole('button', { name: 'Actualizar', exact: true })).toBeDisabled()
+    capacity = 16384
+    holdCapacity = true
+    finishLoad.resolve(undefined)
+    await expect(card).toContainText('Consultando capacidad actual…')
+    finishCapacity.resolve(undefined)
+    holdCapacity = false
+    await expect(card).toContainText('Máximo de contexto del modelo: 16.384 tokens.')
+
+    status = 'already-loaded'
+    capacity = 32768
+    await load.click()
+    await expect(page.getByTestId('llm-model-action-status')).toHaveText('El modelo configurado ya está cargado en LM Studio.')
+    await expect(card).toContainText('Máximo de contexto del modelo: 32.768 tokens.')
+    await expect(page.getByLabel('Máx. tokens de respuesta', { exact: true })).toHaveValue('1000')
+    await expect(page.getByLabel('MÁX. CONTEXTO ENVIADO (TOKENS)', { exact: true })).toHaveValue('3000')
+    for (const width of [320, 390, 640, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 })
+      await expect.poll(() => card.evaluate(element => {
+        const model = document.querySelector('#model')!.getBoundingClientRect()
+        const card = element.getBoundingClientRect()
+        const limits = document.querySelector('#maxTokens')!.getBoundingClientRect()
+        return { belowModel: card.top >= model.bottom, aboveLimits: card.bottom <= limits.top,
+          fits: card.left >= 0 && card.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth }
+      })).toEqual({ belowModel: true, aboveLimits: true, fits: true })
+      if (scope === 'normal' && (width === 390 || width === 1280)) {
+        await card.scrollIntoViewIfNeeded()
+        await page.screenshot({ path: '.data/issue-255-settings-' + width + '.png', animations: 'disabled' })
+      }
+    }
+    failCapacity = true
+    await card.getByRole('button', { name: 'Actualizar', exact: true }).click()
+    await expect(card).toContainText('No disponible. Capacidad no disponible.')
+    await expect(card).not.toContainText('32.768')
+    failCapacity = false
+    await load.click()
+    await expect(card).toContainText('32.768 tokens')
+    failLoad = true
+    await load.click()
+    await expect(page.getByRole('alert')).toContainText('No se pudo cargar el modelo.')
+    await expect(card).toContainText('No disponible.')
+    await expect(card).not.toContainText('32.768')
+    failLoad = false
+    await load.click()
+    await expect(card).toContainText('32.768 tokens')
+    await page.getByRole('button', { name: 'Descargar todos de memoria', exact: true }).click()
+    await page.getByRole('button', { name: 'Descargar todos', exact: true }).click()
+    await expect(card).toContainText('No disponible. Capacidad no disponible.')
+    await expect(card).not.toContainText('32.768')
+  })
+}
+
 test('API consulta instancia actual, recalcula salida y no genera con medición inválida', async ({ request, data }) => {
   const server = await startFakeLmStudio()
   try {
@@ -184,7 +278,7 @@ test('Ajustes identifica token inválido y recupera cálculo al quitarlo', async
     await page.getByRole('button', { name: 'Quitar token', exact: true }).click()
     await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).apiKeyConfigured).toBe(false)
     await capacity.getByRole('button', { name: 'Actualizar' }).click()
-    await expect(capacity).toContainText('Capacidad actual: 8192 tokens.')
+    await expect(capacity).toContainText('Máximo de contexto del modelo: 8192 tokens.')
   } finally { await server.close() }
 })
 

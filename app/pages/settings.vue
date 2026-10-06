@@ -274,7 +274,7 @@ function cancelTokenCapacity() {
 
 async function refreshTokenCapacity() {
   cancelTokenCapacity()
-  if (!canManageGlobal.value || chromeLlmEnabled.value) return
+  if (!canManageGlobal.value || chromeLlmEnabled.value || modelAction.value !== null) return
   if (!form.model.trim()) {
     tokenCapacityError.value = 'Configura primero el modelo en Ajustes.'
     return
@@ -568,6 +568,7 @@ async function preloadModel() {
   if (modelAction.value || !form.model.trim()) return
   const revision = scopeRevision
   modelAction.value = 'load'
+  cancelTokenCapacity()
   modelActionMessage.value = null
   modelActionError.value = null
   try {
@@ -579,6 +580,7 @@ async function preloadModel() {
     modelActionMessage.value = result.status === 'already-loaded'
       ? 'El modelo configurado ya está cargado en LM Studio.'
       : 'Modelo cargado en LM Studio.'
+    modelAction.value = null
     void refreshTokenCapacity()
   } catch (caught) {
     if (revision === scopeRevision) {
@@ -599,6 +601,7 @@ async function unloadAllModels() {
   if (!accepted) return
   const revision = scopeRevision
   modelAction.value = 'unload-all'
+  cancelTokenCapacity()
   modelActionMessage.value = null
   modelActionError.value = null
   try {
@@ -613,6 +616,7 @@ async function unloadAllModels() {
     if (result.failed.length) {
       modelActionError.value = `Fallaron: ${result.failed.map(item => item.instanceId).join(', ')}.`
     }
+    modelAction.value = null
     void refreshTokenCapacity()
   } catch (caught) {
     if (revision === scopeRevision) {
@@ -2036,6 +2040,26 @@ onBeforeRouteLeave(async () => {
         <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
           Si el modelo no está cargado, primero se descargan los demás de memoria. Si alguna descarga falla, se cancela la carga.
         </p>
+        <div v-if="!chromeLlmEnabled" class="mt-3 min-w-0" data-testid="llm-token-capacity">
+          <div class="flex min-w-0 flex-wrap items-center gap-2">
+            <p class="min-w-0 flex-1 text-sm" role="status">
+              <template v-if="modelAction === 'load'">Cargando IA…</template>
+              <template v-else-if="modelAction === 'unload-all'">Descargando modelos de memoria…</template>
+              <template v-else-if="tokenCapacityLoading">Consultando capacidad actual…</template>
+              <template v-else-if="tokenCapacity !== null">Máximo de contexto del modelo: {{ tokenCapacity.toLocaleString('es-ES') }} tokens.</template>
+              <template v-else>No disponible. {{ tokenCapacityError }}</template>
+            </p>
+            <button
+              type="button"
+              class="btn-ghost shrink-0"
+              :disabled="modelAction !== null || tokenCapacityLoading || !form.model.trim() || switchingPrivateLlmSettings"
+              @click="refreshTokenCapacity"
+            >Actualizar</button>
+          </div>
+          <p class="mt-1 text-xs text-[var(--color-fg-muted)]">
+            Este máximo se comparte entre el contexto enviado y la respuesta; puede ser menor que el máximo teórico del modelo.
+          </p>
+        </div>
       </div>
 
       <div class="grid min-w-0 gap-2">
@@ -2158,20 +2182,6 @@ onBeforeRouteLeave(async () => {
             Chrome respeta su cuota de contexto. Si no puede medirse, se conserva el borrador y se detiene el envío.
           </p>
         </div>
-      </div>
-
-      <div v-if="!chromeLlmEnabled" class="mt-4 flex min-w-0 flex-wrap items-center gap-2" data-testid="llm-token-capacity">
-        <p class="min-w-0 flex-1 text-sm" role="status">
-          <template v-if="tokenCapacityLoading">Consultando capacidad actual…</template>
-          <template v-else-if="tokenCapacity !== null">Capacidad actual: {{ tokenCapacity.toLocaleString('es-ES') }} tokens.</template>
-          <template v-else>No disponible. {{ tokenCapacityError }}</template>
-        </p>
-        <button
-          type="button"
-          class="btn-ghost shrink-0"
-          :disabled="tokenCapacityLoading || !form.model.trim() || switchingPrivateLlmSettings"
-          @click="refreshTokenCapacity"
-        >Actualizar</button>
       </div>
 
       </div>

@@ -77,7 +77,7 @@ Preferencia que adapta el contexto enviado o la respuesta a la ventana actual de
 _Evitar_: Límite desactivado, capacidad máxima teórica, número detectado una sola vez
 
 **Capacidad de contexto del modelo**:
-Número total de tokens que admite el modelo de historias cargado, compartido entre el contexto enviado y su respuesta. Es independiente de los límites elegidos por el usuario.
+Número total de tokens que admite la ventana actual del modelo de historias cargado, compartido entre el contexto enviado y su respuesta. Es independiente de los límites elegidos por el usuario y puede ser menor que la capacidad máxima teórica del modelo.
 _Evitar_: Límite de contexto enviado, máximo de tokens de respuesta
 
 **Compactación por bloques**:
