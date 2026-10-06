@@ -1173,7 +1173,7 @@ export const useStoriesStore = defineStore('stories', () => {
     }
   }
 
-  async function prepareManualCompaction(signal: AbortSignal, activeLimitsOnly = false) {
+  async function prepareManualCompaction(signal: AbortSignal, activeLimitsOnly = false, skipTokens = false) {
     const story = activeStory.value
     if (!story || story.readOnly) throw new Error('Esta historia no permite compactar su historial.')
     const scope = getActiveDataScope()
@@ -1233,8 +1233,8 @@ export const useStoriesStore = defineStore('stories', () => {
     const measure = async (context: ChatMessage[], manualLimit = true): Promise<ContextUsage> => {
       ensureActive()
       const characters = chatContextSize(context)
-      // Los indicadores no necesitan consultar el modelo si su límite está desactivado.
-      if (activeLimitsOnly && tokenBudget === 0 && (useChromeLlm || maxTokens !== 'auto')) {
+      // Actualiza caracteres sin consultar tokens desactivados o fallidos en esta visita.
+      if (skipTokens || (activeLimitsOnly && tokenBudget === 0 && (useChromeLlm || maxTokens !== 'auto'))) {
         return { unit: 'characters', count: characters, model,
           configuredLimit: historyBudget, effectiveLimit: historyBudget }
       }
@@ -1282,8 +1282,8 @@ export const useStoriesStore = defineStore('stories', () => {
       } }
   }
 
-  async function measureStoryContext(signal: AbortSignal, activeLimitsOnly = false): Promise<StoryContextMeasurement> {
-    const context = await prepareManualCompaction(signal, activeLimitsOnly)
+  async function measureStoryContext(signal: AbortSignal, activeLimitsOnly = false, skipTokens = false): Promise<StoryContextMeasurement> {
+    const context = await prepareManualCompaction(signal, activeLimitsOnly, skipTokens)
     return context.measurement(await context.measure(buildChatMessages(context.chatOptions)))
   }
 

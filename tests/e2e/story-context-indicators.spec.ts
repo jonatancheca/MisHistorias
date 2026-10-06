@@ -29,7 +29,10 @@ test('mide sin bloquear, excluye borrador y muestra limites efectivos en ambos m
   await expect(page.getByRole('heading', { name: story.title })).toBeVisible()
   await page.getByLabel('Tu intervención').fill('BORRADOR_NO_ENVIADO')
   await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toBeEnabled()
-  await expect(page.getByTestId('story-context-tokens')).toHaveCount(0)
+  await expect(page.getByTestId('story-context-tokens')).toBeVisible()
+  await expect(page.getByTestId('story-context-tokens')).toHaveAttribute('data-state', 'measuring')
+  await expect(page.getByTestId('story-context-tokens')).toHaveAttribute('aria-label', /Midiendo…/)
+  await expect(page.getByTestId('story-context-tokens').locator('[stroke-dasharray]')).toHaveCount(0)
   release!()
   const tokens = page.getByTestId('story-context-tokens')
   const chars = page.getByTestId('story-context-characters')
@@ -85,12 +88,18 @@ test('mide sin bloquear, excluye borrador y muestra limites efectivos en ambos m
   await page.screenshot({ path: '.data/issue-240-novel.png' })
 })
 
-test('limites desactivados no consultan tokens; fallo oculta solo anillo de tokens', async ({ page, data }) => {
+test('limites desactivados no consultan tokens; fallo conserva anillo sin reintentar hasta volver a entrar', async ({ page, data }) => {
+  await page.clock.install()
   const story = await data.createStory({ characters: [] })
+  const message = await data.createMessage({ story, role: 'assistant', raw: 'Hecho anterior.',
+    segments: [{ type: 'narration', text: 'Hecho anterior.' }] })
   let calls = 0
+  let failing = true
   await page.route('**/api/llm/context', route => {
     calls += 1
-    return route.fulfill({ status: 502, json: { message: 'Tokenizador no disponible.' } })
+    return failing
+      ? route.fulfill({ status: 502, json: { message: 'Tokenizador no disponible.' } })
+      : route.fulfill({ json: { tokens: 500, capacity: 1100, model: 'test-instance' } })
   })
   await data.patchSettings({ contextTokenBudget: 0 })
   await page.goto(`/stories/${story.id}`)
@@ -101,14 +110,108 @@ test('limites desactivados no consultan tokens; fallo oculta solo anillo de toke
   await page.reload()
   await expect.poll(() => calls).toBeGreaterThan(0)
   await expect(page.getByTestId('story-context-characters')).toBeVisible()
-  await expect(page.getByTestId('story-context-tokens')).toHaveCount(0)
+  const tokens = page.getByTestId('story-context-tokens')
+  await expect(tokens).toBeVisible()
+  await expect(tokens).toHaveAttribute('data-state', 'unavailable')
+  await expect(tokens).toHaveAttribute('aria-label', /No disponible[.] Tokenizador no disponible[.]/)
+  await expect(tokens).not.toHaveAttribute('aria-label', /%/)
+  await expect(tokens.locator('[stroke-dasharray]')).toHaveCount(0)
   await expect(page.getByRole('alert')).toHaveCount(0)
+  const failedCalls = calls
+  failing = false
+  const characters = page.getByTestId('story-context-characters')
+  const previousCharacters = await characters.getAttribute('aria-label')
+  await page.getByRole('button', { name: 'Editar mensaje', exact: true }).click()
+  const editor = page.locator(`[data-story-message-id="${message.id}"] form`)
+  await editor.locator('textarea').fill('Hecho anterior ampliado con nuevos detalles de la historia.')
+  await editor.getByRole('button', { name: 'Guardar', exact: true }).click()
+  await expect(editor).toHaveCount(0)
+  await expect(characters).not.toHaveAttribute('aria-label', previousCharacters!)
+  await page.getByTestId('visual-mode-toggle').click()
+  await expect(page.getByTestId('visual-novel-view')).toBeVisible()
+  await page.clock.fastForward(35_000)
+  await expect(tokens).toHaveAttribute('data-state', 'unavailable')
+  await expect(page.getByTestId('story-context-characters')).toBeVisible()
+  expect(calls).toBe(failedCalls)
+  await tokens.click()
+  const history = page.getByRole('dialog', { name: 'Compactaciones de la historia' })
+  await expect(history).toContainText('No hay compactaciones conservadas')
+  await history.getByRole('button', { name: 'Cerrar diálogo' }).click()
+  await page.getByRole('link', { name: 'Historias', exact: true }).click()
+  await page.locator(`a[href="/stories/${story.id}"]`).first().click()
+  await expect(tokens).toHaveAttribute('data-state', 'measured')
+  await expect(tokens).toHaveAttribute('aria-label', /50 % ocupado · 500 \/ 1000/)
+  expect(calls).toBeGreaterThan(failedCalls)
   await data.patchSettings({ contextTokenBudget: 0, historyBudget: 0 })
   const before = calls
   await page.reload()
   await expect(page.getByRole('heading', { name: story.title })).toBeVisible()
   await expect(page.getByRole('group', { name: 'Ocupación del contexto' })).toHaveCount(0)
   expect(calls).toBe(before)
+})
+
+test('Auto conserva motivo y circulo neutro en Chat y Novela Visual sin overflow', async ({ page, data }) => {
+  await data.patchSettings({ contextTokenBudget: 'auto', maxTokens: 'auto', historyBudget: 0 })
+  const story = await data.createStory({ title: 'El faro y la llave azul', characters: [] })
+  await data.createMessage({ story, role: 'assistant', raw: 'La luz del faro vuelve a encenderse.',
+    segments: [{ type: 'narration', text: 'La luz del faro vuelve a encenderse.' }] })
+  await page.route('**/api/llm/context', route => route.fulfill({ json: { tokens: 100, capacity: 4096, model: 'test-instance' } }))
+  await page.goto(`/stories/${story.id}`)
+  const tokens = page.getByTestId('story-context-tokens')
+  await expect(tokens).toHaveAttribute('data-state', 'unavailable')
+  await expect(tokens).toHaveAttribute('aria-label', /Los tokens máximos de respuesta ocupan toda la capacidad del modelo/)
+  await expect(tokens).not.toHaveAttribute('aria-label', /%/)
+  await expect(page.getByTestId('story-context-characters')).toHaveCount(0)
+  for (const visual of [false, true]) {
+    if (visual) await page.getByTestId('visual-mode-toggle').click()
+    for (const width of [320, 390, 639, 640, 768, 1280]) {
+      await page.setViewportSize({ width, height: 844 })
+      await tokens.hover()
+      await expect(tokens.getByRole('tooltip')).toBeVisible()
+      const tooltip = await tokens.getByRole('tooltip').boundingBox()
+      expect(tooltip!.x).toBeGreaterThanOrEqual(0)
+      expect(tooltip!.x + tooltip!.width).toBeLessThanOrEqual(width)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+      if ([390, 1280].includes(width)) {
+        await page.screenshot({ path: `.data/issue-254-${visual ? 'novel' : 'chat'}-${width}.png`, animations: 'disabled' })
+      }
+    }
+  }
+})
+
+test('Chrome conserva fallo sin nuevas sesiones y mide al volver a entrar', async ({ page, data }) => {
+  await data.patchSettings({ useChromeLlm: true, contextTokenBudget: 'auto', historyBudget: 0 })
+  await page.addInitScript(() => {
+    const state = { failing: true, calls: 0 }
+    class FakeLanguageModel {
+      contextWindow = 2048
+      contextUsage = 0
+      static async availability() { return 'available' }
+      static async create() { state.calls += 1; return new FakeLanguageModel() }
+      async measureContextUsage() {
+        if (state.failing) throw new Error('Tokenizador Chrome no disponible.')
+        return 512
+      }
+      destroy() {}
+    }
+    Object.defineProperty(globalThis, 'LanguageModel', { configurable: true, value: FakeLanguageModel })
+    Object.defineProperty(globalThis, 'chromeMeasurement', { value: state })
+  })
+  const story = await data.createStory({ characters: [] })
+  await page.goto(`/stories/${story.id}`)
+  const tokens = page.getByTestId('story-context-tokens')
+  await expect(tokens).toHaveAttribute('data-state', 'unavailable')
+  await expect(tokens).toHaveAttribute('aria-label', /Tokenizador Chrome no disponible[.]/)
+  const failedCalls = await page.evaluate(() => (globalThis as unknown as { chromeMeasurement: { calls: number } }).chromeMeasurement.calls)
+  await page.evaluate(() => { (globalThis as unknown as { chromeMeasurement: { failing: boolean } }).chromeMeasurement.failing = false })
+  await page.getByTestId('visual-mode-toggle').click()
+  await expect(page.getByTestId('visual-novel-view')).toBeVisible()
+  await expect(tokens).toHaveAttribute('data-state', 'unavailable')
+  expect(await page.evaluate(() => (globalThis as unknown as { chromeMeasurement: { calls: number } }).chromeMeasurement.calls)).toBe(failedCalls)
+  await page.getByRole('link', { name: 'Historias', exact: true }).click()
+  await page.locator(`a[href="/stories/${story.id}"]`).first().click()
+  await expect(tokens).toHaveAttribute('aria-label', /25 % ocupado · 512 \/ 2048/)
+  await expect(tokens).toHaveAttribute('data-state', 'measured')
 })
 
 test('refresca tras generar y compactar', async ({ page, data }) => {

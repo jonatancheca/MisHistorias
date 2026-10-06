@@ -69,7 +69,7 @@ Conjunto de textos que recibe el narrador para responder: instrucciones, persona
 _Evitar_: Solo historial, límite del mensaje, máximo de tokens de respuesta
 
 **Ocupación del contexto**:
-Proporción del contexto enviado de una historia respecto a cada límite activo de caracteres o tokens, sin incluir el borrador de escritura. En tokens utiliza el límite efectivo de entrada, que respeta la capacidad del modelo tras reservar su respuesta; una medición no disponible no equivale a una ocupación del cero por ciento.
+Proporción del contexto enviado de una historia respecto a cada límite activo de caracteres o tokens, sin incluir el borrador de escritura. En tokens utiliza el límite efectivo de entrada, que respeta la capacidad del modelo tras reservar su respuesta; una medición pendiente o no disponible no equivale a una ocupación del cero por ciento.
 _Evitar_: Tamaño del borrador, porcentaje libre, ocupación de la respuesta
 
 **Límite automático de tokens**:
