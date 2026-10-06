@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { Character } from '../../shared/types/index.ts'
+import type { Character, TokenLimit } from '../../shared/types/index.ts'
 import {
   buildCharacterImagePromptMessages,
   cleanCharacterImagePrompt,
@@ -64,7 +64,7 @@ describe('prompt manual de imagen', () => {
   })
 
   it('usa el máximo de tokens configurado para LM Studio', async () => {
-    let requestedMaxTokens = 0
+    let requestedMaxTokens: TokenLimit = 0
     const prompt = await generateCharacterImagePrompt(
       { character, tags: [], notes: '' },
       { useChromeLlm: false, model: 'modelo', temperature: 0.6, maxTokens: 1234 },
