@@ -24,6 +24,7 @@ const compactionLabel = computed(() => {
   if (stories.debugTracesError) return 'Compactaciones: no disponibles'
   return `Compactada ${stories.compactionCount} ${stories.compactionCount === 1 ? 'vez' : 'veces'}`
 })
+const showTokens = computed(() => !settings.activeUseChromeLlm && !settings.settings.mockMode)
 const measurement = shallowRef<StoryContextMeasurement | null>(null)
 const tokenError = ref<string | null>(null)
 const available = computed(() => Boolean(stories.activeStory && !stories.activeStory.readOnly &&
@@ -40,7 +41,8 @@ const indicators = computed(() => {
     { unit: 'characters', label: 'Contexto (caracteres)', count: current?.characters ?? null, limit: current?.characterLimit ?? 0 }
   ] as const
   return candidates.flatMap<ContextIndicator>(({ unit, label, count, limit }) => {
-    if (unit === 'tokens' && settings.activeContextTokenBudget !== 0 && (count === null || limit <= 0)) {
+    if (unit === 'tokens' && !showTokens.value) return []
+    if (unit === 'tokens' && (count === null || limit <= 0)) {
       const status = tokenError.value ? `No disponible. ${tokenError.value}` : 'Midiendo…'
       return [{ unit, percent: null, state: tokenError.value ? 'unavailable' : 'measuring',
         tooltip: `${label}: ${status} · ${compactionLabel.value}` }]
@@ -69,7 +71,7 @@ function scheduleMeasurement() {
   }
   measurement.value = null
   if (!available.value ||
-      (!settings.activeHistoryBudget && !settings.activeContextTokenBudget)) return
+      (!settings.activeHistoryBudget && !showTokens.value)) return
   // Agrupa cambios y deja disponibles la historia y el cuadro de escritura.
   timer = setTimeout(() => {
     timer = null

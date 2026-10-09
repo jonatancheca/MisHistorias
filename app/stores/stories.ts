@@ -1181,7 +1181,7 @@ export const useStoriesStore = defineStore('stories', () => {
     }
   }
 
-  async function prepareManualCompaction(signal: AbortSignal, activeLimitsOnly = false, skipTokens = false) {
+  async function prepareManualCompaction(signal: AbortSignal, forIndicators = false, skipTokens = false) {
     const story = activeStory.value
     if (!story || story.readOnly) throw new Error('Esta historia no permite compactar su historial.')
     const scope = getActiveDataScope()
@@ -1241,8 +1241,8 @@ export const useStoriesStore = defineStore('stories', () => {
     const measure = async (context: ChatMessage[], manualLimit = true): Promise<ContextUsage> => {
       ensureActive()
       const characters = chatContextSize(context)
-      // Actualiza caracteres sin consultar tokens desactivados o fallidos en esta visita.
-      if (skipTokens || (activeLimitsOnly && tokenBudget === 0 && (useChromeLlm || maxTokens !== 'auto'))) {
+      // Los indicadores de Chrome y mock solo miden caracteres; un fallo no se reintenta en esta visita.
+      if (skipTokens || (forIndicators && (useChromeLlm || settings.settings.mockMode))) {
         return { unit: 'characters', count: characters, model,
           configuredLimit: historyBudget, effectiveLimit: historyBudget }
       }
@@ -1258,7 +1258,9 @@ export const useStoriesStore = defineStore('stories', () => {
         const result = await pending
         ensureActive()
         invalidCapacity = true
-        const usage = tokenContextUsage(result.tokens, result.capacity, useChromeLlm ? 0 : maxTokens,
+        // Sin límite configurado, el círculo compara la entrada con la capacidad completa del modelo.
+        const responseLimit = useChromeLlm || (forIndicators && tokenBudget === 0) ? 0 : maxTokens
+        const usage = tokenContextUsage(result.tokens, result.capacity, responseLimit,
           manualLimit ? tokenBudget : 0, result.model)
         invalidCapacity = false
         tokenError = undefined
@@ -1274,7 +1276,7 @@ export const useStoriesStore = defineStore('stories', () => {
       characters: usage.characters?.count ?? usage.count,
       tokens: usage.unit === 'tokens' ? usage.count : null,
       characterLimit: historyBudget,
-      tokenLimit: usage.unit === 'tokens' && (tokenBudget === 'auto' || tokenBudget > 0) ? usage.effectiveLimit : 0,
+      tokenLimit: usage.unit === 'tokens' && (forIndicators || tokenBudget === 'auto' || tokenBudget > 0) ? usage.effectiveLimit : 0,
       model: usage.model, tokenError,
       canCompact: canCompact && !invalidCapacity &&
         (usage.unit === 'tokens' || (tokenBudget === 0 && improvementUnit !== 'tokens'))
@@ -1290,8 +1292,8 @@ export const useStoriesStore = defineStore('stories', () => {
       } }
   }
 
-  async function measureStoryContext(signal: AbortSignal, activeLimitsOnly = false, skipTokens = false): Promise<StoryContextMeasurement> {
-    const context = await prepareManualCompaction(signal, activeLimitsOnly, skipTokens)
+  async function measureStoryContext(signal: AbortSignal, forIndicators = false, skipTokens = false): Promise<StoryContextMeasurement> {
+    const context = await prepareManualCompaction(signal, forIndicators, skipTokens)
     return context.measurement(await context.measure(buildChatMessages(context.chatOptions)))
   }
 
