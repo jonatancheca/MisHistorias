@@ -510,7 +510,7 @@ export interface DatabaseBackup {
   createdAt: string
   size: number
   schemaVersion: number | null
-  valid: boolean
+  compatible: boolean
 }
 
 export interface AppUpdateInfo {

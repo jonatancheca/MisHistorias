@@ -144,6 +144,14 @@ _Evitar_: Público, compartido
 Copia completa y restaurable de colección normal, colección privada, ajustes y secretos de una instalación de Mis Historias.
 _Evitar_: Exportación JSON, copia parcial
 
+**Compatibilidad de backup**:
+Condición de una copia cuyo esquema es reconocible por Mis Historias y corresponde a una versión admitida. Es independiente de la integridad del archivo y no garantiza que pueda restaurarse.
+_Evitar_: Backup validado, integridad comprobada
+
+**Integridad de backup**:
+Condición de una copia que supera la comprobación completa de su estructura y datos SQLite. Junto con su compatibilidad, es necesaria para restaurarla.
+_Evitar_: Compatibilidad de versión, archivo reconocido
+
 **Secreto operativo**:
 Credencial de LLM o SwarmUI que el servidor conserva para realizar llamadas salientes. La API de ajustes solo permite crear, reemplazar o borrar su valor y consultar si está configurado; nunca devuelve el valor guardado. Las trazas ocultan campos, patrones y valores de credenciales reconocibles. Los backups SQLite completos constituyen una excepción administrativa y sí conservan los secretos.
 _Evitar_: Ajuste público, token visible, valor recuperable

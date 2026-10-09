@@ -2,12 +2,15 @@ import type { DatabaseSync } from 'node:sqlite'
 import { Worker } from 'node:worker_threads'
 import type { DatabaseBackup } from '../../shared/types/index.ts'
 
-// Keep this function self-contained: the worker runs the same validation as restores.
-export function inspectBackupDatabase(path: string, maximumVersion: number, Database: typeof DatabaseSync) {
+// Keep this function self-contained: its source also runs inside the listing worker.
+// Compatibility reads the schema; only full checks establish integrity.
+export function inspectBackupDatabase(path: string, maximumVersion: number, Database: typeof DatabaseSync, checkIntegrity = true) {
   let database: DatabaseSync | undefined
   try {
     database = new Database(path, { readOnly: true })
-    const quickCheck = database.prepare('PRAGMA quick_check').all() as Array<{ quick_check: string }>
+    const quickCheck = checkIntegrity
+      ? database.prepare('PRAGMA quick_check').all() as Array<{ quick_check: string }>
+      : null
     const version = database.prepare('PRAGMA user_version').get() as { user_version: number }
     const schema = database
       .prepare("SELECT COUNT(*) AS total FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'")
@@ -24,19 +27,16 @@ export function inspectBackupDatabase(path: string, maximumVersion: number, Data
       `)
       .get() as { total: number }
     const schemaVersion = version.user_version
+    const compatible = schema.total > 0 && Number.isInteger(schemaVersion) &&
+      schemaVersion >= 0 && schemaVersion <= maximumVersion
     return {
-      valid:
-        quickCheck.length === 1 &&
-        quickCheck[0]?.quick_check === 'ok' &&
-        schema.total > 0 &&
-        Number.isInteger(schemaVersion) &&
-        schemaVersion >= 0 &&
-        schemaVersion <= maximumVersion,
+      compatible,
+      valid: compatible && quickCheck?.length === 1 && quickCheck[0]?.quick_check === 'ok',
       schemaVersion,
       applicationDatabase: applicationTables.total > 0
     }
   } catch {
-    return { valid: false, schemaVersion: null, applicationDatabase: false }
+    return { compatible: false, valid: false, schemaVersion: null, applicationDatabase: false }
   } finally {
     if (database?.isOpen) database.close()
   }
@@ -78,14 +78,14 @@ export function inspectBackupsInBackground(directory: string, databaseName: stri
           if (error.code === 'ENOENT') continue;
           throw error;
         }
-        const validation = inspectDatabase(path, maximumVersion, DatabaseSync);
+        const validation = inspectDatabase(path, maximumVersion, DatabaseSync, false);
         const kind = entry.name.startsWith(databaseName + '.manual-') ? 'manual'
           : entry.name.startsWith(databaseName + '.uploaded-') ? 'uploaded'
           : entry.name.startsWith(databaseName + '.before-restore-') ? 'before-restore' : 'migration';
         backups.push({
           name: entry.name, kind, createdAt: stats.mtime.toISOString(), size: stats.size,
           schemaVersion: validation.schemaVersion,
-          valid: validation.valid && validation.applicationDatabase
+          compatible: validation.compatible && validation.applicationDatabase
         });
       }
       parentPort.postMessage(backups.sort((left, right) => right.createdAt.localeCompare(left.createdAt)));

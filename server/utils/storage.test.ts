@@ -1292,7 +1292,7 @@ test('crea, lista y restaura backups manuales conservando todos los ámbitos', (
 
     const backup = storage.createManualBackup()
     assert.equal(backup.kind, 'manual')
-    assert.equal(backup.valid, true)
+    assert.equal(backup.compatible, true)
     assert.equal(backup.schemaVersion, 46)
     assert.equal(storage.listBackups().some((item) => item.name === backup.name), true)
     const backupDatabase = new DatabaseSync(join(dirname(path), 'backups', backup.name), {
@@ -1366,7 +1366,7 @@ test('importa backups válidos sin sobrescribir y rechaza archivos incompatibles
     const imported = storage.importBackup(sourcePath, 'mi copia.sqlite')
     assert.equal(imported.kind, 'uploaded')
     assert.equal(imported.name, 'test.uploaded-mi-copia.sqlite')
-    assert.equal(imported.valid, true)
+    assert.equal(imported.compatible, true)
     assert.equal(imported.schemaVersion, 46)
 
     const duplicate = storage.importBackup(sourcePath, 'mi copia.sqlite')
@@ -1431,7 +1431,7 @@ test('muestra pero no restaura archivos SQLite vacíos', () => {
 
     const backup = storage.listBackups()[0]
     assert.equal(backup?.name, 'test.manual-empty.sqlite')
-    assert.equal(backup?.valid, false)
+    assert.equal(backup?.compatible, false)
     assert.throws(
       () => storage.restoreBackup('test.manual-empty.sqlite'),
       /no es válido y no puede restaurarse/

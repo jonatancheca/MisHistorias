@@ -199,7 +199,7 @@ const backupImportInput = ref<HTMLInputElement | null>(null)
 const backups = ref<DatabaseBackup[]>([])
 const backupsDialogOpen = ref(false)
 const latestBackup = computed(() => backups.value.reduce<DatabaseBackup | null>((latest, backup) =>
-  backup.valid && (!latest || Date.parse(backup.createdAt) > Date.parse(latest.createdAt)) ? backup : latest, null))
+  backup.compatible && (!latest || Date.parse(backup.createdAt) > Date.parse(latest.createdAt)) ? backup : latest, null))
 const backupsLoading = ref(false)
 const backupAction = ref<string | null>(null)
 const backupMessage = ref<string | null>(null)
@@ -2638,7 +2638,7 @@ onBeforeRouteLeave(async () => {
           No hay backups todavía.
         </p>
         <p v-else class="mt-4 text-sm text-[var(--color-fg-muted)]" data-testid="latest-backup">
-          {{ latestBackup ? `Último backup: ${formatBackupDate(latestBackup.createdAt)}` : 'No hay backups válidos.' }}
+          {{ latestBackup ? `Último backup: ${formatBackupDate(latestBackup.createdAt)}` : 'No hay backups compatibles.' }}
         </p>
       </div>
       <p
@@ -2658,6 +2658,9 @@ onBeforeRouteLeave(async () => {
       @close="backupsDialogOpen = false"
     >
       <template v-if="backupsDialogOpen">
+        <p class="mb-3 text-sm text-[var(--color-fg-muted)]">
+          El listado comprueba compatibilidad. La integridad del archivo se comprueba antes de restaurar.
+        </p>
         <p v-if="backupError" class="mb-3 text-sm text-red-500" role="alert">{{ backupError }}</p>
         <p v-if="backupAction?.startsWith('download:')" class="mb-3 break-all text-sm text-[var(--color-fg-muted)]" role="status">
           Descargando backup: {{ backupAction.slice('download:'.length) }}
@@ -2679,8 +2682,8 @@ onBeforeRouteLeave(async () => {
                 <span class="rounded-full bg-brand-500/10 px-2 py-0.5 text-xs font-semibold text-brand-600">
                   {{ backupKindLabel(backup.kind) }}
                 </span>
-                <span v-if="!backup.valid" class="text-xs font-semibold text-red-500">
-                  No válido
+                <span v-if="!backup.compatible" class="text-xs font-semibold text-red-500">
+                  No compatible
                 </span>
               </div>
               <p class="mt-1 break-all text-sm font-medium">{{ backup.name }}</p>
@@ -2706,7 +2709,7 @@ onBeforeRouteLeave(async () => {
               <button
                 type="button"
                 class="btn-danger"
-                :disabled="!backup.valid || backupAction !== null"
+                :disabled="!backup.compatible || backupAction !== null"
                 @click="restoreBackup(backup)"
               >
                 {{ backupAction === `restore:${backup.name}` ? 'Restaurando…' : 'Restaurar' }}

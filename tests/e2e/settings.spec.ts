@@ -898,6 +898,29 @@ test('no activa Chrome AI cuando navegador es incompatible', async ({ page, data
   expect(((await response.json()) as AppSettings).useChromeLlm).toBe(false)
 })
 
+test('distingue compatibilidad de integridad y permite descargar backups incompatibles', async ({ page }) => {
+  const backups: DatabaseBackup[] = [
+    { name: 'test.manual-compatible.sqlite', kind: 'manual', createdAt: '2026-10-09T12:00:00Z', size: 4096, schemaVersion: 46, compatible: true },
+    { name: 'test.uploaded-future.sqlite', kind: 'uploaded', createdAt: '2026-10-09T13:00:00Z', size: 4096, schemaVersion: 999, compatible: false }
+  ]
+  await page.route('**/api/backups', route => route.fulfill({ json: backups }))
+  await page.goto('/settings')
+  await expect(page.getByTestId('latest-backup')).toContainText('Último backup:')
+  await page.getByRole('button', { name: 'Ver todos los backups', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Backups SQLite', exact: true })
+  await expect(dialog.getByText('El listado comprueba compatibilidad. La integridad del archivo se comprueba antes de restaurar.')).toBeVisible()
+  const compatible = dialog.getByRole('listitem').filter({ hasText: backups[0]!.name })
+  const incompatible = dialog.getByRole('listitem').filter({ hasText: backups[1]!.name })
+  await expect(compatible.getByRole('button', { name: 'Restaurar', exact: true })).toBeEnabled()
+  await expect(incompatible.getByText('No compatible', { exact: true })).toBeVisible()
+  await expect(incompatible.getByRole('button', { name: 'Restaurar', exact: true })).toBeDisabled()
+  await expect(incompatible.getByRole('button', { name: 'Descargar', exact: true })).toBeEnabled()
+  for (const width of [320, 390, 640, 768, 1280]) {
+    await page.setViewportSize({ width, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  }
+})
+
 test('muestra, crea y restaura backups SQLite con confirmación', async ({ page, data }) => {
   const initialBackups = await (await page.request.get('/api/backups')).json() as DatabaseBackup[]
   const character = await data.createCharacter({ name: data.unique('Original-backup') })

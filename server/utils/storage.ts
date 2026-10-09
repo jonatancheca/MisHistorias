@@ -1,6 +1,7 @@
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   renameSync,
@@ -620,16 +621,15 @@ export class MisHistoriasStorage {
     return 'migration'
   }
 
-  private inspectBackup(name: string, path: string): DatabaseBackup {
-    const stats = statSync(path)
-    const validation = this.readBackupVersion(path)
+  private inspectBackup(name: string, path: string, stats = statSync(path)): DatabaseBackup {
+    const validation = inspectBackupDatabase(path, SCHEMA_VERSION, DatabaseSync, false)
     return {
       name,
       kind: this.backupKind(name),
       createdAt: stats.mtime.toISOString(),
       size: stats.size,
       schemaVersion: validation.schemaVersion,
-      valid: validation.valid && validation.applicationDatabase
+      compatible: validation.compatible && validation.applicationDatabase
     }
   }
 
@@ -750,17 +750,27 @@ export class MisHistoriasStorage {
   }
 
   getBackupFile(name: string) {
-    const backup = this.listBackups().find((item) => item.name === name)
-    if (!backup) throw new Error('Backup no encontrado')
-    return {
-      backup,
-      path: join(this.backupDirectory(), backup.name)
+    if (!name.startsWith(this.databaseName() + '.') || !name.endsWith('.sqlite') || /[\\/:]/.test(name) || name.includes('\0')) {
+      throw new Error('Backup no encontrado')
     }
+    const path = join(this.backupDirectory(), name)
+    let stats
+    try {
+      stats = lstatSync(path)
+    } catch (caught) {
+      const code = (caught as NodeJS.ErrnoException).code
+      if (code === 'ENOENT' || code === 'ENOTDIR') throw new Error('Backup no encontrado', { cause: caught })
+      throw caught
+    }
+    if (!stats.isFile() || stats.isSymbolicLink()) throw new Error('Backup no encontrado')
+    return { backup: this.inspectBackup(name, path, stats), path }
   }
 
   restoreBackup(name: string) {
     const { backup, path: sourcePath } = this.getBackupFile(name)
-    if (!backup.valid || backup.schemaVersion === null) {
+    const sourceValidation = this.readBackupVersion(sourcePath)
+    if (!sourceValidation.valid || !sourceValidation.applicationDatabase ||
+      backup.schemaVersion === null || sourceValidation.schemaVersion !== backup.schemaVersion) {
       throw new Error('El backup no es válido y no puede restaurarse')
     }
 
