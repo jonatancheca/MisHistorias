@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 263, completedAt: '2026-10-09', summary: 'Indicador de descarga de backups SQLite con rueda giratoria y texto Descargando… hasta recibir el archivo completo; bloquea operaciones y cierre del diálogo mientras trabaja y muestra errores con posibilidad de reintentar.' },
   { issue: 264, completedAt: '2026-10-09', summary: 'Círculo de ocupación de tokens visible también sin límite configurado, usando la capacidad real del modelo cargado; excluye Chrome y modo sin LLM, conserva estados de medición y fallo y funciona en Chat y Novela Visual, ámbitos normal y privado y móvil.' },
   { issue: 261, completedAt: '2026-10-09', summary: 'El narrador puede indicar salidas y retornos explícitos de personajes mediante Ausente y Presente, guardados en orden con la respuesta y ocultos sin cuadros ni pasos en Chat y Novela Visual; conserva presencia histórica, respuestas parciales, partidas y transferencias.' },
   { issue: 259, completedAt: '2026-10-06', summary: 'Retorno automático persistente de personajes ausentes cuando una nueva respuesta guardada incluye diálogo o pensamiento suyo con texto, también en respuestas parciales, Chat y Novela Visual; conserva escenas anteriores y refuerza por nombre la prohibición de intervenir en el prompt.' },

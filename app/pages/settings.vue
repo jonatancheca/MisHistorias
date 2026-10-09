@@ -14,7 +14,7 @@ import {
 } from '~/lib/chromeLlm'
 import {
   createDatabaseBackup,
-  databaseBackupDownloadUrl,
+  downloadDatabaseBackup,
   listDatabaseBackups,
   previewIdentityReassignment,
   reassignIdentity,
@@ -1218,6 +1218,29 @@ async function createBackup() {
     backupMessage.value = `Backup creado: ${created.name}`
   } catch (caught) {
     backupError.value = backupErrorMessage(caught, 'No se pudo crear el backup.')
+  } finally {
+    backupAction.value = null
+  }
+}
+
+async function downloadBackup(backup: DatabaseBackup) {
+  if (backupAction.value !== null) return
+  backupAction.value = `download:${backup.name}`
+  backupMessage.value = null
+  backupError.value = null
+  try {
+    const blob = await downloadDatabaseBackup(backup.name)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = backup.name
+    try {
+      link.click()
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }
+  } catch (caught) {
+    backupError.value = backupErrorMessage(caught, 'No se pudo descargar el backup.')
   } finally {
     backupAction.value = null
   }
@@ -2636,6 +2659,9 @@ onBeforeRouteLeave(async () => {
     >
       <template v-if="backupsDialogOpen">
         <p v-if="backupError" class="mb-3 text-sm text-red-500" role="alert">{{ backupError }}</p>
+        <p v-if="backupAction?.startsWith('download:')" class="mb-3 break-all text-sm text-[var(--color-fg-muted)]" role="status">
+          Descargando backup: {{ backupAction.slice('download:'.length) }}
+        </p>
         <p v-if="backupsLoading" role="status">Cargando backups…</p>
         <div v-else-if="backupListError">
           <p class="text-sm text-red-500" role="alert">{{ backupListError }}</p>
@@ -2664,13 +2690,19 @@ onBeforeRouteLeave(async () => {
               </p>
             </div>
             <div class="flex shrink-0 flex-wrap gap-2 self-start sm:self-auto">
-              <a
+              <button
+                type="button"
                 class="btn-ghost"
-                :href="databaseBackupDownloadUrl(backup.name)"
-                :download="backup.name"
+                :disabled="backupAction !== null"
+                :aria-busy="backupAction === `download:${backup.name}`"
+                @click="downloadBackup(backup)"
               >
-                Descargar
-              </a>
+                <svg v-if="backupAction === `download:${backup.name}`" aria-hidden="true" class="h-4 w-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="9" class="opacity-25" />
+                  <path d="M12 3a9 9 0 0 1 9 9" />
+                </svg>
+                {{ backupAction === `download:${backup.name}` ? 'Descargando…' : 'Descargar' }}
+              </button>
               <button
                 type="button"
                 class="btn-danger"

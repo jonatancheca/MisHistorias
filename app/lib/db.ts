@@ -459,6 +459,18 @@ export function databaseBackupDownloadUrl(name: string) {
   return `/api/backups/${encodeURIComponent(name)}`
 }
 
+export async function downloadDatabaseBackup(name: string) {
+  const response = await fetch(databaseBackupDownloadUrl(name), { cache: 'no-store' })
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null) as {
+      message?: string
+      statusMessage?: string
+    } | null
+    throw new Error(detail?.message || detail?.statusMessage || 'No se pudo descargar el backup.')
+  }
+  return response.blob()
+}
+
 export async function uploadDatabaseBackup(file: File) {
   return $fetch<DatabaseBackup>('/api/backups/upload', {
     method: 'POST',

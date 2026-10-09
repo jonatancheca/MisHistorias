@@ -927,12 +927,68 @@ test('muestra, crea y restaura backups SQLite con confirmación', async ({ page,
   await expect(existingRow).toBeVisible()
   await expect(existingRow.getByText('Manual', { exact: true })).toBeVisible()
 
-  const downloadPromise = page.waitForEvent('download')
-  await existingRow.getByRole('link', { name: 'Descargar' }).click()
-  const download = await downloadPromise
-  expect(download.suggestedFilename()).toBe(existing.name)
   const downloadPath = test.info().outputPath(existing.name)
-  await download.saveAs(downloadPath)
+  const downloadUrl = `/api/backups/${encodeURIComponent(existing.name)}`
+  let failDownload = true
+  let downloadRequests = 0
+  let releaseDownload!: () => void
+  const pendingDownload = new Promise<void>(resolve => { releaseDownload = resolve })
+  await page.route(`**${downloadUrl}`, async (route) => {
+    downloadRequests += 1
+    if (failDownload) {
+      await route.fulfill({ status: 503, json: { message: 'Descarga temporalmente no disponible' } })
+      return
+    }
+    await pendingDownload
+    await route.continue()
+  })
+  try {
+    await existingRow.getByRole('button', { name: 'Descargar', exact: true }).click()
+    await expect(backupDialog.getByRole('alert')).toHaveText('Descarga temporalmente no disponible')
+    await expect(existingRow.getByRole('button', { name: 'Descargar', exact: true })).toBeEnabled()
+    await expect(backupDialog.getByRole('button', { name: 'Cerrar diálogo' })).toBeEnabled()
+
+    failDownload = false
+    const downloadPromise = page.waitForEvent('download')
+    await existingRow.getByRole('button', { name: 'Descargar', exact: true }).click()
+    const downloading = existingRow.getByRole('button', { name: 'Descargando…', exact: true })
+    await expect(downloading).toBeDisabled()
+    await expect(downloading).toHaveAttribute('aria-busy', 'true')
+    await expect(downloading.locator('svg.animate-spin')).toBeVisible()
+    await expect(backupDialog.getByRole('status')).toHaveText(`Descargando backup: ${existing.name}`)
+    await expect(backupDialog.getByRole('alert')).toHaveCount(0)
+    await expect(backupDialog.getByRole('button', { name: 'Cerrar diálogo' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Crear backup', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Subir backup', exact: true })).toBeDisabled()
+    for (const button of await backupList.getByRole('button').all()) await expect(button).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(backupDialog).toBeVisible()
+    await downloading.evaluate(button => (button as HTMLButtonElement).click())
+    expect(downloadRequests).toBe(2)
+
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 844 })
+      await expect(downloading).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      const bounds = await downloading.boundingBox()
+      expect(bounds).not.toBeNull()
+      expect(bounds!.x).toBeGreaterThanOrEqual(0)
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
+      if (width === 390 || width === 1280) {
+        await page.screenshot({ path: `.data/issue-263-download-${width}.png` })
+      }
+    }
+
+    releaseDownload()
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toBe(existing.name)
+    await download.saveAs(downloadPath)
+    await expect(existingRow.getByRole('button', { name: 'Descargar', exact: true })).toBeEnabled()
+    await expect(backupDialog.getByRole('status')).toHaveCount(0)
+  } finally {
+    releaseDownload()
+    await page.unroute(`**${downloadUrl}`)
+  }
 
   await page.keyboard.press('Escape')
   await expect(backupDialog).toBeHidden()
