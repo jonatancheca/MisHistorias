@@ -3390,3 +3390,27 @@ test('retorno respeta ámbito y propietario y rechaza mensajes del usuario', () 
     assert.equal(storage.get('messages', 'private', message.id, owner), null)
   })
 })
+
+
+for (const scope of ['normal', 'private'] as const) {
+  test(`entradas y salidas explícitas transaccionales conservan partidas e idempotencia (${scope})`, () => {
+    withStorage((storage) => {
+      for (const id of ['a', 'b']) storage.put('characters', scope, id, character(id))
+      const initial = { ...story('presence-directives'), characterIds: ['a', 'b'], absentCharacterIds: ['b'] }
+      storage.put('stories', scope, initial.id, initial)
+      const message = { id: 'presence', storyId: initial.id, role: 'assistant', raw: 'Ausente a:\nPresente b:', originalRaw: 'Ausente a:\nPresente b:',
+        absentCharacterIds: ['b'], segments: [
+          { type: 'character-absent', characterId: 'a', tag: null, text: '' },
+          { type: 'character-present', characterId: 'b', tag: null, text: '' }
+        ], createdAt: 5 }
+      const result = storage.putGeneratedMessage(scope, message.id, message)
+      assert.deepEqual(result.story.absentCharacterIds, ['a'])
+      assert.ok(result.message.segments.every((segment) => segment.presenceApplied))
+      assert.deepEqual(storage.putGeneratedMessage(scope, message.id, message), result)
+      const save = storage.createStorySave(scope, initial.id, 'Presencia', 'data:image/webp;base64,UklGRg==')!
+      assert.deepEqual(save.story.absentCharacterIds, ['a'])
+      assert.deepEqual(save.messages[0]?.segments, result.message.segments)
+      assert.equal(save.messages[0]?.originalRaw, message.originalRaw)
+    })
+  })
+}

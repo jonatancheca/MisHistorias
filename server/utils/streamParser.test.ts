@@ -334,3 +334,31 @@ describe('nombres narrativos sin acentos', () => {
     assert.equal(segments[4]?.imageId, 'neutral')
   })
 })
+
+
+describe('directivas de presencia del narrador', () => {
+  it('resuelve nombres narrativos y serializa entradas y salidas sin texto', () => {
+    const cast = [{ ...characters[0]!, name: 'Lía' }]
+    const segments = parseSegments('Ausente Lia:\nPresente LÍA:', cast, [], 'Vera', images)
+    assert.deepEqual(segments.map((segment) => [segment.type, segment.characterId, segment.text]), [
+      ['character-absent', 'alicia', ''], ['character-present', 'alicia', '']
+    ])
+    assert.equal(segments[1]?.imageId, 'neutral')
+    assert.equal(serializeSegments(segments, cast), 'Ausente Lía:\nPresente Lía:')
+  })
+  it('desconocidos, protagonista, ambigüedad y líneas incompletas no asignan personaje', () => {
+    const cast = [...characters, { ...characters[0]!, id: 'accent', name: 'Álicia' }]
+    const segments = parseSegments('Ausente Nadie:\nPresente Vera:\nAusente Alicia\nPresente Alicia: texto\nAusente Aliciá:', cast, [], 'Vera')
+    assert.ok(segments.every((segment) => segment.characterId === null && segment.text === ''))
+    assert.equal(parseSegments('Alicia se marcha.', cast)[0]?.type, 'narration')
+  })
+  it('oculta cada prefijo parcial también en Chat, sin activar una línea con sufijo inválido', () => {
+    for (const raw of ['Ausente Alicia:', 'Presente Alicia:', 'Ausente Alicia: texto inválido']) {
+      for (let count = 1; count < raw.length; count++) {
+        assert.equal(hideIncompleteVisualDirectivePrefix(raw.slice(0, count), raw, characters, '', true), '')
+      }
+    }
+    assert.equal(hideIncompleteVisualDirectivePrefix('Alicia:', 'Alicia: Hola.', characters, '', true), 'Alicia:')
+    assert.equal(hideIncompleteVisualDirectivePrefix('Ausente Alicia:\nPre', 'Ausente Alicia:\nPresente Alicia:', characters, '', true), 'Ausente Alicia:\n')
+  })
+})

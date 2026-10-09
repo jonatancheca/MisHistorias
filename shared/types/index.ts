@@ -243,10 +243,12 @@ export type SegmentType =
   | 'narration'
   | 'background'
   | 'sound'
+  | 'character-absent'
+  | 'character-present'
 
 export interface MessageSegment {
   type: SegmentType
-  /** id del personaje que habla o piensa, null si no corresponde a un personaje */
+  /** id del personaje que habla, piensa o cambia de presencia, null si no corresponde a un personaje */
   characterId: string | null
   /** Fondo resuelto al parsear; null si la etiqueta no existe */
   backgroundId?: string | null
@@ -262,6 +264,8 @@ export interface MessageSegment {
   imageIdOverride?: boolean
   /** Esta intervención guardada reincorporó al personaje ausente a la escena. */
   returnsToScene?: boolean
+  /** Directiva de presencia validada al guardar una respuesta nueva; editar no crea efectos. */
+  presenceApplied?: boolean
   text: string
 }
 

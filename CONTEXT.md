@@ -213,9 +213,13 @@ Repetición de la última acción del narrador que falló, iniciada automáticam
 _Evitar_: Reenvío de mensaje, regeneración de respuesta
 
 **Presencia en escena**:
-Condición de un personaje del elenco activo que distingue si participa en la situación narrativa actual o permanece fuera de ella. La decide el usuario; un personaje ausente vuelve a estar presente si una nueva respuesta guardada del narrador contiene diálogo o pensamiento suyo con texto; el protagonista está siempre presente y un cambio de presencia no constituye una intervención narrativa.
+Condición de un personaje del elenco activo que distingue si participa en la situación narrativa actual o permanece fuera de ella. La decide el usuario o el narrador mediante una salida o un retorno explícitos; un personaje ausente también vuelve a estar presente si una nueva respuesta guardada del narrador contiene diálogo o pensamiento suyo con texto; el protagonista está siempre presente y un cambio de presencia no constituye una intervención narrativa.
 _Evitar_: Pertenencia al elenco, imagen visible
 
 **Personaje ausente**:
-Personaje del elenco activo conocido por la historia, pero que no interviene con acciones, diálogos ni pensamientos en su escena actual. Puede ser mencionado sin estar presente; una intervención suya de diálogo o pensamiento con texto en una nueva respuesta guardada supone su retorno a la escena.
+Personaje del elenco activo conocido por la historia, pero que no interviene con acciones, diálogos ni pensamientos en su escena actual. Puede ser mencionado sin estar presente; una indicación explícita de retorno o una intervención suya de diálogo o pensamiento con texto en una nueva respuesta guardada supone su retorno a la escena.
 _Evitar_: Personaje eliminado, personaje desconocido, personaje oculto por falta de espacio
+
+**Cambio de presencia del narrador**:
+Salida o retorno explícitos de un personaje del elenco activo, incorporados en orden junto con una nueva respuesta guardada, incluso parcial. Cambian su participación sin constituir un cuadro de respuesta; las menciones narrativas no cambian la presencia y el protagonista permanece siempre presente.
+_Evitar_: Diálogo, personaje eliminado, cambio retroactivo

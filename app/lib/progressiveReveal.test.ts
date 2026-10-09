@@ -37,6 +37,8 @@ describe('revelado progresivo por líneas', () => {
     assert.equal(isHiddenVisualRevealLine('Fondo [bosque]:'), true)
     assert.equal(isHiddenVisualRevealLine('  Sonido [lluvia]:  '), true)
     assert.equal(isHiddenVisualRevealLine('   '), true)
+    assert.equal(isHiddenVisualRevealLine('Ausente Alicia:'), true)
+    assert.equal(isHiddenVisualRevealLine('Presente Alicia:'), true)
     assert.equal(isHiddenVisualRevealLine('Alicia [feliz]: Hola'), false)
     assert.equal(isHiddenVisualRevealLine('La puerta se abre.'), false)
   })

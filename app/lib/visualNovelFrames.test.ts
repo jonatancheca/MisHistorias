@@ -481,3 +481,27 @@ it('representa retorno guardado desde su intervención sin alterar escenas ni me
   assert.equal(frames.at(-2)?.characterStates.at(-1)?.imageId, 'alicia-feliz')
   assert.deepEqual(returned.absentCharacterIds, ['alicia', 'bruno'])
 })
+
+
+it('presencia explícita no crea cuadros, respeta historia y muestra retorno sin diálogo', () => {
+  const earlier: Message = { ...messages[1]!, absentCharacterIds: ['alicia'] }
+  const response: Message = { ...earlier, id: 'presence', createdAt: 3, segments: [
+    { type: 'narration', characterId: null, tag: null, text: 'Antes.' },
+    { type: 'character-present', characterId: 'alicia', tag: null, text: '', presenceApplied: true },
+    { type: 'narration', characterId: null, tag: null, text: 'Ahora.' },
+    { type: 'character-absent', characterId: 'alicia', tag: null, text: '', presenceApplied: true },
+    { type: 'narration', characterId: null, tag: null, text: 'Después.' }
+  ] }
+  const frames = buildVisualNovelFrames([earlier, response], { initialBackgroundId: null, initialBackgroundTag: null })
+  assert.ok(frames.filter((frame) => frame.messageId === earlier.id).every((frame) => frame.absentCharacterIds?.includes('alicia')))
+  assert.deepEqual(frames.slice(-3).map((frame) => [frame.text, frame.absentCharacterIds]), [
+    ['Antes.', ['alicia']], ['Ahora.', []], ['Después.', ['alicia']]
+  ])
+  const returned: Message = { ...response, segments: [{ type: 'character-present', characterId: 'alicia', imageId: 'neutral', tag: null, text: '', presenceApplied: true }] }
+  const hiddenFrames = buildVisualNovelFrames([{ ...messages[0]!, absentCharacterIds: ['alicia'] }, returned], { initialBackgroundId: null, initialBackgroundTag: null })
+  assert.equal(hiddenFrames.length, 1)
+  assert.deepEqual(hiddenFrames[0]?.absentCharacterIds, [])
+  assert.equal(hiddenFrames[0]?.characterStates[0]?.imageId, 'neutral')
+  const edited = buildVisualNovelFrames([{ ...messages[0]!, absentCharacterIds: ['alicia'] }, { ...returned, segments: [{ ...returned.segments[0]!, presenceApplied: undefined }] }], { initialBackgroundId: null, initialBackgroundTag: null })
+  assert.deepEqual(edited[0]?.absentCharacterIds, ['alicia'])
+})

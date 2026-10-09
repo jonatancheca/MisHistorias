@@ -1,3 +1,5 @@
+import { isPresenceDirectiveLine } from '../../shared/utils/characterPresence.ts'
+
 export function currentRevealLineEnd(graphemes: readonly string[], visibleCount: number) {
   const safeVisibleCount = Math.min(Math.max(0, visibleCount), graphemes.length)
   const lineEnd = graphemes.indexOf('\n', safeVisibleCount)
@@ -28,7 +30,7 @@ export function currentRevealLine(
 export function isHiddenVisualRevealLine(value: string) {
   const trimmed = value.trim()
   return (
-    !trimmed ||
+    !trimmed || isPresenceDirectiveLine(trimmed) ||
     /^Fondo\s*\[[^\]\n]+\]\s*:/i.test(trimmed) ||
     /^Sonido\s*\[[^\]\n]+\]\s*:/i.test(trimmed)
   )

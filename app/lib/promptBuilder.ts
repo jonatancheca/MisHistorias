@@ -99,7 +99,7 @@ function characterSheet(
     `### ${customization?.name?.trim() || character.name}`,
     (customization?.prompt ?? character.prompt).trim() || '(sin descripción)',
     `Etiquetas descriptivas del personaje (no son etiquetas de imagen): ${(customization?.tags ?? character.tags ?? []).join(', ') || '(ninguna)'}`,
-    `Estado: AUSENTE de la escena. ${name} no debe hablar, dialogar, pensar ni actuar en esta respuesta. No escribas líneas de diálogo de ${name} ni líneas de Pensamiento ${name}. Puede ser mencionado por el narrador o los personajes presentes sin intervenir ni regresar. Sin imágenes ni sonidos disponibles.`
+    `Estado: AUSENTE de la escena. ${name} no debe hablar, dialogar, pensar ni actuar en esta respuesta mientras siga ausente. No escribas líneas de diálogo de ${name} ni líneas de Pensamiento ${name} antes de declarar su retorno explícito. Puede ser mencionado por el narrador o los personajes presentes sin intervenir ni regresar. Sin imágenes ni sonidos disponibles. Para reincorporarlo, escribe primero la línea independiente \`Presente ${name}:\`; desde ese punto puede intervenir, aunque sus recursos ausentes no están disponibles en este catálogo.`
   ].join('\n')
   const own = images.filter((image) => image.characterId === character.id)
   const fallback = own.find((image) => image.isDefault) ?? own[0]
@@ -247,7 +247,9 @@ export function buildSystemPrompt(options: {
     'Escribe el texto del pensamiento sin paréntesis ni markdown; la aplicación lo muestra en cursiva, entre paréntesis y con el color del personaje. Los demás personajes no lo oyen. No confundas estos pensamientos ficticios con tu propio análisis o razonamiento.',
     '',
     '## PRESENCIA EN LA ESCENA',
-    'El protagonista está siempre presente. Respeta la presencia actual indicada por la historia; no cambia al cambiar de fondo. Está prohibido escribir diálogo, pensamientos o acciones de cualquier personaje marcado AUSENTE, aunque hablase en el historial o en el resumen. Los ausentes siguen siendo conocidos y pueden mencionarse, pero no intervienen en esta respuesta. No los reincorpores ni solicites imágenes o sonidos para ellos. Esta presencia actual prevalece sobre el historial y su resumen.',
+    'El protagonista está siempre presente. Respeta la presencia actual indicada por la historia; no cambia al cambiar de fondo. Está prohibido escribir diálogo, pensamientos o acciones de cualquier personaje marcado AUSENTE, aunque hablase en el historial o en el resumen. Los ausentes siguen siendo conocidos y pueden mencionarse, pero no intervienen mientras sigan ausentes. Mientras sigan ausentes, no solicites imágenes o sonidos para ellos. Puedes cambiar explícitamente la presencia mediante las instrucciones siguientes; desde ese punto manda el nuevo estado. Esta presencia actual prevalece sobre el historial y su resumen.',
+    '',
+    'Para sacar a un personaje del elenco activo de la escena, escribe una línea independiente `Ausente Nombre:`. Para hacerlo volver o dejar de estar ausente, escribe `Presente Nombre:`, aunque no tenga diálogo. Usa el nombre exacto personalizado de la historia, un personaje por línea, sin etiquetas, texto adicional ni markdown. Nunca apliques estas instrucciones al protagonista ni a personajes ajenos al elenco. La aplicación las procesa en orden y las oculta sin crear cuadros de texto; una mención narrativa no cambia la presencia. Una intervención posterior de diálogo o pensamiento con texto también supone su retorno.',
     '',
     '## PERSONAJES',
     characters

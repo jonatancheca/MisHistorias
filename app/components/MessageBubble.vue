@@ -3,6 +3,7 @@ import type { LlmDebugTrace, Message } from '#shared/types'
 import { DEFAULT_USER_COLOR, normalizeColor } from '~/lib/colors'
 import { isAiInstruction } from '~/lib/chatInstructions'
 import { stripBracketedText } from '~/lib/storyDisplayText'
+import { isPresenceSegment } from '#shared/utils/characterPresence'
 import { primaryTag, tagKey } from '~/lib/tags'
 
 const props = defineProps<{
@@ -48,9 +49,9 @@ const hiddenMessage = computed(() =>
     props.message.role === 'user'
       ? !visibleUserText.value
       : !props.message.segments.some((segment) =>
-          segment.type === 'background' || segment.type === 'sound' ||
+          !isPresenceSegment(segment) && (segment.type === 'background' || segment.type === 'sound' ||
           ((segment.type === 'dialogue' || segment.type === 'thought') && Boolean(segment.characterId)) ||
-          segment.type === 'protagonist-dialogue' || segment.type === 'protagonist-thought' || stripBracketedText(segment.text)
+          segment.type === 'protagonist-dialogue' || segment.type === 'protagonist-thought' || stripBracketedText(segment.text))
         )
   )
 )
@@ -102,7 +103,8 @@ function toggleImageTags(rowKey: string) {
  */
 const rows = computed<FlowRow[]>(() => {
   let lastImageId = ''
-  return props.message.segments.map((segment, index) => {
+  return props.message.segments.map<FlowRow | null>((segment, index) => {
+    if (isPresenceSegment(segment)) return null
     if (segment.type === 'background') {
       const background = Object.prototype.hasOwnProperty.call(segment, 'backgroundId')
         ? backgrounds.byId(segment.backgroundId)
@@ -208,7 +210,7 @@ const rows = computed<FlowRow[]>(() => {
       segmentIndex: index,
       imageId: image?.id ?? null
     }
-  }).filter((row) => !props.visualMode || !row.background)
+  }).filter((row): row is FlowRow => row !== null && (!props.visualMode || !row.background))
 })
 
 function startEdit() {
@@ -224,7 +226,7 @@ function confirmEdit() {
 
 <template>
   <div
-    v-if="!isAiInstruction(message.raw) || originalTextAvailable"
+    v-if="!hiddenMessage || originalTextAvailable"
     class="group flex min-w-0 items-start gap-2"
     :data-story-message-id="message.id"
   >

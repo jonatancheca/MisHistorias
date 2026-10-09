@@ -1,5 +1,6 @@
 import type { LlmDebugTrace, Message, MessageSegment } from '#shared/types'
 import { isAiInstruction } from './chatInstructions.ts'
+import { isPresenceSegment } from '../../shared/utils/characterPresence.ts'
 import { stripBracketedText } from './storyDisplayText.ts'
 
 export interface VisualNovelCharacterState {
@@ -142,6 +143,19 @@ export function buildVisualNovelFrames(
     }
 
     message.segments.forEach((segment, segmentIndex) => {
+      if (segment.type === 'character-absent' || segment.type === 'character-present') {
+        if (!segment.presenceApplied || !segment.characterId) return
+        if (segment.type === 'character-absent') {
+          if (!absentCharacterIds.includes(segment.characterId)) absentCharacterIds.push(segment.characterId)
+        } else {
+          absentCharacterIds = absentCharacterIds.filter((id) => id !== segment.characterId)
+          if (!characterStates.some((state) => state.characterId === segment.characterId)) {
+            characterStates.push({ characterId: segment.characterId, tag: null, tags: [], imageId: segment.imageId ?? null,
+              imageIdOverride: false, sourceMessageId: message.id, sourceSegmentIndex: segmentIndex })
+          }
+        }
+        return
+      }
       if (segment.type === 'background') {
         backgroundId = hasBackgroundId(segment)
           ? (segment.backgroundId ?? null)
@@ -212,8 +226,9 @@ export function buildVisualNovelFrames(
   }
 
   const lastFrame = frames.at(-1)
-  if (lastFrame && options.currentAbsentCharacterIds) {
-    lastFrame.absentCharacterIds = [...options.currentAbsentCharacterIds]
+  if (lastFrame) {
+    lastFrame.absentCharacterIds = [...(options.currentAbsentCharacterIds ?? absentCharacterIds)]
+    if (messages.at(-1)?.segments.some(isPresenceSegment)) lastFrame.characterStates = cloneCharacterStates(characterStates)
   }
   return frames
 }

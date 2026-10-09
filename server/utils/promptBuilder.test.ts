@@ -685,3 +685,15 @@ test('ausentes conservan descripción y omiten imágenes, prefijo de generación
   assert.match(present, /etiqueta-secreta/)
   assert.match(present, /sonido-secreto/)
 })
+
+
+test('prompt permite ausencia y retorno explícito antes de intervenir', () => {
+  const prompt = buildSystemPrompt({ presetContent: 'Narra.', story: { ...story, absentCharacterIds: [character.id] },
+    characters: [character], images: [], backgrounds: [], sounds: [], userName: 'Vera', protagonistPreferences: '', generationMode: 'normal' })
+  assert.match(prompt, /Ausente Nombre:/)
+  assert.match(prompt, /Presente Nombre:/)
+  assert.match(prompt, /aunque no tenga diálogo/)
+  assert.match(prompt, /personalizado/)
+  assert.match(prompt, /procesa en orden/)
+  assert.match(prompt, /Presente Lia:/)
+})

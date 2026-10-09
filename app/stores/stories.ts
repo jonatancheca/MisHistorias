@@ -1,4 +1,4 @@
-import { normalizeAbsentCharacterIds, presentCharacterIds, preserveCharacterReturns } from '#shared/utils/characterPresence'
+import { isPresenceSegment, normalizeAbsentCharacterIds, presentCharacterIds, preserveCharacterReturns } from '#shared/utils/characterPresence'
 import { defineStore } from 'pinia'
 import { reportClientErrorTrace } from '~/lib/errorTraces'
 import type {
@@ -1585,14 +1585,13 @@ export const useStoriesStore = defineStore('stories', () => {
 
       const renderVisible = () => {
         const visibleRaw = graphemes.slice(0, visibleCount).join('')
-        const parseableRaw = visualMode
-          ? hideIncompleteVisualDirectivePrefix(
-              visibleRaw,
-              raw,
-              storyCharacters,
-              userName
-            )
-          : visibleRaw
+        const parseableRaw = hideIncompleteVisualDirectivePrefix(
+          visibleRaw,
+          raw,
+          storyCharacters,
+          userName,
+          !visualMode
+        )
         const segments = parseSegments(
           parseableRaw,
           storyCharacters,
@@ -1605,7 +1604,7 @@ export const useStoriesStore = defineStore('stories', () => {
         playNewSounds(segments, playedSounds, soundsStore, !visualMode)
         replaceDraft({
           ...assistantMessage,
-          raw: visibleRaw,
+          raw: parseableRaw,
           segments
         })
       }
@@ -1618,7 +1617,7 @@ export const useStoriesStore = defineStore('stories', () => {
 
       const visibleTextSignature = () => JSON.stringify(
         (animationDraft?.segments ?? [])
-          .filter((segment) => segment.type !== 'background' && segment.type !== 'sound')
+          .filter((segment) => segment.type !== 'background' && segment.type !== 'sound' && !isPresenceSegment(segment))
           .map((segment) => [segment.type, segment.characterId, segment.text])
       )
 

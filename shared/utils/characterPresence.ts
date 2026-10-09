@@ -13,34 +13,69 @@ export function presentCharacterIds(story: Pick<Story, 'characterIds' | 'absentC
   return story.characterIds.filter((id) => !absent.has(id))
 }
 
-function markCharacterReturns(message: Message, absent: Set<string>) {
-  let changed = false
-  const segments: Message['segments'] = message.segments.map((segment) => {
-    const { returnsToScene: _previousReturn, ...original } = segment
-    if (message.role !== 'assistant' || message.swarmError ||
-        (segment.type !== 'dialogue' && segment.type !== 'thought') ||
-        !segment.characterId || !absent.has(segment.characterId) || !stripBracketedText(segment.text)) return original
-    absent.delete(segment.characterId)
-    changed = true
-    return { ...original, returnsToScene: true }
-  })
-  return { message: { ...message, segments }, changed }
+export function isPresenceSegment(segment: Pick<Message['segments'][number], 'type'>) {
+  return segment.type === 'character-absent' || segment.type === 'character-present'
 }
 
-/** Reincorpora solo intervenciones con texto de una respuesta nueva, conservando su presencia inicial. */
+export function isPresenceDirectiveLine(value: string) {
+  return /^\s*(Ausente|Presente)(?:\s|$)/i.test(value)
+}
+
+/** Guarda entradas y salidas en orden, conservando la presencia inicial de la respuesta. */
 export function restoreAbsentCharacters(message: Message, story: Story) {
   const absent = new Set(normalizeAbsentCharacterIds(story.absentCharacterIds, story.characterIds))
-  const restored = markCharacterReturns(message, absent)
+  const cast = new Set(story.characterIds)
+  let changed = false
+  const segments = message.segments.map((segment) => {
+    const { returnsToScene: _return, presenceApplied: _applied, ...original } = segment
+    if (message.role !== 'assistant' || message.swarmError || !segment.characterId || !cast.has(segment.characterId)) return original
+    if (isPresenceSegment(segment)) {
+      const wasAbsent = absent.has(segment.characterId)
+      if (segment.type === 'character-absent') absent.add(segment.characterId)
+      else absent.delete(segment.characterId)
+      changed ||= wasAbsent !== absent.has(segment.characterId)
+      return { ...original, presenceApplied: true }
+    }
+    if ((segment.type === 'dialogue' || segment.type === 'thought') && absent.has(segment.characterId) && stripBracketedText(segment.text)) {
+      absent.delete(segment.characterId)
+      changed = true
+      return { ...original, returnsToScene: true }
+    }
+    return original
+  })
   return {
-    message: restored.message,
-    story: restored.changed ? { ...story, absentCharacterIds: [...absent], updatedAt: Date.now() } : story
+    message: { ...message, segments },
+    story: changed ? { ...story, absentCharacterIds: story.characterIds.filter((id) => absent.has(id)),
+      pendingImageInstructions: story.pendingImageInstructions?.filter((instruction) => !absent.has(instruction.characterId)), updatedAt: Date.now() } : story
   }
 }
 
-/** Editar conserva retornos ya registrados, sin provocar nuevos cambios de presencia. */
+/** Editar conserva los efectos registrados, sin crear salidas ni retornos nuevos. */
 export function preserveCharacterReturns(message: Message, previous: Message) {
-  const returned = new Set(previous.segments.flatMap((segment) =>
-    segment.returnsToScene && segment.characterId ? [segment.characterId] : []
-  ))
-  return markCharacterReturns(message, returned).message
+  const remaining = previous.segments.filter((segment) => isPresenceSegment(segment) && segment.presenceApplied)
+  const returns = new Map<string, number>()
+  for (const segment of previous.segments) {
+    if (segment.returnsToScene && segment.characterId) returns.set(segment.characterId, (returns.get(segment.characterId) ?? 0) + 1)
+  }
+  const absent = new Set(previous.absentCharacterIds ?? returns.keys())
+  const segments = message.segments.map((segment) => {
+    const { returnsToScene: _return, presenceApplied: _applied, ...original } = segment
+    if (message.role !== 'assistant' || message.swarmError || !segment.characterId) return original
+    if (isPresenceSegment(segment)) {
+      const index = remaining.findIndex((old) => old.type === segment.type && old.characterId === segment.characterId)
+      if (index < 0) return original
+      remaining.splice(index, 1)
+      if (segment.type === 'character-absent') absent.add(segment.characterId)
+      else absent.delete(segment.characterId)
+      return { ...original, presenceApplied: true }
+    }
+    const count = returns.get(segment.characterId) ?? 0
+    if ((segment.type === 'dialogue' || segment.type === 'thought') && count && absent.has(segment.characterId) && stripBracketedText(segment.text)) {
+      returns.set(segment.characterId, count - 1)
+      absent.delete(segment.characterId)
+      return { ...original, returnsToScene: true }
+    }
+    return original
+  })
+  return { ...message, segments }
 }

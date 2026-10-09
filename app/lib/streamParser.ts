@@ -2,10 +2,12 @@ import type { Background, Character, CharacterImage, MessageSegment, Sound } fro
 import { tagKey } from '~/lib/tags'
 import { normalizeRequestedImageTags, selectCharacterImage } from '~/lib/imageSelection'
 import { createStoryNameResolver } from './storyNameMatching.ts'
+import { isPresenceDirectiveLine } from '../../shared/utils/characterPresence.ts'
 
 const LINE_RE = /^\s*([^:[\]\n]{1,60}?)\s*((?:\s*\[[^\]\n]{1,40}\])*)\s*:\s*([\s\S]*)$/
 const BACKGROUND_RE = /^\s*Fondo\s*\[([^\]\n]{1,80})\]\s*:\s*([\s\S]*)$/i
 const SOUND_RE = /^\s*Sonido\s*\[([^\]\n]{1,80})\]\s*:\s*([\s\S]*)$/i
+const PRESENCE_RE = /^\s*(Ausente|Presente)\s+([^:[\]\n]+?)\s*:\s*$/i
 const THOUGHT_PREFIX_RE = /^Pensamiento\s+/i
 const DIALOGUE_TAG_RE = /\[([^\]\n]{1,40})\]/g
 
@@ -38,7 +40,8 @@ export function hideIncompleteVisualDirectivePrefix(
   visibleRaw: string,
   completeRaw: string,
   characters: Character[],
-  protagonistName = ''
+  protagonistName = '',
+  presenceOnly = false
 ) {
   if (!completeRaw.startsWith(visibleRaw) || visibleRaw.length >= completeRaw.length) {
     return visibleRaw
@@ -47,6 +50,8 @@ export function hideIncompleteVisualDirectivePrefix(
   const lineStart = visibleRaw.lastIndexOf('\n') + 1
   const lineEnd = completeRaw.indexOf('\n', lineStart)
   const completeLine = completeRaw.slice(lineStart, lineEnd < 0 ? completeRaw.length : lineEnd)
+  if (isPresenceDirectiveLine(completeLine)) return visibleRaw.slice(0, lineStart)
+  if (presenceOnly) return visibleRaw
   const separatorIndex = completeLine.indexOf(':')
   const visibleLineLength = visibleRaw.length - lineStart
 
@@ -95,6 +100,20 @@ export function parseSegments(
   for (const line of raw.split('\n')) {
     const trimmed = line.trim()
     if (trimmed === '') continue
+
+    if (isPresenceDirectiveLine(trimmed)) {
+      const match = PRESENCE_RE.exec(trimmed)
+      const character = match ? resolveSpeaker(match[2] ?? '')?.character : null
+      const present = /^Presente\s/i.test(trimmed)
+      segments.push({
+        type: present ? 'character-present' : 'character-absent',
+        characterId: character?.id ?? null,
+        tag: null,
+        ...(present && character ? { imageId: selectCharacterImage(images, character.id, [], selectionSeed)?.id ?? null } : {}),
+        text: ''
+      })
+      continue
+    }
 
     const soundMatch = SOUND_RE.exec(trimmed)
     if (soundMatch) {
@@ -172,6 +191,10 @@ export function serializeSegments(
   const byId = new Map(characters.map((character) => [character.id, character]))
   return segments
     .map((segment) => {
+      if (segment.type === 'character-absent' || segment.type === 'character-present') {
+        const character = segment.characterId ? byId.get(segment.characterId) : undefined
+        return character ? `${segment.type === 'character-absent' ? 'Ausente' : 'Presente'} ${character.name}:` : ''
+      }
       if (segment.type === 'background') {
         return `Fondo [${segment.tag ?? ''}]:${segment.text ? ` ${segment.text}` : ''}`
       }
