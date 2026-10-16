@@ -429,7 +429,7 @@ const visiblePendingImageInstructions = computed(() =>
     const character = characters.byId(instruction.characterId)
     const image = characters.images.find((candidate) => candidate.id === instruction.imageId)
     return character && image?.characterId === character.id
-      ? [{ ...instruction, characterName: character.name }]
+      ? [{ ...instruction, characterName: storyCharacterNames.value[character.id] ?? character.name }]
       : []
   })
 )

@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 265, completedAt: '2026-10-16', summary: 'Las imágenes forzadas pendientes muestran el nombre personalizado del personaje en la historia, también en el botón para quitarlas, en Chat y Novela Visual; conservan el nombre del catálogo cuando no hay personalización.' },
   { issue: 262, completedAt: '2026-10-09', summary: 'Listado de backups SQLite con comprobación ligera de compatibilidad, sin recorrer todos sus datos; descarga localizada por archivo y validación completa de integridad conservada al crear, subir y restaurar.' },
   { issue: 263, completedAt: '2026-10-09', summary: 'Indicador de descarga de backups SQLite con rueda giratoria y texto Descargando… hasta recibir el archivo completo; bloquea operaciones y cierre del diálogo mientras trabaja y muestra errores con posibilidad de reintentar.' },
   { issue: 264, completedAt: '2026-10-09', summary: 'Círculo de ocupación de tokens visible también sin límite configurado, usando la capacidad real del modelo cargado; excluye Chrome y modo sin LLM, conserva estados de medición y fallo y funciona en Chat y Novela Visual, ámbitos normal y privado y móvil.' },
