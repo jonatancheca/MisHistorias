@@ -76,6 +76,10 @@ _Evitar_: Solo historial, límite del mensaje, máximo de tokens de respuesta
 Proporción del contexto enviado de una historia respecto al límite activo de caracteres o a la referencia de tokens del modelo, sin incluir el borrador de escritura. En tokens utiliza el límite efectivo de entrada cuando es manual o automático y la capacidad completa del modelo cargado cuando no hay límite configurado; no se muestra con Chrome ni en modo sin LLM, y una medición pendiente o no disponible no equivale a una ocupación del cero por ciento.
 _Evitar_: Tamaño del borrador, porcentaje libre, ocupación de la respuesta
 
+**Máximo de tokens de respuesta**:
+Límite elegido para la extensión de cada respuesta del narrador, distinto del contexto enviado y de la capacidad total del modelo. Puede fijarse manualmente o calcularse con Auto según el espacio disponible.
+_Evitar_: Capacidad de contexto del modelo, límite de contexto enviado
+
 **Límite automático de tokens**:
 Preferencia que adapta el contexto enviado o la respuesta a la ventana actual del modelo cargado. El contexto automático descuenta la reserva de respuesta; la respuesta automática utiliza el espacio restante tras medir la entrada y reserva 4096 tokens al decidir cuándo compactar.
 _Evitar_: Límite desactivado, capacidad máxima teórica, número detectado una sola vez

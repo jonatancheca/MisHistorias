@@ -1198,3 +1198,200 @@ test('separa datos normales y privados', async ({ page, data }) => {
   expect((await data.list<Character>('characters', 'private'))
     .some((item) => item.id === privateCharacter.id)).toBe(true)
 })
+
+for (const [scope, width] of [['normal', 390], ['private', 320]] as const) {
+  test(`avisa al guardar 500000 tokens en ${scope}, conserva borrador y recupera a ${width}px`, async ({ page, data }) => {
+    const pageErrors: string[] = []
+    page.on('pageerror', error => pageErrors.push(error.message))
+    await data.patchSettings({
+      maxTokens: 4096, privateMaxTokens: 4096, privateLlmSettingsEnabled: true,
+      model: '', privateModel: '', mockMode: false, useChromeLlm: false, privateUseChromeLlm: false
+    })
+    await page.setViewportSize({ width, height: 800 })
+    await page.goto('/settings#llm')
+    if (scope === 'private') {
+      await page.locator('main').press('Control+Alt+p')
+      await expect(page.locator('html')).toHaveClass(/private-scope/)
+    }
+    const tokens = page.getByLabel('Máx. tokens de respuesta', { exact: true })
+    await expect(tokens).toHaveAttribute('max', '100000')
+    const failed = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/settings' && response.request().method() === 'PATCH' && response.status() === 400
+    )
+    await tokens.fill('500000')
+    await tokens.blur()
+    expect((await failed).status()).toBe(400)
+    const alert = page.getByTestId('settings-save-error')
+    await expect(alert).toContainText('Ajustes no válidos')
+    await expect(alert).toBeInViewport()
+    await expect(tokens).toHaveValue('500000')
+    let saved = await (await page.request.get('/api/settings')).json() as AppSettings
+    expect(saved.maxTokens).toBe(4096)
+    expect(saved.privateMaxTokens).toBe(4096)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    await tokens.evaluate(element => element.scrollIntoView({ block: 'center' }))
+    await page.screenshot({ path: `.data/issue-269-${scope}-${width}.png`, animations: 'disabled' })
+    await page.getByRole('button', { name: 'Modo oscuro', exact: true }).click()
+    await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).theme).toBe('dark')
+    await expect(alert).toBeInViewport()
+    await tokens.fill('8192')
+    await tokens.blur()
+    await expect(alert).toHaveCount(0)
+    saved = await (await page.request.get('/api/settings')).json() as AppSettings
+    expect(saved.maxTokens).toBe(scope === 'normal' ? 8192 : 4096)
+    expect(saved.privateMaxTokens).toBe(scope === 'private' ? 8192 : 4096)
+    expect(pageErrors).toEqual([])
+  })
+}
+
+test('mantiene aviso sobre el diálogo y durante el reintento hasta guardar', async ({ page, data }) => {
+  await data.patchSettings({ characterReferencePrompt: null })
+  let fail = true
+  let release!: () => void
+  const pending = new Promise<void>(resolve => { release = resolve })
+  await page.route('**/api/settings', async route => {
+    if (route.request().method() !== 'PATCH') return route.continue()
+    if (fail) return route.fulfill({ status: 503, json: { statusMessage: 'Servidor temporalmente no disponible' } })
+    await pending
+    return route.continue()
+  })
+  try {
+    await page.goto('/settings#prompt-referencia-personaje')
+    const dialog = page.getByRole('dialog', { name: 'Prompt de referencia de personaje' })
+    const prompt = dialog.getByLabel('Prompt de referencia de personaje integrado')
+    await prompt.fill('Prompt pendiente de guardar por fallo temporal')
+    const alert = page.getByTestId('settings-save-error')
+    await expect(alert).toContainText('Servidor temporalmente no disponible')
+    await expect(alert).toBeInViewport()
+    expect(await alert.evaluate(element => {
+      const box = element.getBoundingClientRect()
+      return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2))
+    })).toBe(true)
+    await dialog.getByRole('button', { name: 'Cerrar diálogo', exact: true }).focus()
+    await page.keyboard.press('Shift+Tab')
+    await expect(alert.getByRole('button', { name: 'Reintentar', exact: true })).toBeFocused()
+    fail = false
+    await page.keyboard.press('Enter')
+    await expect(alert.getByRole('button', { name: 'Reintentando…', exact: true })).toBeDisabled()
+    await expect(alert).toBeVisible()
+    await expect(prompt).toHaveValue('Prompt pendiente de guardar por fallo temporal')
+    release()
+    await expect(alert).toHaveCount(0)
+    const saved = await (await page.request.get('/api/settings')).json() as AppSettings
+    expect(saved.characterReferencePrompt).toBe('Prompt pendiente de guardar por fallo temporal')
+    await dialog.getByRole('button', { name: 'Cerrar diálogo' }).click()
+    await expect(dialog).toBeHidden()
+  } finally {
+    release()
+  }
+})
+
+for (const setting of ['theme', 'mockMode'] as const) {
+  test(`avisa del fallo de ${setting} y reintenta sin errores sin capturar`, async ({ page, data }) => {
+    await data.patchSettings({ theme: 'system', mockMode: false })
+    const pageErrors: string[] = []
+    page.on('pageerror', error => pageErrors.push(error.message))
+    let fail = true
+    await page.route('**/api/settings', route => route.request().method() === 'PATCH' && fail
+      ? route.abort('connectionrefused')
+      : route.continue())
+    await page.goto('/settings')
+    if (setting === 'theme') await page.getByRole('button', { name: 'Modo oscuro', exact: true }).click()
+    else await page.getByRole('checkbox', { name: /Modo prueba \(sin LLM\)/ }).check()
+    const alert = page.getByTestId('settings-save-error')
+    await expect(alert).toContainText('Comprueba la conexión e inténtalo de nuevo.')
+    const before = await (await page.request.get('/api/settings')).json() as AppSettings
+    expect(before[setting]).toBe(setting === 'theme' ? 'system' : false)
+    fail = false
+    await alert.getByRole('button', { name: 'Reintentar', exact: true }).click()
+    await expect(alert).toHaveCount(0)
+    const saved = await (await page.request.get('/api/settings')).json() as AppSettings
+    expect(saved[setting]).toBe(setting === 'theme' ? 'dark' : true)
+    expect(pageErrors).toEqual([])
+  })
+}
+
+test('reintenta activar los ajustes privados después de un fallo de guardado', async ({ page, data }) => {
+  await data.patchSettings({ privateLlmSettingsEnabled: false, mockMode: false })
+  let fail = true
+  await page.route('**/api/settings', route => route.request().method() === 'PATCH' && fail
+    ? route.fulfill({ status: 503, json: { message: 'No se pudo activar el ajuste privado' } })
+    : route.continue())
+  await page.goto('/settings#llm')
+  await page.locator('main').press('Control+Alt+p')
+  const customize = page.getByRole('checkbox', { name: /Personalizar ajustes de LMStudio/ })
+  await customize.check()
+  const alert = page.getByTestId('settings-save-error')
+  await expect(alert).toContainText('No se pudo activar el ajuste privado')
+  fail = false
+  await alert.getByRole('button', { name: 'Reintentar', exact: true }).click()
+  await expect(alert).toHaveCount(0)
+  await expect(customize).toBeChecked()
+  expect((await (await page.request.get('/api/settings')).json()).privateLlmSettingsEnabled).toBe(true)
+})
+
+test('un reintento pendiente no pisa una elección nueva de apariencia', async ({ page, data }) => {
+  await data.patchSettings({ theme: 'system', maxTokens: 4096, mockMode: false, useChromeLlm: false })
+  let fail = true
+  let release!: () => void
+  const pending = new Promise<void>(resolve => { release = resolve })
+  await page.route('**/api/settings', async route => {
+    if (route.request().method() !== 'PATCH') return route.continue()
+    if (fail) return route.fulfill({ status: 503, json: { message: 'Guardado no disponible' } })
+    if ('maxTokens' in route.request().postDataJSON()) await pending
+    return route.continue()
+  })
+  try {
+    await page.goto('/settings#llm')
+    await page.locator('#maxTokens').fill('5000')
+    const alert = page.getByTestId('settings-save-error')
+    await expect(alert).toBeVisible()
+    await page.getByRole('button', { name: 'Modo oscuro', exact: true }).click()
+    await expect(alert.getByRole('button', { name: 'Reintentar', exact: true })).toBeEnabled()
+    fail = false
+    await alert.getByRole('button', { name: 'Reintentar', exact: true }).click()
+    await expect(alert.getByRole('button', { name: 'Reintentando…', exact: true })).toBeDisabled()
+    const light = page.getByRole('button', { name: 'Modo claro', exact: true })
+    await light.click()
+    await expect(light).toHaveClass(/btn-primary/)
+    release()
+    await expect(alert).toHaveCount(0)
+    const saved = await (await page.request.get('/api/settings')).json() as AppSettings
+    expect(saved.theme).toBe('light')
+    expect(saved.maxTokens).toBe(5000)
+  } finally {
+    release()
+  }
+})
+
+test('conserva valores privados si falla desactivar su personalización', async ({ page, data }) => {
+  await data.patchSettings({
+    privateLlmSettingsEnabled: true, baseUrl: 'http://normal.test', privateBaseUrl: 'http://private.test',
+    maxTokens: 4096, privateMaxTokens: 8192, privateApiKey: '', mockMode: false, responseSpeed: 'high'
+  })
+  let fail = true
+  await page.route('**/api/settings', route => route.request().method() === 'PATCH' &&
+    route.request().postDataJSON().privateLlmSettingsEnabled === false && fail
+    ? route.fulfill({ status: 503, json: { message: 'No se pudo desactivar el ajuste privado' } })
+    : route.continue())
+  await page.goto('/settings#llm')
+  await page.locator('main').press('Control+Alt+p')
+  const customize = page.getByRole('checkbox', { name: /Personalizar ajustes de LMStudio/ })
+  await page.getByLabel('Token de acceso (opcional)').fill('test-private-key-before-failed-switch')
+  await customize.uncheck()
+  const alert = page.getByTestId('settings-save-error')
+  await expect(alert).toContainText('No se pudo desactivar el ajuste privado')
+  await expect(customize).toBeChecked()
+  await expect(page.getByLabel('URL del servidor (LMStudio)')).toHaveValue('http://private.test')
+  await expect(page.locator('#maxTokens')).toHaveValue('8192')
+  await page.getByLabel('Velocidad de escritura').selectOption('instant')
+  await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).responseSpeed).toBe('instant')
+  const savedPrivate = await (await page.request.get('/api/settings')).json() as AppSettings
+  expect(savedPrivate.privateMaxTokens).toBe(8192)
+  expect(savedPrivate.privateApiKeyConfigured).toBe(true)
+  await expect(alert).toBeVisible()
+  fail = false
+  await alert.getByRole('button', { name: 'Reintentar', exact: true }).click()
+  await expect(alert).toHaveCount(0)
+  await expect(customize).not.toBeChecked()
+})

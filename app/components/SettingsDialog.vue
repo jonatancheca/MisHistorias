@@ -5,9 +5,11 @@ const props = withDefaults(defineProps<{
   titleId: string
   size?: 'medium' | 'wide'
   busy?: boolean
+  notificationTargetId?: string
 }>(), {
   size: 'medium',
-  busy: false
+  busy: false,
+  notificationTargetId: ''
 })
 
 const emit = defineEmits<{
@@ -95,6 +97,7 @@ useDialogEscape(
         <div class="min-h-0 overflow-y-auto p-4 sm:p-5">
           <slot />
         </div>
+        <div v-if="notificationTargetId" :id="notificationTargetId" />
       </section>
     </div>
   </Teleport>

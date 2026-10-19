@@ -207,6 +207,57 @@ const backupError = ref<string | null>(null)
 const backupListError = ref<string | null>(null)
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const saveError = ref<string | null>(null)
+const saveFailures = shallowReactive(new Map<string, {
+  message: string
+  retry: () => Promise<unknown>
+}>())
+const saveFailureMessages = computed(() => [...new Set(
+  [...saveFailures.values()].map(failure => failure.message)
+)])
+const pendingSettingsSaves = ref(0)
+const retryingSettings = ref(false)
+let themeSaveRevision = 0
+let mockModeSaveRevision = 0
+
+function settingsErrorMessage(caught: unknown) {
+  const detail = caught as {
+    data?: { message?: string; statusMessage?: string }
+    statusMessage?: string
+  } | null
+  return detail?.data?.message || detail?.data?.statusMessage || detail?.statusMessage ||
+    'Comprueba la conexión e inténtalo de nuevo.'
+}
+
+async function persistSettings<T>(
+  key: string,
+  save: () => Promise<T>,
+  retry: () => Promise<unknown>,
+  isCurrent = () => true
+) {
+  pendingSettingsSaves.value += 1
+  try {
+    const result = await save()
+    if (isCurrent()) saveFailures.delete(key)
+    return result
+  } catch (caught) {
+    if (isCurrent()) saveFailures.set(key, { message: settingsErrorMessage(caught), retry })
+    throw caught
+  } finally {
+    pendingSettingsSaves.value -= 1
+  }
+}
+
+async function retrySettingsSaves() {
+  if (retryingSettings.value || pendingSettingsSaves.value) return
+  retryingSettings.value = true
+  try {
+    for (const [key, failure] of [...saveFailures]) {
+      if (saveFailures.get(key) === failure) await failure.retry()
+    }
+  } finally {
+    retryingSettings.value = false
+  }
+}
 const swarmCatalog = ref<SwarmCatalog | null>(null)
 const swarmTesting = ref(false)
 const swarmTestMessage = ref<string | null>(null)
@@ -813,9 +864,9 @@ function enqueueSave(revision: number) {
       savedTimer = null
     }
     saveStatus.value = 'saving'
-    saveError.value = null
     try {
-      await settings.save(patch)
+      await persistSettings('form', () => settings.save(patch), retryFormSave,
+        () => revision === saveRevision)
       if (revision === saveRevision) {
         if ('apiKey' in patch || 'privateApiKey' in patch) {
           apiKeyDirty = false
@@ -836,6 +887,7 @@ function enqueueSave(revision: number) {
             : settings.settings.apiKeyConfigured
         form.swarmAuthConfigured = settings.settings.swarmAuthConfigured
         saveStatus.value = 'saved'
+        saveError.value = null
         savedTimer = setTimeout(() => {
           savedTimer = null
           if (saveStatus.value === 'saved') saveStatus.value = 'idle'
@@ -844,7 +896,7 @@ function enqueueSave(revision: number) {
     } catch (caught) {
       if (revision === saveRevision) {
         saveStatus.value = 'error'
-        saveError.value = (caught as Error).message || 'No se pudieron guardar los ajustes.'
+        saveError.value = settingsErrorMessage(caught)
       }
     }
   }
@@ -916,8 +968,18 @@ function clearApiKey() {
 async function setPrivateLlmSettingsEnabled(enabled: boolean) {
   if (!privacy.isPrivate || switchingPrivateLlmSettings.value) return
   switchingPrivateLlmSettings.value = true
+  let previousLlmForm: Partial<AppSettings> | null = null
+  let previousApiKeyDirty = false
   try {
     await flushSave()
+    if (saveFailures.has('form')) return
+    previousApiKeyDirty = apiKeyDirty
+    previousLlmForm = {
+      baseUrl: form.baseUrl, model: form.model, temperature: form.temperature,
+      maxTokens: form.maxTokens, historyBudget: form.historyBudget,
+      contextTokenBudget: form.contextTokenBudget,
+      apiKey: form.apiKey, apiKeyConfigured: form.apiKeyConfigured
+    }
     privateLlmSettingsEnabled.value = enabled
     form.baseUrl = settings.settings.baseUrl
     form.model = settings.settings.model
@@ -928,7 +990,7 @@ async function setPrivateLlmSettingsEnabled(enabled: boolean) {
     form.apiKey = ''
     apiKeyDirty = false
     if (enabled) {
-      await settings.save({
+      await persistSettings('privateLlm', () => settings.save({
         privateLlmSettingsEnabled: true,
         privateBaseUrl: form.baseUrl,
         privateModel: form.model,
@@ -936,10 +998,10 @@ async function setPrivateLlmSettingsEnabled(enabled: boolean) {
         privateMaxTokens: form.maxTokens,
         privateHistoryBudget: form.historyBudget,
         privateContextTokenBudget: form.contextTokenBudget
-      })
+      }), () => setPrivateLlmSettingsEnabled(enabled))
       form.apiKeyConfigured = settings.settings.privateApiKeyConfigured
     } else {
-      await settings.save({
+      await persistSettings('privateLlm', () => settings.save({
         privateLlmSettingsEnabled: false,
         privateBaseUrl: null,
         privateApiKey: '',
@@ -949,15 +1011,18 @@ async function setPrivateLlmSettingsEnabled(enabled: boolean) {
         privateHistoryBudget: null,
         privateContextUnit: null,
         privateContextTokenBudget: null
-      })
+      }), () => setPrivateLlmSettingsEnabled(enabled))
       form.apiKeyConfigured = settings.settings.apiKeyConfigured
     }
     saveStatus.value = 'saved'
     await nextTick()
   } catch (caught) {
     privateLlmSettingsEnabled.value = settings.settings.privateLlmSettingsEnabled
+    if (previousLlmForm) Object.assign(form, previousLlmForm)
+    apiKeyDirty = previousApiKeyDirty
     saveStatus.value = 'error'
-    saveError.value = (caught as Error).message || 'No se pudieron guardar los ajustes privados.'
+    saveError.value = settingsErrorMessage(caught)
+    await nextTick()
   } finally {
     switchingPrivateLlmSettings.value = false
   }
@@ -995,12 +1060,17 @@ async function flushSave() {
   }
 }
 
+async function retryFormSave() {
+  scheduleSave()
+  await flushSave()
+}
+
 async function flushSettingsDialog(id: SettingsDialogId) {
   if (id === 'prompts-swarmui') {
     return await swarmPromptSettingsRef.value?.flushSave() ?? true
   }
   await flushSave()
-  return saveStatus.value !== 'error'
+  return saveStatus.value !== 'error' && !saveFailures.size
 }
 
 async function closeSettingsDialog() {
@@ -1106,12 +1176,24 @@ async function generateSwarmPreview() {
 
 async function setTheme(theme: 'system' | 'light' | 'dark') {
   form.theme = theme
-  await settings.save({ theme })
+  const revision = ++themeSaveRevision
+  try {
+    await persistSettings('theme', () => settings.save({ theme }), () => setTheme(form.theme),
+      () => revision === themeSaveRevision)
+  } catch {
+    return
+  }
 }
 
 async function setMockMode(mockMode: boolean) {
   form.mockMode = mockMode
-  await settings.save({ mockMode })
+  const revision = ++mockModeSaveRevision
+  try {
+    await persistSettings('mockMode', () => settings.save({ mockMode }), () => setMockMode(form.mockMode),
+      () => revision === mockModeSaveRevision)
+  } catch {
+    return
+  }
 }
 
 async function doExport() {
@@ -1142,7 +1224,8 @@ async function setChromeLlmEnabled(enabled: boolean) {
 
   if (!enabled) {
     try {
-      await settings.save(patch)
+      await persistSettings('chromeLlm', () => settings.save(patch),
+        () => setChromeLlmEnabled(enabled), () => revision === scopeRevision)
       if (revision === scopeRevision) chromeLlmEnabled.value = false
     } catch (caught) {
       if (revision === scopeRevision) {
@@ -1170,7 +1253,8 @@ async function setChromeLlmEnabled(enabled: boolean) {
       }
     })
     if (revision !== scopeRevision) return
-    await settings.save(patch)
+    await persistSettings('chromeLlm', () => settings.save(patch),
+      () => setChromeLlmEnabled(enabled), () => revision === scopeRevision)
     if (revision !== scopeRevision) return
     chromeLlmEnabled.value = true
     chromeLlmAvailability.value = 'available'
@@ -1401,7 +1485,7 @@ onMounted(() => {
   if (canManageGlobal.value) void loadBackups()
   unregisterBeforeModeChange = privacy.registerBeforeModeChange(async () => {
     await flushSave()
-    if (saveStatus.value === 'error') return false
+    if (saveStatus.value === 'error' || saveFailures.size) return false
     const dialog = activeSettingsDialog.value
     if (!dialog) return true
     settingsDialogBusy.value = true
@@ -1441,7 +1525,7 @@ onMounted(() => {
 
 onBeforeRouteLeave(async () => {
   await flushSave()
-  if (saveStatus.value === 'error') return false
+  if (saveStatus.value === 'error' || saveFailures.size) return false
   if (
     activeSettingsDialog.value === 'prompts-swarmui'
     && !await flushSettingsDialog('prompts-swarmui')
@@ -1513,7 +1597,7 @@ onBeforeRouteLeave(async () => {
       <div class="flex flex-wrap gap-2">
         <button
           type="button"
-          :class="settings.settings.theme === 'system' ? 'btn-primary' : 'btn-ghost'"
+          :class="form.theme === 'system' ? 'btn-primary' : 'btn-ghost'"
           @click="setTheme('system')"
         >
           <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1524,7 +1608,7 @@ onBeforeRouteLeave(async () => {
         </button>
         <button
           type="button"
-          :class="settings.settings.theme === 'light' ? 'btn-primary' : 'btn-ghost'"
+          :class="form.theme === 'light' ? 'btn-primary' : 'btn-ghost'"
           @click="setTheme('light')"
         >
           <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1535,7 +1619,7 @@ onBeforeRouteLeave(async () => {
         </button>
         <button
           type="button"
-          :class="settings.settings.theme === 'dark' ? 'btn-primary' : 'btn-ghost'"
+          :class="form.theme === 'dark' ? 'btn-primary' : 'btn-ghost'"
           @click="setTheme('dark')"
         >
           <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1899,7 +1983,7 @@ onBeforeRouteLeave(async () => {
             type="checkbox"
             autocomplete="off"
             class="mt-1 h-4 w-4 accent-[var(--color-brand-500)]"
-            :checked="settings.settings.mockMode"
+            :checked="form.mockMode"
             @change="setMockMode(($event.target as HTMLInputElement).checked)"
           >
           <span>
@@ -2132,7 +2216,9 @@ onBeforeRouteLeave(async () => {
               :disabled="llmFieldsDisabled"
               type="number"
               autocomplete="off"
-              min="64"
+              min="1"
+              max="100000"
+              aria-describedby="maxTokens-help"
               class="field min-w-0 flex-1"
             >
             <input v-else id="maxTokens" value="Según contexto enviado" readonly class="field min-w-0 flex-1">
@@ -2147,7 +2233,10 @@ onBeforeRouteLeave(async () => {
               Auto
             </label>
           </div>
-          <p v-if="form.maxTokens === 'auto'" class="mt-1 text-xs text-[var(--color-fg-muted)]">
+          <p v-if="form.maxTokens !== 'auto'" id="maxTokens-help" class="mt-1 text-xs text-[var(--color-fg-muted)]">
+            Entre 1 y 100000 tokens, o activa Auto.
+          </p>
+          <p v-else class="mt-1 text-xs text-[var(--color-fg-muted)]">
             Utiliza el espacio restante tras medir el contexto de cada petición. Para compactar se reservan 4096 tokens.
           </p>
         </div>
@@ -2652,6 +2741,7 @@ onBeforeRouteLeave(async () => {
     <SettingsDialog
       v-if="canManageGlobal"
       :open="backupsDialogOpen"
+      notification-target-id="backup-save-notification"
       title="Backups SQLite"
       title-id="backups-dialog-title"
       :busy="backupAction !== null"
@@ -2720,8 +2810,10 @@ onBeforeRouteLeave(async () => {
       </template>
     </SettingsDialog>
 
+
     <SettingsDialog
       :open="activeSettingsDialog === 'prompt-referencia-personaje'"
+      notification-target-id="reference-save-notification"
       title="Prompt de referencia de personaje"
       title-id="character-reference-prompt-dialog-title"
       :busy="settingsDialogBusy"
@@ -2773,6 +2865,7 @@ onBeforeRouteLeave(async () => {
 
     <SettingsDialog
       :open="activeSettingsDialog === 'prompts-swarmui'"
+      notification-target-id="swarm-save-notification"
       title="Prompts SwarmUI"
       title-id="swarm-prompts-dialog-title"
       size="wide"
@@ -2791,6 +2884,34 @@ onBeforeRouteLeave(async () => {
         </Suspense>
       </div>
     </SettingsDialog>
+
+    <Teleport
+      :to="backupsDialogOpen ? '#backup-save-notification'
+      : activeSettingsDialog === 'prompt-referencia-personaje' ? '#reference-save-notification'
+        : activeSettingsDialog === 'prompts-swarmui' ? '#swarm-save-notification' : 'body'"
+    >
+      <div
+        v-if="saveFailures.size"
+        role="alert"
+        aria-atomic="true"
+        data-testid="settings-save-error"
+        class="fixed inset-x-3 bottom-3 z-[70] max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-2xl border border-red-500 bg-[var(--color-surface)] p-4 text-sm shadow-2xl sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-[28rem]"
+      >
+        <p class="font-semibold text-red-600 dark:text-red-400">No se pudieron guardar los ajustes</p>
+        <p v-for="message in saveFailureMessages" :key="message" class="mt-1 [overflow-wrap:anywhere]">
+          {{ message }}
+        </p>
+        <p class="mt-2 text-xs text-[var(--color-fg-muted)]">Los cambios pendientes siguen sin guardar.</p>
+        <button
+          type="button"
+          class="btn-ghost mt-3"
+          :disabled="retryingSettings || pendingSettingsSaves > 0"
+          @click="retrySettingsSaves"
+        >
+          {{ retryingSettings ? 'Reintentando…' : 'Reintentar' }}
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
