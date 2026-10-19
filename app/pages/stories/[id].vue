@@ -2016,6 +2016,7 @@ onBeforeRouteLeave(() => {
             v-model:background-style="storyBackgroundStyle"
             v-model:visible-in-demo="storyVisibleInDemo"
             id-prefix="story-settings-character"
+            :premise-locked="Boolean(stories.activeStory.contextSummary?.trim())"
             title-required
             :show-visible-in-demo="privacy.isPrivateMode"
             class="mt-4"

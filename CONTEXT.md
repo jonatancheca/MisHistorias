@@ -64,8 +64,12 @@ _Evitar_: Cuadro de respuesta, mensaje enviado
 Contenido completo de una intervención antes de ocultar anotaciones y representar sus directivas. En una respuesta del narrador conserva el texto recibido, incluidas las solicitudes de imagen, aunque después se edite la historia; en una intervención del usuario corresponde a su texto guardado.
 _Evitar_: Texto visible, traza LLM, respuesta del proveedor
 
+**Planteamiento de la historia**:
+Descripción inicial de la situación, ambientación y tono de una historia. Se conserva como referencia y no puede editarse mientras haya un resumen activo que lo sustituye en el contexto del narrador.
+_Evitar_: Resumen acumulado, historial de mensajes
+
 **Contexto enviado**:
-Conjunto de textos que recibe el narrador para responder: instrucciones, personajes y recursos disponibles, resumen anterior, historial pendiente y nueva intervención. Cada ámbito permite limitarlo simultáneamente por caracteres y por tokens del modelo: superar cualquiera requiere compactar el historial; cero desactiva cada límite por separado y el límite activo de tokens respeta la capacidad disponible para la entrada.
+Conjunto de textos que recibe el narrador para responder: instrucciones, personajes y recursos disponibles, planteamiento o resumen acumulado, historial pendiente y nueva intervención. Cada ámbito permite limitarlo simultáneamente por caracteres y por tokens del modelo: superar cualquiera requiere compactar el historial; cero desactiva cada límite por separado y el límite activo de tokens respeta la capacidad disponible para la entrada.
 _Evitar_: Solo historial, límite del mensaje, máximo de tokens de respuesta
 
 **Ocupación del contexto**:
@@ -81,19 +85,19 @@ Número total de tokens que admite la ventana actual del modelo de historias car
 _Evitar_: Límite de contexto enviado, máximo de tokens de respuesta
 
 **Compactación por bloques**:
-Resumen progresivo del historial solicitado expresamente cuando una única petición de compactación no cabe en el modelo, dividido en bloques cronológicos que aprovechan el espacio disponible junto a las instrucciones y el resumen acumulado, sin omitir texto. Conserva el checkpoint anterior hasta que el resumen completo permite preparar una nueva respuesta dentro del límite.
+Resumen progresivo del planteamiento y el historial solicitado expresamente cuando una única petición de compactación no cabe en el modelo, dividido en bloques cronológicos que aprovechan el espacio disponible junto a las instrucciones y el resumen acumulado, sin omitir texto. Conserva el checkpoint anterior hasta que el resumen completo permite preparar una nueva respuesta dentro del límite.
 _Evitar_: Recorte del historial, checkpoint parcial
 
 **Compactación del historial**:
-Resumen independiente de los hechos anteriores de una historia, preparado antes de pedir una nueva respuesta cuando el contexto enviado supera su límite. No avanza la historia ni resume la nueva intervención pendiente.
+Resumen independiente del planteamiento y los hechos anteriores de una historia, preparado antes de pedir una nueva respuesta cuando el contexto enviado supera su límite. No avanza la historia ni resume la nueva intervención pendiente.
 _Evitar_: Continuación de historia, recorte del historial, respuesta del narrador
 
 **Compactación manual de la historia**:
-Resumen del historial solicitado expresamente, incluso cuando el contexto está dentro de sus límites. Conserva los mensajes originales y las intervenciones pendientes, no continúa la historia y permite comparar el contexto del narrador antes y después, sin incluir el borrador de escritura.
+Resumen del planteamiento y del historial solicitado expresamente, incluso cuando el contexto está dentro de sus límites. Conserva los mensajes originales y las intervenciones pendientes, no continúa la historia y permite comparar el contexto del narrador antes y después, sin incluir el borrador de escritura.
 _Evitar_: Continuar historia, borrar historial, compactación automática
 
 **Resumen escrito a mano**:
-Resumen acumulado redactado por el usuario que sustituye el historial hasta la última respuesta del Narrador, sin incluir intervenciones pendientes ni el borrador. Conserva los mensajes originales, puede ampliar el resumen vigente y permite guardar con los tokens sin verificar cuando no hay medición disponible.
+Resumen acumulado redactado por el usuario que incluye el planteamiento y sustituye tanto ese texto como el historial hasta la última respuesta del Narrador, sin incluir intervenciones pendientes ni el borrador. Conserva los mensajes originales, puede ampliar el resumen vigente y permite guardar con los tokens sin verificar cuando no hay medición disponible.
 _Evitar_: Respuesta del narrador, compactación manual generada por IA, resumen de la última intervención
 
 **Compactar igualmente**:
@@ -101,11 +105,11 @@ Intento manual de resumir todo el historial en una única petición pese a que l
 _Evitar_: Guardar un resumen fuera de límite, recortar historial, compactación automática
 
 **Prompt de compactación**:
-Instrucción que orienta el resumen independiente del historial de una historia. Puede personalizarse con un único valor compartido entre las colecciones normal y privada, o utilizar su versión predeterminada.
+Instrucción que orienta el resumen independiente del planteamiento y del historial de una historia. Puede personalizarse con un único valor compartido entre las colecciones normal y privada, o utilizar su versión predeterminada.
 _Evitar_: Prompt narrativo, prompt privado de compactación, checkpoint de historia compactada
 
 **Checkpoint de historia compactada**:
-Resumen validado de una historia y punto hasta el que sustituye su historial al preparar nuevas respuestas. Conserva los mensajes originales. Los resúmenes generados por IA deben caber dentro de sus límites; los escritos a mano respetan los límites comprobables y distinguen expresamente los tokens sin verificar.
+Resumen validado de una historia y punto hasta el que sustituye su historial al preparar nuevas respuestas. También sustituye el planteamiento, incluidos los resúmenes antiguos, y bloquea la edición de ese planteamiento mientras esté activo. Conserva los mensajes originales. Los resúmenes generados por IA deben caber dentro de sus límites; los escritos a mano respetan los límites comprobables y distinguen expresamente los tokens sin verificar.
 _Evitar_: Mensajes eliminados, partida guardada, resumen provisional
 
 **Modo Debug de la historia**:

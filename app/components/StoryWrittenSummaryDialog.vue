@@ -110,8 +110,8 @@ onBeforeUnmount(cancelPreview)
 <template>
   <SettingsDialog :open="open && !confirming" title="Escribir resumen" title-id="story-written-summary-title" :busy="busy" @close="close">
     <p class="text-sm text-[var(--color-fg-muted)]">
-      Escribe un resumen acumulado de todo lo ocurrido hasta la última respuesta del Narrador.
-      Parte del resumen vigente, si existe, y añade los hechos posteriores: al guardar sustituirá al anterior.
+      Incluye el planteamiento y un resumen acumulado de todo lo ocurrido hasta la última respuesta del Narrador.
+      Parte del resumen vigente, si existe, y añade los hechos posteriores: al guardar sustituirá al planteamiento y al historial resumido, además del resumen anterior.
       Los mensajes originales, las intervenciones pendientes y el borrador se conservan.
     </p>
     <form class="mt-4 space-y-4" @submit.prevent="saveSummary">

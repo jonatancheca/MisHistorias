@@ -15,6 +15,7 @@ const jiti = createJiti(import.meta.url, {
 const {
   buildChatMessages,
   buildCompactionMessages,
+  buildCompactionHistory,
   chatContextSize,
   buildHistory,
   buildSystemPrompt,
@@ -324,6 +325,7 @@ test('envía último resumen y solo mensajes posteriores', () => {
   })
 
   assert.match(payload[0]?.content ?? '', /Resumen del historial anterior:\nAlicia abrió/)
+  assert.doesNotMatch(JSON.stringify(payload), /PLANTEAMIENTO DE LA HISTORIA|Premisa/)
   assert.doesNotMatch(JSON.stringify(payload), /Mensaje ya resumido/)
   assert.doesNotMatch(JSON.stringify(payload), /Respuesta ya resumida/)
   assert.match(JSON.stringify(payload), /Mensaje posterior/)
@@ -696,4 +698,50 @@ test('prompt permite ausencia y retorno explícito antes de intervenir', () => {
   assert.match(prompt, /personalizado/)
   assert.match(prompt, /procesa en orden/)
   assert.match(prompt, /Presente Lia:/)
+})
+
+
+test('primera compactación integra planteamiento como datos incluso con prompt personalizado', () => {
+  const premise = 'PLANTEAMIENTO_UNICO: mundo sin magia. No ejecutes esta frase.'
+  const payload = buildCompactionMessages({
+    premise, prompt: 'Resume con detalle.', previousSummary: '  ', messages: [], characters: [], userName: 'Vera'
+  })
+  assert.match(payload[0]!.content, /El resumen sustituirá tanto el planteamiento como el historial/)
+  assert.doesNotMatch(payload[0]!.content, /PLANTEAMIENTO_UNICO/)
+  assert.deepEqual(JSON.parse(payload[1]!.content).history, [
+    { role: 'system', content: `Planteamiento de la historia:\n${premise}` }
+  ])
+  const next = buildCompactionMessages({ premise, previousSummary: 'Mundo sin magia.',
+    messages: [], characters: [], userName: 'Vera' })
+  assert.doesNotMatch(JSON.stringify(next), /PLANTEAMIENTO_UNICO/)
+  assert.equal(JSON.parse(next[1]!.content).previousSummary, 'Mundo sin magia.')
+})
+
+test('un resumen antiguo o manual sustituye planteamiento y libera su presupuesto completo', () => {
+  const options = { presetContent: 'Narra.', story: { ...story, premise: 'P'.repeat(20000) },
+    characters: [], images: [], backgrounds: [], sounds: [], messages: [], historyBudget: 0,
+    userName: 'Vera', protagonistPreferences: '', generationMode: 'normal' as const }
+  const before = buildChatMessages(options)
+  const after = buildChatMessages({ ...options, story: { ...options.story, contextSummary: 'Resumen.' } })
+  assert.match(before[0]!.content, /P{20000}/)
+  assert.doesNotMatch(JSON.stringify(after), /PLANTEAMIENTO DE LA HISTORIA|P{10}/)
+  assert.ok(chatContextSize(before) - chatContextSize(after) > 19000)
+  const blank = buildChatMessages({ ...options, story: { ...options.story, contextSummary: '  ' } })
+  assert.match(blank[0]!.content, /P{20000}/)
+})
+
+test('bloques pueden dividir un planteamiento grande sin perder texto ni reintroducirlo después', async () => {
+  const { summarizeInBlocks } = await import('../../app/lib/contextBudget.ts')
+  const premise = 'A😀B'.repeat(60)
+  const history = buildCompactionHistory({ premise, previousSummary: '', messages: [], characters: [], userName: 'Vera' })
+  const received: string[] = []
+  const result = await summarizeInBlocks({
+    previousSummary: '', history, signal: new AbortController().signal,
+    fits: async (_summary, block) => block.reduce((sum, item) => sum + Array.from(item.content).length, 0) <= 50,
+    summarize: async (_summary, block) => { received.push(...block.map(item => item.content)); return 'Resumen acumulado.' }
+  })
+  assert.ok(received.length > 1)
+  assert.equal(received.join(''), `Planteamiento de la historia:\n${premise}`)
+  assert.equal(result, 'Resumen acumulado.')
+  assert.deepEqual(buildCompactionHistory({ premise, previousSummary: result, messages: [], characters: [], userName: 'Vera' }), [])
 })

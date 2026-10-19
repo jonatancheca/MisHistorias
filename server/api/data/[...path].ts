@@ -690,6 +690,12 @@ export default defineEventHandler(async (event) => {
         return storage.putBinary(resource, scope, resourceId, payload, access)
       }
       const value = validatePayload(resource, await readBody(event))
+      if (resource === 'stories') {
+        const current = storage.get('stories', scope, resourceId, access)
+        if (current?.contextSummary?.trim() && asRecord(value).premise !== current.premise) {
+          throw createError({ statusCode: 409, message: 'El planteamiento no se puede modificar mientras haya un resumen activo.' })
+        }
+      }
       if (resource === 'messages' && query.generated === '1') {
         return storage.putGeneratedMessage(scope, resourceId, value, access)
       }

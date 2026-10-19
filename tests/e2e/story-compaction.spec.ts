@@ -135,9 +135,11 @@ test.describe('compactación previa del contexto', () => {
         const request = route.request().postDataJSON() as ChatRequest
         operations.push(request.operation)
         if (request.operation === 'story.compaction') {
+          expect(JSON.stringify(request.messages)).toContain(story.premise)
           expect(JSON.stringify(request.messages)).not.toContain('TEXTO_PENDIENTE_INTACTO')
           return route.fulfill({ json: { content: 'Resumen breve.', finishReason: 'stop' } })
         }
+        expect(JSON.stringify(request.messages)).not.toContain(story.premise)
         expect(JSON.stringify(request.messages)).toContain('TEXTO_PENDIENTE_INTACTO')
         expect(request.messages.reduce((total, message) => total + message.content.length, 0)).toBeLessThanOrEqual(40_000)
         await route.fulfill({ json: { content: 'Respuesta dentro del límite.', finishReason: 'stop' } })

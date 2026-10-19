@@ -118,7 +118,9 @@ for (const scenario of [
     }) : { measurements, prompts }
     const blocks = calls.prompts.map(blockBody).filter(body => body !== null)
     expect(blocks).toHaveLength(3)
-    const received = blocks.flatMap(body => body.history)
+    const material = blocks.flatMap(body => body.history)
+    expect(material[0]).toEqual({ role: 'system', content: `Planteamiento de la historia:\n${story.premise}` })
+    const received = material.slice(1)
     expect(received).toHaveLength(original.length)
     for (const [index, message] of original.entries()) {
       expect(received[index], `Mensaje ${index} completo y en orden`).toEqual({ role: message.role, content: message.raw })

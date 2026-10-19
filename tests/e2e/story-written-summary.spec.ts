@@ -53,6 +53,7 @@ for (const scope of ['normal', 'private'] as const) {
       const composer = page.getByLabel('Tu intervención')
       await composer.fill('BORRADOR_CONSERVADO')
       const editor = await openEditor(page)
+      await expect(editor).toContainText('Incluye el planteamiento')
       const field = editor.getByLabel('Resumen escrito a mano', { exact: true })
       await expect(field).toHaveValue('Resumen vigente.')
       const summary = 'La llave azul abre la puerta del faro. El grupo decide entrar.'
@@ -96,6 +97,7 @@ for (const scope of ['normal', 'private'] as const) {
       await expect(detail).not.toContainText('Respuesta recibida')
       await expect(detail.getByTestId('compaction-context-before')).toContainText('La llave abre la puerta del faro.')
       await expect(detail.getByTestId('compaction-context-after')).toContainText(summary)
+      await expect(detail.getByTestId('compaction-context-after')).not.toContainText(story.premise)
       await expect(detail.getByTestId('compaction-context-after')).not.toContainText('La llave abre la puerta del faro.')
       if (scope === 'normal') {
         await page.reload()

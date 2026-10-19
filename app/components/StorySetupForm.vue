@@ -13,6 +13,7 @@ withDefaults(defineProps<{
   titleRequired?: boolean
   showVisibleInDemo?: boolean
   showPresence?: boolean
+  premiseLocked?: boolean
 }>(), {
   titleRequired: false,
   showVisibleInDemo: false
@@ -230,11 +231,16 @@ watch(characterIds, (ids) => {
           <textarea
             :id="`${idPrefix}-premise`"
             v-model="premise"
+            :readonly="premiseLocked"
+            :aria-describedby="premiseLocked ? `${idPrefix}-premise-locked` : undefined"
             autocomplete="off"
             class="field min-h-36"
             placeholder="Dónde ocurre, cuándo, qué está pasando y qué tono tiene la historia."
             required
           />
+          <p v-if="premiseLocked" :id="`${idPrefix}-premise-locked`" class="mt-2 text-xs text-[var(--color-fg-muted)]">
+            El planteamiento no se puede modificar mientras haya un resumen activo: el resumen lo sustituye en el contexto del Narrador.
+          </p>
         </div>
       </div>
     </section>

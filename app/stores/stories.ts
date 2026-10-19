@@ -51,7 +51,7 @@ import {
 import {
   buildChatMessages,
   buildCompactionMessages,
-  buildHistory,
+  buildCompactionHistory,
   type ChatMessage,
   chatContextSize,
   resolveProtagonistPreferences
@@ -1044,6 +1044,7 @@ export const useStoriesStore = defineStore('stories', () => {
     const triggerMessageId = options.historyMessages.at(-1)?.id ?? story.contextSummaryThroughMessageId
 
     const compactionMessages = buildCompactionMessages({
+      premise: story.premise,
       previousSummary: story.contextSummary,
       throughMessageId: story.contextSummaryThroughMessageId,
       messages: options.historyMessages,
@@ -1110,7 +1111,11 @@ export const useStoriesStore = defineStore('stories', () => {
         ]
         const summary = await summarizeInBlocks({
           previousSummary: story.contextSummary ?? '',
-          history: buildHistory(options.historyMessages, chatOptions.characters, 0, chatOptions.userName, story.contextSummaryThroughMessageId),
+          history: buildCompactionHistory({
+            premise: story.premise, previousSummary: story.contextSummary,
+            messages: options.historyMessages, characters: chatOptions.characters,
+            userName: chatOptions.userName, throughMessageId: story.contextSummaryThroughMessageId
+          }),
           signal: options.signal,
           fits: async (previousSummary, history) => contextFits(await measure(blockMessages(previousSummary, history), false)),
           summarize: async (previousSummary, history) => (await compactRequest(blockMessages(previousSummary, history))).content.trim()
@@ -1482,12 +1487,16 @@ export const useStoriesStore = defineStore('stories', () => {
     visibleInDemo?: boolean
   ) {
     if (!activeStory.value || !title.trim() || !premise.trim() || !characterIds.length) return
+    const premiseLocked = Boolean(activeStory.value.contextSummary?.trim())
+    if (premiseLocked && premise !== activeStory.value.premise) {
+      throw new Error('El planteamiento no se puede modificar mientras haya un resumen activo.')
+    }
     const charactersStore = useCharactersStore()
     await charactersStore.load()
     const updated: Story = {
       ...activeStory.value,
       title: title.trim(),
-      premise: premise.trim(),
+      premise: premiseLocked ? activeStory.value.premise : premise.trim(),
       visualMode,
       autoGenerateImages,
       visibleInDemo: visibleInDemo ?? activeStory.value.visibleInDemo,

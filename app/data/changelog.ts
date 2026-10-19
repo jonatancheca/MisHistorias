@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 268, completedAt: '2026-10-19', summary: 'La compactación integra el planteamiento y lo sustituye junto al historial en el contexto del narrador, incluidos los resúmenes antiguos y escritos a mano; bloquea editar el planteamiento mientras haya resumen, respeta prompts personalizados y permite dividir planteamientos extensos por bloques.' },
   { issue: 267, completedAt: '2026-10-19', summary: 'Resumen escrito a mano desde el diálogo de la rueda: sustituye el resumen acumulado hasta la última respuesta del Narrador, conserva mensajes y pendientes, valida los límites disponibles y distingue los tokens sin verificar; incluye historial, comparación y aviso al descartar cambios.' },
   { issue: 266, completedAt: '2026-10-19', summary: 'La opción Compactar historia se mueve del menú Más opciones al diálogo de compactaciones abierto desde la rueda de contexto; conserva los bloqueos y el foco al cerrar, con acceso neutro cuando no hay porcentajes disponibles, en Chat y Novela Visual.' },
   { issue: 265, completedAt: '2026-10-16', summary: 'Las imágenes forzadas pendientes muestran el nombre personalizado del personaje en la historia, también en el botón para quitarlas, en Chat y Novela Visual; conservan el nombre del catálogo cuando no hay personalización.' },
