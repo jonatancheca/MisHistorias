@@ -2,7 +2,7 @@
 import type { LlmDebugTrace } from '#shared/types'
 
 const props = defineProps<{ open: boolean }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; compact: [] }>()
 const stories = useStoriesStore()
 const settings = useSettingsStore()
 const selectedTrace = shallowRef<LlmDebugTrace | null>(null)
@@ -21,6 +21,11 @@ async function closeHistory() {
   previousFocus = null
 }
 
+async function compactHistory() {
+  await closeHistory()
+  emit('compact')
+}
+
 const formatDate = (date: number) => new Date(date).toLocaleString('es-ES')
 </script>
 
@@ -32,6 +37,20 @@ const formatDate = (date: number) => new Date(date).toLocaleString('es-ES')
     @close="closeHistory"
   >
     <template v-if="open">
+      <div v-if="stories.activeStory && !stories.activeStory.readOnly" class="mb-4 flex justify-end">
+        <button
+          type="button"
+          class="btn-primary"
+          :disabled="stories.generating || stories.deletingCompaction || settings.settings.mockMode"
+          aria-haspopup="dialog"
+          @click="compactHistory"
+        >
+          <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 3h16v18H4zM8 8h8M8 12h8M8 16h4" />
+          </svg>
+          Compactar historia
+        </button>
+      </div>
       <p v-if="stories.debugTracesLoading" role="status">Cargando compactaciones…</p>
       <p v-else-if="stories.debugTracesError" role="alert">
         No se pudieron cargar las compactaciones. Vuelve a abrir la historia para reintentar.

@@ -30,10 +30,11 @@ async function prepare(page: Page, data: TestDataFactory, visualMode = false) {
 }
 
 async function openDialog(page: Page) {
-  await page.getByRole('button', { name: 'Más opciones', exact: true }).click()
+  await page.locator('[data-testid^="story-context-"]').first().click()
   await page.getByRole('button', { name: 'Compactar historia', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Compactar historia', exact: true })
   await expect(dialog.getByRole('button', { name: 'Compactar', exact: true })).toBeEnabled()
+  await expect(page.getByRole('dialog', { name: 'Compactaciones de la historia' })).toBeHidden()
   await expect.poll(() => page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]')))).toBe(true)
   return dialog
 }
@@ -72,7 +73,7 @@ for (const visualMode of [false, true]) {
       await page.setViewportSize({ width, height: 760 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
       await expect(dialog.getByRole('button', { name: 'Cerrar diálogo' })).toBeVisible()
-      await page.screenshot({ path: `.data/issue-244-${visualMode ? 'novela' : 'chat'}-${width}.png` })
+      await page.screenshot({ path: `.data/issue-266-manual-${visualMode ? 'novela' : 'chat'}-${width}.png` })
     }
     await dialog.getByRole('button', { name: 'Cerrar diálogo' }).click()
     await expect(composer).toHaveValue('BORRADOR_SIN_ENVIAR')
@@ -128,7 +129,7 @@ test('tokens no disponibles: permite caracteres y bloquea límite de tokens acti
   await dialog.getByRole('button', { name: 'Cerrar diálogo' }).click()
   await data.patchSettings({ contextTokenBudget: 3000 })
   await page.reload()
-  await page.getByRole('button', { name: 'Más opciones', exact: true }).click()
+  await page.locator('[data-testid^="story-context-"]').first().click()
   await page.getByRole('button', { name: 'Compactar historia', exact: true }).click()
   await expect(dialog.getByTestId('manual-compaction-before')).toContainText('Tokens no disponibles')
   await expect(dialog.getByRole('button', { name: 'Compactar', exact: true })).toBeDisabled()
@@ -212,7 +213,7 @@ test('respeta colección privada y unidad elegida para rechazar crecimiento en t
 test('sin historial y modo mock deshabilitan compactación', async ({ page, data }) => {
   const story = await data.createStory({ characters: [] })
   await page.goto(`/stories/${story.id}`)
-  await page.getByRole('button', { name: 'Más opciones', exact: true }).click()
+  await page.locator('[data-testid^="story-context-"]').first().click()
   await page.getByRole('button', { name: 'Compactar historia', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Compactar historia' })
   await expect(dialog.getByText('No hay historial anterior que compactar.')).toBeVisible()
@@ -220,8 +221,8 @@ test('sin historial y modo mock deshabilitan compactación', async ({ page, data
   await dialog.getByRole('button', { name: 'Cerrar diálogo' }).click()
   await data.patchSettings({ mockMode: true })
   await page.reload()
-  await page.getByRole('button', { name: 'Más opciones', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Compactar historia', exact: true })).toBeDisabled()
+  await page.locator('[data-testid^="story-context-"]').first().click()
+  await expect(page.getByRole('dialog', { name: 'Compactaciones de la historia' }).getByRole('button', { name: 'Compactar historia', exact: true })).toBeDisabled()
 })
 
 test('bloquea cancelación durante guardado del checkpoint y la traza', async ({ page, data }) => {

@@ -42,7 +42,7 @@ async function prepare(page: Page, data: TestDataFactory, visualMode = false, sc
 }
 
 async function offerAlternatives(page: Page) {
-  await page.getByRole('button', { name: 'Más opciones', exact: true }).click()
+  await page.locator('[data-testid^="story-context-"]').first().click()
   await page.getByRole('button', { name: 'Compactar historia', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Compactar historia', exact: true })
   await dialog.getByRole('button', { name: 'Compactar', exact: true }).click()

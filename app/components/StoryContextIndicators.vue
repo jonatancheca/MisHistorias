@@ -107,7 +107,23 @@ onBeforeUnmount(cancelMeasurement)
 </script>
 
 <template>
-  <div v-if="indicators.length" class="story-context-indicators" :class="{ 'story-context-indicators-below': placement === 'bottom' }" role="group" aria-label="Ocupación del contexto">
+  <div v-if="available" class="story-context-indicators" :class="{ 'story-context-indicators-below': placement === 'bottom' }" role="group" aria-label="Ocupación del contexto">
+    <button
+      v-if="!indicators.length"
+      type="button"
+      class="story-context-indicator"
+      data-testid="story-context-history"
+      :aria-label="`Compactaciones de la historia · ${compactionLabel}`"
+      :title="`Compactaciones de la historia · ${compactionLabel}`"
+      aria-haspopup="dialog"
+      @click="emit('history')"
+    >
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none">
+        <circle cx="10" cy="10" r="8" stroke="#cbd5e1" stroke-width="3" />
+        <text x="10" y="10" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#64748b">i</text>
+      </svg>
+      <span class="story-context-tooltip" role="tooltip">Compactaciones de la historia · {{ compactionLabel }}</span>
+    </button>
     <button
       v-for="indicator in indicators"
       :key="indicator.unit"

@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 266, completedAt: '2026-10-19', summary: 'La opción Compactar historia se mueve del menú Más opciones al diálogo de compactaciones abierto desde la rueda de contexto; conserva los bloqueos y el foco al cerrar, con acceso neutro cuando no hay porcentajes disponibles, en Chat y Novela Visual.' },
   { issue: 265, completedAt: '2026-10-16', summary: 'Las imágenes forzadas pendientes muestran el nombre personalizado del personaje en la historia, también en el botón para quitarlas, en Chat y Novela Visual; conservan el nombre del catálogo cuando no hay personalización.' },
   { issue: 262, completedAt: '2026-10-09', summary: 'Listado de backups SQLite con comprobación ligera de compatibilidad, sin recorrer todos sus datos; descarga localizada por archivo y validación completa de integridad conservada al crear, subir y restaurar.' },
   { issue: 263, completedAt: '2026-10-09', summary: 'Indicador de descarga de backups SQLite con rueda giratoria y texto Descargando… hasta recibir el archivo completo; bloquea operaciones y cierre del diálogo mientras trabaja y muestra errores con posibilidad de reintentar.' },
