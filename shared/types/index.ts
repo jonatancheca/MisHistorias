@@ -163,7 +163,7 @@ export interface Story {
   imageCatalogSnapshot?: StoryImageCatalogEntry[]
   /** Indicaciones visuales pendientes para la próxima respuesta nueva. */
   pendingImageInstructions?: StoryPendingImageInstruction[]
-  /** Último resumen generado para sustituir el historial anterior en llamadas al LLM. */
+  /** Resumen acumulado que sustituye el historial anterior al preparar nuevas respuestas. */
   contextSummary?: string
   /** Último mensaje incluido en contextSummary. */
   contextSummaryThroughMessageId?: string
@@ -331,6 +331,7 @@ export interface ContextUsage {
 }
 
 export interface LlmDebugRequest {
+  origin?: 'model'
   /** Medición y límite conservados de esta llamada; ausentes en trazas antiguas. */
   contextUsage?: ContextUsage
   /** Proveedor usado para generar la respuesta; ausente en trazas antiguas. */
@@ -360,6 +361,29 @@ export interface LlmDebugRequest {
   stream: false
 }
 
+export interface WrittenSummaryInput {
+  summary: string
+  throughMessageId: string
+  expectedUpdatedAt: number
+  compaction: Omit<NonNullable<LlmDebugRequest['compaction']>, 'blocks' | 'applied'> & {
+    tokensVerified: boolean
+  }
+}
+
+export interface WrittenSummaryRequest {
+  origin: 'user'
+  purpose: 'compaction'
+  compaction: WrittenSummaryInput['compaction'] & { applied: true }
+  provider?: never
+  model?: never
+  messages?: never
+  temperature?: never
+  max_tokens?: never
+  stream?: never
+  generation?: never
+  contextUsage?: never
+}
+
 export type LlmDebugResponse =
   | {
       content: string
@@ -377,7 +401,7 @@ export interface LlmDebugTrace {
   requestMessageId?: string
   responseMessageId?: string
   status: 'success' | 'error'
-  request: LlmDebugRequest
+  request: LlmDebugRequest | WrittenSummaryRequest
   response: LlmDebugResponse
   createdAt: number
 }

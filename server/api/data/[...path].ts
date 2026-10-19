@@ -1,6 +1,7 @@
 import { readImageGeneration } from '../../../shared/utils/imageGeneration.ts'
 import { readStorySwarmError } from '../../../shared/utils/swarmError.ts'
 import type { H3Event } from 'h3'
+import type { WrittenSummaryInput } from '../../../shared/types/index.ts'
 import type {
   BinaryPayload,
   CharacterImportPayload,
@@ -411,6 +412,9 @@ async function readCharacterImport(event: H3Event) {
 function mapStorageError(caught: unknown, event: H3Event): never {
   if (caught && typeof caught === 'object' && 'statusCode' in caught) throw caught
   const error = caught as { code?: string; errcode?: number; message?: string }
+  if (error.code === 'ERR_STALE_STORY') {
+    throw createError({ statusCode: 409, message: error.message })
+  }
   if (error.code === 'ERR_INVALID_RESOURCE') {
     throw createError({ statusCode: 400, message: error.message || 'Datos no válidos' })
   }
@@ -610,6 +614,23 @@ export default defineEventHandler(async (event) => {
     if (
       segments[0] === 'stories' && segments[2] === 'compactions'
     ) {
+      if (event.method === 'POST' && segments.length === 3) {
+        const body = asRecord(await readBody(event))
+        const comparison = asRecord(body.compaction)
+        const validMessages = (value: unknown) => Array.isArray(value) && value.every(message => {
+          const item = asRecord(message)
+          return ['system', 'user', 'assistant'].includes(String(item.role)) && typeof item.content === 'string'
+        })
+        if (typeof body.summary !== 'string' || !body.summary.trim() ||
+            typeof body.throughMessageId !== 'string' || !Number.isFinite(body.expectedUpdatedAt) ||
+            !validMessages(comparison.before) || !validMessages(comparison.after) ||
+            typeof comparison.historyBudget !== 'number' || typeof comparison.tokensVerified !== 'boolean') {
+          throw createError({ statusCode: 400, message: 'Resumen no válido' })
+        }
+        const result = storage.saveWrittenSummary(scope, asId(segments[1]), body as unknown as WrittenSummaryInput, access)
+        if (!result) throw createError({ statusCode: 404, message: 'Historia no encontrada' })
+        return result
+      }
       if (event.method !== 'DELETE') throw createError({ statusCode: 405, message: 'Método no permitido' })
       if (segments.length !== 4) throw createError({ statusCode: 404, message: 'Compactación no encontrada' })
       const story = storage.deleteStoryCompaction(scope, asId(segments[1]), asId(segments[3]), access)

@@ -6,7 +6,7 @@ for (const scope of ['normal', 'private'] as const) {
     const width = visualMode ? 390 : 320
     test(`borra compactaciones en ${visualMode ? 'Novela Visual' : 'Chat'} ${scope} a ${width}px`, async ({ page, data }) => {
       await data.patchSettings({ mockMode: false, useChromeLlm: false, privateLlmSettingsEnabled: false,
-        model: 'test-model', responseSpeed: 'instant', visualNovelManualAdvance: false,
+        model: 'test-model', maxTokens: 100, responseSpeed: 'instant', visualNovelManualAdvance: false,
         historyBudget: 40_000, narrativePrompt: 'Narra la historia.' })
       await page.route('**/api/llm/model-status?*', route => route.fulfill({ json: { status: 'loaded' } }))
       const story = await data.createStory({ characters: [], visualMode, scope })

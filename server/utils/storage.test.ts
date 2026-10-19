@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { DatabaseSync } from 'node:sqlite'
 import { MisHistoriasStorage } from './storage.ts'
-import type { Background, CharacterImage, ErrorTrace, LlmDebugTrace, Story, SwarmPrompt } from '../../shared/types/index.ts'
+import type { Background, CharacterImage, ErrorTrace, LlmDebugTrace, Story, SwarmPrompt, WrittenSummaryInput } from '../../shared/types/index.ts'
 
 function withStorage(run: (storage: MisHistoriasStorage, path: string) => void) {
   const directory = mkdtempSync(join(tmpdir(), 'mishistorias-sqlite-'))
@@ -146,6 +146,66 @@ test('revierte la retirada del resumen si falla el borrado de la compactación',
     assert.throws(() => storage.deleteStoryCompaction('normal', 'story', 'trace'), /Borrado rechazado/)
     assert.deepEqual(storage.get('stories', 'normal', 'story'), before)
     assert.ok(storage.get('llmDebugTraces', 'normal', 'trace'))
+  })
+})
+
+function writtenSummaryInput(): WrittenSummaryInput {
+  return {
+    summary: 'Resumen redactado por el usuario.', throughMessageId: 'old', expectedUpdatedAt: 4,
+    compaction: { before: [{ role: 'assistant', content: 'Historia original.' }],
+      after: [{ role: 'system', content: 'Resumen redactado por el usuario.' }],
+      historyBudget: 0, tokensVerified: false }
+  }
+}
+
+for (const scope of ['normal', 'private'] as const) {
+  test(`guarda resumen humano y registro juntos, con partidas y borrado compatibles (${scope})`, () => {
+    withStorage(storage => {
+      storage.put('stories', scope, 'story', story('story'))
+      storage.put('messages', scope, 'old', { id: 'old', storyId: 'story', role: 'assistant', raw: 'Historia original.', segments: [], createdAt: 5 })
+      storage.put('messages', scope, 'pending', { id: 'pending', storyId: 'story', role: 'user', raw: 'Pendiente.', segments: [], createdAt: 6 })
+      const result = storage.saveWrittenSummary(scope, 'story', writtenSummaryInput())!
+      assert.equal(result.story.contextSummary, writtenSummaryInput().summary)
+      assert.equal(result.story.contextSummaryThroughMessageId, 'old')
+      assert.equal(result.trace.request.origin, 'user')
+      assert.equal(result.trace.request.model, undefined)
+      assert.equal(result.trace.request.provider, undefined)
+      assert.equal(storage.list('messages', scope, { storyId: 'story' }).length, 2)
+      const slot = storage.createStorySave(scope, 'story', 'Partida con resumen humano', 'data:image/webp;base64,AA==')!
+      storage.deleteStoryCompaction(scope, 'story', result.trace.id)
+      assert.equal(storage.get('stories', scope, 'story')?.contextSummary, '')
+      storage.loadStorySave(scope, slot.id)
+      assert.equal(storage.get('stories', scope, 'story')?.contextSummary, writtenSummaryInput().summary)
+      assert.equal((storage.list('llmDebugTraces', scope, { storyId: 'story' }) as LlmDebugTrace[])[0]!.request.origin, 'user')
+    })
+  })
+}
+
+test('revierte el resumen humano cuando no puede guardar su registro', () => {
+  withStorage((storage, path) => {
+    storage.put('stories', 'normal', 'story', { ...story('story'), contextSummary: 'Resumen anterior.' })
+    storage.put('messages', 'normal', 'old', { id: 'old', storyId: 'story', role: 'assistant', raw: 'Historia.', segments: [], createdAt: 5 })
+    const database = new DatabaseSync(path)
+    try {
+      database.exec("CREATE TRIGGER fail_written_summary BEFORE INSERT ON llm_debug_traces BEGIN SELECT RAISE(ABORT, 'Registro rechazado'); END")
+    } finally { database.close() }
+    assert.throws(() => storage.saveWrittenSummary('normal', 'story', writtenSummaryInput()), /Registro rechazado/)
+    assert.equal(storage.get('stories', 'normal', 'story')?.contextSummary, 'Resumen anterior.')
+    assert.equal(storage.list('llmDebugTraces', 'normal', { storyId: 'story' }).length, 0)
+  })
+})
+
+test('resumen humano rechaza historial vacío, revisiones antiguas y acceso ajeno', () => {
+  withStorage(storage => {
+    storage.activateMultiUser({ id: 'owner', email: 'owner@example.com' })
+    const owner = { ownerId: 'owner', includeSharedDemo: true }
+    storage.put('stories', 'private', 'story', { ...story('story'), visibleInDemo: true }, owner)
+    assert.equal(storage.saveWrittenSummary('private', 'story', writtenSummaryInput(), { ownerId: 'visitor', includeSharedDemo: true }), null)
+    assert.throws(() => storage.saveWrittenSummary('private', 'story', writtenSummaryInput(), owner), /No hay historial/)
+    storage.put('messages', 'private', 'old', { id: 'old', storyId: 'story', role: 'assistant', raw: 'Historia.', segments: [], createdAt: 5 }, owner)
+    assert.throws(() => storage.saveWrittenSummary('private', 'story', { ...writtenSummaryInput(), expectedUpdatedAt: 3 }, owner), /historia ha cambiado/)
+    assert.throws(() => storage.saveWrittenSummary('private', 'story', { ...writtenSummaryInput(), throughMessageId: 'other' }, owner), /historia ha cambiado/)
+    assert.equal(storage.get('stories', 'private', 'story', owner)?.contextSummary, '')
   })
 })
 

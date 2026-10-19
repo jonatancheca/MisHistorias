@@ -2,7 +2,7 @@
 import type { LlmDebugTrace } from '#shared/types'
 
 const props = defineProps<{ open: boolean }>()
-const emit = defineEmits<{ close: []; compact: [] }>()
+const emit = defineEmits<{ close: []; compact: []; write: [] }>()
 const stories = useStoriesStore()
 const settings = useSettingsStore()
 const selectedTrace = shallowRef<LlmDebugTrace | null>(null)
@@ -26,6 +26,11 @@ async function compactHistory() {
   emit('compact')
 }
 
+async function writeSummary() {
+  await closeHistory()
+  emit('write')
+}
+
 const formatDate = (date: number) => new Date(date).toLocaleString('es-ES')
 </script>
 
@@ -37,7 +42,7 @@ const formatDate = (date: number) => new Date(date).toLocaleString('es-ES')
     @close="closeHistory"
   >
     <template v-if="open">
-      <div v-if="stories.activeStory && !stories.activeStory.readOnly" class="mb-4 flex justify-end">
+      <div v-if="stories.activeStory && !stories.activeStory.readOnly" class="mb-4 flex flex-wrap justify-end gap-2">
         <button
           type="button"
           class="btn-primary"
@@ -49,6 +54,15 @@ const formatDate = (date: number) => new Date(date).toLocaleString('es-ES')
             <path d="M4 3h16v18H4zM8 8h8M8 12h8M8 16h4" />
           </svg>
           Compactar historia
+        </button>
+        <button
+          type="button"
+          class="btn-ghost"
+          :disabled="stories.generating || stories.deletingCompaction"
+          aria-haspopup="dialog"
+          @click="writeSummary"
+        >
+          Escribir resumen
         </button>
       </div>
       <p v-if="stories.debugTracesLoading" role="status">Cargando compactaciones…</p>

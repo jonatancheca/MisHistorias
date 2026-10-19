@@ -27,6 +27,7 @@ import {
   deleteMessages as dbDeleteMessages,
   deleteLlmDebugTrace as dbDeleteLlmDebugTrace,
   deleteStoryCompaction as dbDeleteStoryCompaction,
+  saveWrittenSummary as dbSaveWrittenSummary,
   deleteStory,
   deleteStorySave as dbDeleteStorySave,
   createStorySave as dbCreateStorySave,
@@ -59,7 +60,7 @@ import { buildMockResponse } from '~/lib/mockLlm'
 import { storyOriginalText } from '~/lib/storyOriginalText'
 import { readSwarmDiagnostic } from '../../shared/utils/swarmError.ts'
 import { fetchLlmChat, fetchLlmContext, type LlmCallError } from '~/lib/llm'
-import { fetchChromeLlmChat, measureChromeLlmContext } from '~/lib/chromeLlm'
+import { fetchChromeLlmChat, measureChromeLlmContext, getChromeLlmAvailability } from '~/lib/chromeLlm'
 import { contextFits, exceededContextLimit, tokenContextUsage, summarizeInBlocks, CompactionCapacityError, type StoryContextMeasurement } from '~/lib/contextBudget'
 import { hideIncompleteVisualDirectivePrefix, parseSegments } from '~/lib/streamParser'
 import { selectCharacterImage } from '~/lib/imageSelection'
@@ -1181,7 +1182,7 @@ export const useStoriesStore = defineStore('stories', () => {
     }
   }
 
-  async function prepareManualCompaction(signal: AbortSignal, forIndicators = false, skipTokens = false) {
+  async function prepareManualCompaction(signal: AbortSignal, forIndicators = false, skipTokens = false, writtenSummary = false) {
     const story = activeStory.value
     if (!story || story.readOnly) throw new Error('Esta historia no permite compactar su historial.')
     const scope = getActiveDataScope()
@@ -1248,11 +1249,15 @@ export const useStoriesStore = defineStore('stories', () => {
       }
       try {
         if (settings.settings.mockMode) throw new Error('Tokens no disponibles en modo mock.')
+        if (writtenSummary && useChromeLlm && await getChromeLlmAvailability() !== 'available') {
+          throw new Error('El modelo de Chrome no está disponible para medir tokens sin descargarlo.')
+        }
         if (!useChromeLlm && !model) throw new Error('Configura primero el modelo en Ajustes.')
         const key = JSON.stringify(context)
         let pending = tokenMeasurements.get(key)
         if (!pending) {
-          pending = useChromeLlm ? measureChromeLlmContext(context, signal) : fetchLlmContext(context, model, scope, signal)
+          const tokenSignal = writtenSummary ? AbortSignal.any([signal, AbortSignal.timeout(5000)]) : signal
+          pending = useChromeLlm ? measureChromeLlmContext(context, tokenSignal) : fetchLlmContext(context, model, scope, tokenSignal)
           tokenMeasurements.set(key, pending)
         }
         const result = await pending
@@ -1282,6 +1287,7 @@ export const useStoriesStore = defineStore('stories', () => {
         (usage.unit === 'tokens' || (tokenBudget === 0 && improvementUnit !== 'tokens'))
     })
     return { chatOptions, historyMessages, scope, isActive, measure, measurement, settings,
+      get invalidCapacity() { return invalidCapacity },
       model, historyBudget, tokenBudget, maxTokens, useChromeLlm, improvementUnit,
       validate: (usage: ContextUsage) => {
         if (invalidCapacity || (usage.unit !== 'tokens' && (tokenBudget === 'auto' || tokenBudget > 0 ||
@@ -1324,6 +1330,75 @@ export const useStoriesStore = defineStore('stories', () => {
       if (controller === requestController) {
         generating.value = false
         compacting.value = false
+        compactionSaving.value = false
+        controller = null
+      }
+    }
+  }
+
+  async function prepareWrittenSummary(summary: string, signal: AbortSignal, verifyTokens = false) {
+    const context = await prepareManualCompaction(signal, false, !verifyTokens, true)
+    const story = context.chatOptions.story
+    const throughMessageId = context.historyMessages.at(-1)?.id
+    const beforeContext = buildChatMessages(context.chatOptions)
+    const afterContext = buildChatMessages({ ...context.chatOptions, story: {
+      ...story, contextSummary: summary.trim(), contextSummaryThroughMessageId: throughMessageId
+    } })
+    const beforeUsage = await context.measure(beforeContext)
+    const before = context.measurement(beforeUsage)
+    const afterUsage = await context.measure(afterContext)
+    const after = context.measurement(afterUsage)
+    const canSummarize = Boolean(throughMessageId)
+    return {
+      context, story, throughMessageId, beforeContext, afterContext, beforeUsage, afterUsage,
+      before, after, canSummarize, fits: contextFits(afterUsage) && !context.invalidCapacity,
+      doesNotReduce: after.tokens !== null && before.tokens !== null
+        ? after.tokens >= before.tokens : after.characters >= before.characters,
+      tokensVerified: before.tokens !== null && after.tokens !== null
+    }
+  }
+
+  async function previewWrittenSummary(summary: string, signal: AbortSignal) {
+    const result = await prepareWrittenSummary(summary, signal)
+    return { before: result.before, after: result.after, canSummarize: result.canSummarize,
+      fits: result.fits, doesNotReduce: result.doesNotReduce }
+  }
+
+  async function saveWrittenSummary(summary: string, signal: AbortSignal) {
+    if (generating.value || deletingCompaction.value || !activeStory.value || activeStory.value.readOnly) {
+      throw new Error('Esta historia no permite guardar un resumen ahora.')
+    }
+    if (!summary.trim()) throw new Error('Escribe un resumen antes de guardarlo.')
+    const requestController = new AbortController()
+    controller = requestController
+    const requestSignal = AbortSignal.any([signal, requestController.signal])
+    generating.value = true
+    compactionSaving.value = true
+    try {
+      const result = await prepareWrittenSummary(summary, requestSignal, true)
+      if (!result.canSummarize || !result.throughMessageId) throw new Error('No hay historial anterior que resumir.')
+      if (!result.fits) {
+        if (result.context.invalidCapacity) throw new Error(result.after.tokenError)
+        const exceeded = exceededContextLimit(result.afterUsage)
+        throw new Error(`El contexto ocupa ${exceeded.count} ${exceeded.unit} y el límite es ${exceeded.limit}. Acorta el resumen o aumenta el límite en Ajustes.`)
+      }
+      if (!result.context.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
+      const stored = await dbSaveWrittenSummary(result.story.id, {
+        summary: summary.trim(), throughMessageId: result.throughMessageId, expectedUpdatedAt: result.story.updatedAt,
+        compaction: { before: result.beforeContext, after: result.afterContext,
+          historyBudget: result.context.historyBudget, beforeUsage: result.beforeUsage, afterUsage: result.afterUsage,
+          tokensVerified: result.tokensVerified }
+      }, result.context.scope, requestSignal)
+      if (!result.context.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
+      activeStory.value = stored.story
+      stories.value = stories.value.map(story => story.id === stored.story.id ? stored.story : story)
+      debugTraces.value = [...debugTraces.value.filter(trace => trace.id !== stored.trace.id), stored.trace]
+      canCompactInBlocks.value = false
+      return { before: result.before, after: result.after, tokensVerified: result.tokensVerified,
+        doesNotReduce: result.doesNotReduce }
+    } finally {
+      if (controller === requestController) {
+        generating.value = false
         compactionSaving.value = false
         controller = null
       }
@@ -2409,6 +2484,8 @@ export const useStoriesStore = defineStore('stories', () => {
     compactInBlocks,
     measureStoryContext,
     compactStory,
+    previewWrittenSummary,
+    saveWrittenSummary,
     pendingAssistantMessage,
     visualRevealWaitingForAdvance,
     error,

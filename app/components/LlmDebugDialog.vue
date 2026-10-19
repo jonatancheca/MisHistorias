@@ -6,6 +6,8 @@ const emit = defineEmits<{ close: [] }>()
 const closeButton = ref<HTMLButtonElement | null>(null)
 const showRawRequest = ref(false)
 const isCompaction = computed(() => props.trace?.request.purpose === 'compaction')
+const isWritten = computed(() => props.trace?.request.origin === 'user')
+const tokensUnverified = computed(() => props.trace?.request.origin === 'user' && !props.trace.request.compaction.tokensVerified)
 const comparison = computed(() => props.trace?.request.compaction)
 const usage = computed(() => comparison.value?.beforeUsage ?? props.trace?.request.contextUsage)
 const contextLimit = computed(() => usage.value?.effectiveLimit ?? comparison.value?.historyBudget ?? props.historyBudget)
@@ -78,10 +80,10 @@ function keepFocus() {
         <header class="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border-soft)] p-4">
           <div class="min-w-0">
             <h2 id="llm-debug-dialog-title" class="text-lg font-bold">
-              {{ isCompaction ? 'Debug compactación' : 'Debug LLM' }}
+              {{ isWritten ? 'Resumen escrito a mano' : isCompaction ? 'Debug compactación' : 'Debug LLM' }}
             </h2>
             <p class="truncate text-xs text-[var(--color-fg-muted)]">
-              {{ trace.status === 'success' ? 'Respuesta recibida' : 'Llamada fallida' }}
+              {{ isWritten ? 'Guardado por el usuario' : trace.status === 'success' ? 'Respuesta recibida' : 'Llamada fallida' }}
             </p>
           </div>
           <button
@@ -108,7 +110,7 @@ function keepFocus() {
             <p v-if="usage?.characters">
               {{ usage.characters.count }} / {{ usage.characters.limit || 'Sin límite' }} caracteres
             </p>
-            <p v-if="usage" class="mt-1 break-words text-xs [overflow-wrap:anywhere]">
+            <p v-if="usage && (!isWritten || usage.unit === 'tokens')" class="mt-1 break-words text-xs [overflow-wrap:anywhere]">
               Modelo: {{ usage.model }} · Límite configurado: {{ usage.configuredLimit || 'Sin límite' }} {{ contextUnit }}
               <template v-if="usage.capacity !== undefined"> · Capacidad: {{ usage.capacity }} tokens · Reserva: {{ usage.reservedTokens }} tokens</template>
             </p>
@@ -116,6 +118,7 @@ function keepFocus() {
               {{ comparison || usage ? 'Incluye el contexto completo. Medición y límite conservados de este intento.' : 'Traza antigua: conteo en caracteres. Máximo actual indicado en Ajustes.' }}
             </p>
           </section>
+          <p v-if="tokensUnverified" class="mb-4 text-sm">Tokens sin verificar.</p>
           <section v-if="isCompaction" class="mb-4 space-y-3" data-testid="compaction-comparison">
             <p v-if="!comparison" class="rounded-xl bg-violet-500/10 p-3 text-sm">
               Esta traza antigua no conserva el contexto completo antes/después ni el límite de aquel momento.
@@ -154,7 +157,7 @@ function keepFocus() {
               <pre data-testid="compaction-summary" class="max-h-[35dvh] overflow-auto text-xs whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{{ trace.response.content }}</pre>
             </section>
           </section>
-          <div class="grid min-w-0 gap-4 lg:grid-cols-2">
+          <div v-if="!isWritten" class="grid min-w-0 gap-4 lg:grid-cols-2">
             <section class="min-w-0">
               <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <h3 class="text-sm font-semibold">{{ isCompaction ? 'Petición al compactador' : 'Enviado' }}</h3>

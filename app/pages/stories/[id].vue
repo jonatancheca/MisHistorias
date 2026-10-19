@@ -59,6 +59,7 @@ const canScrollToBottom = ref(false)
 const selectedDebugTrace = ref<LlmDebugTrace | null>(null)
 const compactionDeleteError = ref<string | null>(null)
 const manualCompactionOpen = ref(false)
+const writtenSummaryOpen = ref(false)
 const compactionHistoryOpen = ref(false)
 const charactersDialogOpen = ref(false)
 const presenceBusy = ref(false)
@@ -103,6 +104,7 @@ watch(() => stories.activeStory?.id, () => {
   selectedDebugTrace.value = null
   compactionDeleteError.value = null
   manualCompactionOpen.value = false
+  writtenSummaryOpen.value = false
   compactionHistoryOpen.value = false
   charactersDialogOpen.value = false
   presenceError.value = null
@@ -1108,7 +1110,7 @@ function onStoryKeydown(event: KeyboardEvent) {
   if (!stories.activeStory || event.defaultPrevented) return
   if (
     storyPreferencesOpen.value || selectedDebugTrace.value || imagePickerTarget.value || editingVisualMessage.value ||
-    storySavesOpen.value || compactionHistoryOpen.value || charactersDialogOpen.value || hiddenMessagesDialogOpen.value || confirmDialog.dialog
+    storySavesOpen.value || manualCompactionOpen.value || writtenSummaryOpen.value || compactionHistoryOpen.value || charactersDialogOpen.value || hiddenMessagesDialogOpen.value || confirmDialog.dialog
   ) return
 
   const target = event.target
@@ -1968,8 +1970,9 @@ onBeforeRouteLeave(() => {
       @debug="selectedDebugTrace = $event"
     />
 
+    <StoryWrittenSummaryDialog :open="writtenSummaryOpen" @close="writtenSummaryOpen = false" />
     <StoryCompactionDialog :open="manualCompactionOpen" @close="manualCompactionOpen = false" />
-    <StoryCompactionHistoryDialog :open="compactionHistoryOpen" @close="compactionHistoryOpen = false" @compact="manualCompactionOpen = true" />
+    <StoryCompactionHistoryDialog :open="compactionHistoryOpen" @close="compactionHistoryOpen = false" @compact="manualCompactionOpen = true" @write="writtenSummaryOpen = true" />
 
     <StorySavesDialog
       :open="storySavesOpen"

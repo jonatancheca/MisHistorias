@@ -15,7 +15,8 @@ import type {
   Sound,
   Story,
   StorySaveSlot,
-  SwarmPrompt
+  SwarmPrompt,
+  WrittenSummaryInput
 } from '#shared/types'
 
 export interface ImageAsset extends CharacterImage {
@@ -398,6 +399,13 @@ export async function putLlmDebugTrace(trace: LlmDebugTrace, scope: DataScope = 
 
 export async function deleteLlmDebugTrace(id: string) {
   await deleteJson('llmDebugTraces', id)
+}
+
+export async function saveWrittenSummary(storyId: string, input: WrittenSummaryInput, scope: DataScope, signal: AbortSignal) {
+  return $fetch<{ story: Story; trace: LlmDebugTrace }>(
+    dataUrl(`stories/${encodeURIComponent(storyId)}/compactions`, scope),
+    { method: 'POST', body: input, signal, retry: 0 }
+  )
 }
 
 export async function deleteStoryCompaction(storyId: string, id: string, scope: DataScope) {

@@ -38,7 +38,7 @@ const indicators = computed(() => {
   if (!available.value) return []
   const candidates = [
     { unit: 'tokens', label: 'Contexto (tokens)', count: current?.tokens ?? null, limit: current?.tokenLimit ?? 0 },
-    { unit: 'characters', label: 'Contexto (caracteres)', count: current?.characters ?? null, limit: current?.characterLimit ?? 0 }
+    { unit: 'characters', label: 'Contexto (caracteres)', count: current?.characters ?? null, limit: current?.characterLimit ?? settings.activeHistoryBudget }
   ] as const
   return candidates.flatMap<ContextIndicator>(({ unit, label, count, limit }) => {
     if (unit === 'tokens' && !showTokens.value) return []
@@ -46,6 +46,9 @@ const indicators = computed(() => {
       const status = tokenError.value ? `No disponible. ${tokenError.value}` : 'Midiendo…'
       return [{ unit, percent: null, state: tokenError.value ? 'unavailable' : 'measuring',
         tooltip: `${label}: ${status} · ${compactionLabel.value}` }]
+    }
+    if (unit === 'characters' && count === null && limit > 0) {
+      return [{ unit, percent: null, state: 'measuring', tooltip: `${label}: Midiendo… · ${compactionLabel.value}` }]
     }
     if (count === null || !Number.isFinite(count) || count < 0 || limit <= 0) return []
     const percent = count / limit * 100

@@ -35,7 +35,8 @@ import type {
   Message,
   Sound,
   Story,
-  StorySaveSlot
+  StorySaveSlot,
+  WrittenSummaryInput
 } from '../../shared/types/index.ts'
 
 export type DataScope = 'normal' | 'private'
@@ -3775,6 +3776,40 @@ export class MisHistoriasStorage {
     } else {
       this.database.prepare(`DELETE FROM ${table} WHERE scope = ? AND id = ?`).run(scope, id)
     }
+  }
+
+  saveWrittenSummary(scope: DataScope, storyId: string, input: WrittenSummaryInput, access?: StorageAccess) {
+    return this.transaction(() => {
+      const ownAccess = access ? { ownerId: access.ownerId } : undefined
+      const story = this.get('stories', scope, storyId, ownAccess) as Story | null
+      if (!story) return null
+      this.assertWritable('stories', scope, storyId, ownAccess)
+      const history = (this.list('messages', scope, { storyId }, ownAccess) as Message[])
+        .filter(message => !message.swarmError)
+      const last = history.findLast(message => message.role === 'assistant')
+      if (!last) throw Object.assign(new Error('No hay historial anterior que resumir.'), { code: 'ERR_INVALID_RESOURCE' })
+      if (story.updatedAt !== input.expectedUpdatedAt || last.id !== input.throughMessageId) {
+        throw Object.assign(new Error('La historia ha cambiado. Recarga la historia y revisa el resumen antes de guardarlo.'), { code: 'ERR_STALE_STORY' })
+      }
+      const summary = input.summary.trim()
+      if (!summary) throw Object.assign(new Error('Escribe un resumen antes de guardarlo.'), { code: 'ERR_INVALID_RESOURCE' })
+      const settings = this.readSettings(access?.ownerId ?? undefined)?.value
+      const configuredLimit = scope === 'private' && settings?.privateLlmSettingsEnabled
+        ? settings.privateHistoryBudget ?? settings.historyBudget : settings?.historyBudget
+      const characters = input.compaction.after!.reduce((sum, message) => sum + message.content.length, 0)
+      if (typeof configuredLimit === 'number' && configuredLimit > 0 && characters > configuredLimit) {
+        throw Object.assign(new Error(`El contexto ocupa ${characters} caracteres y el límite es ${configuredLimit}.`), { code: 'ERR_INVALID_RESOURCE' })
+      }
+      const updated = { ...story, contextSummary: summary, contextSummaryThroughMessageId: last.id, updatedAt: Date.now() }
+      const trace: LlmDebugTrace = {
+        id: randomUUID(), storyId, requestMessageId: last.id, status: 'success', createdAt: Date.now(),
+        request: { origin: 'user', purpose: 'compaction', compaction: { ...input.compaction, applied: true } },
+        response: { content: summary, finishReason: null }
+      }
+      this.put('stories', scope, storyId, updated, ownAccess)
+      this.put('llmDebugTraces', scope, trace.id, trace, ownAccess)
+      return { story: updated, trace }
+    })
   }
 
   deleteStoryCompaction(scope: DataScope, storyId: string, id: string, access?: StorageAccess) {

@@ -92,6 +92,10 @@ _Evitar_: Continuación de historia, recorte del historial, respuesta del narrad
 Resumen del historial solicitado expresamente, incluso cuando el contexto está dentro de sus límites. Conserva los mensajes originales y las intervenciones pendientes, no continúa la historia y permite comparar el contexto del narrador antes y después, sin incluir el borrador de escritura.
 _Evitar_: Continuar historia, borrar historial, compactación automática
 
+**Resumen escrito a mano**:
+Resumen acumulado redactado por el usuario que sustituye el historial hasta la última respuesta del Narrador, sin incluir intervenciones pendientes ni el borrador. Conserva los mensajes originales, puede ampliar el resumen vigente y permite guardar con los tokens sin verificar cuando no hay medición disponible.
+_Evitar_: Respuesta del narrador, compactación manual generada por IA, resumen de la última intervención
+
 **Compactar igualmente**:
 Intento manual de resumir todo el historial en una única petición pese a que la medición previa indica que puede superar la capacidad del modelo. Solo reemplaza el checkpoint anterior si el resumen reduce el contexto y cumple sus límites finales.
 _Evitar_: Guardar un resumen fuera de límite, recortar historial, compactación automática
@@ -101,7 +105,7 @@ Instrucción que orienta el resumen independiente del historial de una historia.
 _Evitar_: Prompt narrativo, prompt privado de compactación, checkpoint de historia compactada
 
 **Checkpoint de historia compactada**:
-Resumen validado de una historia y punto hasta el que sustituye su historial al preparar nuevas respuestas. Conserva los mensajes originales y solo se reemplaza cuando el nuevo contexto cabe dentro del límite.
+Resumen validado de una historia y punto hasta el que sustituye su historial al preparar nuevas respuestas. Conserva los mensajes originales. Los resúmenes generados por IA deben caber dentro de sus límites; los escritos a mano respetan los límites comprobables y distinguen expresamente los tokens sin verificar.
 _Evitar_: Mensajes eliminados, partida guardada, resumen provisional
 
 **Modo Debug de la historia**:
