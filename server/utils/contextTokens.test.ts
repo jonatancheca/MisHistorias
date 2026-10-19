@@ -101,6 +101,17 @@ test('consulta capacidad cargada sin plantilla, tokenizer ni carga implícita', 
   } finally { await server.close() }
 })
 
+test('cuenta solo los tokens del resumen escrito, sin añadir plantilla de conversación', async () => {
+  const server = await startFakeLmStudio()
+  try {
+    const summary = 'La llave azul abre el faro. 🌊'
+    assert.deepEqual(await measureLmStudioContext({ baseUrl: server.baseUrl, apiKey: '' }, 'configured-key', summary),
+      { tokens: 7, capacity: 8192, model: 'loaded-instance' })
+    assert.deepEqual(server.calls.map(call => call.endpoint), ['listLoaded', 'countTokens', 'getLoadConfig'])
+    assert.equal(server.calls[1]?.parameter.inputString, summary)
+  } finally { await server.close() }
+})
+
 for (const messages of [
   [{ role: 'system' as const, content: 'Instrucciones y resumen anterior.' }],
   [{ role: 'assistant' as const, content: 'Historia anterior.' }],

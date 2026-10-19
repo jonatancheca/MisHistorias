@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import type { LlmDebugTrace, Message, Story } from '../../shared/types'
 import { test, expect, type TestDataFactory } from './fixtures'
+import { startFakeLmStudio } from '../helpers/fakeLmStudio'
 
 test.beforeEach(async ({ page, data }) => {
   await data.patchSettings({ mockMode: true, model: 'test-model', useChromeLlm: false,
@@ -179,8 +180,8 @@ test('bloquea vacío e historia sin respuesta del Narrador y respeta solo lectur
   await expect(page.getByRole('group', { name: 'Ocupación del contexto' })).toHaveCount(0)
 })
 
-test('bloquea límite de caracteres conocido y tokens medidos excedidos', async ({ page, data }) => {
-  await prepare(page, data)
+test('bloquea límite de caracteres y avisa sin bloquear por tokens de contexto excedidos', async ({ page, data }) => {
+  const { story } = await prepare(page, data)
   await data.patchSettings({ historyBudget: 1 })
   await page.reload()
   let editor = await openEditor(page)
@@ -193,8 +194,76 @@ test('bloquea límite de caracteres conocido y tokens medidos excedidos', async 
   editor = await openEditor(page)
   await editor.getByLabel('Resumen escrito a mano', { exact: true }).fill('Resumen con tokens medidos.')
   await editor.getByRole('button', { name: 'Guardar resumen', exact: true }).click()
-  await expect(editor.getByRole('alert')).toContainText('1200 tokens y el límite es 1000')
-  await expect(editor).not.toContainText('Resumen guardado.')
+  await expect(editor).toContainText('ocupa 1200 tokens y supera el límite de 1000')
+  await expect(editor).toContainText('Resumen guardado.')
+  expect((await data.get<Story>('stories', story.id)).contextSummary).toBe('Resumen con tokens medidos.')
+})
+
+for (const scope of ['normal', 'private'] as const) {
+  for (const visualMode of [false, true]) {
+    test(`avisa al superar tokens máximos de respuesta y permite guardar (${scope}, ${visualMode ? 'Novela' : 'Chat'})`, async ({ page, data }) => {
+      const limit = scope === 'private' ? 75 : 100
+      await data.patchSettings({ mockMode: false, privateLlmSettingsEnabled: true, privateMaxTokens: 75 })
+      let generationCalls = 0
+      await page.route('**/api/llm/chat', route => { generationCalls++; return route.fulfill({ status: 500 }) })
+      await page.route('**/api/llm/context', route => {
+        const body = route.request().postDataJSON()
+        return route.fulfill({ json: { tokens: typeof body.text === 'string'
+          ? (body.text.includes('ampliado') ? limit + 50 : limit) : 500, capacity: 30000, model: 'test-model' } })
+      })
+      const { story } = await prepare(page, data, scope, visualMode)
+      const editor = await openEditor(page)
+      const field = editor.getByLabel('Resumen escrito a mano', { exact: true })
+      const save = editor.getByRole('button', { name: 'Guardar resumen', exact: true })
+      await field.fill('Resumen justo en el límite.')
+      await expect(save).toBeEnabled()
+      await expect(editor.getByRole('status')).toHaveCount(0)
+      const summary = 'Resumen ampliado: la llave azul abre el faro.'
+      await field.fill(summary)
+      await expect(editor.getByRole('status')).toContainText(`supera los ${limit} tokens máximos de respuesta`)
+      for (const width of [320, 390, 1280]) {
+        await page.setViewportSize({ width, height: 900 })
+        await expect(save).toBeEnabled()
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+        if (scope === 'normal') await page.screenshot({ path: `.data/manual-summary-warning-${visualMode ? 'novel' : 'chat'}-${width}.png`, animations: 'disabled' })
+      }
+      await save.click()
+      await expect(editor).toContainText('Resumen guardado.')
+      await expect(editor).toContainText(`supera los ${limit} tokens máximos de respuesta`)
+      expect((await data.get<Story>('stories', story.id, scope)).contextSummary).toBe(summary)
+      expect(generationCalls).toBe(0)
+    })
+  }
+}
+
+test('endpoint cuenta texto sin plantilla y rechaza mezclar resumen con mensajes', async ({ request, data }) => {
+  const server = await startFakeLmStudio()
+  try {
+    await data.patchSettings({ baseUrl: server.baseUrl, apiKey: '', privateLlmSettingsEnabled: false })
+    const text = 'Resumen de prueba con llave azul. 🌊'
+    const response = await request.post('/api/llm/context', { data: { model: 'configured-key', text } })
+    await expect(response).toBeOK()
+    expect(await response.json()).toEqual({ tokens: 7, capacity: 8192, model: 'loaded-instance' })
+    expect(server.calls.map(call => call.endpoint)).toEqual(['listLoaded', 'countTokens', 'getLoadConfig'])
+    expect(server.calls[1]?.parameter.inputString).toBe(text)
+    const invalid = await request.post('/api/llm/context', {
+      data: { model: 'configured-key', text, messages: [{ role: 'user', content: text }] }
+    })
+    expect(invalid.status()).toBe(400)
+  } finally { await server.close() }
+})
+
+test('tokens máximos de respuesta que ocupan toda la capacidad avisan sin impedir guardar', async ({ page, data }) => {
+  const { story } = await prepare(page, data)
+  await data.patchSettings({ mockMode: false, maxTokens: 30000 })
+  await page.route('**/api/llm/context', route => route.fulfill({ json: { tokens: 500, capacity: 30000, model: 'test-model' } }))
+  await page.reload()
+  const editor = await openEditor(page)
+  await editor.getByLabel('Resumen escrito a mano', { exact: true }).fill('Resumen guardado con aviso de capacidad.')
+  await editor.getByRole('button', { name: 'Guardar resumen', exact: true }).click()
+  await expect(editor).toContainText('Resumen guardado.')
+  await expect(editor).toContainText('Los tokens máximos de respuesta ocupan toda la capacidad del modelo.')
+  expect((await data.get<Story>('stories', story.id)).contextSummary).toBe('Resumen guardado con aviso de capacidad.')
 })
 
 test('sin tokenizador permite guardar con límite de tokens activo y marca tokens sin verificar', async ({ page, data }) => {

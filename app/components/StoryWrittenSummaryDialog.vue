@@ -127,11 +127,12 @@ onBeforeUnmount(cancelPreview)
           data-dialog-autofocus
         />
         <p id="written-summary-help" class="mt-2 text-xs text-[var(--color-fg-muted)]">
-          No se genera texto con IA. Los tokens se comprueban al guardar si el modelo está disponible;
+          No se genera texto con IA. Superar los tokens máximos de respuesta muestra un aviso y permite guardar.
+          Los límites de contexto se comprueban al guardar si el modelo está disponible;
           si no pueden medirse, el resumen se guarda con «Tokens sin verificar».
         </p>
       </div>
-      <p v-if="measuring" role="status" class="text-sm">Midiendo caracteres…</p>
+      <p v-if="measuring" role="status" class="text-sm">Midiendo resumen…</p>
       <div v-if="preview && !saved" class="grid min-w-0 gap-3 text-sm sm:grid-cols-2">
         <p>Contexto actual: {{ format(preview.before.characters) }} caracteres.</p>
         <p>Con el resumen: {{ format(preview.after.characters) }} caracteres<template v-if="preview.after.characterLimit"> / {{ format(preview.after.characterLimit) }}</template>.</p>
@@ -139,6 +140,7 @@ onBeforeUnmount(cancelPreview)
       <p v-if="preview && !preview.canSummarize" class="text-sm">No hay historial anterior que resumir.</p>
       <p v-else-if="preview && !preview.fits && !saved" role="alert" class="text-sm text-red-500">El contexto con este resumen supera el límite de caracteres. Acorta el resumen o aumenta el límite en Ajustes.</p>
       <p v-if="preview?.doesNotReduce && !saved" class="text-sm text-[var(--color-fg-muted)]">Este resumen no reduce el contexto. Puedes guardarlo para corregir o ampliar los hechos.</p>
+      <p v-for="warning in (saved?.warnings ?? preview?.warnings ?? [])" :key="warning" role="status" class="text-sm text-amber-600 dark:text-amber-400">{{ warning }}</p>
       <p v-if="error" role="alert" class="break-words text-sm text-red-500">{{ error }}</p>
       <p v-if="busy" role="status" class="text-sm">Comprobando límites y guardando resumen…</p>
       <div v-if="saved" role="status" class="space-y-2 text-sm">

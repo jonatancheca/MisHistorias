@@ -4,9 +4,11 @@ import { recordOperationalError } from '../../utils/errorTraces'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  if (!body || typeof body.model !== 'string' || !body.model.trim() || !Array.isArray(body.messages) ||
-      !body.messages.length || !body.messages.every((message: { role?: unknown; content?: unknown }) =>
-        message && ['system', 'user', 'assistant'].includes(String(message.role)) && typeof message.content === 'string')) {
+  const validText = typeof body?.text === 'string' && body.messages === undefined
+  const validMessages = body?.text === undefined && Array.isArray(body?.messages) && body.messages.length > 0 &&
+    body.messages.every((message: { role?: unknown; content?: unknown }) =>
+      message && ['system', 'user', 'assistant'].includes(String(message.role)) && typeof message.content === 'string')
+  if (!body || typeof body.model !== 'string' || !body.model.trim() || (!validText && !validMessages)) {
     throw createError({ statusCode: 400, message: 'Contexto no válido' })
   }
   const scope = body.scope === 'private' ? 'private' : 'normal'
@@ -23,7 +25,7 @@ export default defineEventHandler(async (event) => {
   event.node.req.once('aborted', abort)
   event.node.res.once('close', closed)
   try {
-    return await measureLmStudioContext(proxySettings, body.model, body.messages, controller.signal)
+    return await measureLmStudioContext(proxySettings, body.model, validText ? body.text : body.messages, controller.signal)
   } catch (caught) {
     if ((caught as Error).name === 'AbortError') throw caught
     const failure = caught instanceof ContextMeasurementError ? caught : new ContextMeasurementError('connection')
@@ -33,7 +35,7 @@ export default defineEventHandler(async (event) => {
     }
     recordOperationalError(event, {
       source: 'llm', operation: 'story.context', message, scope, requestSent: null,
-      request: { model: body.model, messages: body.messages }, response: { code: failure.code }
+      request: { model: body.model, ...(validText ? { text: body.text } : { messages: body.messages }) }, response: { code: failure.code }
     })
     event.context.errorTraceRecorded = true
     throw createError({ statusCode: 502, message, data: { code: failure.code, message } })

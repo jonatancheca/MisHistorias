@@ -39,7 +39,7 @@ export function resolveLmStudioSdkUrl(base = import.meta.url) {
 
 // Ejecutada dentro del worker: no depende del ámbito del módulo ni registra credenciales.
 export async function measureLoadedContext(Client: typeof LMStudioClient, data: {
-  baseUrl: string; apiToken: string; model: string; messages?: TextMessage[]
+  baseUrl: string; apiToken: string; model: string; messages?: TextMessage[] | string
 }) {
   let stage = data.apiToken ? 'api_token' : 'connection'
   let client: LMStudioClient | undefined
@@ -54,7 +54,11 @@ export async function measureLoadedContext(Client: typeof LMStudioClient, data: 
       throw new Error('El modelo configurado no está cargado en LM Studio.')
     }
     let tokens = 0
-    if (data.messages) {
+    if (typeof data.messages === 'string') {
+      stage = 'tokenizer'
+      tokens = await model.countTokens(data.messages)
+      if (!Number.isInteger(tokens) || tokens < 0) throw new Error('Medición de tokens no válida.')
+    } else if (data.messages) {
       stage = 'prompt_template'
       // Algunas plantillas exigen un turno de usuario para medir historias narradas solo por IA.
       // El turno vacío solo se usa al formatear; no modifica ni guarda el historial.
@@ -76,7 +80,7 @@ export async function measureLoadedContext(Client: typeof LMStudioClient, data: 
   }
 }
 
-export function measureLmStudioContext(settings: LlmProxySettings, model: string, messages: TextMessage[] | undefined, signal?: AbortSignal, timeoutMs = 30_000) {
+export function measureLmStudioContext(settings: LlmProxySettings, model: string, messages: TextMessage[] | string | undefined, signal?: AbortSignal, timeoutMs = 30_000) {
   signal?.throwIfAborted()
   const url = new URL(normalizeLocalBaseUrl(settings.baseUrl))
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'

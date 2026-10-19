@@ -125,10 +125,10 @@ export async function fetchLlmCapacity(scope: DataScope = getActiveDataScope(), 
   }
 }
 
-export async function fetchLlmContext(messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>, model: string, scope: DataScope, signal: AbortSignal) {
+export async function fetchLlmContext(messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> | string, model: string, scope: DataScope, signal: AbortSignal) {
   try {
     return await $fetch<{ tokens: number; capacity: number; model: string }>('/api/llm/context', {
-      method: 'POST', body: { messages, model, scope }, signal
+      method: 'POST', body: { ...(typeof messages === 'string' ? { text: messages } : { messages }), model, scope }, signal
     })
   } catch (caught) {
     throw normalizeError(caught)

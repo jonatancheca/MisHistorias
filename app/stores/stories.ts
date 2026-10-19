@@ -1354,9 +1354,27 @@ export const useStoriesStore = defineStore('stories', () => {
     const afterUsage = await context.measure(afterContext)
     const after = context.measurement(afterUsage)
     const canSummarize = Boolean(throughMessageId)
+    const warnings: string[] = []
+    if (summary.trim() && !context.useChromeLlm && !context.settings.settings.mockMode &&
+        context.model && typeof context.maxTokens === 'number' && context.maxTokens > 0) {
+      try {
+        const measured = await fetchLlmContext(summary.trim(), context.model, context.scope,
+          AbortSignal.any([signal, AbortSignal.timeout(8000)]))
+        if (measured.tokens > context.maxTokens) {
+          warnings.push(`El resumen ocupa ${measured.tokens.toLocaleString('es-ES')} tokens y supera los ${context.maxTokens.toLocaleString('es-ES')} tokens máximos de respuesta. Puedes guardarlo igualmente.`)
+        }
+      } catch {
+        signal.throwIfAborted()
+      }
+    }
+    if (context.invalidCapacity && after.tokenError) warnings.push(`${after.tokenError} Puedes guardar el resumen igualmente.`)
+    else if (afterUsage.unit === 'tokens' && afterUsage.count > afterUsage.effectiveLimit) {
+      warnings.push(`El contexto con este resumen ocupa ${afterUsage.count.toLocaleString('es-ES')} tokens y supera el límite de ${afterUsage.effectiveLimit.toLocaleString('es-ES')}. Puedes guardarlo; se comprobarán los límites antes de generar una nueva respuesta.`)
+    }
     return {
       context, story, throughMessageId, beforeContext, afterContext, beforeUsage, afterUsage,
-      before, after, canSummarize, fits: contextFits(afterUsage) && !context.invalidCapacity,
+      before, after, canSummarize, warnings,
+      fits: after.characterLimit === 0 || after.characters <= after.characterLimit,
       doesNotReduce: after.tokens !== null && before.tokens !== null
         ? after.tokens >= before.tokens : after.characters >= before.characters,
       tokensVerified: before.tokens !== null && after.tokens !== null
@@ -1366,7 +1384,7 @@ export const useStoriesStore = defineStore('stories', () => {
   async function previewWrittenSummary(summary: string, signal: AbortSignal) {
     const result = await prepareWrittenSummary(summary, signal)
     return { before: result.before, after: result.after, canSummarize: result.canSummarize,
-      fits: result.fits, doesNotReduce: result.doesNotReduce }
+      fits: result.fits, warnings: result.warnings, doesNotReduce: result.doesNotReduce }
   }
 
   async function saveWrittenSummary(summary: string, signal: AbortSignal) {
@@ -1383,9 +1401,7 @@ export const useStoriesStore = defineStore('stories', () => {
       const result = await prepareWrittenSummary(summary, requestSignal, true)
       if (!result.canSummarize || !result.throughMessageId) throw new Error('No hay historial anterior que resumir.')
       if (!result.fits) {
-        if (result.context.invalidCapacity) throw new Error(result.after.tokenError)
-        const exceeded = exceededContextLimit(result.afterUsage)
-        throw new Error(`El contexto ocupa ${exceeded.count} ${exceeded.unit} y el límite es ${exceeded.limit}. Acorta el resumen o aumenta el límite en Ajustes.`)
+        throw new Error(`El contexto ocupa ${result.after.characters} caracteres y el límite es ${result.after.characterLimit}. Acorta el resumen o aumenta el límite en Ajustes.`)
       }
       if (!result.context.isActive()) throw new DOMException('Petición cancelada', 'AbortError')
       const stored = await dbSaveWrittenSummary(result.story.id, {
@@ -1400,7 +1416,7 @@ export const useStoriesStore = defineStore('stories', () => {
       debugTraces.value = [...debugTraces.value.filter(trace => trace.id !== stored.trace.id), stored.trace]
       canCompactInBlocks.value = false
       return { before: result.before, after: result.after, tokensVerified: result.tokensVerified,
-        doesNotReduce: result.doesNotReduce }
+        warnings: result.warnings, doesNotReduce: result.doesNotReduce }
     } finally {
       if (controller === requestController) {
         generating.value = false
