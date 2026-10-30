@@ -72,6 +72,10 @@ _Evitar_: Resumen acumulado, historial de mensajes
 Conjunto de textos que recibe el narrador para responder: instrucciones, personajes y recursos disponibles, planteamiento o resumen acumulado, historial pendiente y nueva intervención. Cada ámbito permite limitarlo simultáneamente por caracteres y por tokens del modelo: superar cualquiera requiere compactar el historial; cero desactiva cada límite por separado y el límite activo de tokens respeta la capacidad disponible para la entrada.
 _Evitar_: Solo historial, límite del mensaje, máximo de tokens de respuesta
 
+**Desglose del contexto**:
+Distribución de los caracteres del contexto enviado entre sus componentes narrativos y los catálogos de recursos, sin incluir el borrador de escritura. Cuenta el texto que recibe el narrador, no el tamaño de las imágenes o los archivos de sonido ni un coste monetario.
+_Evitar_: Coste económico, tamaño de los archivos, estimación de tokens por sección
+
 **Ocupación del contexto**:
 Proporción del contexto enviado de una historia respecto al límite activo de caracteres o a la referencia de tokens del modelo, sin incluir el borrador de escritura. En tokens utiliza el límite efectivo de entrada cuando es manual o automático y la capacidad completa del modelo cargado cuando no hay límite configurado; no se muestra con Chrome ni en modo sin LLM, y una medición pendiente o no disponible no equivale a una ocupación del cero por ciento.
 _Evitar_: Tamaño del borrador, porcentaje libre, ocupación de la respuesta

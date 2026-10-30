@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import type { LlmDebugTrace, Message, Story } from '../../shared/types'
 import { test, expect, type TestDataFactory } from './fixtures'
 
@@ -39,6 +39,64 @@ async function openDialog(page: Page) {
   return dialog
 }
 
+async function checkBreakdown(card: Locator) {
+  const details = card.getByTestId('context-breakdown')
+  await expect(details).not.toHaveAttribute('open')
+  await details.getByText('Desglose del contexto', { exact: true }).click()
+  await expect(details).toHaveAttribute('open', '')
+  const counts = await details.locator('[data-context-section]').evaluateAll(rows => Object.fromEntries(rows.map(row => [
+    row.getAttribute('data-context-section')!,
+    Number(row.querySelector('dd')!.textContent!.replace(/\D/g, ''))
+  ])))
+  const total = Number((await card.getByTestId('context-character-total').innerText()).replace(/\D/g, ''))
+  expect(Object.values(counts).reduce((sum, count) => sum + count, 0)).toBe(total)
+  expect(Object.values(counts).every(count => count > 0)).toBe(true)
+  return counts
+}
+
+test('desglosa los catálogos reales y conserva su coste antes y después de compactar', async ({ page, data }) => {
+  const character = await data.createCharacter({ name: 'Alicia', prompt: 'Guardiana del bosque, prudente y curiosa.', tags: ['guardiana'] })
+  await data.createImage(character, ['neutral', 'abrigo'])
+  const background = await data.createBackground({ tags: [data.unique('bosque')], style: data.unique('acuarela') })
+  await data.createSound(character, [data.unique('pasos')])
+  const story = await data.createStory({ title: 'El bosque y la lluvia', characters: [character], background,
+    backgroundStyle: background.style, premise: 'Alicia guía al protagonista hasta un refugio entre los árboles.' })
+  await data.createMessage({ story, role: 'assistant', raw: 'Alicia [neutral][abrigo]: El refugio está cerca. '.repeat(200) })
+  await data.createMessage({ story, role: 'user', raw: 'Me acerco al refugio.' })
+  const measurements: Request[] = []
+  await page.route('**/api/llm/context', route => {
+    const request = route.request().postDataJSON() as Request
+    measurements.push(request)
+    const tokens = request.messages.reduce((total, message) => total + Math.ceil(message.content.length / 4), 0)
+    return route.fulfill({ json: { tokens, capacity: 30000, model: 'test-instance' } })
+  })
+  await page.route('**/api/llm/chat', route => route.fulfill({ json: { content: 'Alicia guía al protagonista hasta el refugio.', finishReason: 'stop' } }))
+  await page.goto(`/stories/${story.id}`)
+  await page.getByPlaceholder(/Escribe lo que haces/).fill('BORRADOR_EXCLUIDO_DEL_DESGLOSE')
+  const dialog = await openDialog(page)
+  const before = await checkBreakdown(dialog.getByTestId('manual-compaction-before'))
+  const measured = measurements.at(-1)!
+  expect(Object.values(before).reduce((sum, count) => sum + count, 0)).toBe(
+    measured.messages.reduce((sum, message) => sum + message.content.length, 0)
+  )
+  expect(JSON.stringify(measured.messages)).toMatch(/guardiana/)
+  expect(JSON.stringify(measured.messages)).toMatch(/bosque/)
+  expect(JSON.stringify(measured.messages)).toMatch(/pasos/)
+  expect(JSON.stringify(measured.messages)).not.toContain('BORRADOR_EXCLUIDO_DEL_DESGLOSE')
+  expect(before.characters).toBeGreaterThan(character.prompt.length)
+  await dialog.getByRole('button', { name: 'Compactar', exact: true }).click()
+  await expect(dialog.getByTestId('manual-compaction-after')).toBeVisible()
+  const after = await checkBreakdown(dialog.getByTestId('manual-compaction-after'))
+  expect(Object.values(after).reduce((sum, count) => sum + count, 0)).toBe(
+    measurements.at(-1)!.messages.reduce((sum, message) => sum + message.content.length, 0)
+  )
+  for (const section of ['protagonist', 'characters', 'backgrounds', 'sounds']) expect(after[section]).toBe(before[section])
+  expect(after.summary).toBeGreaterThan(0)
+  expect(after).not.toHaveProperty('premise')
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.screenshot({ path: '.data/issue-270-breakdown-desktop.png', animations: 'disabled' })
+})
+
 for (const visualMode of [false, true]) {
   test(`compacta bajo límite sin narración y conserva borrador, pendiente y mensajes (${visualMode ? 'Novela' : 'Chat'})`, async ({ page, data }) => {
     const { story, old } = await prepare(page, data, visualMode)
@@ -57,10 +115,18 @@ for (const visualMode of [false, true]) {
     const dialog = await openDialog(page)
     await expect(dialog.getByTestId('manual-compaction-before')).toContainText('tokens')
     await expect(dialog.getByTestId('manual-compaction-before')).toContainText('caracteres')
+    const before = await checkBreakdown(dialog.getByTestId('manual-compaction-before'))
+    expect(before).toHaveProperty('premise')
+    expect(before).not.toHaveProperty('summary')
     expect(requests).toHaveLength(0)
     await dialog.getByRole('button', { name: 'Compactar', exact: true }).click()
     await expect(dialog.getByTestId('manual-compaction-after')).toContainText('tokens')
     await expect(dialog.getByTestId('manual-compaction-after')).toContainText('Reducción:')
+    const after = await checkBreakdown(dialog.getByTestId('manual-compaction-after'))
+    expect(after).toHaveProperty('summary')
+    expect(after).not.toHaveProperty('premise')
+    expect(after.history).toBeLessThan(before.history!)
+    for (const section of ['protagonist', 'characters', 'backgrounds', 'sounds']) expect(after[section]).toBe(before[section])
     expect(requests).toHaveLength(1)
     expect(await data.get<Story>('stories', story.id)).toMatchObject({
       contextSummary: 'Resumen breve.', contextSummaryThroughMessageId: old.id
@@ -72,8 +138,12 @@ for (const visualMode of [false, true]) {
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 760 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+      expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+      for (const card of [dialog.getByTestId('manual-compaction-before'), dialog.getByTestId('manual-compaction-after')]) {
+        expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+      }
       await expect(dialog.getByRole('button', { name: 'Cerrar diálogo' })).toBeVisible()
-      await page.screenshot({ path: `.data/issue-266-manual-${visualMode ? 'novela' : 'chat'}-${width}.png` })
+      await page.screenshot({ path: `.data/issue-270-manual-${visualMode ? 'novela' : 'chat'}-${width}.png` })
     }
     await dialog.getByRole('button', { name: 'Cerrar diálogo' }).click()
     await expect(composer).toHaveValue('BORRADOR_SIN_ENVIAR')
@@ -124,8 +194,10 @@ test('tokens no disponibles: permite caracteres y bloquea límite de tokens acti
   await page.route('**/api/llm/chat', route => route.fulfill({ json: { content: 'Resumen breve.', finishReason: 'stop' } }))
   const dialog = await openDialog(page)
   await expect(dialog.getByTestId('manual-compaction-before')).toContainText('Tokens no disponibles')
+  await checkBreakdown(dialog.getByTestId('manual-compaction-before'))
   await dialog.getByRole('button', { name: 'Compactar', exact: true }).click()
   await expect(dialog.getByTestId('manual-compaction-after')).toContainText('Tokens no disponibles')
+  await checkBreakdown(dialog.getByTestId('manual-compaction-after'))
   await dialog.getByRole('button', { name: 'Cerrar diálogo' }).click()
   await data.patchSettings({ contextTokenBudget: 3000 })
   await page.reload()

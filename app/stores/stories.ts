@@ -49,10 +49,12 @@ import {
   type StoredImage
 } from '~/lib/db'
 import {
+  buildChatContext,
   buildChatMessages,
   buildCompactionMessages,
   buildCompactionHistory,
   type ChatMessage,
+  type ChatContextBreakdown,
   chatContextSize,
   resolveProtagonistPreferences
 } from '~/lib/promptBuilder'
@@ -1282,8 +1284,9 @@ export const useStoriesStore = defineStore('stories', () => {
           configuredLimit: historyBudget, effectiveLimit: manualLimit ? historyBudget : 0 }
       }
     }
-    const measurement = (usage: ContextUsage): StoryContextMeasurement => ({
+    const measurement = (usage: ContextUsage, breakdown: ChatContextBreakdown): StoryContextMeasurement => ({
       characters: usage.characters?.count ?? usage.count,
+      breakdown,
       tokens: usage.unit === 'tokens' ? usage.count : null,
       characterLimit: historyBudget,
       tokenLimit: usage.unit === 'tokens' && (forIndicators || tokenBudget === 'auto' || tokenBudget > 0) ? usage.effectiveLimit : 0,
@@ -1305,7 +1308,8 @@ export const useStoriesStore = defineStore('stories', () => {
 
   async function measureStoryContext(signal: AbortSignal, forIndicators = false, skipTokens = false): Promise<StoryContextMeasurement> {
     const context = await prepareManualCompaction(signal, forIndicators, skipTokens)
-    return context.measurement(await context.measure(buildChatMessages(context.chatOptions)))
+    const { messages, breakdown } = buildChatContext(context.chatOptions)
+    return context.measurement(await context.measure(messages), breakdown)
   }
 
   async function compactStory(options: { allowBlocks?: boolean; allowOverCapacity?: boolean } = {}, signal?: AbortSignal) {
@@ -1319,18 +1323,20 @@ export const useStoriesStore = defineStore('stories', () => {
     error.value = null
     try {
       const context = await prepareManualCompaction(requestSignal)
-      const beforeUsage = await context.measure(buildChatMessages(context.chatOptions))
-      const before = context.measurement(beforeUsage)
+      const beforeContext = buildChatContext(context.chatOptions)
+      const beforeUsage = await context.measure(beforeContext.messages)
+      const before = context.measurement(beforeUsage, beforeContext.breakdown)
       if (!before.canCompact) throw new Error(before.tokenError || 'No hay historial anterior que compactar.')
       let afterUsage = beforeUsage
-      await compactHistoryIfNeeded({
+      const updated = await compactHistoryIfNeeded({
         ...context, force: true, allowBlocks: options.allowBlocks === true,
         allowOverCapacity: options.allowOverCapacity === true, signal: requestSignal,
         temperature: context.settings.activeTemperature, compactionPrompt: context.settings.effectiveCompactionPrompt,
         measure: async (messages, manualLimit) => context.validate(await context.measure(messages, manualLimit)),
         onUsage: usage => { afterUsage = usage }
       })
-      return { before, after: context.measurement(afterUsage) }
+      const afterContext = buildChatContext({ ...context.chatOptions, story: updated })
+      return { before, after: context.measurement(afterUsage, afterContext.breakdown) }
     } finally {
       if (controller === requestController) {
         generating.value = false
@@ -1345,14 +1351,14 @@ export const useStoriesStore = defineStore('stories', () => {
     const context = await prepareManualCompaction(signal, false, !verifyTokens, true)
     const story = context.chatOptions.story
     const throughMessageId = context.historyMessages.at(-1)?.id
-    const beforeContext = buildChatMessages(context.chatOptions)
-    const afterContext = buildChatMessages({ ...context.chatOptions, story: {
+    const { messages: beforeContext, breakdown: beforeBreakdown } = buildChatContext(context.chatOptions)
+    const { messages: afterContext, breakdown: afterBreakdown } = buildChatContext({ ...context.chatOptions, story: {
       ...story, contextSummary: summary.trim(), contextSummaryThroughMessageId: throughMessageId
     } })
     const beforeUsage = await context.measure(beforeContext)
-    const before = context.measurement(beforeUsage)
+    const before = context.measurement(beforeUsage, beforeBreakdown)
     const afterUsage = await context.measure(afterContext)
-    const after = context.measurement(afterUsage)
+    const after = context.measurement(afterUsage, afterBreakdown)
     const canSummarize = Boolean(throughMessageId)
     const warnings: string[] = []
     if (summary.trim() && !context.useChromeLlm && !context.settings.settings.mockMode &&

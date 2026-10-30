@@ -1,8 +1,10 @@
 import type { ContextUsage, TokenLimit } from '../../shared/types/index.ts'
 import { responseTokenReserve } from '../../shared/utils/tokenLimits.ts'
+import type { ChatContextBreakdown } from './promptBuilder.ts'
 
 export interface StoryContextMeasurement {
   characters: number
+  breakdown: ChatContextBreakdown
   tokens: number | null
   characterLimit: number
   tokenLimit: number

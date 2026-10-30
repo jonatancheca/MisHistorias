@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { CompactionCapacityError, type StoryContextMeasurement } from '~/lib/contextBudget'
+import type { ChatContextSection } from '~/lib/promptBuilder'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -15,6 +16,17 @@ const offerAlternatives = ref(false)
 let request: AbortController | null = null
 const format = (value: number) => value.toLocaleString('es-ES')
 const tokenCount = (value: StoryContextMeasurement) => value.tokens === null ? 'Tokens no disponibles' : `${format(value.tokens)} tokens`
+const sections: Array<{ key: ChatContextSection; label: string }> = [
+  { key: 'instructions', label: 'Instrucciones' },
+  { key: 'protagonist', label: 'Protagonista' },
+  { key: 'characters', label: 'Personajes e imágenes' },
+  { key: 'backgrounds', label: 'Fondos' },
+  { key: 'sounds', label: 'Sonidos' },
+  { key: 'premise', label: 'Planteamiento' },
+  { key: 'summary', label: 'Resumen' },
+  { key: 'history', label: 'Historial' }
+]
+const measurements = computed(() => [before.value, after.value].filter(value => value !== null))
 
 async function refresh() {
   request?.abort()
@@ -80,17 +92,31 @@ onBeforeUnmount(() => request?.abort())
     </p>
     <p v-if="measuring" class="mt-4 text-sm" role="status">Midiendo contexto del narrador…</p>
     <div v-if="before" class="mt-4 grid min-w-0 gap-3 sm:grid-cols-2" aria-live="polite">
-      <section class="min-w-0 rounded-xl border border-[var(--color-border-soft)] p-3" data-testid="manual-compaction-before">
-        <h3 class="font-semibold">{{ after ? 'Antes' : 'Contexto actual' }}</h3>
-        <p class="mt-2 break-words">{{ format(before.characters) }} caracteres</p>
-        <p class="break-words">{{ tokenCount(before) }}</p>
-      </section>
-      <section v-if="after" class="min-w-0 rounded-xl border border-[var(--color-border-soft)] p-3" data-testid="manual-compaction-after">
-        <h3 class="font-semibold">Después</h3>
-        <p class="mt-2 break-words">{{ format(after.characters) }} caracteres</p>
-        <p class="break-words">{{ tokenCount(after) }}</p>
-        <p class="mt-2 text-sm text-[var(--color-fg-muted)]">
-          Reducción: {{ format(before.characters - after.characters) }} caracteres<template v-if="before.tokens !== null && after.tokens !== null"> y {{ format(before.tokens - after.tokens) }} tokens</template>.
+      <section
+        v-for="(value, index) in measurements"
+        :key="index"
+        class="min-w-0 rounded-xl border border-[var(--color-border-soft)] p-3"
+        :data-testid="index === 0 ? 'manual-compaction-before' : 'manual-compaction-after'"
+      >
+        <h3 class="font-semibold">{{ index === 0 ? (after ? 'Antes' : 'Contexto actual') : 'Después' }}</h3>
+        <p class="mt-2 break-words" data-testid="context-character-total">{{ format(value.characters) }} caracteres</p>
+        <p class="break-words">{{ tokenCount(value) }}</p>
+        <details class="mt-3 text-sm" data-testid="context-breakdown">
+          <summary class="cursor-pointer">Desglose del contexto</summary>
+          <dl class="mt-2 space-y-1">
+            <template v-for="section in sections" :key="section.key">
+              <div v-if="value.breakdown[section.key] > 0" class="flex min-w-0 justify-between gap-3" :data-context-section="section.key">
+                <dt class="min-w-0 break-words">{{ section.label }}</dt>
+                <dd class="shrink-0 tabular-nums">{{ format(value.breakdown[section.key]) }}</dd>
+              </div>
+            </template>
+          </dl>
+          <p class="mt-2 text-xs text-[var(--color-fg-muted)]">
+            En caracteres, con encabezados incluidos. Los separadores entre bloques cuentan en Instrucciones.
+          </p>
+        </details>
+        <p v-if="index === 1" class="mt-2 text-sm text-[var(--color-fg-muted)]">
+          Reducción: {{ format(before.characters - value.characters) }} caracteres<template v-if="before.tokens !== null && value.tokens !== null"> y {{ format(before.tokens - value.tokens) }} tokens</template>.
         </p>
       </section>
     </div>

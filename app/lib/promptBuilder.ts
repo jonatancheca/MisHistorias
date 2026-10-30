@@ -20,6 +20,14 @@ export interface ChatMessage {
   content: string
 }
 
+export type ChatContextSection = 'instructions' | 'protagonist' | 'characters' | 'backgrounds' | 'sounds' | 'premise' | 'summary' | 'history'
+export type ChatContextBreakdown = Record<ChatContextSection, number>
+
+interface ContextPart {
+  section: ChatContextSection
+  content: string
+}
+
 export function chatContextSize(messages: ChatMessage[]) {
   return messages.reduce((total, message) => total + message.content.length, 0)
 }
@@ -188,7 +196,7 @@ function responseStyleInstructions(story: Story) {
   ]
 }
 
-export function buildSystemPrompt(options: {
+function buildSystemPromptParts(options: {
   presetContent: string
   story: Story
   characters: Character[]
@@ -198,7 +206,7 @@ export function buildSystemPrompt(options: {
   userName: string
   protagonistPreferences: string
   generationMode: GenerationMode
-}): string {
+}): ContextPart[] {
   const {
     presetContent,
     story,
@@ -215,61 +223,72 @@ export function buildSystemPrompt(options: {
   )
   const absent = new Set(normalizeAbsentCharacterIds(story.absentCharacterIds, story.characterIds))
   return [
-    presetContent.trim(),
-    ...responseStyleInstructions(story),
-    ...(story.autoGenerateImages
-      ? [
-          '',
-          '## GENERACIÓN DE IMÁGENES DURANTE LA HISTORIA',
-          'Las imágenes existentes siguen siendo la opción preferida. Cuando un personaje necesite un aspecto nuevo, puedes pedir una imagen nueva con una línea independiente exacta: `Imagen Nombre [etiqueta]: prompt en inglés`.',
-          'Pide como máximo una línea independiente de imagen por personaje y respuesta.',
-          'Usa solo el catálogo disponible para las líneas normales; para una imagen nueva utiliza la directiva Imagen indicada.',
-          'El prompt nuevo solo puede describir postura, ropa, expresión y escena. No incluyas rasgos inmutables del personaje: la aplicación añadirá el prefijo de imagen configurado.',
-          'La línea de imagen no es diálogo ni narración y no debes comentarla. No incluyas rasgos inmutables como pelo o complexión, porque ya están en el prefijo del personaje.'
-        ]
-      : []),
+    { section: 'instructions', content: [
+      presetContent.trim(),
+      ...responseStyleInstructions(story),
+      ...(story.autoGenerateImages
+        ? [
+            '',
+            '## GENERACIÓN DE IMÁGENES DURANTE LA HISTORIA',
+            'Las imágenes existentes siguen siendo la opción preferida. Cuando un personaje necesite un aspecto nuevo, puedes pedir una imagen nueva con una línea independiente exacta: `Imagen Nombre [etiqueta]: prompt en inglés`.',
+            'Pide como máximo una línea independiente de imagen por personaje y respuesta.',
+            'Usa solo el catálogo disponible para las líneas normales; para una imagen nueva utiliza la directiva Imagen indicada.',
+            'El prompt nuevo solo puede describir postura, ropa, expresión y escena. No incluyas rasgos inmutables del personaje: la aplicación añadirá el prefijo de imagen configurado.',
+            'La línea de imagen no es diálogo ni narración y no debes comentarla. No incluyas rasgos inmutables como pelo o complexión, porque ya están en el prefijo del personaje.'
+          ]
+        : [])
+    ].join('\n') },
     ...(!story.contextSummary?.trim()
-      ? ['', '## PLANTEAMIENTO DE LA HISTORIA', story.premise.trim() || '(sin planteamiento)']
+      ? [{ section: 'premise' as const, content: ['## PLANTEAMIENTO DE LA HISTORIA', story.premise.trim() || '(sin planteamiento)'].join('\n') }]
       : []),
-    '',
-    '## EL PROTAGONISTA',
-    `El protagonista se llama "${userName}". Sus mensajes llegan con el prefijo \`${userName}:\`.`,
-    'Los mensajes del usuario que empiecen por `IA: ` o `Narrador: ` son instrucciones solo para tu siguiente respuesta. No forman parte del chat ni de las acciones del protagonista; aplica únicamente el texto posterior al prefijo y no lo muestres ni lo menciones.',
-    protagonistPreferences.trim()
-      ? `Preferencias del protagonista:\n${protagonistPreferences.trim()}`
-      : 'Preferencias del protagonista: (sin preferencias adicionales)',
-    generationMode === 'auto'
-      ? `Puedes hablar y decidir por el protagonista. Escribe su diálogo como \`${userName}: texto\`, sin etiqueta visual, sus pensamientos como \`Pensamiento ${userName}: texto\`, también sin etiqueta visual, y sus acciones como narración.`
-      : 'No hables ni decidas por el protagonista; reacciona a lo que hace. No inventes sus pensamientos.',
-    '',
-    '## PENSAMIENTOS DE LOS PERSONAJES',
-    'Puedes mostrar un pensamiento interior no pronunciado de un personaje cuando encaje con la escena, sin exigir uno en cada respuesta. Usa una línea independiente `Pensamiento Nombre [etiqueta][otra etiqueta]: texto`, con el nombre exacto y las mismas etiquetas visuales que el diálogo.',
-    'Escribe el texto del pensamiento sin paréntesis ni markdown; la aplicación lo muestra en cursiva, entre paréntesis y con el color del personaje. Los demás personajes no lo oyen. No confundas estos pensamientos ficticios con tu propio análisis o razonamiento.',
-    '',
-    '## PRESENCIA EN LA ESCENA',
-    'El protagonista está siempre presente. Respeta la presencia actual indicada por la historia; no cambia al cambiar de fondo. Está prohibido escribir diálogo, pensamientos o acciones de cualquier personaje marcado AUSENTE, aunque hablase en el historial o en el resumen. Los ausentes siguen siendo conocidos y pueden mencionarse, pero no intervienen mientras sigan ausentes. Mientras sigan ausentes, no solicites imágenes o sonidos para ellos. Puedes cambiar explícitamente la presencia mediante las instrucciones siguientes; desde ese punto manda el nuevo estado. Esta presencia actual prevalece sobre el historial y su resumen.',
-    '',
-    'Para sacar a un personaje del elenco activo de la escena, escribe una línea independiente `Ausente Nombre:`. Para hacerlo volver o dejar de estar ausente, escribe `Presente Nombre:`, aunque no tenga diálogo. Usa el nombre exacto personalizado de la historia, un personaje por línea, sin etiquetas, texto adicional ni markdown. Nunca apliques estas instrucciones al protagonista ni a personajes ajenos al elenco. La aplicación las procesa en orden y las oculta sin crear cuadros de texto; una mención narrativa no cambia la presencia. Una intervención posterior de diálogo o pensamiento con texto también supone su retorno.',
-    '',
-    '## PERSONAJES',
-    characters
-      .map((character) =>
-        characterSheet(
-          character,
-          images,
-          characterCustomizations.get(character.id),
-          story.autoGenerateImages === true,
-          absent.has(character.id)
+    { section: 'protagonist', content: [
+      '## EL PROTAGONISTA',
+      `El protagonista se llama "${userName}". Sus mensajes llegan con el prefijo \`${userName}:\`.`,
+      'Los mensajes del usuario que empiecen por `IA: ` o `Narrador: ` son instrucciones solo para tu siguiente respuesta. No forman parte del chat ni de las acciones del protagonista; aplica únicamente el texto posterior al prefijo y no lo muestres ni lo menciones.',
+      protagonistPreferences.trim()
+        ? `Preferencias del protagonista:\n${protagonistPreferences.trim()}`
+        : 'Preferencias del protagonista: (sin preferencias adicionales)',
+      generationMode === 'auto'
+        ? `Puedes hablar y decidir por el protagonista. Escribe su diálogo como \`${userName}: texto\`, sin etiqueta visual, sus pensamientos como \`Pensamiento ${userName}: texto\`, también sin etiqueta visual, y sus acciones como narración.`
+        : 'No hables ni decidas por el protagonista; reacciona a lo que hace. No inventes sus pensamientos.'
+    ].join('\n') },
+    { section: 'instructions', content: [
+      '## PENSAMIENTOS DE LOS PERSONAJES',
+      'Puedes mostrar un pensamiento interior no pronunciado de un personaje cuando encaje con la escena, sin exigir uno en cada respuesta. Usa una línea independiente `Pensamiento Nombre [etiqueta][otra etiqueta]: texto`, con el nombre exacto y las mismas etiquetas visuales que el diálogo.',
+      'Escribe el texto del pensamiento sin paréntesis ni markdown; la aplicación lo muestra en cursiva, entre paréntesis y con el color del personaje. Los demás personajes no lo oyen. No confundas estos pensamientos ficticios con tu propio análisis o razonamiento.',
+      '',
+      '## PRESENCIA EN LA ESCENA',
+      'El protagonista está siempre presente. Respeta la presencia actual indicada por la historia; no cambia al cambiar de fondo. Está prohibido escribir diálogo, pensamientos o acciones de cualquier personaje marcado AUSENTE, aunque hablase en el historial o en el resumen. Los ausentes siguen siendo conocidos y pueden mencionarse, pero no intervienen mientras sigan ausentes. Mientras sigan ausentes, no solicites imágenes o sonidos para ellos. Puedes cambiar explícitamente la presencia mediante las instrucciones siguientes; desde ese punto manda el nuevo estado. Esta presencia actual prevalece sobre el historial y su resumen.',
+      '',
+      'Para sacar a un personaje del elenco activo de la escena, escribe una línea independiente `Ausente Nombre:`. Para hacerlo volver o dejar de estar ausente, escribe `Presente Nombre:`, aunque no tenga diálogo. Usa el nombre exacto personalizado de la historia, un personaje por línea, sin etiquetas, texto adicional ni markdown. Nunca apliques estas instrucciones al protagonista ni a personajes ajenos al elenco. La aplicación las procesa en orden y las oculta sin crear cuadros de texto; una mención narrativa no cambia la presencia. Una intervención posterior de diálogo o pensamiento con texto también supone su retorno.'
+    ].join('\n') },
+    { section: 'characters', content: [
+      '## PERSONAJES',
+      characters
+        .map((character) =>
+          characterSheet(
+            character,
+            images,
+            characterCustomizations.get(character.id),
+            story.autoGenerateImages === true,
+            absent.has(character.id)
+          )
         )
-      )
-      .join('\n\n'),
-    '',
-    '## FONDOS',
-    backgroundSheet(story, backgrounds),
-    '',
-    '## SONIDOS',
-    soundSheet(sounds.filter((sound) => !sound.characterId || !absent.has(sound.characterId)), characters, backgrounds)
-  ].join('\n')
+        .join('\n\n')
+    ].join('\n') },
+    { section: 'backgrounds', content: [
+      '## FONDOS',
+      backgroundSheet(story, backgrounds)
+    ].join('\n') },
+    { section: 'sounds', content: [
+      '## SONIDOS',
+      soundSheet(sounds.filter((sound) => !sound.characterId || !absent.has(sound.characterId)), characters, backgrounds)
+    ].join('\n') }
+  ]
+}
+
+export function buildSystemPrompt(options: Parameters<typeof buildSystemPromptParts>[0]): string {
+  return buildSystemPromptParts(options).map(part => part.content).join('\n\n')
 }
 
 /** Recorta el historial por presupuesto de caracteres, conservando lo más reciente. */
@@ -360,7 +379,7 @@ export function buildCompactionMessages(options: {
   ]
 }
 
-export function buildChatMessages(options: {
+export function buildChatContext(options: {
   presetContent: string
   story: Story
   characters: Character[]
@@ -374,8 +393,9 @@ export function buildChatMessages(options: {
   generationMode: GenerationMode
   imageCatalogChange?: string | null
   pendingImageInstructions?: StoryPendingImageInstruction[]
-}): ChatMessage[] {
-  const system = buildSystemPrompt(options)
+}): { messages: ChatMessage[]; breakdown: ChatContextBreakdown } {
+  const systemParts = buildSystemPromptParts(options)
+  const system = systemParts.map(part => part.content).join('\n\n')
   const history = buildHistory(
     options.messages,
     options.characters,
@@ -413,16 +433,16 @@ export function buildChatMessages(options: {
     ? [{ role: 'user', content: pendingImageInstruction }]
     : []
 
-  const messages: ChatMessage[] = [
-    { role: 'system', content: system },
-    ...contextSummary,
-    ...history,
-    ...opening,
-    ...imageCatalogChange,
-    ...continuationMessages,
-    ...pendingImageMessages,
+  const parts: Array<ChatMessage & { section: ChatContextSection }> = [
+    ...contextSummary.map(message => ({ ...message, section: 'summary' as const })),
+    ...history.map(message => ({ ...message, section: 'history' as const })),
+    ...opening.map(message => ({ ...message, section: 'instructions' as const })),
+    ...imageCatalogChange.map(message => ({ ...message, section: 'characters' as const })),
+    ...continuationMessages.map(message => ({ ...message, section: 'instructions' as const })),
+    ...pendingImageMessages.map(message => ({ ...message, section: 'characters' as const })),
     {
       role: 'system',
+      section: 'instructions',
       content: formatReminder(
         options.generationMode,
         options.userName,
@@ -430,16 +450,33 @@ export function buildChatMessages(options: {
       )
     }
   ]
+  const messages: ChatMessage[] = [{ role: 'system', content: system }, ...parts]
   const systemContent = messages
     .filter((message) => message.role === 'system')
     .map((message) => message.content.trim())
     .filter(Boolean)
     .join('\n\n')
 
-  return [
+  const result: ChatMessage[] = [
     ...(systemContent ? [{ role: 'system' as const, content: systemContent }] : []),
-    ...messages.filter((message) => message.role !== 'system')
+    ...messages.filter((message) => message.role !== 'system').map(({ role, content }) => ({ role, content }))
   ]
+  const breakdown: ChatContextBreakdown = {
+    instructions: 0, protagonist: 0, characters: 0, backgrounds: 0,
+    sounds: 0, premise: 0, summary: 0, history: 0
+  }
+  for (const part of systemParts) breakdown[part.section] += part.content.length
+  for (const part of parts) {
+    breakdown[part.section] += part.role === 'system' ? part.content.trim().length : part.content.length
+  }
+  // El formato compartido y los separadores entre bloques pertenecen a Instrucciones.
+  breakdown.instructions = chatContextSize(result) - Object.entries(breakdown)
+    .reduce((total, [section, count]) => total + (section === 'instructions' ? 0 : count), 0)
+  return { messages: result, breakdown }
+}
+
+export function buildChatMessages(options: Parameters<typeof buildChatContext>[0]): ChatMessage[] {
+  return buildChatContext(options).messages
 }
 
 export function resolveProtagonistPreferences(

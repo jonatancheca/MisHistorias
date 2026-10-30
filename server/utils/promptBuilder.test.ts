@@ -13,6 +13,7 @@ const jiti = createJiti(import.meta.url, {
   }
 })
 const {
+  buildChatContext,
   buildChatMessages,
   buildCompactionMessages,
   buildCompactionHistory,
@@ -63,6 +64,78 @@ const story: Story = {
   createdAt: 1,
   updatedAt: 1
 }
+
+test('desglosa exactamente el contexto enviado, incluidos encabezados, instrucciones y separadores', () => {
+  const options: Parameters<typeof buildChatContext>[0] = {
+    presetContent: '  Narra sin cambiar el formato.  ',
+    story: { ...story, premise: 'Inicio.\n## SONIDOS\nTexto del planteamiento.', characterCustomizations: [] },
+    characters: [{ ...character, prompt: 'Descripción.\n## FONDOS\nTexto del personaje.' }],
+    images: [{ id: 'image-1', characterId: character.id, position: 0, tags: ['neutral', 'abrigo'],
+      isDefault: true, mimeType: 'image/png', createdAt: 1 }],
+    backgrounds: [{ id: 'background-1', tags: ['bosque'], description: 'No se envía la imagen.',
+      mimeType: 'image/png', archived: false, visibleInDemo: false, createdAt: 1 }],
+    sounds: [{ id: 'sound-1', tags: ['lluvia'], characterId: character.id, backgroundId: null,
+      mimeType: 'audio/ogg', createdAt: 1 }],
+    messages: [
+      { id: 'old-instruction', storyId: story.id, role: 'user', raw: 'IA: Instrucción consumida.', segments: [], createdAt: 1 },
+      { id: 'old', storyId: story.id, role: 'assistant', raw: 'Historia anterior. 🌳', segments: [], createdAt: 2 },
+      { id: 'pending', storyId: story.id, role: 'user', raw: '  Intervención pendiente.  ', segments: [], createdAt: 3 },
+      { id: 'instruction', storyId: story.id, role: 'user', raw: 'IA: Cambia el tono.', segments: [], createdAt: 4 }
+    ],
+    historyBudget: 0, userName: 'Vera', protagonistPreferences: '  Curiosa.  ', generationMode: 'normal'
+  }
+  const initial = buildChatContext(options)
+  assert.deepEqual(initial.messages, buildChatMessages(options))
+  assert.deepEqual(Object.keys(initial.breakdown).sort(),
+    ['instructions', 'protagonist', 'characters', 'backgrounds', 'sounds', 'premise', 'summary', 'history'].sort())
+  assert.equal(initial.breakdown.premise, `## PLANTEAMIENTO DE LA HISTORIA\n${options.story.premise}`.length)
+  assert.equal(initial.breakdown.summary, 0)
+  assert.equal(initial.breakdown.history, [
+    'Historia anterior. 🌳', 'Vera:   Intervención pendiente.  ', 'Instrucción del usuario para la IA:\nCambia el tono.'
+  ].reduce((total, text) => total + text.length, 0))
+  assert.doesNotMatch(JSON.stringify(initial.messages), /Instrucción consumida/)
+
+  for (const generationMode of ['normal', 'continue', 'auto'] as const) {
+    for (const summarized of [false, true]) {
+      for (const absent of [false, true]) {
+        const context = buildChatContext({
+          ...options, generationMode, presetContent: '',
+          story: { ...options.story, autoGenerateImages: true, dialogueStyle: 'few', narrationStyle: 'many',
+            absentCharacterIds: absent ? [character.id] : [],
+            contextSummary: summarized ? '  Resumen.\n## PERSONAJES\nContenido narrativo.  ' : undefined,
+            contextSummaryThroughMessageId: summarized ? 'old' : undefined },
+          imageCatalogChange: '  Nuevas etiquetas disponibles.  ',
+          pendingImageInstructions: [{ characterId: character.id, imageId: 'image-1', tags: ['abrigo'] }]
+        })
+        assert.equal(Object.values(context.breakdown).reduce((total, count) => total + count, 0), chatContextSize(context.messages))
+        assert.ok(Object.values(context.breakdown).every(count => Number.isInteger(count) && count >= 0))
+        assert.equal(context.breakdown.premise === 0, summarized)
+        assert.equal(context.breakdown.summary, summarized
+          ? 'Resumen del historial anterior:\nResumen.\n## PERSONAJES\nContenido narrativo.'.length : 0)
+        assert.equal(context.breakdown.history, initial.breakdown.history - (summarized ? 'Historia anterior. 🌳'.length : 0))
+      }
+    }
+  }
+
+  const changed = buildChatContext({ ...options, characters: [{ ...options.characters[0]!, prompt: `${options.characters[0]!.prompt} Detalle extra.` }] })
+  assert.equal(changed.breakdown.characters - initial.breakdown.characters, ' Detalle extra.'.length)
+  assert.equal(chatContextSize(changed.messages) - chatContextSize(initial.messages), ' Detalle extra.'.length)
+  for (const section of ['instructions', 'protagonist', 'backgrounds', 'sounds', 'premise', 'summary', 'history'] as const) {
+    assert.equal(changed.breakdown[section], initial.breakdown[section])
+  }
+})
+
+test('desglosa apertura sin historial y no añade metadatos al payload del narrador', () => {
+  const context = buildChatContext({
+    presetContent: '', story, characters: [], images: [], backgrounds: [], sounds: [],
+    messages: [], historyBudget: 0, userName: 'Vera', protagonistPreferences: '', generationMode: 'normal'
+  })
+  assert.equal(context.breakdown.history, 0)
+  assert.equal(context.breakdown.summary, 0)
+  assert.equal(Object.values(context.breakdown).reduce((total, count) => total + count, 0), chatContextSize(context.messages))
+  assert.ok(context.messages.some(message => message.content.startsWith('Comienza la historia')))
+  for (const message of context.messages) assert.deepEqual(Object.keys(message).sort(), ['content', 'role'])
+})
 
 test('estilo de respuesta orienta cuadros por tipo y omite opciones sin indicar', () => {
   const options = {
