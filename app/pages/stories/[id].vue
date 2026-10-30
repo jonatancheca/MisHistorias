@@ -146,6 +146,8 @@ const storyPreferencesOpen = ref(false)
 const storyTitle = ref('')
 const storyPremise = ref('')
 const storyVisualMode = ref(false)
+const storyUseBackgrounds = ref(true)
+const storyUseSounds = ref(true)
 const autoGenerateImages = ref(false)
 const storyPreferences = ref('')
 const storyPreferencesMode = ref<'append' | 'replace'>('append')
@@ -549,6 +551,8 @@ function openStoryPreferences() {
   storyTitle.value = stories.activeStory.title
   storyPremise.value = stories.activeStory.premise
   storyVisualMode.value = stories.activeStory.visualMode
+  storyUseBackgrounds.value = stories.activeStory.useBackgrounds !== false
+  storyUseSounds.value = stories.activeStory.useSounds !== false
   autoGenerateImages.value = stories.activeStory.autoGenerateImages === true
   storyPreferences.value = stories.activeStory.protagonistPreferences ?? ''
   storyPreferencesMode.value = stories.activeStory.protagonistPreferencesMode ?? 'append'
@@ -578,7 +582,9 @@ async function saveStoryPreferences() {
     storyCharacterCustomizations.value.map((item) => ({ ...item, tags: [...item.tags] })),
     storyInitialBackgroundId.value,
     storyBackgroundStyle.value,
-    storyVisibleInDemo.value
+    storyVisibleInDemo.value,
+    storyUseBackgrounds.value,
+    storyUseSounds.value
   )
   storyPreferencesOpen.value = false
 }
@@ -2006,6 +2012,8 @@ onBeforeRouteLeave(() => {
             v-model:premise="storyPremise"
             v-model:visual-mode="storyVisualMode"
             v-model:auto-generate-images="autoGenerateImages"
+            v-model:use-backgrounds="storyUseBackgrounds"
+            v-model:use-sounds="storyUseSounds"
             v-model:protagonist-preferences="storyPreferences"
             v-model:protagonist-preferences-mode="storyPreferencesMode"
             v-model:dialogue-style="dialogueStyle"

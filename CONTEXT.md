@@ -48,6 +48,14 @@ _Evitar_: Fondo eliminado, fondo de solo lectura, fondo no disponible
 Preferencia de cada historia para presentar el mismo contenido como Chat o Novela Visual, incluso durante su creación.
 _Evitar_: Tipo de historia, modo de generación
 
+**Uso de fondos de la historia**:
+Disponibilidad de fondos visuales para que el narrador los elija en nuevas respuestas de una historia. Desactivarlo no cambia la representación del historial existente.
+_Evitar_: Ocultar fondos del historial, silenciar ambiente
+
+**Uso de sonidos de la historia**:
+Disponibilidad de efectos de sonido y sonidos de fondo para nuevas respuestas de una historia, excluyendo los audios asociados a fondos visuales cuando estos no se usan. Es independiente del aviso de respuesta del narrador y desactivarlo no silencia el historial existente.
+_Evitar_: Silencio global, desactivar avisos del narrador
+
 **Pensamiento del personaje**:
 Intervención interior no pronunciada de un personaje, distinta de su diálogo y de la narración. Los demás personajes no la oyen; el narrador solo puede inventar pensamientos del protagonista en Auto.
 _Evitar_: Diálogo, razonamiento de la IA, narración

@@ -119,6 +119,8 @@ function validatePayload(resource: DataResource, rawValue: unknown) {
         typeof value.archived === 'boolean' &&
         typeof value.visibleInDemo === 'boolean' &&
         (value.autoGenerateImages === undefined || typeof value.autoGenerateImages === 'boolean') &&
+        (value.useBackgrounds === undefined || typeof value.useBackgrounds === 'boolean') &&
+        (value.useSounds === undefined || typeof value.useSounds === 'boolean') &&
         hasString(value, 'protagonistPreferences') &&
         (value.protagonistPreferencesMode === 'append' ||
           value.protagonistPreferencesMode === 'replace') &&

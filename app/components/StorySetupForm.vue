@@ -23,6 +23,8 @@ const title = defineModel<string>('title', { required: true })
 const premise = defineModel<string>('premise', { required: true })
 const visualMode = defineModel<boolean>('visualMode', { required: true })
 const autoGenerateImages = defineModel<boolean>('autoGenerateImages', { required: true })
+const useBackgrounds = defineModel<boolean>('useBackgrounds', { required: true })
+const useSounds = defineModel<boolean>('useSounds', { required: true })
 const protagonistPreferences = defineModel<string>('protagonistPreferences', { required: true })
 const protagonistPreferencesMode = defineModel<'append' | 'replace'>('protagonistPreferencesMode', { required: true })
 const dialogueStyle = defineModel<ResponseStyleAmount>('dialogueStyle', { required: true })
@@ -300,6 +302,23 @@ watch(characterIds, (ids) => {
       </label>
     </section>
 
+    <section class="grid gap-3 rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-4 sm:grid-cols-2 sm:p-5">
+      <label class="flex items-start gap-3 rounded-xl border border-[var(--color-border-soft)] p-4">
+        <input v-model="useBackgrounds" type="checkbox" class="mt-1 h-4 w-4 shrink-0 accent-[var(--color-brand-500)]">
+        <span class="min-w-0">
+          <span class="block font-semibold">Usar fondos</span>
+          <span class="mt-1 block text-xs text-[var(--color-fg-muted)]">Ofrece fondos visuales y sus audios asociados al narrador. Desactivarlo conserva el historial.</span>
+        </span>
+      </label>
+      <label class="flex items-start gap-3 rounded-xl border border-[var(--color-border-soft)] p-4">
+        <input v-model="useSounds" type="checkbox" class="mt-1 h-4 w-4 shrink-0 accent-[var(--color-brand-500)]">
+        <span class="min-w-0">
+          <span class="block font-semibold">Usar sonidos</span>
+          <span class="mt-1 block text-xs text-[var(--color-fg-muted)]">Ofrece efectos y ambiente al narrador. No cambia el aviso de respuesta ni silencia el historial.</span>
+        </span>
+      </label>
+    </section>
+
     <section class="grid gap-3 rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface)] p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4">
       <button
         type="button"
@@ -324,8 +343,9 @@ watch(characterIds, (ids) => {
       <label class="rounded-xl border border-[var(--color-border-soft)] p-4">
         <span class="block text-xs font-medium uppercase tracking-wide text-[var(--color-fg-muted)]">Estilo de fondos</span>
         <select
-          class="field mt-2"
+          class="field mt-2 disabled:cursor-not-allowed disabled:opacity-50"
           aria-label="Estilo de fondos"
+          :disabled="!useBackgrounds"
           :value="backgroundStyle ?? ''"
           @change="selectBackgroundStyle(($event.target as HTMLSelectElement).value)"
         >
@@ -339,8 +359,9 @@ watch(characterIds, (ids) => {
 
       <button
         type="button"
-        class="flex min-w-0 items-center gap-3 rounded-xl border border-[var(--color-border-soft)] p-4 text-left transition hover:border-brand-400"
+        class="flex min-w-0 items-center gap-3 rounded-xl border border-[var(--color-border-soft)] p-4 text-left transition hover:border-brand-400 disabled:cursor-not-allowed disabled:opacity-50"
         aria-label="Seleccionar fondo inicial"
+        :disabled="!useBackgrounds"
         @click="backgroundPickerOpen = true"
       >
         <img

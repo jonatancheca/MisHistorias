@@ -92,6 +92,8 @@ interface StoryInput {
   premise?: string
   visualMode?: boolean
   autoGenerateImages?: boolean
+  useBackgrounds?: boolean
+  useSounds?: boolean
   visibleInDemo?: boolean
   archived?: boolean
   protagonistPreferences?: string
@@ -282,6 +284,8 @@ export const test = base.extend<{ data: TestDataFactory; contextLimits: undefine
           archived: input.archived ?? false,
           visibleInDemo: input.visibleInDemo ?? false,
           autoGenerateImages: input.autoGenerateImages ?? false,
+          useBackgrounds: input.useBackgrounds ?? true,
+          useSounds: input.useSounds ?? true,
           protagonistPreferences: input.protagonistPreferences ?? '',
           protagonistPreferencesMode: input.protagonistPreferencesMode ?? 'append',
           absentCharacterIds: input.absentCharacterIds ?? [],

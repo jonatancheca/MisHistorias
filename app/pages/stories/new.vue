@@ -52,6 +52,8 @@ const title = ref('')
 const premise = ref(copiedStory?.premise ?? '')
 const visualMode = ref(copiedStory?.visualMode ?? true)
 const autoGenerateImages = ref(copiedStory?.autoGenerateImages ?? false)
+const useBackgrounds = ref(copiedStory?.useBackgrounds !== false)
+const useSounds = ref(copiedStory?.useSounds !== false)
 const protagonistPreferences = ref(copiedStory?.protagonistPreferences ?? '')
 const protagonistPreferencesMode = ref<'append' | 'replace'>(
   copiedStory?.protagonistPreferencesMode ?? 'append'
@@ -90,6 +92,8 @@ async function submit() {
       premise: premise.value,
       visualMode: visualMode.value,
       autoGenerateImages: autoGenerateImages.value,
+      useBackgrounds: useBackgrounds.value,
+      useSounds: useSounds.value,
       protagonistPreferences: protagonistPreferences.value,
       protagonistPreferencesMode: protagonistPreferencesMode.value,
       dialogueStyle: dialogueStyle.value,
@@ -127,6 +131,8 @@ async function submit() {
         v-model:premise="premise"
         v-model:visual-mode="visualMode"
         v-model:auto-generate-images="autoGenerateImages"
+        v-model:use-backgrounds="useBackgrounds"
+        v-model:use-sounds="useSounds"
         v-model:protagonist-preferences="protagonistPreferences"
         v-model:protagonist-preferences-mode="protagonistPreferencesMode"
         v-model:dialogue-style="dialogueStyle"

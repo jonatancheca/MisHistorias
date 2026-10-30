@@ -1,4 +1,4 @@
-export const SOUND_DIRECTIVE_RE = /^\s*Sonido\s*\[[^\]\n]{1,80}\]\s*:/i
+export const SOUND_DIRECTIVE_RE = /^\s*Sonido\s*\[([^\]\n]{1,80})\]\s*:/i
 
 export function stripSoundDirectives(raw: string) {
   return raw

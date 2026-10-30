@@ -127,7 +127,7 @@ type SqliteRow<Columns extends string = never> = Record<string, SQLOutputValue> 
     scope: DataScope
   }
 
-const SCHEMA_VERSION = 46
+const SCHEMA_VERSION = 47
 const DEFAULT_DATABASE_PATH = '.data/mishistorias.sqlite'
 const MIGRATION_BACKUP_RETENTION = 5
 const ERROR_TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
@@ -414,6 +414,8 @@ function rowToStory(row: SqliteRow): Story {
     archived: row.archived === 1,
     visibleInDemo: row.visible_in_demo === 1,
     autoGenerateImages: row.auto_generate_images === 1,
+    useBackgrounds: row.use_backgrounds !== 0,
+    useSounds: row.use_sounds !== 0,
     protagonistPreferences: text(row.protagonist_preferences),
     protagonistPreferencesMode:
       row.protagonist_preferences_mode === 'replace' ? 'replace' : 'append',
@@ -960,6 +962,8 @@ export class MisHistoriasStorage {
           premise TEXT NOT NULL,
           visual_mode INTEGER NOT NULL DEFAULT 0 CHECK (visual_mode IN (0, 1)),
           auto_generate_images INTEGER NOT NULL DEFAULT 0 CHECK (auto_generate_images IN (0, 1)),
+          use_backgrounds INTEGER NOT NULL DEFAULT 1 CHECK (use_backgrounds IN (0, 1)),
+          use_sounds INTEGER NOT NULL DEFAULT 1 CHECK (use_sounds IN (0, 1)),
           archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
           visible_in_demo INTEGER NOT NULL DEFAULT 0 CHECK (visible_in_demo IN (0, 1)),
           protagonist_preferences TEXT NOT NULL,
@@ -1819,6 +1823,15 @@ export class MisHistoriasStorage {
         const messageColumns = this.database.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
         if (!messageColumns.some((column) => column.name === 'absent_character_ids_json')) {
           this.database.exec('ALTER TABLE messages ADD COLUMN absent_character_ids_json TEXT')
+        }
+      }
+
+      if (version.user_version < 47) {
+        const storyColumns = this.database.prepare('PRAGMA table_info(stories)').all() as Array<{ name: string }>
+        for (const column of ['use_backgrounds', 'use_sounds']) {
+          if (!storyColumns.some((item) => item.name === column)) {
+            this.database.exec(`ALTER TABLE stories ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 1 CHECK (${column} IN (0, 1))`)
+          }
         }
       }
 
@@ -3057,8 +3070,9 @@ export class MisHistoriasStorage {
           character_ids_json, character_customizations_json, initial_background_id,
           background_style, preset_id, image_catalog_snapshot_json,
           pending_image_instructions_json, context_summary,
-          context_summary_through_message_id, created_at, updated_at, absent_character_ids_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          context_summary_through_message_id, created_at, updated_at, absent_character_ids_json,
+          use_backgrounds, use_sounds
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         scope, access.ownerId, copiedStory.id, copiedStory.title, copiedStory.premise,
         bool(copiedStory.visualMode), bool(copiedStory.autoGenerateImages), bool(copiedStory.archived),
@@ -3071,7 +3085,8 @@ export class MisHistoriasStorage {
         copiedStory.imageCatalogSnapshot === undefined ? null : json(copiedStory.imageCatalogSnapshot),
         json(copiedStory.pendingImageInstructions ?? []), copiedStory.contextSummary ?? '',
         copiedStory.contextSummaryThroughMessageId ?? null, copiedStory.createdAt, copiedStory.updatedAt,
-        json(copiedStory.absentCharacterIds ?? [])
+        json(copiedStory.absentCharacterIds ?? []),
+        bool(copiedStory.useBackgrounds !== false), bool(copiedStory.useSounds !== false)
       )
 
       const copiedMessages = sourceMessages.map(mapMessage)
@@ -3339,13 +3354,16 @@ export class MisHistoriasStorage {
               dialogue_style, narration_style,
               initial_background_id, background_style, preset_id, image_catalog_snapshot_json,
               pending_image_instructions_json, context_summary,
-              context_summary_through_message_id, created_at, updated_at, absent_character_ids_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              context_summary_through_message_id, created_at, updated_at, absent_character_ids_json,
+              use_backgrounds, use_sounds
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, id) DO UPDATE SET
               title = excluded.title,
               premise = excluded.premise,
               visual_mode = excluded.visual_mode,
               auto_generate_images = excluded.auto_generate_images,
+              use_backgrounds = excluded.use_backgrounds,
+              use_sounds = excluded.use_sounds,
               archived = excluded.archived,
               visible_in_demo = excluded.visible_in_demo,
               protagonist_preferences = excluded.protagonist_preferences,
@@ -3396,7 +3414,9 @@ export class MisHistoriasStorage {
               : null,
             integer(value.createdAt),
             integer(value.updatedAt),
-            json(normalizeAbsentCharacterIds(value.absentCharacterIds, stringArray(value.characterIds)))
+            json(normalizeAbsentCharacterIds(value.absentCharacterIds, stringArray(value.characterIds))),
+            bool(value.useBackgrounds !== false),
+            bool(value.useSounds !== false)
           )
         break
       case 'messages':

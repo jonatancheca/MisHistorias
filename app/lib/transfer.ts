@@ -116,6 +116,8 @@ interface ExportedStory {
   archived?: boolean
   visibleInDemo?: boolean
   autoGenerateImages?: boolean
+  useBackgrounds?: boolean
+  useSounds?: boolean
   protagonistPreferences?: string
   protagonistPreferencesMode?: 'append' | 'replace'
   dialogueStyle?: ResponseStyleAmount
@@ -262,6 +264,8 @@ export async function exportBundle(
       archived: story.archived,
       visibleInDemo: story.visibleInDemo,
       autoGenerateImages: story.autoGenerateImages === true,
+      useBackgrounds: story.useBackgrounds !== false,
+      useSounds: story.useSounds !== false,
       protagonistPreferences: story.protagonistPreferences ?? '',
       protagonistPreferencesMode: story.protagonistPreferencesMode ?? 'append',
       dialogueStyle: responseStyleAmount(story.dialogueStyle),
@@ -556,6 +560,8 @@ export async function importBundle(raw: string) {
       archived: item.archived === true,
       visibleInDemo: item.visibleInDemo === true,
       autoGenerateImages: item.autoGenerateImages === true,
+      useBackgrounds: item.useBackgrounds !== false,
+      useSounds: item.useSounds !== false,
       protagonistPreferences: String(item.protagonistPreferences ?? ''),
       protagonistPreferencesMode:
         item.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',
@@ -657,6 +663,8 @@ export async function importBundle(raw: string) {
         visualMode: save.story.visualMode === true,
         visibleInDemo: save.story.visibleInDemo === true,
         autoGenerateImages: save.story.autoGenerateImages === true,
+        useBackgrounds: save.story.useBackgrounds !== false,
+        useSounds: save.story.useSounds !== false,
         protagonistPreferences: String(save.story.protagonistPreferences ?? ''),
         protagonistPreferencesMode:
           save.story.protagonistPreferencesMode === 'replace' ? 'replace' : 'append',

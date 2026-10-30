@@ -65,6 +65,79 @@ const story: Story = {
   updatedAt: 1
 }
 
+test('opciones de recursos filtran catálogos, formato, historial y caracteres en las cuatro combinaciones', async () => {
+  const { DEFAULT_PRESET_CONTENT } = await jiti.import<typeof import('../../app/lib/defaultPreset.ts')>('../../app/lib/defaultPreset.ts')
+  for (const useBackgrounds of [false, true]) {
+    for (const useSounds of [false, true]) {
+      const options: Parameters<typeof buildChatContext>[0] = {
+        presetContent: DEFAULT_PRESET_CONTENT,
+        story: { ...story, useBackgrounds, useSounds },
+        characters: [character], images: [],
+        backgrounds: [{ id: 'bg', tags: ['bosque-unico'], description: '', mimeType: 'image/png', archived: false, visibleInDemo: false, createdAt: 1 }],
+        sounds: [
+          { id: 'audio-bg', tags: ['ambiente-unico'], backgroundId: 'bg', characterId: null, mimeType: 'audio/ogg', createdAt: 1 },
+          { id: 'audio-character', tags: ['pasos-unicos'], backgroundId: null, characterId: character.id, mimeType: 'audio/ogg', createdAt: 1 },
+          { id: 'audio-free', tags: ['trueno-unico'], backgroundId: null, characterId: null, mimeType: 'audio/ogg', createdAt: 1 }
+        ],
+        messages: [{ id: 'old', storyId: story.id, role: 'assistant',
+          raw: 'Fondo [bosque-unico]:\nSonido [ambiente-unico]:\nSonido [pasos-unicos]:\nSonido [trueno-unico]:\nLa noche sigue.',
+          segments: [], createdAt: 1 }],
+        historyBudget: 0, userName: 'Vera', protagonistPreferences: '', generationMode: 'normal'
+      }
+      const context = buildChatContext(options)
+      const sent = context.messages.map(message => message.content).join('\n')
+      assert.equal(context.breakdown.backgrounds > 0, useBackgrounds)
+      assert.equal(context.breakdown.sounds > 0, useSounds)
+      assert.equal(sent.includes('## FONDOS'), useBackgrounds)
+      assert.equal(sent.includes('## SONIDOS'), useSounds)
+      assert.equal(sent.includes('Fondo [etiqueta]:'), useBackgrounds)
+      assert.equal(sent.includes('Sonido [etiqueta]:'), useSounds)
+      assert.equal(sent.includes('Sonido [puerta]:'), useSounds)
+      assert.equal(sent.includes('bosque-unico'), useBackgrounds)
+      assert.equal(sent.includes('ambiente-unico'), useBackgrounds && useSounds)
+      assert.equal(sent.includes('pasos-unicos'), useSounds)
+      assert.equal(sent.includes('trueno-unico'), useSounds)
+      assert.ok(sent.includes('La noche sigue.'))
+      assert.equal(Object.values(context.breakdown).reduce((sum, count) => sum + count, 0), chatContextSize(context.messages))
+      const expectedHistory = options.messages[0]!.raw.split('\n').filter(line =>
+        (!line.startsWith('Fondo') || useBackgrounds) &&
+        (!line.startsWith('Sonido') || (useSounds && (useBackgrounds || !line.includes('ambiente-unico'))))
+      ).join('\n')
+      assert.equal(context.breakdown.history, expectedHistory.length)
+      assert.match(options.messages[0]!.raw, /Fondo \[bosque-unico\]/)
+
+      const summarized = buildChatContext({ ...options, story: { ...options.story, contextSummary: 'Resumen narrativo sin directivas.', contextSummaryThroughMessageId: 'old' } })
+      assert.equal(summarized.breakdown.backgrounds, context.breakdown.backgrounds)
+      assert.equal(summarized.breakdown.sounds, context.breakdown.sounds)
+      assert.equal(Object.values(summarized.breakdown).reduce((sum, count) => sum + count, 0), chatContextSize(summarized.messages))
+    }
+  }
+})
+
+test('compactación y serialización omiten directivas desactivadas sin reescribir originales, resumen ni texto libre', () => {
+  const raw = 'Fondo [bosque]:\nSonido [lluvia]:\nLa lluvia suena en el bosque.'
+  const message: Message = { id: 'old', storyId: story.id, role: 'assistant', raw, originalRaw: raw, segments: [
+    { type: 'background', backgroundId: 'bg', characterId: null, tag: 'bosque', text: '' },
+    { type: 'sound', soundId: 'audio', characterId: null, tag: 'lluvia', text: '' },
+    { type: 'narration', characterId: null, tag: null, text: 'La lluvia suena en el bosque.' }
+  ], createdAt: 1 }
+  const resources = { ...story, useBackgrounds: false, useSounds: false }
+  const history = buildHistory([message], [], 0, 'Vera', undefined, resources)
+  assert.deepEqual(history, [{ role: 'assistant', content: 'La lluvia suena en el bosque.' }])
+  const compact = buildCompactionMessages({ story: resources, messages: [message], characters: [], userName: 'Vera',
+    previousSummary: 'Resumen con sonidos y fondos.', prompt: 'Prompt personalizado: Sonido [campana]:' })
+  assert.ok(compact[0]!.content.startsWith('Prompt personalizado: Sonido [campana]:'))
+  assert.equal(JSON.parse(compact[1]!.content).previousSummary, 'Resumen con sonidos y fondos.')
+  assert.deepEqual(JSON.parse(compact[1]!.content).history, history)
+  const context = buildChatMessages({ story: resources, presetContent: 'Personalizado: Sonido [campana]:',
+    characters: [], images: [], backgrounds: [], sounds: [], messages: [message], historyBudget: 0,
+    userName: 'Vera', protagonistPreferences: '', generationMode: 'normal' })
+  assert.match(context[0]!.content, /Personalizado: Sonido \[campana\]:/)
+  assert.equal(message.raw, raw)
+  assert.equal(message.originalRaw, raw)
+  assert.equal(message.segments.length, 3)
+})
+
 test('desglosa exactamente el contexto enviado, incluidos encabezados, instrucciones y separadores', () => {
   const options: Parameters<typeof buildChatContext>[0] = {
     presetContent: '  Narra sin cambiar el formato.  ',

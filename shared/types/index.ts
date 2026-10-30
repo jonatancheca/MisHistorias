@@ -155,6 +155,8 @@ export interface Story {
   initialBackgroundId: string | null
   /** Limita el catálogo de fondos de la historia a un único estilo; null no filtra. */
   backgroundStyle?: string | null
+  useBackgrounds?: boolean
+  useSounds?: boolean
   /** Permite que el modelo solicite imágenes nuevas durante la historia. */
   autoGenerateImages?: boolean
   /** Legacy field ignored after narrative preset retirement. */

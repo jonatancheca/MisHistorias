@@ -59,6 +59,7 @@ import {
   resolveProtagonistPreferences
 } from '~/lib/promptBuilder'
 import { buildMockResponse } from '~/lib/mockLlm'
+import { filterStoryResourceDirectives, storyResourceCatalogs } from '~/lib/storyResources'
 import { storyOriginalText } from '~/lib/storyOriginalText'
 import { readSwarmDiagnostic } from '../../shared/utils/swarmError.ts'
 import { fetchLlmChat, fetchLlmContext, type LlmCallError } from '~/lib/llm'
@@ -546,6 +547,8 @@ export const useStoriesStore = defineStore('stories', () => {
     premise: string
     visualMode?: boolean
     autoGenerateImages?: boolean
+    useBackgrounds?: boolean
+    useSounds?: boolean
     protagonistPreferences: string
     protagonistPreferencesMode: ProtagonistPreferencesMode
     dialogueStyle: ResponseStyleAmount
@@ -567,6 +570,8 @@ export const useStoriesStore = defineStore('stories', () => {
       archived: false,
       visibleInDemo: usePrivacyStore().isDemo,
       autoGenerateImages: input.autoGenerateImages === true,
+      useBackgrounds: input.useBackgrounds !== false,
+      useSounds: input.useSounds !== false,
       protagonistPreferences: input.protagonistPreferences.trim(),
       protagonistPreferencesMode: input.protagonistPreferencesMode,
       dialogueStyle: input.dialogueStyle,
@@ -1046,6 +1051,8 @@ export const useStoriesStore = defineStore('stories', () => {
     const triggerMessageId = options.historyMessages.at(-1)?.id ?? story.contextSummaryThroughMessageId
 
     const compactionMessages = buildCompactionMessages({
+      story,
+      sounds: chatOptions.sounds,
       premise: story.premise,
       previousSummary: story.contextSummary,
       throughMessageId: story.contextSummaryThroughMessageId,
@@ -1114,6 +1121,7 @@ export const useStoriesStore = defineStore('stories', () => {
         const summary = await summarizeInBlocks({
           previousSummary: story.contextSummary ?? '',
           history: buildCompactionHistory({
+            story, sounds: chatOptions.sounds,
             premise: story.premise, previousSummary: story.contextSummary,
             messages: options.historyMessages, characters: chatOptions.characters,
             userName: chatOptions.userName, throughMessageId: story.contextSummaryThroughMessageId
@@ -1506,7 +1514,9 @@ export const useStoriesStore = defineStore('stories', () => {
     characterCustomizations: StoryCharacterCustomization[],
     initialBackgroundId: string | null,
     backgroundStyle: string | null,
-    visibleInDemo?: boolean
+    visibleInDemo?: boolean,
+    useBackgrounds = true,
+    useSounds = true
   ) {
     if (!activeStory.value || !title.trim() || !premise.trim() || !characterIds.length) return
     const premiseLocked = Boolean(activeStory.value.contextSummary?.trim())
@@ -1521,6 +1531,8 @@ export const useStoriesStore = defineStore('stories', () => {
       premise: premiseLocked ? activeStory.value.premise : premise.trim(),
       visualMode,
       autoGenerateImages,
+      useBackgrounds,
+      useSounds,
       visibleInDemo: visibleInDemo ?? activeStory.value.visibleInDemo,
       protagonistPreferences: protagonistPreferences.trim(),
       protagonistPreferencesMode,
@@ -2016,6 +2028,7 @@ export const useStoriesStore = defineStore('stories', () => {
             storyBackgrounds.some((background) => background.id === sound.backgroundId)
           )
       )
+      const resources = storyResourceCatalogs(story, storyBackgrounds, storySounds)
       const currentImageCatalog = buildStoryImageCatalog(
         presentCharacterIds(story),
         charactersStore.characters,
@@ -2102,8 +2115,8 @@ export const useStoriesStore = defineStore('stories', () => {
         raw = buildMockResponse(
           imageCharacters,
           charactersStore.images,
-          storyBackgrounds,
-          storySounds,
+          resources.backgrounds,
+          resources.sounds,
           story.initialBackgroundId ?? null,
           generationMode,
           settingsStore.activeUserName,
@@ -2146,11 +2159,11 @@ export const useStoriesStore = defineStore('stories', () => {
           if (!generationStillActive()) return
           raw = result.content
           finishReason = result.finishReason
-          const responseIsEmpty = !parseStoryImageRequests(
-            raw,
-            storyCharacters,
-            story.autoGenerateImages === true
-          ).visibleRaw.trim()
+          const responseIsEmpty = !filterStoryResourceDirectives(
+            parseStoryImageRequests(raw, storyCharacters, story.autoGenerateImages === true).visibleRaw,
+            story,
+            storySounds
+          ).trim()
           if (!responseIsEmpty || responseAttempt === 1) {
             notifyResponse(responseIsEmpty ? 'error' : 'success')
             break
@@ -2197,7 +2210,7 @@ export const useStoriesStore = defineStore('stories', () => {
         story.autoGenerateImages === true
       )
       assistantMessage.originalRaw = raw
-      visibleRaw = parsedImageResponse.visibleRaw
+      visibleRaw = filterStoryResourceDirectives(parsedImageResponse.visibleRaw, story, storySounds)
       imageBatchWarnings = [...parsedImageResponse.warnings]
       if (debugRequest) {
         const stored = await persistDebugTrace({
@@ -2276,11 +2289,11 @@ export const useStoriesStore = defineStore('stories', () => {
         const segments = parseSegments(
           visibleRaw,
           storyCharacters,
-          storyBackgrounds,
+          resources.backgrounds,
           settingsStore.activeUserName,
           charactersStore.images,
           assistantMessage.id,
-          storySounds
+          resources.sounds
         )
         const completedMessage: Message = {
           ...assistantMessage,
@@ -2293,9 +2306,9 @@ export const useStoriesStore = defineStore('stories', () => {
             visibleRaw,
             assistantMessage,
             storyCharacters,
-            storyBackgrounds,
+            resources.backgrounds,
             charactersStore.images,
-            storySounds,
+            resources.sounds,
             settingsStore.activeUserName,
             settings.responseSpeed,
             settings.visualNovelManualAdvance

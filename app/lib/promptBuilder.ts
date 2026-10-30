@@ -14,6 +14,8 @@ import { extractAiInstruction, isAiInstruction } from '~/lib/chatInstructions'
 import { serializeSegments } from '~/lib/streamParser'
 import { primaryTag, sanitizeTags, tagKey } from '~/lib/tags'
 import { DEFAULT_COMPACTION_PROMPT } from '~/lib/compactionPrompt'
+import { buildDefaultPresetContent, DEFAULT_PRESET_CONTENT } from '~/lib/defaultPreset'
+import { filterStoryResourceDirectives, storyResourceCatalogs, type StoryResourceOptions } from '~/lib/storyResources'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -50,7 +52,8 @@ function imageTagCatalog(images: Array<{ tags: string[] }>, indent = '') {
 function formatReminder(
   generationMode: GenerationMode,
   userName: string,
-  autoGenerateImages = false
+  autoGenerateImages = false,
+  story: StoryResourceOptions = {}
 ) {
   const protagonistFormat =
     generationMode === 'auto'
@@ -59,10 +62,17 @@ function formatReminder(
   const imageGenerationFormat = autoGenerateImages
     ? ' Puedes incluir como máximo una línea independiente `Imagen Nombre [etiqueta]: prompt en inglés` por personaje y respuesta. Esa línea solo describe postura, ropa, expresión y escena; no es relato ni diálogo.'
     : ''
+  const catalog = ['personajes', ...(story.useBackgrounds === false ? [] : ['fondos']),
+    ...(story.useSounds === false ? [] : ['sonidos']), 'etiquetas']
+  const catalogNames = `${catalog.slice(0, -1).join(', ')} y ${catalog.at(-1)}`
   const catalogRule = autoGenerateImages
-    ? ' usa solo personajes, fondos, sonidos y etiquetas listados para las líneas normales; para una imagen nueva utiliza la directiva Imagen indicada.'
-    : ' usa solo personajes, fondos, sonidos y etiquetas listados.'
-  return `Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa \`Nombre [etiqueta][otra etiqueta]: texto\` para diálogo, con cada etiqueta visual en sus propios corchetes, y \`Pensamiento Nombre [etiqueta][otra etiqueta]: texto\` para pensamientos interiores no pronunciados de ese personaje. Los pensamientos son opcionales y usan las mismas etiquetas visuales que el diálogo; escribe solo su texto, sin paréntesis ni cursiva, porque la aplicación los presenta. Son pensamientos ficticios del personaje, nunca tu análisis o razonamiento. Usa \`Fondo [etiqueta]:\` solo cuando cambie el fondo y \`Sonido [etiqueta]:\` cuando deba reproducirse un sonido disponible. Las etiquetas combinadas deben pertenecer a la misma imagen del personaje.${imageGenerationFormat} Usa una línea sin prefijo para narración y${catalogRule}${protagonistFormat} Las etiquetas visuales representan el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje las últimas etiquetas usadas mientras su aspecto no cambie; no vuelvas a \`[neutral]\` por defecto en intervenciones posteriores. Usa otras etiquetas solo cuando la historia cambie realmente su aspecto o ropa.`
+    ? ` usa solo ${catalogNames} listados para las líneas normales; para una imagen nueva utiliza la directiva Imagen indicada.`
+    : ` usa solo ${catalogNames} listados.`
+  const resourceInstructions = [
+    ...(story.useBackgrounds === false ? [] : ['Usa `Fondo [etiqueta]:` solo cuando cambie el fondo']),
+    ...(story.useSounds === false ? [] : [`${story.useBackgrounds === false ? 'Usa' : ''} \`Sonido [etiqueta]:\` cuando deba reproducirse un sonido disponible`.trim()])
+  ].join(' y ')
+  return `Responde directamente con la historia, sin análisis, razonamiento ni explicaciones. Cada intervención ocupa una línea independiente; la respuesta puede contener varias. Usa \`Nombre [etiqueta][otra etiqueta]: texto\` para diálogo, con cada etiqueta visual en sus propios corchetes, y \`Pensamiento Nombre [etiqueta][otra etiqueta]: texto\` para pensamientos interiores no pronunciados de ese personaje. Los pensamientos son opcionales y usan las mismas etiquetas visuales que el diálogo; escribe solo su texto, sin paréntesis ni cursiva, porque la aplicación los presenta. Son pensamientos ficticios del personaje, nunca tu análisis o razonamiento.${resourceInstructions ? ` ${resourceInstructions}.` : ''} Las etiquetas combinadas deben pertenecer a la misma imagen del personaje.${imageGenerationFormat} Usa una línea sin prefijo para narración y${catalogRule}${protagonistFormat} Las etiquetas visuales representan el aspecto actual del personaje, incluida su ropa. Mantén para cada personaje las últimas etiquetas usadas mientras su aspecto no cambie; no vuelvas a \`[neutral]\` por defecto en intervenciones posteriores. Usa otras etiquetas solo cuando la historia cambie realmente su aspecto o ropa.`
 }
 
 function continuationInstruction(generationMode: GenerationMode, userName: string) {
@@ -222,9 +232,10 @@ function buildSystemPromptParts(options: {
     (story.characterCustomizations ?? []).map((item) => [item.characterId, item])
   )
   const absent = new Set(normalizeAbsentCharacterIds(story.absentCharacterIds, story.characterIds))
+  const resources = storyResourceCatalogs(story, backgrounds, sounds)
   return [
     { section: 'instructions', content: [
-      presetContent.trim(),
+      (presetContent === DEFAULT_PRESET_CONTENT ? buildDefaultPresetContent(story.useSounds !== false) : presetContent).trim(),
       ...responseStyleInstructions(story),
       ...(story.autoGenerateImages
         ? [
@@ -276,14 +287,14 @@ function buildSystemPromptParts(options: {
         )
         .join('\n\n')
     ].join('\n') },
-    { section: 'backgrounds', content: [
+    ...(story.useBackgrounds === false ? [] : [{ section: 'backgrounds' as const, content: [
       '## FONDOS',
-      backgroundSheet(story, backgrounds)
-    ].join('\n') },
-    { section: 'sounds', content: [
+      backgroundSheet(story, resources.backgrounds)
+    ].join('\n') }]),
+    ...(story.useSounds === false ? [] : [{ section: 'sounds' as const, content: [
       '## SONIDOS',
-      soundSheet(sounds.filter((sound) => !sound.characterId || !absent.has(sound.characterId)), characters, backgrounds)
-    ].join('\n') }
+      soundSheet(resources.sounds.filter((sound) => !sound.characterId || !absent.has(sound.characterId)), characters, resources.backgrounds)
+    ].join('\n') }])
   ]
 }
 
@@ -297,7 +308,9 @@ export function buildHistory(
   characters: Character[],
   budget: number,
   userName: string,
-  afterMessageId?: string
+  afterMessageId?: string,
+  resources: StoryResourceOptions = {},
+  sounds: Sound[] = []
 ): ChatMessage[] {
   messages = messages.filter((message) => !message.swarmError)
   const history: ChatMessage[] = []
@@ -314,13 +327,16 @@ export function buildHistory(
     const instruction = isInstruction ? extractAiInstruction(message.raw) : null
     if (isInstruction && !instruction) continue
 
-    const content = isInstruction
+    const originalContent = isInstruction
       ? `Instrucción del usuario para la IA:\n${instruction}`
       : message.role === 'assistant'
         ? message.segments.length
           ? serializeSegments(message.segments, characters, userName)
           : message.raw
         : `${userName}: ${message.raw}`
+    const content = message.role === 'assistant'
+      ? filterStoryResourceDirectives(originalContent, resources, sounds)
+      : originalContent
     if (!content.trim()) continue
     if (budget > 0 && used + content.length > budget && history.length > 0) break
     history.unshift({ role: isInstruction ? 'system' : message.role, content })
@@ -332,6 +348,8 @@ export function buildHistory(
 
 /** El planteamiento es material fragmentable; un resumen vigente ya lo sustituye. */
 export function buildCompactionHistory(options: {
+  story?: StoryResourceOptions
+  sounds?: Sound[]
   premise?: string
   previousSummary?: string
   throughMessageId?: string
@@ -342,11 +360,13 @@ export function buildCompactionHistory(options: {
   const premise = options.previousSummary?.trim() ? '' : options.premise?.trim()
   return [
     ...(premise ? [{ role: 'system' as const, content: `Planteamiento de la historia:\n${premise}` }] : []),
-    ...buildHistory(options.messages, options.characters, 0, options.userName, options.throughMessageId)
+    ...buildHistory(options.messages, options.characters, 0, options.userName, options.throughMessageId, options.story, options.sounds)
   ]
 }
 
 export function buildCompactionMessages(options: {
+  story?: StoryResourceOptions
+  sounds?: Sound[]
   premise?: string
   previousSummary?: string
   throughMessageId?: string
@@ -401,7 +421,9 @@ export function buildChatContext(options: {
     options.characters,
     options.historyBudget,
     options.userName,
-    options.story.contextSummaryThroughMessageId
+    options.story.contextSummaryThroughMessageId,
+    options.story,
+    options.sounds
   )
   const contextSummary: ChatMessage[] = options.story.contextSummary?.trim()
     ? [{
@@ -446,7 +468,8 @@ export function buildChatContext(options: {
       content: formatReminder(
         options.generationMode,
         options.userName,
-        options.story.autoGenerateImages === true
+        options.story.autoGenerateImages === true,
+        options.story
       )
     }
   ]
