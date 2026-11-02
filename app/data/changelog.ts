@@ -6,6 +6,7 @@ export interface ChangelogEntry {
 
 // Una entrada por issue completada. Actualizar al cerrar cada issue.
 export const changelogEntries: ChangelogEntry[] = [
+  { issue: 272, completedAt: '2026-11-02', summary: 'Los selectores de etiquetas filtran las disponibles mientras escribes por coincidencia en cualquier parte del texto, sin distinguir mayúsculas y conservando las tildes; mantienen visibles las asignadas y permiten seleccionar una existente sin crear el fragmento escrito.' },
   { issue: 271, completedAt: '2026-10-30', summary: 'Cada historia permite desactivar fondos y sonidos al crearla o editarla: excluye sus catálogos, instrucciones y directivas del contexto enviado y de la medición del diálogo de compactación, conserva el historial y el texto original e ignora directivas nuevas desactivadas; las opciones se mantienen al copiar, guardar y transferir.' },
   { issue: 270, completedAt: '2026-10-30', summary: 'El diálogo Compactar historia permite desplegar el desglose exacto de caracteres por instrucciones, protagonista, personajes e imágenes, fondos, sonidos, planteamiento, resumen e historial, tanto en el contexto actual como antes y después de compactar; oculta los grupos vacíos y conserva los tokens totales.' },
   { issue: 269, completedAt: '2026-10-19', summary: 'Los errores al guardar Ajustes muestran un aviso persistente visible con scroll y sobre los diálogos, con el mensaje del servidor y reintento; conservan los cambios pendientes, cubren los ámbitos normal y privado y aclaran el rango de tokens de respuesta sin ampliar su límite.' },

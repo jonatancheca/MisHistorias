@@ -20,11 +20,13 @@ const suggestionsOpen = ref(false)
 const activeSuggestion = ref(-1)
 const listboxId = `tag-suggestions-${useId()}`
 
-const suggestionBadges = computed(() =>
-  sanitizeTags([...(props.suggestions ?? []), ...props.modelValue]).sort((left, right) =>
-    left.localeCompare(right, 'es', { sensitivity: 'base' })
-  )
-)
+const suggestionBadges = computed(() => {
+  const query = tagKey(draft.value)
+  const selected = new Set(props.modelValue.map(tagKey))
+  return sanitizeTags([...(props.suggestions ?? []), ...props.modelValue])
+    .filter((tag) => selected.has(tagKey(tag)) || !query || tagKey(tag).includes(query))
+    .sort((left, right) => left.localeCompare(right, 'es', { sensitivity: 'base' }))
+})
 
 const filteredSuggestions = computed(() => {
   const query = tagKey(draft.value)
@@ -200,6 +202,7 @@ function remove(tag: string) {
       :class="isSelected(suggestion)
         ? 'border-brand-500 bg-brand-500 text-white'
         : 'border-[var(--color-border-soft)] bg-[var(--color-surface)] text-[var(--color-fg)] hover:bg-brand-500/10'"
+      @mousedown.prevent
       @click="toggleSuggestion(suggestion)"
     >
       <span class="truncate">{{ suggestion }}</span>
