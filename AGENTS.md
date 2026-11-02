@@ -3,7 +3,7 @@
 - Usa siempre la skill `/caveman`.
 - Si `gh auth status` falla dentro del sandbox, repítelo fuera del sandbox antes de concluir que la autenticación está caducada. Detén el trabajo y pide renovar la autenticación solo si también falla fuera del sandbox.
 - Pregunta las dudas antes de empezar.
-- Si tienes preguntas, hazlas por el chat en texto normal; no uses el modo ni la interfaz de preguntas de Codex.
+- Si tienes preguntas, hazlas por el chat en texto normal; no uses el modo ni la interfaz de preguntas de Codex ni de VSCode ni ningún otro, usa solo texto.
 - Trabaja siempre en la rama actual. Crea o cambia de rama solo cuando se pida expresamente.
 - Cuando pida hacer una issue, haz commit, push y ciérrala al terminar.
 - Al completar una issue, añade al changelog una entrada con resumen breve, fecha de finalización y enlace a la issue. Incluye la entrada en el mismo commit y mantén el historial ordenado de más reciente a más antiguo. No añadas issues cerradas como no previstas.
