@@ -91,6 +91,7 @@ for (const visualMode of [false, true]) {
       const geometryBefore = new Map<number, Awaited<ReturnType<typeof input.boundingBox>>>()
       for (const width of [1280, 320, 390]) {
         await page.setViewportSize({ width, height: 900 })
+        await expect(page.getByTestId('continue-button')).toBeVisible({ visible: width >= 640 })
         geometryBefore.set(width, await input.boundingBox())
       }
       await page.setViewportSize({ width: 1280, height: 900 })
@@ -102,6 +103,7 @@ for (const visualMode of [false, true]) {
       expect(loads).toBe(1)
       for (const width of [1280, 320, 390]) {
         await page.setViewportSize({ width, height: 900 })
+        await expect(page.getByTestId('continue-button')).toBeVisible({ visible: width >= 640 })
         const notice = page.getByTestId('story-model-preload')
         await expect(notice).toHaveText('Cargando IA…')
         await expect(notice).toBeInViewport()
@@ -120,12 +122,15 @@ for (const visualMode of [false, true]) {
       await expect(button).toHaveCount(1)
       for (const width of [320, 390]) {
         await page.setViewportSize({ width, height: 844 })
+        await page.getByTestId('story-tools-toggle').click()
+        await expect(page.getByTestId('story-tools-panel').getByTestId('story-model-load')).toBeVisible()
         await expect(button).toBeVisible()
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
         const bounds = await button.boundingBox()
         expect(bounds!.x).toBeGreaterThanOrEqual(0)
         expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
         await page.screenshot({ path: test.info().outputPath(`load-${width}.png`) })
+        await page.keyboard.press('Escape')
       }
       await page.setViewportSize({ width: 1280, height: 900 })
       await page.getByTestId('visual-mode-toggle').click()

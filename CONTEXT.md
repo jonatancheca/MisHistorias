@@ -64,6 +64,14 @@ _Evitar_: Diálogo, razonamiento de la IA, narración
 Intervención independiente de diálogo, pensamiento del personaje o narración producida por el narrador. Se muestra como cuadro en Novela Visual y como intervención separada en Chat; las directivas de fondo y sonido no cuentan como cuadros de estos tipos.
 _Evitar_: Línea visual, párrafo de pantalla
 
+**Continuación Más**:
+Nueva respuesta del narrador que amplía la historia sin decidir acciones ni diálogos del protagonista.
+_Evitar_: Enviar el borrador, continuación Auto
+
+**Continuación Auto**:
+Nueva respuesta del narrador que permite a la IA decidir acciones y diálogos del protagonista.
+_Evitar_: Avance automático de lectura, límite automático de tokens, continuación Más
+
 **Cuadro de escritura**:
 Campo de una historia donde se prepara la siguiente intervención antes de enviarla. Su borrador no forma parte de la historia y es distinto de los cuadros de respuesta de Novela Visual.
 _Evitar_: Cuadro de respuesta, mensaje enviado

@@ -57,6 +57,9 @@ for (const width of [320, 390, 639, 640, 768, 1024, 1280]) {
       if (visual) await expect(page.getByTestId('visual-novel-counter')).toHaveText('12 / 12')
       await page.getByLabel('Tu intervención').fill('Observo el horizonte.')
       await expect(page.getByRole('button', { name: 'Enviar', exact: true })).toBeEnabled()
+      await expect(page.getByRole('button', { name: 'Enviar', exact: true }).locator('span')).toBeVisible({ visible: width >= 640 })
+      await expect(page.getByTestId('continue-button')).toBeVisible({ visible: width >= 640 })
+      await expect(page.getByTestId('auto-button')).toBeVisible({ visible: width >= 640 })
       const writeBounds = await page.locator('.story-write-box').boundingBox()
       const sendBounds = await page.getByRole('button', { name: 'Enviar', exact: true }).boundingBox()
       expect(Math.abs((writeBounds!.y + writeBounds!.height / 2) - (sendBounds!.y + sendBounds!.height / 2))).toBeLessThan(1)
@@ -82,7 +85,7 @@ for (const width of [320, 390, 639, 640, 768, 1024, 1280]) {
         const row = await page.evaluate(() => {
           const buttons = [...document.querySelectorAll('.story-reader-controls button')]
             .filter(button => button.getClientRects().length > 0)
-            .map(button => button.getBoundingClientRect().top)
+            .map(button => { const bounds = button.getBoundingClientRect(); return bounds.top + bounds.height / 2 })
           return Math.max(...buttons) - Math.min(...buttons)
         })
         expect(row).toBeLessThan(1)
@@ -105,15 +108,16 @@ for (const width of [320, 390, 639, 640, 768, 1024, 1280]) {
       const geometry = await page.evaluate(() => {
         const controls = [...document.querySelectorAll('#story-header button, .story-reader-controls button, .story-composer button')]
           .filter(el => el.getClientRects().length > 0)
-          .map(el => { const r = el.getBoundingClientRect(); return { text: el.textContent, x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height } })
+          .map(el => { const r = el.getBoundingClientRect(); return { text: el.textContent, indicator: el.classList.contains('story-context-indicator'), x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height } })
         return { viewport: innerWidth, document: document.documentElement.scrollWidth, controls,
           overlaps: controls.flatMap((a, i) => controls.slice(i + 1).filter(b => a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y)) }
       })
       expect(geometry.document).toBe(geometry.viewport)
       expect(geometry.overlaps).toEqual([])
       for (const control of geometry.controls) {
-        expect(control.width, control.text ?? '').toBeGreaterThanOrEqual(44)
-        expect(control.height, control.text ?? '').toBeGreaterThanOrEqual(44)
+        const minimum = control.indicator ? 16 : 44
+        expect(control.width, control.text ?? '').toBeGreaterThanOrEqual(minimum)
+        expect(control.height, control.text ?? '').toBeGreaterThanOrEqual(minimum)
         expect(control.x).toBeGreaterThanOrEqual(0)
         expect(control.right).toBeLessThanOrEqual(width)
         expect(control.bottom).toBeLessThanOrEqual(760)

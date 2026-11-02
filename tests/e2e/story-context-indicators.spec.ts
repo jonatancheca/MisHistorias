@@ -59,7 +59,7 @@ test('mide sin bloquear, excluye borrador y muestra limites efectivos en ambos m
       const geometry = await page.evaluate(() => {
         const mobile = innerWidth < 640
         const options = document.querySelector(mobile ? '#story-mobile-context' : '#story-reader-options')!
-        const preceding = document.querySelector(mobile ? '#story-header h1' : '#story-reader-options [data-testid="story-tools-toggle"]')!.getBoundingClientRect()
+        const preceding = document.querySelector(mobile ? '.story-frame-navigation-start > button:last-of-type' : '#story-reader-options [data-testid="story-tools-toggle"]')!.getBoundingClientRect()
         const rings = [...options.querySelectorAll('.story-context-indicator')].map(el => {
           const r = el.getBoundingClientRect()
           return { width: r.width, height: r.height, left: r.left, right: r.right }

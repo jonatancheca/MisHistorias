@@ -172,4 +172,8 @@ onBeforeUnmount(cancelMeasurement)
   top: calc(100% + 0.75rem); bottom: auto; left: auto; right: 0; transform: none;
   max-width: min(24rem, calc(100vw - 4rem));
 }
+@media (max-width: 639px) {
+  .story-context-indicator { position: static; }
+  .story-context-tooltip { left: 0.75rem; right: auto; }
+}
 </style>

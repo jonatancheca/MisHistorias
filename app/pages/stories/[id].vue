@@ -340,6 +340,7 @@ async function resumeFollowingBottom() {
 async function toggleVisualMode() {
   if (!stories.activeStory || stories.activeStory.readOnly) return
   const visualMode = !stories.activeStory.visualMode
+  if (!readerOptionsInNavigation.value) hideMobileChrome()
   await stories.setVisualMode(visualMode)
   if (visualMode) {
     visualFrameIndex.value = Math.max(0, visualFrames.value.length - 1)
@@ -349,6 +350,7 @@ async function toggleVisualMode() {
     stories.resumeVisualReveal()
     await resumeFollowingBottom()
   }
+  if (!readerOptionsInNavigation.value) hideMobileChrome()
 }
 
 async function toggleVisualNovelManualAdvance() {
@@ -501,6 +503,7 @@ function onTimelineAssetLoad(event: Event) {
 }
 
 function onStoryScroll() {
+  if (stories.activeStory?.visualMode) return
   const current = scroller.value?.scrollTop ?? 0
   const delta = current - lastScrollTop
   lastScrollTop = current
@@ -1257,7 +1260,6 @@ onBeforeRouteLeave(() => {
             Historia demo compartida · solo lectura
           </p>
         </div>
-          <div id="story-mobile-context" class="shrink-0 sm:hidden" />
         </div>
         <div class="story-header-options">
           <Teleport defer to="#story-reader-options" :disabled="!readerOptionsInNavigation">
@@ -1374,9 +1376,17 @@ onBeforeRouteLeave(() => {
               </svg>
               <span>{{ copyingSharedStory ? 'Copiando…' : 'Copiar' }}</span>
             </button>
+            <div id="story-mobile-generation" class="grid gap-1 sm:hidden">
+              <StoryModelLoadButton
+                v-if="!readerOptionsInNavigation && modelLoadAvailable"
+                :loading="modelLoading"
+                :disabled="stories.generating || presenceBusy"
+                @load="loadStoryModel"
+              />
+            </div>
           </StoryToolsMenu>
           <Teleport defer to="#story-mobile-context" :disabled="readerOptionsInNavigation">
-            <StoryContextIndicators :placement="readerOptionsInNavigation ? 'top' : 'bottom'" @history="compactionHistoryOpen = true" />
+            <StoryContextIndicators @history="compactionHistoryOpen = true" />
           </Teleport>
           </div>
           </Teleport>
@@ -1591,7 +1601,7 @@ onBeforeRouteLeave(() => {
               :original-text-available="originalTextAvailable && !item.message.swarmError"
               :original-text-open="originalTextOpenIds.has(item.message.id)"
               :original-text="storyOriginalText(originalMessagesById.get(item.message.id) ?? item.message, stories.debugTraces)"
-              :model-load-available="modelLoadAvailable && !stories.activeStory.visualMode && item.id === modelLoadTargetId"
+              :model-load-available="readerOptionsInNavigation && modelLoadAvailable && !stories.activeStory.visualMode && item.id === modelLoadTargetId"
               :model-loading="modelLoading"
               :model-load-disabled="stories.generating"
               @debug="selectedDebugTrace = $event"
@@ -1610,7 +1620,7 @@ onBeforeRouteLeave(() => {
                 :class="debugEnabled ? 'opacity-100' : 'opacity-100 max-sm:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100'"
               >
                 <StoryModelLoadButton
-                  v-if="modelLoadAvailable && !stories.activeStory.visualMode && item.id === modelLoadTargetId"
+                  v-if="readerOptionsInNavigation && modelLoadAvailable && !stories.activeStory.visualMode && item.id === modelLoadTargetId"
                   :loading="modelLoading"
                   :disabled="stories.generating || presenceBusy"
                   @load="loadStoryModel"
@@ -1787,13 +1797,13 @@ onBeforeRouteLeave(() => {
           </svg>
         <span class="hidden md:inline">Anterior</span></button>
         <StoryModelLoadButton
-          v-if="modelLoadAvailable && (stories.activeStory.visualMode || modelLoadInNavigation)"
+          v-if="readerOptionsInNavigation && modelLoadAvailable && (stories.activeStory.visualMode || modelLoadInNavigation)"
           class="story-nav-button"
-          compact-on-mobile
           :loading="modelLoading"
           :disabled="stories.generating || presenceBusy"
           @load="loadStoryModel"
         />
+        <div id="story-mobile-context" class="shrink-0 sm:hidden" />
         </div>
         <div id="story-reader-options" class="story-reader-options-target" />
         </div>
@@ -1872,13 +1882,14 @@ onBeforeRouteLeave(() => {
             <button
               v-if="!stories.generating"
               type="submit"
-              class="btn-primary story-send-button"
+              class="btn-primary story-send-button story-send-icon"
+              aria-label="Enviar"
               :disabled="stories.generating || presenceBusy"
               :aria-keyshortcuts="desktopStoryControls ? 'Enter Control+Enter' : 'Control+Enter'"
               :title="storyControlTitle('Enviar', 'Enter / Ctrl+Enter')"
             >
               <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13" /></svg>
-              Enviar
+              <span class="hidden sm:inline">Enviar</span>
             </button>
             <button
               v-else
@@ -1890,6 +1901,7 @@ onBeforeRouteLeave(() => {
               Parar
             </button>
           </div>
+          <Teleport defer to="#story-mobile-generation" :disabled="readerOptionsInNavigation">
           <div class="story-generation-controls">
             <button
               type="button"
@@ -1916,6 +1928,7 @@ onBeforeRouteLeave(() => {
               <span><strong>Auto</strong><small>La IA decide</small></span>
             </button>
           </div>
+          </Teleport>
         </form>
       </footer>
       <footer
@@ -2226,6 +2239,12 @@ onBeforeRouteLeave(() => {
 .story-generate-button > svg { color: var(--color-brand-500); }
 .story-generate-button:hover:not(:disabled) { border-color: var(--color-brand-400); background: var(--color-surface); }
 .story-generate-button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+@media (max-width: 639px) {
+  .story-send-icon { width: 44px; }
+  .story-generation-controls { grid-template-columns: minmax(0, 1fr); }
+  .story-nav-button { padding-inline: 0.5rem; }
+}
 
 @media (min-width: 640px) {
   .story-header { padding: 0.75rem 1.25rem; }

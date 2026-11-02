@@ -1789,6 +1789,7 @@ test.describe('chat', () => {
       await page.goto(`/stories/${story.id}`)
 
       await expect(page.getByTestId('pending-image-button')).toHaveCount(0)
+      await page.getByTestId('story-tools-toggle').click()
       const composerButtons = [
         page.getByRole('button', { name: 'Enviar', exact: true }),
         page.getByTestId('continue-button'),
@@ -1801,6 +1802,7 @@ test.describe('chat', () => {
       expect(composerButtonHeights[0]).toBeGreaterThanOrEqual(44)
       expect(composerButtonHeights[1]).toBeGreaterThanOrEqual(44)
       expect(composerButtonHeights[2]).toBe(composerButtonHeights[1])
+      await page.keyboard.press('Escape')
 
       await expect(page.getByRole('button', { name: 'Ver datos de debug de la llamada LLM' })).toBeVisible()
       await expect(page.getByRole('button', { name: 'Editar mensaje' }).first()).toBeVisible()
@@ -3290,6 +3292,14 @@ test.describe('novela visual y responsive', () => {
         .toBe(true)
 
       await page.getByTestId('visual-mode-toggle').click()
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      for (let index = 0; index < 2; index++) {
+        await page.getByTestId('visual-mode-toggle').click()
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      }
+      await toggle.click()
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      await toggle.click()
       await expect(page.getByTestId('story-start-button')).toBeVisible()
       await expect(page.getByTestId('story-end-button')).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
